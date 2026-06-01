@@ -1,0 +1,33 @@
+{{define "title"}}{{.Agent.Display}} · Agents · Acta{{end}}
+{{define "content"}}
+<main class="stage stage--wide">
+  <div class="settings reveal d1">
+    <nav class="menu">
+      <a href="/settings/security">Security</a>
+      <a class="active" href="/settings/agents">Agents</a>
+      <a href="/settings/workspaces">Workspaces</a>
+    </nav>
+
+    <section>
+      <a class="toplink" href="/settings/agents">&lsaquo; All agents</a>
+      <h2 class="title" style="font-size: 1.45rem; margin: .6rem 0 .2rem;">
+        {{.Agent.Display}} <span class="badge-agent">agent</span>
+      </h2>
+      <p class="subtitle"><code>{{.Agent.Username}}</code></p>
+
+      <p class="section-title" style="margin-top: 1.8rem;">Tokens</p>
+      <p class="subtitle" style="margin-bottom: 1rem;">
+        A token authenticates as this agent. Give one to the process that runs it.
+      </p>
+
+      {{template "token-section" .TokenSection}}
+
+      <p class="section-title" style="margin-top: 2.4rem;">Danger zone</p>
+      <form method="post" action="/settings/agents/{{.Agent.ID}}/delete">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button class="link-danger" type="submit">Delete this agent</button>
+      </form>
+    </section>
+  </div>
+</main>
+{{end}}

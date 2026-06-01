@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/peios/acta/internal/agent"
+	"github.com/peios/acta/internal/apitoken"
 	"github.com/peios/acta/internal/authn/local"
 	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/config"
@@ -58,8 +60,10 @@ func newTestServer(t *testing.T) (string, *http.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	tokens := apitoken.New(ms)
+	agents := agent.New(ms)
 	provider := local.NewProvider(ms, sessions, passkeys, false)
-	handler := web.NewHandler(config.Config{Env: "dev"}, sessions, provider, passkeys, workspaces, boards)
+	handler := web.NewHandler(config.Config{Env: "dev"}, sessions, provider, passkeys, tokens, agents, workspaces, boards)
 
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)

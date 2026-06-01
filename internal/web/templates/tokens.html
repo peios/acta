@@ -1,0 +1,38 @@
+{{define "token-section"}}
+{{if .NewToken}}
+<div class="token-reveal" role="status">
+  <div class="token-reveal-label">New token — copy it now. You won't be able to see it again.</div>
+  <code class="token-reveal-value">{{.NewToken}}</code>
+</div>
+{{end}}
+
+{{if .Tokens}}
+<div class="cred-list">
+  {{range .Tokens}}
+  <div class="cred">
+    <div>
+      <div class="cred-name">{{if .Name}}{{.Name}}{{else}}Unnamed token{{end}}</div>
+      <div class="cred-meta">
+        <code>{{.Prefix}}…</code> · added {{.CreatedAt.Format "2 Jan 2006"}} ·
+        {{if .LastUsedAt}}last used {{.LastUsedAt.Format "2 Jan 2006"}}{{else}}never used{{end}}
+      </div>
+    </div>
+    <form method="post" action="{{$.DeleteBase}}/{{.ID}}/delete">
+      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+      <button class="link-danger" type="submit">Revoke</button>
+    </form>
+  </div>
+  {{end}}
+</div>
+{{else}}
+<p class="subtitle">No tokens yet.</p>
+{{end}}
+
+<form class="passkey-add" method="post" action="{{.CreateAction}}" style="margin-top: 1.2rem;">
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  <div class="input-wrap">
+    <input class="input" name="name" placeholder="{{.Placeholder}}" maxlength="100" autocomplete="off">
+  </div>
+  <button class="btn-primary" type="submit">Create token</button>
+</form>
+{{end}}

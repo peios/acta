@@ -4,7 +4,10 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/peios/acta/internal/agent"
+	"github.com/peios/acta/internal/apitoken"
 	"github.com/peios/acta/internal/authn"
 	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/httpx"
@@ -19,9 +22,24 @@ type handlers struct {
 	sessions   *session.Manager
 	provider   authn.Provider
 	passkeys   *passkey.Service
+	tokens     *apitoken.Service
+	agents     *agent.Service
 	workspaces *workspace.Service
 	board      *board.Service
 	secure     bool
+}
+
+// tokensView is the data a token-management section renders from. The same
+// partial drives a human's own tokens (on the Security page) and an agent's
+// tokens (on the agent detail page) — only the action URLs differ. NewToken is
+// a freshly minted plaintext to reveal exactly once.
+type tokensView struct {
+	CSRFToken    string
+	Tokens       []store.APIToken
+	NewToken     string
+	CreateAction string // POST target to mint a token
+	DeleteBase   string // revoke posts to DeleteBase + "/{id}/delete"
+	Placeholder  string
 }
 
 // chrome is the shared top-bar context every signed-in page needs: the CSRF
@@ -142,8 +160,21 @@ func (h *handlers) rootRedirect(w http.ResponseWriter, r *http.Request) {
 
 type securityData struct {
 	chrome
-	Principal   *identity.Principal
-	Credentials []store.Credential
+	Principal    *identity.Principal
+	Credentials  []store.Credential
+	TokenSection tokensView
+	Sessions     []sessionView
+}
+
+// sessionView is a session as shown in the account UI. The secret token is
+// deliberately absent: a session is addressed only by its non-secret PublicID,
+// so the bearer credential never reaches the page.
+type sessionView struct {
+	PublicID  string
+	Label     string // friendly user-agent summary
+	Current   bool   // the session making this request
+	CreatedAt time.Time
+	LastSeen  time.Time
 }
 
 func (h *handlers) settingsIndex(w http.ResponseWriter, r *http.Request) {
@@ -151,22 +182,113 @@ func (h *handlers) settingsIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handlers) settingsSecurity(w http.ResponseWriter, r *http.Request) {
+	data, err := h.buildSecurityData(r, "")
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	render(w, http.StatusOK, "security.html", data)
+}
+
+// buildSecurityData assembles the Security page: passkeys, API tokens, and
+// active sessions (with the current one marked). newToken, when non-empty, is a
+// freshly minted token's plaintext to reveal exactly once.
+func (h *handlers) buildSecurityData(r *http.Request, newToken string) (securityData, error) {
 	p := principalFrom(r.Context())
 	creds, err := h.passkeys.List(r.Context(), p.ID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
+		return securityData{}, err
+	}
+	tokens, err := h.tokens.List(r.Context(), p.ID)
+	if err != nil {
+		return securityData{}, err
+	}
+	sessions, err := h.sessions.List(r.Context(), p.ID)
+	if err != nil {
+		return securityData{}, err
+	}
+	current := h.sessions.CurrentToken(r)
+	views := make([]sessionView, 0, len(sessions))
+	for _, s := range sessions {
+		views = append(views, sessionView{
+			PublicID:  s.PublicID,
+			Label:     userAgentLabel(s.UserAgent),
+			Current:   s.ID == current,
+			CreatedAt: s.CreatedAt,
+			LastSeen:  s.LastSeen,
+		})
 	}
 	ch, err := h.chromeFor(r, "settings", nil)
+	if err != nil {
+		return securityData{}, err
+	}
+	return securityData{
+		chrome:      ch,
+		Principal:   p,
+		Credentials: creds,
+		TokenSection: tokensView{
+			CSRFToken:    ch.CSRFToken,
+			Tokens:       tokens,
+			NewToken:     newToken,
+			CreateAction: "/settings/tokens",
+			DeleteBase:   "/settings/tokens",
+			Placeholder:  "Token name (e.g. laptop CLI)",
+		},
+		Sessions: views,
+	}, nil
+}
+
+// --- settings: api tokens ---
+
+func (h *handlers) tokenCreate(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	p := principalFrom(r.Context())
+	plaintext, _, err := h.tokens.Mint(r.Context(), p.ID, r.PostFormValue("name"))
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	render(w, http.StatusOK, "security.html", securityData{
-		chrome:      ch,
-		Principal:   p,
-		Credentials: creds,
-	})
+	// Re-render with the plaintext rather than redirecting: this is the only
+	// moment the user can copy it, and a redirect would throw it away.
+	data, err := h.buildSecurityData(r, plaintext)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	render(w, http.StatusOK, "security.html", data)
+}
+
+func (h *handlers) tokenDelete(w http.ResponseWriter, r *http.Request) {
+	p := principalFrom(r.Context())
+	err := h.tokens.Revoke(r.Context(), r.PathValue("id"), p.ID)
+	if err != nil && !errors.Is(err, store.ErrAPITokenNotFound) {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/settings/security", http.StatusSeeOther)
+}
+
+// --- settings: sessions ---
+
+func (h *handlers) sessionRevoke(w http.ResponseWriter, r *http.Request) {
+	p := principalFrom(r.Context())
+	if err := h.sessions.Revoke(r.Context(), r.PathValue("id"), p.ID); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/settings/security", http.StatusSeeOther)
+}
+
+func (h *handlers) sessionRevokeOthers(w http.ResponseWriter, r *http.Request) {
+	p := principalFrom(r.Context())
+	if _, err := h.sessions.RevokeOthers(r.Context(), p.ID, h.sessions.CurrentToken(r)); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/settings/security", http.StatusSeeOther)
 }
 
 // --- settings: workspaces ---

@@ -19,6 +19,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/peios/acta/internal/agent"
+	"github.com/peios/acta/internal/apitoken"
 	"github.com/peios/acta/internal/authn/local"
 	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/config"
@@ -86,8 +88,10 @@ func runServe(args []string) error {
 	}
 	workspaces := workspace.New(pg)
 	boards := board.New(pg)
+	tokens := apitoken.New(pg)
+	agents := agent.New(pg)
 	provider := local.NewProvider(pg, sessions, passkeys, cfg.CookieSecure())
-	handler := web.NewHandler(cfg, sessions, provider, passkeys, workspaces, boards)
+	handler := web.NewHandler(cfg, sessions, provider, passkeys, tokens, agents, workspaces, boards)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,

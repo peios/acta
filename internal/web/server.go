@@ -6,6 +6,8 @@ package web
 import (
 	"net/http"
 
+	"github.com/peios/acta/internal/agent"
+	"github.com/peios/acta/internal/apitoken"
 	"github.com/peios/acta/internal/authn"
 	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/config"
@@ -15,11 +17,13 @@ import (
 )
 
 // NewHandler builds the application handler.
-func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Provider, passkeys *passkey.Service, workspaces *workspace.Service, boards *board.Service) http.Handler {
+func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Provider, passkeys *passkey.Service, tokens *apitoken.Service, agents *agent.Service, workspaces *workspace.Service, boards *board.Service) http.Handler {
 	h := &handlers{
 		sessions:   sessions,
 		provider:   provider,
 		passkeys:   passkeys,
+		tokens:     tokens,
+		agents:     agents,
 		workspaces: workspaces,
 		board:      boards,
 		secure:     cfg.CookieSecure(),
@@ -68,11 +72,27 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("POST /settings/passkeys/register/begin", protected(h.passkeyRegisterBegin))
 	mux.Handle("POST /settings/passkeys/register/finish", protected(h.passkeyRegisterFinish))
 	mux.Handle("POST /settings/passkeys/{id}/delete", protected(h.passkeyDelete))
+	mux.Handle("POST /settings/tokens", protected(h.tokenCreate))
+	mux.Handle("POST /settings/tokens/{id}/delete", protected(h.tokenDelete))
+	mux.Handle("POST /settings/sessions/revoke-others", protected(h.sessionRevokeOthers))
+	mux.Handle("POST /settings/sessions/{id}/revoke", protected(h.sessionRevoke))
 	mux.Handle("GET /settings/workspaces", protected(h.settingsWorkspaces))
 	mux.Handle("POST /settings/workspaces", protected(h.workspaceCreate))
 	mux.Handle("POST /settings/workspaces/{id}/rename", protected(h.workspaceRename))
 	mux.Handle("POST /settings/workspaces/{id}/delete", protected(h.workspaceDelete))
+	mux.Handle("GET /settings/agents", protected(h.settingsAgents))
+	mux.Handle("POST /settings/agents", protected(h.agentCreate))
+	mux.Handle("GET /settings/agents/{id}", protected(h.agentDetail))
+	mux.Handle("POST /settings/agents/{id}/delete", protected(h.agentDelete))
+	mux.Handle("POST /settings/agents/{id}/tokens", protected(h.agentTokenCreate))
+	mux.Handle("POST /settings/agents/{id}/tokens/{tokenID}/delete", protected(h.agentTokenDelete))
 	mux.Handle("GET /welcome/passkey", protected(h.welcomePasskey))
+
+	// JSON API, authenticated by personal access token. Bearer auth carries no
+	// cookies, so CSRF doesn't apply; the GET below is safe under the global
+	// CSRF check regardless. API mutations (a later slice) will mount outside
+	// the cookie/CSRF chain.
+	mux.Handle("GET /api/v1/me", requireToken(tokens)(http.HandlerFunc(h.apiMe)))
 
 	// Global middleware chain (outermost first).
 	return requestLogger(secureHeaders(csrf(cfg.CookieSecure())(mux)))

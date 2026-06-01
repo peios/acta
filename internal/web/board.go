@@ -247,7 +247,7 @@ func (h *handlers) itemCreate(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	it, err := h.board.CreateRootItem(r.Context(), ws.ID, req.StatusID, req.Title)
+	it, err := h.board.CreateRootItemAs(r.Context(), ws.ID, req.StatusID, req.Title, principalFrom(r.Context()).ID)
 	if err != nil {
 		writeBoardErr(w, err)
 		return

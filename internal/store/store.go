@@ -14,6 +14,7 @@ var (
 	ErrSessionNotFound    = errors.New("store: session not found")
 	ErrUsernameTaken      = errors.New("store: username already taken")
 	ErrCredentialNotFound = errors.New("store: credential not found")
+	ErrAPITokenNotFound   = errors.New("store: api token not found")
 	ErrChallengeNotFound  = errors.New("store: challenge not found")
 	ErrWorkspaceNotFound  = errors.New("store: workspace not found")
 	ErrWorkspaceNameTaken = errors.New("store: workspace name already taken")
@@ -32,7 +33,11 @@ type User struct {
 	Username     string
 	Display      string
 	PasswordHash string
-	CreatedAt    time.Time
+	// AgentOfID is the human this user is an agent of, or "" for a human. A user
+	// is an agent exactly when AgentOfID != "". An agent's only credential is a
+	// personal access token; it never has a password or passkey.
+	AgentOfID string
+	CreatedAt time.Time
 }
 
 // NewUser is the input to CreateUser.
@@ -40,16 +45,36 @@ type NewUser struct {
 	Username     string
 	Display      string
 	PasswordHash string
+	AgentOfID    string // set to make the new user an agent of that human
 }
 
 // Session is the persisted server-side session record. ID is the opaque token
-// handed to the client in a cookie and is the only secret in the row.
+// handed to the client in a cookie and is the only secret in the row — it must
+// never be exposed in a response. PublicID is a non-secret handle used to
+// address a session in the account UI (list/revoke) so the token stays server-
+// side. UserAgent is captured at establish time to label the session.
 type Session struct {
 	ID        string
+	PublicID  string
 	UserID    string
+	UserAgent string
 	CreatedAt time.Time
 	ExpiresAt time.Time // absolute expiry — hard ceiling on session lifetime
 	LastSeen  time.Time // for idle expiry — refreshed as the session is used
+}
+
+// APIToken is a personal access token: a credential that authenticates as its
+// owning user with full authority (no scopes in v1). Hash is the SHA-256 of the
+// plaintext — the plaintext itself is never persisted. Prefix is the leading,
+// non-secret part of the token, kept only for display.
+type APIToken struct {
+	ID         string
+	UserID     string
+	Name       string
+	Hash       []byte
+	Prefix     string
+	CreatedAt  time.Time
+	LastUsedAt *time.Time // nil until first use
 }
 
 // Credential is a persisted WebAuthn (passkey) credential belonging to a user.
@@ -120,6 +145,9 @@ type Item struct {
 	IsMilestone bool
 	ArchivedAt  *time.Time
 	CreatedAt   time.Time
+	// CreatedBy is the principal (human or agent) that created the item, or ""
+	// if unrecorded (items predating authorship, or a since-deleted creator).
+	CreatedBy string
 }
 
 // SubtaskCount is a parent's direct-child progress: Total active children and
@@ -145,12 +173,37 @@ type Store interface {
 	UserByUsername(ctx context.Context, username string) (User, error)
 	UserByID(ctx context.Context, id string) (User, error)
 	ListUsers(ctx context.Context) ([]User, error)
+	// AgentsByOwner returns the agents belonging to a human, ordered by handle.
+	AgentsByOwner(ctx context.Context, ownerID string) ([]User, error)
+	// DeleteUser removes a user. Owned agents and credentials/tokens/sessions
+	// cascade away; items the user created keep their history with a null
+	// creator. Currently used only for agent removal.
+	DeleteUser(ctx context.Context, id string) error
 
 	CreateSession(ctx context.Context, s Session) error
 	SessionByID(ctx context.Context, id string) (Session, error)
+	// SessionsByUserID returns a user's unexpired sessions, most-recently-seen
+	// first, for the account UI. The opaque token (ID) is still populated but
+	// must not be rendered — address sessions by PublicID.
+	SessionsByUserID(ctx context.Context, userID string, now time.Time) ([]Session, error)
 	TouchSession(ctx context.Context, id string, lastSeen time.Time) error
 	DeleteSession(ctx context.Context, id string) error
+	// DeleteUserSession revokes one of a user's sessions by its non-secret
+	// PublicID; scoping to userID stops one user revoking another's session.
+	DeleteUserSession(ctx context.Context, publicID, userID string) error
+	// DeleteOtherSessions revokes all of a user's sessions except keepID (the
+	// current session's token) — "sign out everywhere else".
+	DeleteOtherSessions(ctx context.Context, userID, keepID string) (int64, error)
 	DeleteExpiredSessions(ctx context.Context, now time.Time) (int64, error)
+
+	// API tokens. CreateAPIToken persists a freshly minted token (the caller
+	// supplies the hash). APITokenByHash resolves an incoming bearer token to
+	// its row for authentication; it returns ErrAPITokenNotFound on no match.
+	CreateAPIToken(ctx context.Context, t APIToken) (APIToken, error)
+	APITokensByUserID(ctx context.Context, userID string) ([]APIToken, error)
+	APITokenByHash(ctx context.Context, hash []byte) (APIToken, error)
+	TouchAPIToken(ctx context.Context, id string, lastUsed time.Time) error
+	DeleteAPIToken(ctx context.Context, id, userID string) error
 
 	CreateCredential(ctx context.Context, c Credential) error
 	CredentialsByUserID(ctx context.Context, userID string) ([]Credential, error)

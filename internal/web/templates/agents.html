@@ -1,0 +1,55 @@
+{{define "title"}}Agents · Acta{{end}}
+{{define "content"}}
+<main class="stage stage--wide">
+  <div class="settings reveal d1">
+    <nav class="menu">
+      <a href="/settings/security">Security</a>
+      <a class="active" href="/settings/agents">Agents</a>
+      <a href="/settings/workspaces">Workspaces</a>
+    </nav>
+
+    <section>
+      <h2 class="title" style="font-size: 1.45rem; margin-top: 0;">Agents</h2>
+      <p class="subtitle">
+        Agents are token-only accounts that act on your behalf — assign work to them and see what they create.
+        Each is handled <code>{{.Principal.Username}}/name</code>.
+      </p>
+
+      {{if .Err}}<p class="alert" role="alert">{{.Err}}</p>{{end}}
+
+      {{if .Agents}}
+      <div class="cred-list">
+        {{range .Agents}}
+        <div class="cred">
+          <div>
+            <div class="cred-name">{{.Display}} <span class="badge-agent">agent</span></div>
+            <div class="cred-meta"><code>{{.Username}}</code></div>
+          </div>
+          <div class="arch-actions">
+            <a class="btn-secondary" href="/settings/agents/{{.ID}}">Manage</a>
+            <form method="post" action="/settings/agents/{{.ID}}/delete">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+              <button class="link-danger" type="submit">Remove</button>
+            </form>
+          </div>
+        </div>
+        {{end}}
+      </div>
+      {{else}}
+      <p class="subtitle">No agents yet.</p>
+      {{end}}
+
+      <form class="passkey-add" method="post" action="/settings/agents" style="margin-top: 1.4rem;">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <div class="input-wrap">
+          <input class="input" name="name" placeholder="name (e.g. deploy-bot)" maxlength="40" autocomplete="off" required>
+        </div>
+        <div class="input-wrap">
+          <input class="input" name="display" placeholder="Display name (optional)" maxlength="60" autocomplete="off">
+        </div>
+        <button class="btn-primary" type="submit">Create agent</button>
+      </form>
+    </section>
+  </div>
+</main>
+{{end}}

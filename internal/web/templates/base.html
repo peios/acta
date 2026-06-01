@@ -256,6 +256,10 @@
   .stack { display: grid; gap: 1rem; }
   .passkey-add { display: flex; gap: .6rem; align-items: stretch; }
   .passkey-add .input-wrap { flex: 1; }
+  /* Action buttons in an input+button row size to content, not full width,
+     with a shared floor so siblings line up to the same size. */
+  .passkey-add .btn-primary,
+  .passkey-add .btn-secondary { width: auto; flex: none; min-width: 10rem; }
 
   /* ---- settings: left rail + pane ---- */
   .settings { display: grid; grid-template-columns: 8.5rem 1fr; gap: 1.4rem; align-items: start; }
@@ -277,7 +281,27 @@
   }
   .cred-name { font-size: .9rem; }
   .cred-meta { color: var(--faint); font-size: .78rem; margin-top: .15rem; }
+  .cred-meta code { font-family: var(--mono); color: var(--muted); }
   .cred form { margin: 0; }
+  .badge-current {
+    font-size: .66rem; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--accent-hi); border: 1px solid var(--border-soft);
+    border-radius: .25rem; padding: .04rem .35rem; margin-left: .3rem; vertical-align: middle;
+  }
+  .badge-agent {
+    font-size: .62rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 600;
+    color: #8fb8d6; background: #14202a; border: 1px solid #20323f;
+    border-radius: .25rem; padding: .05rem .35rem; margin-left: .35rem; vertical-align: middle;
+  }
+  .token-reveal {
+    margin: 0 0 1.1rem; padding: .8rem .9rem;
+    background: var(--field); border: 1px solid var(--accent); border-radius: .4rem;
+  }
+  .token-reveal-label { font-size: .82rem; color: var(--accent-hi); margin-bottom: .55rem; }
+  .token-reveal-value {
+    display: block; font-family: var(--mono); font-size: .85rem; color: var(--text);
+    word-break: break-all; user-select: all;
+  }
   .link-danger {
     font: inherit; font-size: .82rem; color: var(--danger-text);
     background: none; border: 0; cursor: pointer; padding: .3rem .2rem;
@@ -389,6 +413,7 @@
   .modal-main { padding: 1.1rem 1.2rem; display: grid; gap: 1.3rem; min-width: 0; align-content: start; }
   .modal-side { padding: 1.1rem 1.2rem; display: grid; gap: .9rem; align-content: start; border-left: 1px solid var(--border-soft); }
   .side-field { display: grid; gap: .35rem; }
+  .side-value { font-size: .85rem; color: var(--text); }
   .side-foot { margin-top: .3rem; }
   .side-foot .btn-secondary { width: 100%; text-align: center; }
 

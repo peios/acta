@@ -60,7 +60,7 @@
           <span class="modal-label">Assignee</span>
           <select class="modal-assignee">
             <option value="">Unassigned</option>
-            {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Item.AssigneeID}}selected{{end}}>{{.Display}}</option>{{end}}
+            {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Item.AssigneeID}}selected{{end}}>{{.Display}}{{if .AgentOfID}} · agent{{end}}</option>{{end}}
           </select>
         </div>
         <div class="side-field">
@@ -74,6 +74,12 @@
           <span class="modal-label">Milestone</span>
           <label class="modal-ms"><input type="checkbox" class="modal-ms-toggle" {{if .Item.IsMilestone}}checked{{end}}> Mark as milestone</label>
         </div>
+        {{if .CreatedBy}}
+        <div class="side-field">
+          <span class="modal-label">Created by</span>
+          <span class="side-value">{{.CreatedBy}}{{if .CreatedByAgent}} <span class="badge-agent">agent</span>{{end}}</span>
+        </div>
+        {{end}}
         <div class="side-foot">
           {{if .Archived}}
           <button class="btn-secondary modal-unarchive" type="button">Unarchive</button>

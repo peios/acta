@@ -44,6 +44,17 @@ func New(st store.Store, cfg Config) *Manager {
 
 // Establish mints a new session for principal and sets the session cookie.
 func (m *Manager) Establish(ctx context.Context, w http.ResponseWriter, p identity.Principal) error {
+	return m.establish(ctx, w, p, "")
+}
+
+// EstablishWithRequest is Establish that also records the originating request's
+// user-agent, so the session is recognisable in the account UI. Prefer it
+// wherever the request is at hand (interactive logins).
+func (m *Manager) EstablishWithRequest(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) error {
+	return m.establish(ctx, w, p, r.UserAgent())
+}
+
+func (m *Manager) establish(ctx context.Context, w http.ResponseWriter, p identity.Principal, userAgent string) error {
 	token, err := newToken()
 	if err != nil {
 		return err
@@ -52,6 +63,7 @@ func (m *Manager) Establish(ctx context.Context, w http.ResponseWriter, p identi
 	s := store.Session{
 		ID:        token,
 		UserID:    p.ID,
+		UserAgent: userAgent,
 		CreatedAt: now,
 		ExpiresAt: now.Add(m.cfg.AbsoluteTimeout),
 		LastSeen:  now,
@@ -116,6 +128,36 @@ func (m *Manager) Destroy(ctx context.Context, w http.ResponseWriter, r *http.Re
 	}
 	m.clearCookie(w)
 	return nil
+}
+
+// --- account management ---
+
+// CurrentToken returns the raw session token from the request cookie — the
+// session's secret id. It identifies the current row in a list and is the
+// keep-id for RevokeOthers. It is never rendered.
+func (m *Manager) CurrentToken(r *http.Request) string {
+	c, err := r.Cookie(m.cfg.CookieName)
+	if err != nil {
+		return ""
+	}
+	return c.Value
+}
+
+// List returns the principal's currently-valid sessions for the account UI,
+// most-recently-seen first.
+func (m *Manager) List(ctx context.Context, userID string) ([]store.Session, error) {
+	return m.store.SessionsByUserID(ctx, userID, m.now())
+}
+
+// Revoke ends one of the user's sessions, addressed by its non-secret PublicID.
+func (m *Manager) Revoke(ctx context.Context, publicID, userID string) error {
+	return m.store.DeleteUserSession(ctx, publicID, userID)
+}
+
+// RevokeOthers ends all of the user's sessions except the current one
+// (identified by keepToken), returning how many were removed.
+func (m *Manager) RevokeOthers(ctx context.Context, userID, keepToken string) (int64, error) {
+	return m.store.DeleteOtherSessions(ctx, userID, keepToken)
 }
 
 func (m *Manager) setCookie(w http.ResponseWriter, value string, maxAge time.Duration) {

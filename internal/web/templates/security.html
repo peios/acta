@@ -4,11 +4,13 @@
   <div class="settings reveal d1">
     <nav class="menu">
       <a class="active" href="/settings/security">Security</a>
+      <a href="/settings/agents">Agents</a>
       <a href="/settings/workspaces">Workspaces</a>
     </nav>
 
     <section>
       <h2 class="title" style="font-size: 1.45rem; margin-top: 0;">Security</h2>
+
       <p class="section-title">Passkeys</p>
 
       {{if .Credentials}}
@@ -42,6 +44,44 @@
         </button>
       </div>
       <p class="alert" role="alert" data-passkey-error></p>
+
+      <p class="section-title" style="margin-top: 2.4rem;">API tokens</p>
+      <p class="subtitle" style="margin-bottom: 1rem;">
+        Personal access tokens let the <code>acta</code> CLI and scripts act as you. Treat them like passwords.
+      </p>
+
+      {{template "token-section" .TokenSection}}
+
+      <p class="section-title" style="margin-top: 2.4rem;">Active sessions</p>
+
+      {{if .Sessions}}
+      <div class="cred-list">
+        {{range .Sessions}}
+        <div class="cred">
+          <div>
+            <div class="cred-name">
+              {{.Label}}{{if .Current}} <span class="badge-current">this device</span>{{end}}
+            </div>
+            <div class="cred-meta">
+              Signed in {{.CreatedAt.Format "2 Jan 2006"}} · last active {{.LastSeen.Format "2 Jan 2006, 15:04"}}
+            </div>
+          </div>
+          {{if not .Current}}
+          <form method="post" action="/settings/sessions/{{.PublicID}}/revoke">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <button class="link-danger" type="submit">Revoke</button>
+          </form>
+          {{end}}
+        </div>
+        {{end}}
+      </div>
+      {{if gt (len .Sessions) 1}}
+      <form class="passkey-add" method="post" action="/settings/sessions/revoke-others" style="margin-top: 1.2rem;">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button class="btn-secondary" type="submit">Sign out all other sessions</button>
+      </form>
+      {{end}}
+      {{end}}
     </section>
   </div>
 </main>

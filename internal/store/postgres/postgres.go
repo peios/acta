@@ -40,13 +40,17 @@ func (p *Postgres) Close() { p.pool.Close() }
 
 // --- users ---
 
+const userCols = `id::text, username, display, password_hash, COALESCE(agent_of_id::text, ''), created_at`
+
 func (p *Postgres) CreateUser(ctx context.Context, u store.NewUser) (store.User, error) {
-	const q = `INSERT INTO users (username, display, password_hash)
-	           VALUES ($1, $2, $3)
-	           RETURNING id::text, username, display, password_hash, created_at`
-	var out store.User
-	err := p.pool.QueryRow(ctx, q, u.Username, u.Display, u.PasswordHash).
-		Scan(&out.ID, &out.Username, &out.Display, &out.PasswordHash, &out.CreatedAt)
+	const q = `INSERT INTO users (username, display, password_hash, agent_of_id)
+	           VALUES ($1, $2, $3, $4::uuid)
+	           RETURNING ` + userCols
+	var owner any
+	if u.AgentOfID != "" {
+		owner = u.AgentOfID
+	}
+	out, err := scanUser(p.pool.QueryRow(ctx, q, u.Username, u.Display, u.PasswordHash, owner))
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -58,29 +62,56 @@ func (p *Postgres) CreateUser(ctx context.Context, u store.NewUser) (store.User,
 }
 
 func (p *Postgres) UserByUsername(ctx context.Context, username string) (store.User, error) {
-	const q = `SELECT id::text, username, display, password_hash, created_at
-	           FROM users WHERE username = $1`
+	const q = `SELECT ` + userCols + ` FROM users WHERE username = $1`
 	return scanUser(p.pool.QueryRow(ctx, q, username))
 }
 
 func (p *Postgres) UserByID(ctx context.Context, id string) (store.User, error) {
-	const q = `SELECT id::text, username, display, password_hash, created_at
-	           FROM users WHERE id = $1::uuid`
+	const q = `SELECT ` + userCols + ` FROM users WHERE id = $1::uuid`
 	return scanUser(p.pool.QueryRow(ctx, q, id))
 }
 
 func (p *Postgres) ListUsers(ctx context.Context) ([]store.User, error) {
-	const q = `SELECT id::text, username, display, password_hash, created_at
-	           FROM users ORDER BY lower(display), lower(username)`
+	const q = `SELECT ` + userCols + ` FROM users ORDER BY lower(display), lower(username)`
 	rows, err := p.pool.Query(ctx, q)
 	if err != nil {
 		return nil, err
 	}
+	return collectUsers(rows)
+}
+
+func (p *Postgres) AgentsByOwner(ctx context.Context, ownerID string) ([]store.User, error) {
+	const q = `SELECT ` + userCols + ` FROM users WHERE agent_of_id = $1::uuid ORDER BY lower(username)`
+	rows, err := p.pool.Query(ctx, q, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	return collectUsers(rows)
+}
+
+// DeleteUser removes the row; FKs cascade owned agents, credentials, tokens, and
+// sessions, and null out items.created_by.
+func (p *Postgres) DeleteUser(ctx context.Context, id string) error {
+	const q = `DELETE FROM users WHERE id = $1::uuid`
+	_, err := p.pool.Exec(ctx, q, id)
+	return err
+}
+
+func scanUser(row pgx.Row) (store.User, error) {
+	var u store.User
+	err := row.Scan(&u.ID, &u.Username, &u.Display, &u.PasswordHash, &u.AgentOfID, &u.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.User{}, store.ErrUserNotFound
+	}
+	return u, err
+}
+
+func collectUsers(rows pgx.Rows) ([]store.User, error) {
 	defer rows.Close()
 	var out []store.User
 	for rows.Next() {
 		var u store.User
-		if err := rows.Scan(&u.ID, &u.Username, &u.Display, &u.PasswordHash, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.Display, &u.PasswordHash, &u.AgentOfID, &u.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, u)
@@ -88,34 +119,54 @@ func (p *Postgres) ListUsers(ctx context.Context) ([]store.User, error) {
 	return out, rows.Err()
 }
 
-func scanUser(row pgx.Row) (store.User, error) {
-	var u store.User
-	err := row.Scan(&u.ID, &u.Username, &u.Display, &u.PasswordHash, &u.CreatedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return store.User{}, store.ErrUserNotFound
-	}
-	return u, err
-}
-
 // --- sessions ---
 
+// sessionCols lists session columns in scanSession order. public_id is the
+// non-secret handle the account UI revokes by; the token (id) never leaves the
+// server.
+const sessionCols = `id, public_id::text, user_id::text, user_agent, created_at, expires_at, last_seen`
+
+func scanSession(row pgx.Row) (store.Session, error) {
+	var s store.Session
+	err := row.Scan(&s.ID, &s.PublicID, &s.UserID, &s.UserAgent, &s.CreatedAt, &s.ExpiresAt, &s.LastSeen)
+	return s, err
+}
+
 func (p *Postgres) CreateSession(ctx context.Context, s store.Session) error {
-	const q = `INSERT INTO sessions (id, user_id, created_at, expires_at, last_seen)
-	           VALUES ($1, $2::uuid, $3, $4, $5)`
-	_, err := p.pool.Exec(ctx, q, s.ID, s.UserID, s.CreatedAt, s.ExpiresAt, s.LastSeen)
+	// public_id defaults to gen_random_uuid() in the DB.
+	const q = `INSERT INTO sessions (id, user_id, created_at, expires_at, last_seen, user_agent)
+	           VALUES ($1, $2::uuid, $3, $4, $5, $6)`
+	_, err := p.pool.Exec(ctx, q, s.ID, s.UserID, s.CreatedAt, s.ExpiresAt, s.LastSeen, s.UserAgent)
 	return err
 }
 
 func (p *Postgres) SessionByID(ctx context.Context, id string) (store.Session, error) {
-	const q = `SELECT id, user_id::text, created_at, expires_at, last_seen
-	           FROM sessions WHERE id = $1`
-	var s store.Session
-	err := p.pool.QueryRow(ctx, q, id).
-		Scan(&s.ID, &s.UserID, &s.CreatedAt, &s.ExpiresAt, &s.LastSeen)
+	const q = `SELECT ` + sessionCols + ` FROM sessions WHERE id = $1`
+	s, err := scanSession(p.pool.QueryRow(ctx, q, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.Session{}, store.ErrSessionNotFound
 	}
 	return s, err
+}
+
+func (p *Postgres) SessionsByUserID(ctx context.Context, userID string, now time.Time) ([]store.Session, error) {
+	const q = `SELECT ` + sessionCols + `
+	           FROM sessions WHERE user_id = $1::uuid AND expires_at > $2
+	           ORDER BY last_seen DESC`
+	rows, err := p.pool.Query(ctx, q, userID, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Session
+	for rows.Next() {
+		s, err := scanSession(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
 }
 
 func (p *Postgres) TouchSession(ctx context.Context, id string, lastSeen time.Time) error {
@@ -131,12 +182,90 @@ func (p *Postgres) DeleteSession(ctx context.Context, id string) error {
 	return err
 }
 
+func (p *Postgres) DeleteUserSession(ctx context.Context, publicID, userID string) error {
+	const q = `DELETE FROM sessions WHERE public_id = $1::uuid AND user_id = $2::uuid`
+	_, err := p.pool.Exec(ctx, q, publicID, userID)
+	return err
+}
+
+func (p *Postgres) DeleteOtherSessions(ctx context.Context, userID, keepID string) (int64, error) {
+	const q = `DELETE FROM sessions WHERE user_id = $1::uuid AND id <> $2`
+	ct, err := p.pool.Exec(ctx, q, userID, keepID)
+	return ct.RowsAffected(), err
+}
+
 // DeleteExpiredSessions clears absolute-expired rows. Idle expiry is enforced
 // at read time, so this sweep only needs the hard ceiling.
 func (p *Postgres) DeleteExpiredSessions(ctx context.Context, now time.Time) (int64, error) {
 	const q = `DELETE FROM sessions WHERE expires_at < $1`
 	ct, err := p.pool.Exec(ctx, q, now)
 	return ct.RowsAffected(), err
+}
+
+// --- api tokens ---
+
+// apiTokenCols omits token_hash deliberately: the hash never round-trips out of
+// the store, so a listed or authenticated token can't leak its own secret.
+const apiTokenCols = `id::text, user_id::text, name, prefix, created_at, last_used_at`
+
+func scanAPIToken(row pgx.Row) (store.APIToken, error) {
+	var t store.APIToken
+	err := row.Scan(&t.ID, &t.UserID, &t.Name, &t.Prefix, &t.CreatedAt, &t.LastUsedAt)
+	return t, err
+}
+
+func (p *Postgres) CreateAPIToken(ctx context.Context, t store.APIToken) (store.APIToken, error) {
+	const q = `INSERT INTO api_tokens (user_id, name, token_hash, prefix)
+	           VALUES ($1::uuid, $2, $3, $4)
+	           RETURNING ` + apiTokenCols
+	return scanAPIToken(p.pool.QueryRow(ctx, q, t.UserID, t.Name, t.Hash, t.Prefix))
+}
+
+func (p *Postgres) APITokensByUserID(ctx context.Context, userID string) ([]store.APIToken, error) {
+	const q = `SELECT ` + apiTokenCols + `
+	           FROM api_tokens WHERE user_id = $1::uuid
+	           ORDER BY created_at DESC`
+	rows, err := p.pool.Query(ctx, q, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.APIToken
+	for rows.Next() {
+		t, err := scanAPIToken(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) APITokenByHash(ctx context.Context, hash []byte) (store.APIToken, error) {
+	const q = `SELECT ` + apiTokenCols + ` FROM api_tokens WHERE token_hash = $1`
+	t, err := scanAPIToken(p.pool.QueryRow(ctx, q, hash))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.APIToken{}, store.ErrAPITokenNotFound
+	}
+	return t, err
+}
+
+func (p *Postgres) TouchAPIToken(ctx context.Context, id string, lastUsed time.Time) error {
+	const q = `UPDATE api_tokens SET last_used_at = $2 WHERE id = $1::uuid`
+	_, err := p.pool.Exec(ctx, q, id, lastUsed)
+	return err
+}
+
+func (p *Postgres) DeleteAPIToken(ctx context.Context, id, userID string) error {
+	const q = `DELETE FROM api_tokens WHERE id = $1::uuid AND user_id = $2::uuid`
+	ct, err := p.pool.Exec(ctx, q, id, userID)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrAPITokenNotFound
+	}
+	return nil
 }
 
 // --- credentials ---
@@ -414,12 +543,12 @@ func (p *Postgres) DeleteStatus(ctx context.Context, id string) error {
 
 const itemCols = `id::text, workspace_id::text, status_id::text, COALESCE(parent_id::text, ''),
                   title, description, COALESCE(assignee_id::text, ''), position, is_milestone,
-                  archived_at, created_at`
+                  archived_at, created_at, COALESCE(created_by::text, '')`
 
 func scanItem(row pgx.Row) (store.Item, error) {
 	var i store.Item
 	err := row.Scan(&i.ID, &i.WorkspaceID, &i.StatusID, &i.ParentID, &i.Title, &i.Description,
-		&i.AssigneeID, &i.Position, &i.IsMilestone, &i.ArchivedAt, &i.CreatedAt)
+		&i.AssigneeID, &i.Position, &i.IsMilestone, &i.ArchivedAt, &i.CreatedAt, &i.CreatedBy)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.Item{}, store.ErrItemNotFound
 	}
@@ -427,14 +556,17 @@ func scanItem(row pgx.Row) (store.Item, error) {
 }
 
 func (p *Postgres) CreateItem(ctx context.Context, i store.Item) (store.Item, error) {
-	const q = `INSERT INTO items (workspace_id, status_id, title, position, parent_id)
-	           VALUES ($1::uuid, $2::uuid, $3, $4, $5::uuid)
+	const q = `INSERT INTO items (workspace_id, status_id, title, position, parent_id, created_by)
+	           VALUES ($1::uuid, $2::uuid, $3, $4, $5::uuid, $6::uuid)
 	           RETURNING ` + itemCols
-	var parent any
+	var parent, creator any
 	if i.ParentID != "" {
 		parent = i.ParentID
 	}
-	return scanItem(p.pool.QueryRow(ctx, q, i.WorkspaceID, i.StatusID, i.Title, i.Position, parent))
+	if i.CreatedBy != "" {
+		creator = i.CreatedBy
+	}
+	return scanItem(p.pool.QueryRow(ctx, q, i.WorkspaceID, i.StatusID, i.Title, i.Position, parent, creator))
 }
 
 func (p *Postgres) ItemsByWorkspace(ctx context.Context, workspaceID string) ([]store.Item, error) {

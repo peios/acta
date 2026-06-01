@@ -73,7 +73,7 @@ func (p *Provider) handlePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	principal := identity.Principal{ID: u.ID, Username: u.Username, Display: u.Display}
-	if err := p.sessions.Establish(r.Context(), w, principal); err != nil {
+	if err := p.sessions.EstablishWithRequest(r.Context(), w, r, principal); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -117,7 +117,7 @@ func (p *Provider) handlePasskeyFinish(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "passkey login failed", http.StatusUnauthorized)
 		return
 	}
-	if err := p.sessions.Establish(r.Context(), w, principal); err != nil {
+	if err := p.sessions.EstablishWithRequest(r.Context(), w, r, principal); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

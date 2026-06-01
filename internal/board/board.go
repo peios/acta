@@ -101,6 +101,12 @@ func (s *Service) Items(ctx context.Context, workspaceID string) ([]store.Item, 
 }
 
 func (s *Service) CreateItem(ctx context.Context, workspaceID, statusID, title string) (store.Item, error) {
+	return s.createItem(ctx, workspaceID, statusID, title, "")
+}
+
+// createItem is the shared worker; createdBy records the authoring principal
+// ("" when unknown, e.g. seeding or tests).
+func (s *Service) createItem(ctx context.Context, workspaceID, statusID, title, createdBy string) (store.Item, error) {
 	title, err := cleanTitle(title)
 	if err != nil {
 		return store.Item{}, err
@@ -117,6 +123,7 @@ func (s *Service) CreateItem(ctx context.Context, workspaceID, statusID, title s
 		StatusID:    statusID,
 		Title:       title,
 		Position:    len(lane),
+		CreatedBy:   createdBy,
 	})
 }
 
@@ -358,6 +365,11 @@ func appendLast(ids []string, target string) []string {
 // --- subtasks ---
 
 func (s *Service) CreateSubtask(ctx context.Context, parentID, title string) (store.Item, error) {
+	return s.CreateSubtaskAs(ctx, parentID, title, "")
+}
+
+// CreateSubtaskAs is CreateSubtask attributing the new subtask to createdBy.
+func (s *Service) CreateSubtaskAs(ctx context.Context, parentID, title, createdBy string) (store.Item, error) {
 	title, err := cleanTitle(title)
 	if err != nil {
 		return store.Item{}, err
@@ -383,6 +395,7 @@ func (s *Service) CreateSubtask(ctx context.Context, parentID, title string) (st
 		ParentID:    parentID,
 		Title:       title,
 		Position:    len(siblings),
+		CreatedBy:   createdBy,
 	})
 }
 
@@ -397,6 +410,11 @@ func (s *Service) SetMilestone(ctx context.Context, id string, isMilestone bool)
 // CreateRootItem makes a top-level item; if statusID is "" it lands in the
 // first lane (used by the Backlog column, which has no status of its own).
 func (s *Service) CreateRootItem(ctx context.Context, workspaceID, statusID, title string) (store.Item, error) {
+	return s.CreateRootItemAs(ctx, workspaceID, statusID, title, "")
+}
+
+// CreateRootItemAs is CreateRootItem attributing the new item to createdBy.
+func (s *Service) CreateRootItemAs(ctx context.Context, workspaceID, statusID, title, createdBy string) (store.Item, error) {
 	if statusID == "" {
 		statuses, err := s.store.StatusesByWorkspace(ctx, workspaceID)
 		if err != nil {
@@ -407,7 +425,7 @@ func (s *Service) CreateRootItem(ctx context.Context, workspaceID, statusID, tit
 		}
 		statusID = statuses[0].ID
 	}
-	return s.CreateItem(ctx, workspaceID, statusID, title)
+	return s.createItem(ctx, workspaceID, statusID, title, createdBy)
 }
 
 func (s *Service) ReorderSubtasks(ctx context.Context, parentID string, orderedIDs []string) error {

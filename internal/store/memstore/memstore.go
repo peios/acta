@@ -26,6 +26,7 @@ type Store struct {
 	statuses    map[string]store.Status
 	items       map[string]store.Item
 	comments    map[string]store.Comment
+	apiTokens   map[string]store.APIToken
 }
 
 func New() *Store {
@@ -38,6 +39,7 @@ func New() *Store {
 		statuses:    map[string]store.Status{},
 		items:       map[string]store.Item{},
 		comments:    map[string]store.Comment{},
+		apiTokens:   map[string]store.APIToken{},
 	}
 }
 
@@ -54,6 +56,7 @@ func (s *Store) CreateUser(_ context.Context, u store.NewUser) (store.User, erro
 		Username:     u.Username,
 		Display:      u.Display,
 		PasswordHash: u.PasswordHash,
+		AgentOfID:    u.AgentOfID,
 		CreatedAt:    time.Now(),
 	}
 	s.users[nu.ID] = nu
@@ -97,11 +100,100 @@ func (s *Store) ListUsers(_ context.Context) ([]store.User, error) {
 	return out, nil
 }
 
+func (s *Store) AgentsByOwner(_ context.Context, ownerID string) ([]store.User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.User
+	for _, u := range s.users {
+		if u.AgentOfID == ownerID {
+			out = append(out, u)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Username < out[j].Username })
+	return out, nil
+}
+
+// DeleteUser mirrors the Postgres FK cascade: owned agents, credentials,
+// tokens, and sessions go with the user; items they created keep their history
+// with a null creator.
+func (s *Store) DeleteUser(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.users, id)
+	for uid, u := range s.users {
+		if u.AgentOfID == id { // owned agents cascade
+			delete(s.users, uid)
+		}
+	}
+	for sid, sess := range s.sessions {
+		if sess.UserID == id {
+			delete(s.sessions, sid)
+		}
+	}
+	for cid, c := range s.credentials {
+		if c.UserID == id {
+			delete(s.credentials, cid)
+		}
+	}
+	for tid, t := range s.apiTokens {
+		if t.UserID == id {
+			delete(s.apiTokens, tid)
+		}
+	}
+	for iid, it := range s.items {
+		if it.CreatedBy == id {
+			it.CreatedBy = ""
+			s.items[iid] = it
+		}
+	}
+	return nil
+}
+
 func (s *Store) CreateSession(_ context.Context, sess store.Session) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if sess.PublicID == "" {
+		sess.PublicID = newID()
+	}
 	s.sessions[sess.ID] = sess
 	return nil
+}
+
+func (s *Store) SessionsByUserID(_ context.Context, userID string, now time.Time) ([]store.Session, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.Session
+	for _, sess := range s.sessions {
+		if sess.UserID == userID && sess.ExpiresAt.After(now) {
+			out = append(out, sess)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].LastSeen.After(out[j].LastSeen) })
+	return out, nil
+}
+
+func (s *Store) DeleteUserSession(_ context.Context, publicID, userID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, sess := range s.sessions {
+		if sess.PublicID == publicID && sess.UserID == userID {
+			delete(s.sessions, id)
+		}
+	}
+	return nil
+}
+
+func (s *Store) DeleteOtherSessions(_ context.Context, userID, keepID string) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var n int64
+	for id, sess := range s.sessions {
+		if sess.UserID == userID && id != keepID {
+			delete(s.sessions, id)
+			n++
+		}
+	}
+	return n, nil
 }
 
 func (s *Store) SessionByID(_ context.Context, id string) (store.Session, error) {
@@ -144,6 +236,69 @@ func (s *Store) DeleteExpiredSessions(_ context.Context, now time.Time) (int64, 
 		}
 	}
 	return n, nil
+}
+
+// --- api tokens ---
+
+func (s *Store) CreateAPIToken(_ context.Context, t store.APIToken) (store.APIToken, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, ex := range s.apiTokens {
+		if bytes.Equal(ex.Hash, t.Hash) {
+			return store.APIToken{}, store.ErrAPITokenNotFound // hash collision; vanishingly unlikely
+		}
+	}
+	t.ID = newID()
+	t.CreatedAt = time.Now()
+	s.apiTokens[t.ID] = t
+	return t, nil
+}
+
+func (s *Store) APITokensByUserID(_ context.Context, userID string) ([]store.APIToken, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.APIToken
+	for _, t := range s.apiTokens {
+		if t.UserID == userID {
+			out = append(out, t)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out, nil
+}
+
+func (s *Store) APITokenByHash(_ context.Context, hash []byte) (store.APIToken, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, t := range s.apiTokens {
+		if bytes.Equal(t.Hash, hash) {
+			return t, nil
+		}
+	}
+	return store.APIToken{}, store.ErrAPITokenNotFound
+}
+
+func (s *Store) TouchAPIToken(_ context.Context, id string, lastUsed time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, ok := s.apiTokens[id]
+	if !ok {
+		return store.ErrAPITokenNotFound
+	}
+	t.LastUsedAt = &lastUsed
+	s.apiTokens[id] = t
+	return nil
+}
+
+func (s *Store) DeleteAPIToken(_ context.Context, id, userID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, ok := s.apiTokens[id]
+	if !ok || t.UserID != userID {
+		return store.ErrAPITokenNotFound
+	}
+	delete(s.apiTokens, id)
+	return nil
 }
 
 // --- credentials ---

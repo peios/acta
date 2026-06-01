@@ -12,20 +12,22 @@ import (
 // --- the item modal ---
 
 type modalView struct {
-	Slug        string
-	CSRFToken   string
-	Item        store.Item
-	Statuses    []store.Status
-	Users       []store.User
-	Assignee    string // display name of the assignee, "" if unassigned
-	Comments    []commentView
-	Archived    bool
-	ParentID    string // "" if this is a top-level item
-	ParentTitle string
-	Parents     []parentOption // candidates this item may be reparented under
-	Children    []childView
-	SubDone     int
-	SubTotal    int
+	Slug           string
+	CSRFToken      string
+	Item           store.Item
+	Statuses       []store.Status
+	Users          []store.User
+	Assignee       string // display name of the assignee, "" if unassigned
+	Comments       []commentView
+	Archived       bool
+	ParentID       string // "" if this is a top-level item
+	ParentTitle    string
+	Parents        []parentOption // candidates this item may be reparented under
+	Children       []childView
+	SubDone        int
+	SubTotal       int
+	CreatedBy      string // display name of the creator, "" if unrecorded
+	CreatedByAgent bool
 }
 
 type parentOption struct {
@@ -80,8 +82,16 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 	}
 
 	nameByID := make(map[string]string, len(users))
+	isAgent := make(map[string]bool, len(users))
 	for _, u := range users {
 		nameByID[u.ID] = u.Display
+		isAgent[u.ID] = u.AgentOfID != ""
+	}
+	createdBy := ""
+	if item.CreatedBy != "" {
+		if createdBy = nameByID[item.CreatedBy]; createdBy == "" {
+			createdBy = "Unknown"
+		}
 	}
 	cvs := make([]commentView, len(comments))
 	for i, c := range comments {
@@ -124,20 +134,22 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 	}
 
 	return modalView{
-		Slug:        ws.Slug,
-		CSRFToken:   csrfTokenFrom(ctx),
-		Item:        item,
-		Statuses:    statuses,
-		Users:       users,
-		Assignee:    nameByID[item.AssigneeID],
-		Comments:    cvs,
-		Archived:    item.ArchivedAt != nil,
-		ParentID:    item.ParentID,
-		ParentTitle: parentTitle,
-		Parents:     parents,
-		Children:    kids,
-		SubDone:     done,
-		SubTotal:    len(children),
+		Slug:           ws.Slug,
+		CSRFToken:      csrfTokenFrom(ctx),
+		Item:           item,
+		Statuses:       statuses,
+		Users:          users,
+		Assignee:       nameByID[item.AssigneeID],
+		Comments:       cvs,
+		Archived:       item.ArchivedAt != nil,
+		ParentID:       item.ParentID,
+		ParentTitle:    parentTitle,
+		Parents:        parents,
+		Children:       kids,
+		SubDone:        done,
+		SubTotal:       len(children),
+		CreatedBy:      createdBy,
+		CreatedByAgent: isAgent[item.CreatedBy],
 	}, true, nil
 }
 
@@ -248,7 +260,7 @@ func (h *handlers) subtaskCreate(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	it, err := h.board.CreateSubtask(r.Context(), r.PathValue("id"), req.Title)
+	it, err := h.board.CreateSubtaskAs(r.Context(), r.PathValue("id"), req.Title, principalFrom(r.Context()).ID)
 	if err != nil {
 		writeBoardErr(w, err)
 		return
