@@ -5,6 +5,7 @@ package web
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/peios/acta/internal/agent"
 	"github.com/peios/acta/internal/apitoken"
@@ -27,6 +28,7 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 		workspaces: workspaces,
 		board:      boards,
 		secure:     cfg.CookieSecure(),
+		publicURL:  strings.TrimRight(cfg.RPOrigin, "/"),
 	}
 	mux := http.NewServeMux()
 

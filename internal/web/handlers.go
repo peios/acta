@@ -27,6 +27,7 @@ type handlers struct {
 	workspaces *workspace.Service
 	board      *board.Service
 	secure     bool
+	publicURL  string // browser-facing origin, for building item permalinks
 }
 
 // tokensView is the data a token-management section renders from. The same

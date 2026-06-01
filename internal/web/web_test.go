@@ -63,7 +63,7 @@ func newTestServer(t *testing.T) (string, *http.Client) {
 	tokens := apitoken.New(ms)
 	agents := agent.New(ms)
 	provider := local.NewProvider(ms, sessions, passkeys, false)
-	handler := web.NewHandler(config.Config{Env: "dev"}, sessions, provider, passkeys, tokens, agents, workspaces, boards)
+	handler := web.NewHandler(config.Config{Env: "dev", RPOrigin: "http://localhost:8080"}, sessions, provider, passkeys, tokens, agents, workspaces, boards)
 
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)

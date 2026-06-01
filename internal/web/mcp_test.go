@@ -13,15 +13,19 @@ import (
 
 // Test-local mirrors of the (unexported) MCP output shapes.
 type mcpItemT struct {
-	ID        string        `json:"id"`
-	Title     string        `json:"title"`
-	Status    string        `json:"status"`
-	Assignee  string        `json:"assignee"`
-	Archived  bool          `json:"archived"`
-	CreatedBy string        `json:"created_by"`
-	ParentID  string        `json:"parent_id"`
-	Subtasks  []mcpItemT    `json:"subtasks"`
-	Comments  []mcpCommentT `json:"comments"`
+	ID          string        `json:"id"`
+	Title       string        `json:"title"`
+	Status      string        `json:"status"`
+	Assignee    string        `json:"assignee"`
+	Milestone   bool          `json:"milestone"`
+	Archived    bool          `json:"archived"`
+	CreatedBy   string        `json:"created_by"`
+	CreatedAt   string        `json:"created_at"`
+	ParentID    string        `json:"parent_id"`
+	URL         string        `json:"url"`
+	Description string        `json:"description"`
+	Subtasks    []mcpItemT    `json:"subtasks"`
+	Comments    []mcpCommentT `json:"comments"`
 }
 
 type mcpCommentT struct {
@@ -173,6 +177,12 @@ func TestMCPToolsLifecycle(t *testing.T) {
 	if created.ID == "" || created.Status != "To do" || created.CreatedBy != "jack" {
 		t.Fatalf("create_item = %+v, want first-lane jack item", created)
 	}
+	if created.CreatedAt == "" {
+		t.Errorf("create_item: created_at is empty")
+	}
+	if !strings.Contains(created.URL, "/w/general?item="+created.ID) {
+		t.Errorf("create_item url = %q, want a board permalink", created.URL)
+	}
 
 	// set_item_status by name.
 	moved := callTool[mcpItemT](t, sess, "set_item_status", map[string]any{
@@ -248,6 +258,43 @@ func TestMCPToolsLifecycle(t *testing.T) {
 	// A bogus id reads as not-found.
 	if msg := toolErr(t, sess, "get_item", map[string]any{"id": "zzzzzzzz"}); !strings.Contains(msg, "not found") {
 		t.Fatalf("missing-item error = %q", msg)
+	}
+}
+
+func TestMCPItemEdits(t *testing.T) {
+	base, client := newTestServer(t)
+	csrf := signIn(t, client, base)
+	token := mintToken(t, client, base, csrf)
+	sess := mcpConnect(t, base, token)
+
+	mk := func(title string) mcpItemT {
+		return callTool[mcpItemT](t, sess, "create_item", map[string]any{"workspace": "general", "title": title})
+	}
+	a, b := mk("parent item"), mk("mover")
+
+	// Description: set it, then get_item surfaces it.
+	callTool[mcpItemT](t, sess, "set_item_description", map[string]any{"id": b.ID, "description": "the long body"})
+	if got := callTool[mcpItemT](t, sess, "get_item", map[string]any{"id": b.ID}); got.Description != "the long body" {
+		t.Fatalf("description = %q, want 'the long body'", got.Description)
+	}
+
+	// Milestone: flag it.
+	if got := callTool[mcpItemT](t, sess, "set_item_milestone", map[string]any{"id": a.ID, "milestone": true}); !got.Milestone {
+		t.Fatalf("set_item_milestone: milestone not set")
+	}
+
+	// Reparent: nest b under a, then promote it back to the board.
+	if got := callTool[mcpItemT](t, sess, "set_item_parent", map[string]any{"id": b.ID, "parent": a.ID}); got.ParentID != a.ID {
+		t.Fatalf("reparent: parent_id = %q, want %q", got.ParentID, a.ID)
+	}
+	if got := callTool[mcpItemT](t, sess, "set_item_parent", map[string]any{"id": b.ID}); got.ParentID != "" {
+		t.Fatalf("promote: parent_id = %q, want empty", got.ParentID)
+	}
+
+	// A cycle is refused: an item can't become its own descendant's child.
+	callTool[mcpItemT](t, sess, "set_item_parent", map[string]any{"id": b.ID, "parent": a.ID}) // b under a
+	if msg := toolErr(t, sess, "set_item_parent", map[string]any{"id": a.ID, "parent": b.ID}); !strings.Contains(msg, "cycle") {
+		t.Fatalf("cycle reparent error = %q, want it to mention a cycle", msg)
 	}
 }
 

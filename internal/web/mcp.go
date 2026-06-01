@@ -72,6 +72,21 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 	}, h.mcpSetItemAssignee)
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "set_item_description",
+		Description: "Set an item's description (its long-form body), replacing any existing one. Pass an empty description to clear it.",
+	}, h.mcpSetItemDescription)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "set_item_milestone",
+		Description: "Flag or unflag an item as a milestone.",
+	}, h.mcpSetItemMilestone)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "set_item_parent",
+		Description: "Reparent an item: pass a parent item id to nest it under that item (same workspace), or omit parent to promote it to a top-level board item. An item can't be parented under itself or one of its own descendants.",
+	}, h.mcpSetItemParent)
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "add_comment",
 		Description: "Append a comment to an item, authored by the calling principal. Comments are how agents record progress and coordinate.",
 	}, h.mcpAddComment)
@@ -110,17 +125,20 @@ type mcpItem struct {
 	Milestone     bool   `json:"milestone,omitempty"`
 	Archived      bool   `json:"archived,omitempty"`
 	CreatedBy     string `json:"created_by,omitempty"`
+	CreatedAt     string `json:"created_at,omitempty"`
 	ParentID      string `json:"parent_id,omitempty"`
+	URL           string `json:"url,omitempty"` // permalink to open the item on the board
 	SubtasksDone  int    `json:"subtasks_done,omitempty"`
 	SubtasksTotal int    `json:"subtasks_total,omitempty"`
 }
 
-// mcpItemDetail is the deep read: the item plus one level of subtasks and its
-// comments. Subtasks are leaf mcpItems, so the type is not recursive.
+// mcpItemDetail is the deep read: the item plus its description, one level of
+// subtasks, and its comments. Subtasks are leaf mcpItems, so it isn't recursive.
 type mcpItemDetail struct {
 	mcpItem
-	Subtasks []mcpItem    `json:"subtasks"`
-	Comments []commentAPI `json:"comments"`
+	Description string       `json:"description,omitempty"`
+	Subtasks    []mcpItem    `json:"subtasks"`
+	Comments    []commentAPI `json:"comments"`
 }
 
 // commentAPI is a comment as the MCP surface presents it: author by username,
@@ -148,8 +166,28 @@ func toMCPItem(it store.Item, statusName, userName map[string]string) mcpItem {
 		Milestone: it.IsMilestone,
 		Archived:  it.ArchivedAt != nil,
 		CreatedBy: userName[it.CreatedBy],
+		CreatedAt: it.CreatedAt.Format(time.RFC3339),
 		ParentID:  it.ParentID,
 	}
+}
+
+// itemURL builds a browser permalink that opens the item on its board, or ""
+// when the public origin or slug is unknown (the field is then omitted).
+func (h *handlers) itemURL(slug, id string) string {
+	if h.publicURL == "" || slug == "" {
+		return ""
+	}
+	return h.publicURL + "/w/" + slug + "?item=" + id
+}
+
+// slugFor resolves a workspace id to its slug for permalink building. Errors are
+// swallowed — the permalink is a convenience, not load-bearing.
+func (h *handlers) slugFor(ctx context.Context, workspaceID string) string {
+	ws, err := h.workspaces.ByID(ctx, workspaceID)
+	if err != nil {
+		return ""
+	}
+	return ws.Slug
 }
 
 type listItemsInput struct {
@@ -184,6 +222,21 @@ type setItemAssigneeInput struct {
 type addCommentInput struct {
 	ID   string `json:"id" jsonschema:"the item id to comment on"`
 	Body string `json:"body" jsonschema:"the comment text"`
+}
+
+type setItemDescriptionInput struct {
+	ID          string `json:"id" jsonschema:"the item id"`
+	Description string `json:"description" jsonschema:"the new description; empty clears it"`
+}
+
+type setItemMilestoneInput struct {
+	ID        string `json:"id" jsonschema:"the item id"`
+	Milestone bool   `json:"milestone" jsonschema:"true to flag as a milestone, false to unflag"`
+}
+
+type setItemParentInput struct {
+	ID     string `json:"id" jsonschema:"the item id to reparent"`
+	Parent string `json:"parent,omitempty" jsonschema:"new parent item id; omit to promote to a top-level board item"`
 }
 
 // --- tool handlers ---
@@ -280,6 +333,7 @@ func (h *handlers) mcpListItems(ctx context.Context, _ *mcp.CallToolRequest, in 
 			continue
 		}
 		v := toMCPItem(it, statusName, userName)
+		v.URL = h.itemURL(ws.Slug, it.ID)
 		if c, ok := counts[it.ID]; ok && c.Total > 0 {
 			v.SubtasksDone, v.SubtasksTotal = c.Done, c.Total
 		}
@@ -297,10 +351,14 @@ func (h *handlers) mcpGetItem(ctx context.Context, _ *mcp.CallToolRequest, in it
 	if err != nil {
 		return nil, mcpItemDetail{}, mcpErr(err)
 	}
+	slug := h.slugFor(ctx, item.WorkspaceID)
+	root := toMCPItem(item, statusName, userName)
+	root.URL = h.itemURL(slug, item.ID)
 	detail := mcpItemDetail{
-		mcpItem:  toMCPItem(item, statusName, userName),
-		Subtasks: []mcpItem{},
-		Comments: []commentAPI{},
+		mcpItem:     root,
+		Description: item.Description,
+		Subtasks:    []mcpItem{},
+		Comments:    []commentAPI{},
 	}
 
 	children, err := h.board.Children(ctx, item.ID)
@@ -308,7 +366,9 @@ func (h *handlers) mcpGetItem(ctx context.Context, _ *mcp.CallToolRequest, in it
 		return nil, mcpItemDetail{}, mcpErr(err)
 	}
 	for _, c := range children {
-		detail.Subtasks = append(detail.Subtasks, toMCPItem(c, statusName, userName))
+		cv := toMCPItem(c, statusName, userName)
+		cv.URL = h.itemURL(slug, c.ID)
+		detail.Subtasks = append(detail.Subtasks, cv)
 	}
 
 	comments, err := h.board.Comments(ctx, item.ID)
@@ -383,6 +443,47 @@ func (h *handlers) mcpSetItemAssignee(ctx context.Context, _ *mcp.CallToolReques
 		}
 	}
 	if err := h.board.SetAssignee(ctx, item.ID, assigneeID); err != nil {
+		return nil, mcpItem{}, mcpErr(err)
+	}
+	return h.mcpReloadResult(ctx, item.ID)
+}
+
+func (h *handlers) mcpSetItemDescription(ctx context.Context, _ *mcp.CallToolRequest, in setItemDescriptionInput) (*mcp.CallToolResult, mcpItem, error) {
+	item, err := h.mcpItem(ctx, in.ID, "")
+	if err != nil {
+		return nil, mcpItem{}, err
+	}
+	if err := h.board.UpdateDescription(ctx, item.ID, in.Description); err != nil {
+		return nil, mcpItem{}, mcpErr(err)
+	}
+	return h.mcpReloadResult(ctx, item.ID)
+}
+
+func (h *handlers) mcpSetItemMilestone(ctx context.Context, _ *mcp.CallToolRequest, in setItemMilestoneInput) (*mcp.CallToolResult, mcpItem, error) {
+	item, err := h.mcpItem(ctx, in.ID, "")
+	if err != nil {
+		return nil, mcpItem{}, err
+	}
+	if err := h.board.SetMilestone(ctx, item.ID, in.Milestone); err != nil {
+		return nil, mcpItem{}, mcpErr(err)
+	}
+	return h.mcpReloadResult(ctx, item.ID)
+}
+
+func (h *handlers) mcpSetItemParent(ctx context.Context, _ *mcp.CallToolRequest, in setItemParentInput) (*mcp.CallToolResult, mcpItem, error) {
+	item, err := h.mcpItem(ctx, in.ID, "")
+	if err != nil {
+		return nil, mcpItem{}, err
+	}
+	parent := strings.ToLower(strings.TrimSpace(in.Parent))
+	if parent != "" {
+		// Resolve in the item's workspace so a cross-workspace or missing parent
+		// reads as "item not found" rather than a vaguer reparent error.
+		if _, err := h.mcpItem(ctx, parent, item.WorkspaceID); err != nil {
+			return nil, mcpItem{}, err
+		}
+	}
+	if err := h.board.Reparent(ctx, item.ID, parent); err != nil {
 		return nil, mcpItem{}, mcpErr(err)
 	}
 	return h.mcpReloadResult(ctx, item.ID)
@@ -474,7 +575,9 @@ func (h *handlers) mcpItemResult(ctx context.Context, it store.Item) (*mcp.CallT
 	if err != nil {
 		return nil, mcpItem{}, mcpErr(err)
 	}
-	return &mcp.CallToolResult{}, toMCPItem(it, statusName, userName), nil
+	v := toMCPItem(it, statusName, userName)
+	v.URL = h.itemURL(h.slugFor(ctx, it.WorkspaceID), it.ID)
+	return &mcp.CallToolResult{}, v, nil
 }
 
 // mcpReloadResult reloads an item by id (after a mutation) and renders it.
@@ -503,6 +606,10 @@ func mcpErr(err error) error {
 		return errors.New("invalid title")
 	case errors.Is(err, board.ErrInvalidComment):
 		return errors.New("invalid comment: empty or too long")
+	case errors.Is(err, board.ErrInvalidDescription):
+		return errors.New("description too long")
+	case errors.Is(err, board.ErrCycle):
+		return errors.New("would create a cycle: an item can't be parented under itself or a descendant")
 	case errors.Is(err, board.ErrNoStatus):
 		return errors.New("workspace has no statuses")
 	case errors.Is(err, errUnknownStatus), errors.Is(err, errUnknownUser):
