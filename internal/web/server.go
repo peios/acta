@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/peios/acta/internal/authn"
+	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/config"
 	"github.com/peios/acta/internal/passkey"
 	"github.com/peios/acta/internal/session"
@@ -14,12 +15,13 @@ import (
 )
 
 // NewHandler builds the application handler.
-func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Provider, passkeys *passkey.Service, workspaces *workspace.Service) http.Handler {
+func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Provider, passkeys *passkey.Service, workspaces *workspace.Service, boards *board.Service) http.Handler {
 	h := &handlers{
 		sessions:   sessions,
 		provider:   provider,
 		passkeys:   passkeys,
 		workspaces: workspaces,
+		board:      boards,
 		secure:     cfg.CookieSecure(),
 	}
 	mux := http.NewServeMux()
@@ -37,7 +39,18 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 		return requireAuth(sessions)(fn)
 	}
 	mux.Handle("GET /{$}", protected(h.rootRedirect))
-	mux.Handle("GET /w/{slug}", protected(h.workspaceHome))
+
+	// A workspace's board and its JSON mutation API (consumed by board.js).
+	mux.Handle("GET /w/{slug}", protected(h.boardPage))
+	mux.Handle("POST /w/{slug}/statuses", protected(h.statusCreate))
+	mux.Handle("POST /w/{slug}/statuses/reorder", protected(h.statusReorder))
+	mux.Handle("POST /w/{slug}/statuses/{id}/rename", protected(h.statusRename))
+	mux.Handle("POST /w/{slug}/statuses/{id}/delete", protected(h.statusDelete))
+	mux.Handle("POST /w/{slug}/items", protected(h.itemCreate))
+	mux.Handle("POST /w/{slug}/items/{id}/rename", protected(h.itemRename))
+	mux.Handle("POST /w/{slug}/items/{id}/move", protected(h.itemMove))
+	mux.Handle("POST /w/{slug}/items/{id}/delete", protected(h.itemDelete))
+
 	mux.Handle("GET /settings", protected(h.settingsIndex))
 	mux.Handle("GET /settings/security", protected(h.settingsSecurity))
 	mux.Handle("POST /settings/passkeys/register/begin", protected(h.passkeyRegisterBegin))

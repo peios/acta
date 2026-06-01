@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/peios/acta/internal/authn"
+	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/httpx"
 	"github.com/peios/acta/internal/identity"
 	"github.com/peios/acta/internal/passkey"
@@ -19,6 +20,7 @@ type handlers struct {
 	provider   authn.Provider
 	passkeys   *passkey.Service
 	workspaces *workspace.Service
+	board      *board.Service
 	secure     bool
 }
 
@@ -116,11 +118,6 @@ func (h *handlers) logout(w http.ResponseWriter, r *http.Request) {
 
 // --- workspace landing ---
 
-type workspaceData struct {
-	chrome
-	Principal *identity.Principal
-}
-
 // rootRedirect sends "/" to the user's current workspace. The canonical URL for
 // a workspace is /w/{slug}; "/" is just a convenience entry point.
 func (h *handlers) rootRedirect(w http.ResponseWriter, r *http.Request) {
@@ -139,28 +136,7 @@ func (h *handlers) rootRedirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/w/"+current.Slug, http.StatusSeeOther)
 }
 
-func (h *handlers) workspaceHome(w http.ResponseWriter, r *http.Request) {
-	ws, err := h.workspaces.BySlug(r.Context(), r.PathValue("slug"))
-	if errors.Is(err, store.ErrWorkspaceNotFound) {
-		http.NotFound(w, r)
-		return
-	}
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	httpx.SetWorkspaceCookie(w, ws.Slug, h.secure)
-
-	ch, err := h.chromeFor(r, "home", &ws)
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	render(w, http.StatusOK, "workspace.html", workspaceData{
-		chrome:    ch,
-		Principal: principalFrom(r.Context()),
-	})
-}
+// (The workspace landing at /w/{slug} is the board — see board.go.)
 
 // --- settings: security ---
 
@@ -220,8 +196,14 @@ func (h *handlers) workspaceCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := principalFrom(r.Context())
-	if _, err := h.workspaces.Create(r.Context(), r.PostFormValue("name"), p.ID); err != nil {
+	ws, err := h.workspaces.Create(r.Context(), r.PostFormValue("name"), p.ID)
+	if err != nil {
 		redirectWorkspaceErr(w, r, err)
+		return
+	}
+	// Give the new workspace its starter lanes so its board is usable at once.
+	if err := h.board.SeedDefaults(r.Context(), ws.ID); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	http.Redirect(w, r, "/settings/workspaces", http.StatusSeeOther)

@@ -23,6 +23,8 @@ type Store struct {
 	credentials map[string]store.Credential
 	challenges  map[string]store.Challenge
 	workspaces  map[string]store.Workspace
+	statuses    map[string]store.Status
+	items       map[string]store.Item
 }
 
 func New() *Store {
@@ -32,6 +34,8 @@ func New() *Store {
 		credentials: map[string]store.Credential{},
 		challenges:  map[string]store.Challenge{},
 		workspaces:  map[string]store.Workspace{},
+		statuses:    map[string]store.Status{},
+		items:       map[string]store.Item{},
 	}
 }
 
@@ -292,6 +296,162 @@ func (s *Store) CountWorkspaces(_ context.Context) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.workspaces), nil
+}
+
+// --- board: statuses ---
+
+func (s *Store) CreateStatus(_ context.Context, st store.Status) (store.Status, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if st.ID == "" {
+		st.ID = newID()
+	}
+	if st.CreatedAt.IsZero() {
+		st.CreatedAt = time.Now()
+	}
+	s.statuses[st.ID] = st
+	return st, nil
+}
+
+func (s *Store) StatusesByWorkspace(_ context.Context, workspaceID string) ([]store.Status, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.Status
+	for _, st := range s.statuses {
+		if st.WorkspaceID == workspaceID {
+			out = append(out, st)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Position < out[j].Position })
+	return out, nil
+}
+
+func (s *Store) StatusByID(_ context.Context, id string) (store.Status, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, ok := s.statuses[id]
+	if !ok {
+		return store.Status{}, store.ErrStatusNotFound
+	}
+	return st, nil
+}
+
+func (s *Store) RenameStatus(_ context.Context, id, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, ok := s.statuses[id]
+	if !ok {
+		return store.ErrStatusNotFound
+	}
+	st.Name = name
+	s.statuses[id] = st
+	return nil
+}
+
+func (s *Store) ReorderStatuses(_ context.Context, workspaceID string, orderedIDs []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, id := range orderedIDs {
+		if st, ok := s.statuses[id]; ok && st.WorkspaceID == workspaceID {
+			st.Position = i
+			s.statuses[id] = st
+		}
+	}
+	return nil
+}
+
+func (s *Store) DeleteStatus(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.statuses[id]; !ok {
+		return store.ErrStatusNotFound
+	}
+	delete(s.statuses, id)
+	return nil
+}
+
+// --- board: items ---
+
+func (s *Store) CreateItem(_ context.Context, it store.Item) (store.Item, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if it.ID == "" {
+		it.ID = newID()
+	}
+	if it.CreatedAt.IsZero() {
+		it.CreatedAt = time.Now()
+	}
+	s.items[it.ID] = it
+	return it, nil
+}
+
+func (s *Store) ItemsByWorkspace(_ context.Context, workspaceID string) ([]store.Item, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.filterItems(func(it store.Item) bool { return it.WorkspaceID == workspaceID }), nil
+}
+
+func (s *Store) ItemsByStatus(_ context.Context, statusID string) ([]store.Item, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.filterItems(func(it store.Item) bool { return it.StatusID == statusID }), nil
+}
+
+// filterItems collects matching items ordered by position. Caller holds the lock.
+func (s *Store) filterItems(keep func(store.Item) bool) []store.Item {
+	var out []store.Item
+	for _, it := range s.items {
+		if keep(it) {
+			out = append(out, it)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Position < out[j].Position })
+	return out
+}
+
+func (s *Store) ItemByID(_ context.Context, id string) (store.Item, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	it, ok := s.items[id]
+	if !ok {
+		return store.Item{}, store.ErrItemNotFound
+	}
+	return it, nil
+}
+
+func (s *Store) RenameItem(_ context.Context, id, title string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	it, ok := s.items[id]
+	if !ok {
+		return store.ErrItemNotFound
+	}
+	it.Title = title
+	s.items[id] = it
+	return nil
+}
+
+func (s *Store) ReorderItems(_ context.Context, statusID string, orderedIDs []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, id := range orderedIDs {
+		if it, ok := s.items[id]; ok {
+			it.StatusID = statusID
+			it.Position = i
+			s.items[id] = it
+		}
+	}
+	return nil
+}
+
+func (s *Store) DeleteItem(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.items[id]; !ok {
+		return store.ErrItemNotFound
+	}
+	delete(s.items, id)
+	return nil
 }
 
 func (s *Store) Close() {}

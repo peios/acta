@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/peios/acta/internal/authn/local"
+	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/config"
 	"github.com/peios/acta/internal/passkey"
 	"github.com/peios/acta/internal/session"
@@ -84,8 +85,9 @@ func runServe(args []string) error {
 		return fmt.Errorf("passkey: %w", err)
 	}
 	workspaces := workspace.New(pg)
+	boards := board.New(pg)
 	provider := local.NewProvider(pg, sessions, passkeys, cfg.CookieSecure())
-	handler := web.NewHandler(cfg, sessions, provider, passkeys, workspaces)
+	handler := web.NewHandler(cfg, sessions, provider, passkeys, workspaces, boards)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,

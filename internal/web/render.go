@@ -30,7 +30,7 @@ func staticHandler() http.Handler {
 // "content"/"title" blocks don't collide across pages.
 var pages = func() map[string]*template.Template {
 	m := map[string]*template.Template{}
-	for _, name := range []string{"login.html", "workspace.html", "security.html", "workspaces.html", "welcome.html"} {
+	for _, name := range []string{"login.html", "board.html", "security.html", "workspaces.html", "welcome.html"} {
 		m[name] = template.Must(
 			template.New(name).ParseFS(templatesFS, "templates/base.html", "templates/"+name),
 		)

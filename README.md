@@ -25,6 +25,17 @@ workspace. A top-bar switcher and a Settings → Workspaces page to create,
 rename, and delete them. Shared/global for now — every signed-in user sees all
 workspaces; membership is a later slice.
 
+**Slice 4 — board.** Each workspace's `/w/{slug}` is a board of user-defined
+**statuses** (lanes) holding **items** (title + status). Drag items to reorder
+within a lane or transition between lanes, and drag lanes to reorder; create /
+rename / delete both; a lane can't be deleted while it holds items. New
+workspaces seed *To do / Doing / Done*. The page is fully server-rendered and
+works without JavaScript; `board.js` layers on drag-and-drop and inline editing
+through a JSON API (the same surface automation will use). Drag-and-drop uses a
+vendored, self-hosted copy of [SortableJS](https://sortablejs.github.io/Sortable/)
+(`internal/web/static/sortable.min.js`, MIT) — no CDN, so it stays CSP-clean and
+runs offline.
+
 ## Running
 
 ### Live-reload dev (recommended)

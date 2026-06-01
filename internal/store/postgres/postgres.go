@@ -314,6 +314,183 @@ func mapWorkspaceConflict(err error) error {
 	return err
 }
 
+// --- board: statuses ---
+
+func (p *Postgres) CreateStatus(ctx context.Context, s store.Status) (store.Status, error) {
+	const q = `INSERT INTO statuses (workspace_id, name, position)
+	           VALUES ($1::uuid, $2, $3)
+	           RETURNING id::text, workspace_id::text, name, position, created_at`
+	var out store.Status
+	err := p.pool.QueryRow(ctx, q, s.WorkspaceID, s.Name, s.Position).
+		Scan(&out.ID, &out.WorkspaceID, &out.Name, &out.Position, &out.CreatedAt)
+	return out, err
+}
+
+func (p *Postgres) StatusesByWorkspace(ctx context.Context, workspaceID string) ([]store.Status, error) {
+	const q = `SELECT id::text, workspace_id::text, name, position, created_at
+	           FROM statuses WHERE workspace_id = $1::uuid ORDER BY position`
+	rows, err := p.pool.Query(ctx, q, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Status
+	for rows.Next() {
+		var s store.Status
+		if err := rows.Scan(&s.ID, &s.WorkspaceID, &s.Name, &s.Position, &s.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) StatusByID(ctx context.Context, id string) (store.Status, error) {
+	const q = `SELECT id::text, workspace_id::text, name, position, created_at
+	           FROM statuses WHERE id = $1::uuid`
+	var s store.Status
+	err := p.pool.QueryRow(ctx, q, id).Scan(&s.ID, &s.WorkspaceID, &s.Name, &s.Position, &s.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.Status{}, store.ErrStatusNotFound
+	}
+	return s, err
+}
+
+func (p *Postgres) RenameStatus(ctx context.Context, id, name string) error {
+	ct, err := p.pool.Exec(ctx, `UPDATE statuses SET name = $2 WHERE id = $1::uuid`, id, name)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrStatusNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) ReorderStatuses(ctx context.Context, workspaceID string, orderedIDs []string) error {
+	return p.inTx(ctx, func(tx pgx.Tx) error {
+		for i, id := range orderedIDs {
+			if _, err := tx.Exec(ctx,
+				`UPDATE statuses SET position = $1 WHERE id = $2::uuid AND workspace_id = $3::uuid`,
+				i, id, workspaceID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (p *Postgres) DeleteStatus(ctx context.Context, id string) error {
+	ct, err := p.pool.Exec(ctx, `DELETE FROM statuses WHERE id = $1::uuid`, id)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrStatusNotFound
+	}
+	return nil
+}
+
+// --- board: items ---
+
+func (p *Postgres) CreateItem(ctx context.Context, i store.Item) (store.Item, error) {
+	const q = `INSERT INTO items (workspace_id, status_id, title, position)
+	           VALUES ($1::uuid, $2::uuid, $3, $4)
+	           RETURNING id::text, workspace_id::text, status_id::text, title, position, created_at`
+	var out store.Item
+	err := p.pool.QueryRow(ctx, q, i.WorkspaceID, i.StatusID, i.Title, i.Position).
+		Scan(&out.ID, &out.WorkspaceID, &out.StatusID, &out.Title, &out.Position, &out.CreatedAt)
+	return out, err
+}
+
+func (p *Postgres) ItemsByWorkspace(ctx context.Context, workspaceID string) ([]store.Item, error) {
+	const q = `SELECT id::text, workspace_id::text, status_id::text, title, position, created_at
+	           FROM items WHERE workspace_id = $1::uuid ORDER BY position`
+	return p.queryItems(ctx, q, workspaceID)
+}
+
+func (p *Postgres) ItemsByStatus(ctx context.Context, statusID string) ([]store.Item, error) {
+	const q = `SELECT id::text, workspace_id::text, status_id::text, title, position, created_at
+	           FROM items WHERE status_id = $1::uuid ORDER BY position`
+	return p.queryItems(ctx, q, statusID)
+}
+
+func (p *Postgres) queryItems(ctx context.Context, q, arg string) ([]store.Item, error) {
+	rows, err := p.pool.Query(ctx, q, arg)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Item
+	for rows.Next() {
+		var i store.Item
+		if err := rows.Scan(&i.ID, &i.WorkspaceID, &i.StatusID, &i.Title, &i.Position, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, i)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) ItemByID(ctx context.Context, id string) (store.Item, error) {
+	const q = `SELECT id::text, workspace_id::text, status_id::text, title, position, created_at
+	           FROM items WHERE id = $1::uuid`
+	var i store.Item
+	err := p.pool.QueryRow(ctx, q, id).Scan(&i.ID, &i.WorkspaceID, &i.StatusID, &i.Title, &i.Position, &i.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.Item{}, store.ErrItemNotFound
+	}
+	return i, err
+}
+
+func (p *Postgres) RenameItem(ctx context.Context, id, title string) error {
+	ct, err := p.pool.Exec(ctx, `UPDATE items SET title = $2 WHERE id = $1::uuid`, id, title)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrItemNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) ReorderItems(ctx context.Context, statusID string, orderedIDs []string) error {
+	return p.inTx(ctx, func(tx pgx.Tx) error {
+		for i, id := range orderedIDs {
+			if _, err := tx.Exec(ctx,
+				`UPDATE items SET status_id = $1::uuid, position = $2 WHERE id = $3::uuid`,
+				statusID, i, id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (p *Postgres) DeleteItem(ctx context.Context, id string) error {
+	ct, err := p.pool.Exec(ctx, `DELETE FROM items WHERE id = $1::uuid`, id)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrItemNotFound
+	}
+	return nil
+}
+
+// inTx runs fn inside a transaction, rolling back on error.
+func (p *Postgres) inTx(ctx context.Context, fn func(pgx.Tx) error) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	if err := fn(tx); err != nil {
+		_ = tx.Rollback(ctx)
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 // --- migrations ---
 
 // Migrate applies any embedded migrations not yet recorded, each in its own

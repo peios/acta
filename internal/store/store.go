@@ -18,6 +18,8 @@ var (
 	ErrWorkspaceNotFound  = errors.New("store: workspace not found")
 	ErrWorkspaceNameTaken = errors.New("store: workspace name already taken")
 	ErrWorkspaceSlugTaken = errors.New("store: workspace slug already taken")
+	ErrStatusNotFound     = errors.New("store: status not found")
+	ErrItemNotFound       = errors.New("store: item not found")
 )
 
 // User is the persisted account record.
@@ -91,6 +93,28 @@ type Workspace struct {
 	CreatedAt time.Time
 }
 
+// Status is a board lane: a named, ordered position within a workspace that
+// items sit in. Statuses are user-defined per workspace.
+type Status struct {
+	ID          string
+	WorkspaceID string
+	Name        string
+	Position    int
+	CreatedAt   time.Time
+}
+
+// Item is a card on the board: a title living in exactly one status, ordered by
+// Position within that lane. WorkspaceID is denormalised from the status for
+// cheap workspace-wide queries and cascade integrity.
+type Item struct {
+	ID          string
+	WorkspaceID string
+	StatusID    string
+	Title       string
+	Position    int
+	CreatedAt   time.Time
+}
+
 // Store is the persistence interface for Acta.
 type Store interface {
 	CreateUser(ctx context.Context, u NewUser) (User, error)
@@ -124,6 +148,28 @@ type Store interface {
 	RenameWorkspace(ctx context.Context, id, name string) error
 	DeleteWorkspace(ctx context.Context, id string) error
 	CountWorkspaces(ctx context.Context) (int, error)
+
+	// Statuses (board lanes). StatusesByWorkspace returns them ordered by
+	// position. ReorderStatuses sets each id's position to its index in the
+	// given slice, atomically.
+	CreateStatus(ctx context.Context, s Status) (Status, error)
+	StatusesByWorkspace(ctx context.Context, workspaceID string) ([]Status, error)
+	StatusByID(ctx context.Context, id string) (Status, error)
+	RenameStatus(ctx context.Context, id, name string) error
+	ReorderStatuses(ctx context.Context, workspaceID string, orderedIDs []string) error
+	DeleteStatus(ctx context.Context, id string) error
+
+	// Items (board cards). ItemsByWorkspace and ItemsByStatus return items
+	// ordered by position. ReorderItems sets each id's status to statusID and
+	// its position to its index in the slice, atomically — this is how an item
+	// both moves between lanes and gets ordered within one.
+	CreateItem(ctx context.Context, i Item) (Item, error)
+	ItemsByWorkspace(ctx context.Context, workspaceID string) ([]Item, error)
+	ItemsByStatus(ctx context.Context, statusID string) ([]Item, error)
+	ItemByID(ctx context.Context, id string) (Item, error)
+	RenameItem(ctx context.Context, id, title string) error
+	ReorderItems(ctx context.Context, statusID string, orderedIDs []string) error
+	DeleteItem(ctx context.Context, id string) error
 
 	Close()
 }

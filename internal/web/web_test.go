@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/peios/acta/internal/authn/local"
+	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/config"
 	"github.com/peios/acta/internal/passkey"
 	"github.com/peios/acta/internal/session"
@@ -38,7 +39,12 @@ func newTestServer(t *testing.T) (string, *http.Client) {
 	}
 
 	workspaces := workspace.New(ms)
-	if _, err := workspaces.Create(context.Background(), "General", ""); err != nil {
+	boards := board.New(ms)
+	gen, err := workspaces.Create(context.Background(), "General", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := boards.SeedDefaults(context.Background(), gen.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -53,7 +59,7 @@ func newTestServer(t *testing.T) (string, *http.Client) {
 		t.Fatal(err)
 	}
 	provider := local.NewProvider(ms, sessions, passkeys, false)
-	handler := web.NewHandler(config.Config{Env: "dev"}, sessions, provider, passkeys, workspaces)
+	handler := web.NewHandler(config.Config{Env: "dev"}, sessions, provider, passkeys, workspaces, boards)
 
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
@@ -206,8 +212,8 @@ func TestLoginLogoutFlow(t *testing.T) {
 		t.Fatalf("GET / after login: want 303, got %d", root.StatusCode)
 	}
 	home := getBody(t, client, base+root.Header.Get("Location"), http.StatusOK)
-	if !strings.Contains(home, "@jack") {
-		t.Fatalf("workspace page not showing signed-in identity:\n%s", home)
+	if !strings.Contains(home, `id="board"`) {
+		t.Fatalf("post-login landing is not the board:\n%s", home)
 	}
 
 	// Log out -> 303 to /login, session invalidated server-side.

@@ -1,0 +1,57 @@
+{{define "title"}}{{.Workspace.Name}} · Acta{{end}}
+{{define "content"}}
+<main class="board-wrap" data-slug="{{.Workspace.Slug}}">
+  <div class="board" id="board">
+    {{range .Lanes}}
+    <section class="lane" data-status-id="{{.Status.ID}}">
+      <header class="lane-head">
+        <span class="lane-grip" title="Drag to reorder">⠿</span>
+        <input class="lane-name" value="{{.Status.Name}}" maxlength="40" aria-label="Status name">
+        <button class="lane-del" type="button" title="Delete lane" aria-label="Delete lane">×</button>
+      </header>
+      <div class="lane-items">
+        {{range .Items}}
+        <article class="item" data-item-id="{{.ID}}">
+          <span class="item-title">{{.Title}}</span>
+          <button class="item-del" type="button" title="Delete" aria-label="Delete item">×</button>
+        </article>
+        {{end}}
+      </div>
+      <form class="item-add">
+        <input class="item-add-input" placeholder="+ Add item" maxlength="200" aria-label="New item title">
+      </form>
+    </section>
+    {{end}}
+    <div class="lane-add">
+      <form class="lane-add-form">
+        <input class="lane-add-input" placeholder="+ Add status" maxlength="40" aria-label="New status name">
+      </form>
+    </div>
+  </div>
+  <p class="alert board-err" role="alert" data-board-error></p>
+</main>
+
+<template id="item-tmpl">
+  <article class="item">
+    <span class="item-title"></span>
+    <button class="item-del" type="button" title="Delete" aria-label="Delete item">×</button>
+  </article>
+</template>
+<template id="lane-tmpl">
+  <section class="lane">
+    <header class="lane-head">
+      <span class="lane-grip" title="Drag to reorder">⠿</span>
+      <input class="lane-name" maxlength="40" aria-label="Status name">
+      <button class="lane-del" type="button" title="Delete lane" aria-label="Delete lane">×</button>
+    </header>
+    <div class="lane-items"></div>
+    <form class="item-add">
+      <input class="item-add-input" placeholder="+ Add item" maxlength="200" aria-label="New item title">
+    </form>
+  </section>
+</template>
+{{end}}
+{{define "scripts"}}
+<script src="/static/sortable.min.js"></script>
+<script src="/static/board.js"></script>
+{{end}}
