@@ -413,12 +413,13 @@ func (p *Postgres) DeleteStatus(ctx context.Context, id string) error {
 // --- board: items ---
 
 const itemCols = `id::text, workspace_id::text, status_id::text, COALESCE(parent_id::text, ''),
-                  title, description, COALESCE(assignee_id::text, ''), position, archived_at, created_at`
+                  title, description, COALESCE(assignee_id::text, ''), position, is_milestone,
+                  archived_at, created_at`
 
 func scanItem(row pgx.Row) (store.Item, error) {
 	var i store.Item
 	err := row.Scan(&i.ID, &i.WorkspaceID, &i.StatusID, &i.ParentID, &i.Title, &i.Description,
-		&i.AssigneeID, &i.Position, &i.ArchivedAt, &i.CreatedAt)
+		&i.AssigneeID, &i.Position, &i.IsMilestone, &i.ArchivedAt, &i.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.Item{}, store.ErrItemNotFound
 	}
@@ -591,6 +592,10 @@ func (p *Postgres) ReorderItems(ctx context.Context, statusID string, orderedIDs
 
 func (p *Postgres) SetItemStatus(ctx context.Context, id, statusID string) error {
 	return p.execItem(ctx, `UPDATE items SET status_id = $2::uuid WHERE id = $1::uuid`, id, statusID)
+}
+
+func (p *Postgres) SetItemMilestone(ctx context.Context, id string, isMilestone bool) error {
+	return p.execItem(ctx, `UPDATE items SET is_milestone = $2 WHERE id = $1::uuid`, id, isMilestone)
 }
 
 func (p *Postgres) SetItemParent(ctx context.Context, id, parentID string) error {

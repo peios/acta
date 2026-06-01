@@ -390,6 +390,26 @@ func (s *Service) Children(ctx context.Context, parentID string) ([]store.Item, 
 	return s.store.ChildrenByParent(ctx, parentID, false)
 }
 
+func (s *Service) SetMilestone(ctx context.Context, id string, isMilestone bool) error {
+	return s.store.SetItemMilestone(ctx, id, isMilestone)
+}
+
+// CreateRootItem makes a top-level item; if statusID is "" it lands in the
+// first lane (used by the Backlog column, which has no status of its own).
+func (s *Service) CreateRootItem(ctx context.Context, workspaceID, statusID, title string) (store.Item, error) {
+	if statusID == "" {
+		statuses, err := s.store.StatusesByWorkspace(ctx, workspaceID)
+		if err != nil {
+			return store.Item{}, err
+		}
+		if len(statuses) == 0 {
+			return store.Item{}, ErrNoStatus
+		}
+		statusID = statuses[0].ID
+	}
+	return s.CreateItem(ctx, workspaceID, statusID, title)
+}
+
 func (s *Service) ReorderSubtasks(ctx context.Context, parentID string, orderedIDs []string) error {
 	return s.store.SetItemPositions(ctx, orderedIDs)
 }

@@ -117,6 +117,7 @@ type Item struct {
 	Description string
 	AssigneeID  string
 	Position    int
+	IsMilestone bool
 	ArchivedAt  *time.Time
 	CreatedAt   time.Time
 }
@@ -208,6 +209,7 @@ type Store interface {
 	SetItemAssignee(ctx context.Context, id, assigneeID string) error
 	SetItemStatus(ctx context.Context, id, statusID string) error
 	SetItemParent(ctx context.Context, id, parentID string) error
+	SetItemMilestone(ctx context.Context, id string, isMilestone bool) error
 	ArchiveItem(ctx context.Context, id string) error
 	UnarchiveItem(ctx context.Context, id string) error
 	ReorderItems(ctx context.Context, statusID string, orderedIDs []string) error

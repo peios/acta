@@ -323,6 +323,34 @@ func TestCandidateParentsExcludeSubtree(t *testing.T) {
 	}
 }
 
+func TestSetMilestone(t *testing.T) {
+	svc, wsID, st := setup(t)
+	ctx := context.Background()
+	it, _ := svc.CreateItem(ctx, wsID, st[0].ID, "M")
+	if err := svc.SetMilestone(ctx, it.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := svc.Item(ctx, it.ID)
+	if !got.IsMilestone {
+		t.Fatal("item not flagged as a milestone")
+	}
+}
+
+func TestCreateRootItemDefaultsStatus(t *testing.T) {
+	svc, wsID, st := setup(t)
+	ctx := context.Background()
+	it, err := svc.CreateRootItem(ctx, wsID, "", "Backlog item")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it.StatusID != st[0].ID {
+		t.Fatalf("empty status should default to the first lane, got %q", it.StatusID)
+	}
+	if it.ParentID != "" {
+		t.Fatal("a root item should have no parent")
+	}
+}
+
 func mustItems(t *testing.T, svc *board.Service, wsID string) []store.Item {
 	t.Helper()
 	items, err := svc.Items(context.Background(), wsID)

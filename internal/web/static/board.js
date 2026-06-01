@@ -107,10 +107,68 @@
     });
   }
 
+  // wireColumn handles a Milestone-mode column (the Backlog or a milestone).
+  // Cross-column drag reparents (and reloads); dragging within a milestone
+  // column reorders its children.
+  function wireColumn(col) {
+    const parentId = col.dataset.parentId; // "" for Backlog
+    const openBtn = col.querySelector('.mcol-title[data-open]');
+    if (openBtn) openBtn.addEventListener('click', () => openModal(openBtn.dataset.open));
+
+    col.querySelector('.item-add').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = e.target.querySelector('.item-add-input');
+      const title = input.value.trim();
+      if (!title) return;
+      try {
+        if (parentId) await api('/items/' + parentId + '/subtasks', { title });
+        else await api('/items', { title }); // root item; server defaults the status
+        location.reload();
+      } catch (err) { if (boardErr) boardErr.textContent = msg(err); }
+    });
+
+    new Sortable(col.querySelector('.lane-items'), {
+      group: 'items',
+      animation: 150,
+      draggable: '.item',
+      filter: '.item-del',
+      ghostClass: 'sortable-ghost',
+      chosenClass: 'sortable-chosen',
+      onEnd: (evt) => {
+        const itemId = evt.item.dataset.itemId;
+        const toCol = evt.to.closest('.mcol').dataset.parentId;
+        const fromCol = evt.from.closest('.mcol').dataset.parentId;
+        if (toCol !== fromCol) {
+          api('/items/' + itemId + '/parent', { parent_id: toCol })
+            .then(() => location.reload())
+            .catch((e) => { if (boardErr) boardErr.textContent = msg(e); location.reload(); });
+        } else if (toCol !== '') {
+          const ids = [...evt.to.querySelectorAll('.item')].map((c) => c.dataset.itemId);
+          api('/items/' + toCol + '/subtasks/reorder', { ids })
+            .catch((e) => { if (boardErr) boardErr.textContent = msg(e); });
+        }
+        // Within the Backlog, order isn't persisted (root items keep their lane position).
+      },
+    });
+  }
+
   // --- the item modal ---
 
   let modalEl = null;
   let opener = null; // card to restore focus to on close
+
+  // URL helpers that preserve other params (notably ?mode=).
+  const urlWithItem = (id) => {
+    const p = new URLSearchParams(location.search);
+    p.set('item', id);
+    return location.pathname + '?' + p.toString();
+  };
+  const urlWithoutItem = () => {
+    const p = new URLSearchParams(location.search);
+    p.delete('item');
+    const q = p.toString();
+    return location.pathname + (q ? '?' + q : '');
+  };
 
   async function openModal(id, push = true) {
     if (modalEl) closeModal(false);
@@ -128,14 +186,14 @@
     modalEl = holder.firstElementChild;
     document.body.appendChild(modalEl);
     wireModal(modalEl);
-    if (push) history.pushState({ item: id }, '', '?item=' + id);
+    if (push) history.pushState({ item: id }, '', urlWithItem(id));
     const title = modalEl.querySelector('.modal-title');
     if (title) title.focus();
   }
 
   function closeModal(push = true) {
     if (modalEl) { modalEl.remove(); modalEl = null; }
-    if (push) history.pushState({}, '', location.pathname);
+    if (push) history.pushState({}, '', urlWithoutItem());
     if (opener) { opener.focus(); opener = null; }
   }
 
@@ -253,6 +311,12 @@
       } catch (err2) { fail(err2); }
     });
 
+    const msToggle = el.querySelector('.modal-ms-toggle');
+    if (msToggle) msToggle.addEventListener('change', async () => {
+      try { await api('/items/' + id + '/milestone', { is_milestone: msToggle.checked }); location.reload(); }
+      catch (e) { fail(e); msToggle.checked = !msToggle.checked; }
+    });
+
     const archive = el.querySelector('.modal-archive');
     if (archive) archive.addEventListener('click', async () => {
       try { await api('/items/' + id + '/archive'); const c = cardOf(id); if (c) c.remove(); closeModal(); }
@@ -267,36 +331,41 @@
 
   // --- wire the server-rendered board ---
 
-  board.querySelectorAll('.lane').forEach(wireLane);
   board.querySelectorAll('.item').forEach(wireItem);
 
-  new Sortable(board, {
-    draggable: '.lane',
-    handle: '.lane-grip',
-    animation: 150,
-    onMove: (evt) => !evt.related.classList.contains('lane-add'),
-    onEnd: () => {
-      const ids = [...board.querySelectorAll('.lane')].map((l) => l.dataset.statusId);
-      api('/statuses/reorder', { ids }).catch((e) => { if (boardErr) boardErr.textContent = msg(e); });
-    },
-  });
+  if (board.dataset.mode === 'milestone') {
+    board.querySelectorAll('.mcol').forEach(wireColumn);
+  } else {
+    board.querySelectorAll('.lane').forEach(wireLane);
 
-  document.querySelector('.lane-add-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const input = e.target.querySelector('.lane-add-input');
-    const name = input.value.trim();
-    if (!name) return;
-    try {
-      const st = await api('/statuses', { name });
-      const lane = document.getElementById('lane-tmpl').content.firstElementChild.cloneNode(true);
-      lane.dataset.statusId = st.id;
-      lane.querySelector('.lane-name').value = st.name;
-      board.insertBefore(lane, document.querySelector('.lane-add'));
-      wireLane(lane);
-      input.value = '';
-      input.focus();
-    } catch (err) { if (boardErr) boardErr.textContent = msg(err); }
-  });
+    new Sortable(board, {
+      draggable: '.lane',
+      handle: '.lane-grip',
+      animation: 150,
+      onMove: (evt) => !evt.related.classList.contains('lane-add'),
+      onEnd: () => {
+        const ids = [...board.querySelectorAll('.lane')].map((l) => l.dataset.statusId);
+        api('/statuses/reorder', { ids }).catch((e) => { if (boardErr) boardErr.textContent = msg(e); });
+      },
+    });
+
+    document.querySelector('.lane-add-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = e.target.querySelector('.lane-add-input');
+      const name = input.value.trim();
+      if (!name) return;
+      try {
+        const st = await api('/statuses', { name });
+        const lane = document.getElementById('lane-tmpl').content.firstElementChild.cloneNode(true);
+        lane.dataset.statusId = st.id;
+        lane.querySelector('.lane-name').value = st.name;
+        board.insertBefore(lane, document.querySelector('.lane-add'));
+        wireLane(lane);
+        input.value = '';
+        input.focus();
+      } catch (err) { if (boardErr) boardErr.textContent = msg(err); }
+    });
+  }
 
   // The server may have rendered a modal already (a ?item= deep link); wire it.
   const existing = document.querySelector('[data-modal]');

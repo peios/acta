@@ -272,6 +272,50 @@ func TestReparentCycleRejectedWeb(t *testing.T) {
 	}
 }
 
+func TestMilestoneModeColumns(t *testing.T) {
+	base, client := newTestServer(t)
+	token := csrfToken(t, client, base)
+	login(t, client, base, token)
+	todo := statusID(t, client, base, "To do")
+
+	ms := makeItem(t, client, base, token, todo, "Phase One")
+	subtaskOf(t, client, base, token, ms, "Build the thing")
+	makeItem(t, client, base, token, todo, "Loose task")
+
+	// Mark "Phase One" as a milestone.
+	mk := postJSON(t, client, base+"/w/general/items/"+ms+"/milestone", token, map[string]any{"is_milestone": true})
+	mk.Body.Close()
+	if mk.StatusCode != http.StatusNoContent {
+		t.Fatalf("set milestone: want 204, got %d", mk.StatusCode)
+	}
+
+	page := getBody(t, client, base+"/w/general?mode=milestone", http.StatusOK)
+	if !strings.Contains(page, "Backlog") {
+		t.Error("milestone mode missing the Backlog column")
+	}
+	// The milestone is a column header (data-open), not a card.
+	if !strings.Contains(page, `data-open="`+ms+`"`) || !strings.Contains(page, `data-parent-id="`+ms+`"`) {
+		t.Error("Phase One is not rendered as a milestone column")
+	}
+	// Its child shows in its column; the loose root task shows in Backlog.
+	if !strings.Contains(page, "Build the thing") {
+		t.Error("milestone child missing from its column")
+	}
+	if !strings.Contains(page, "Loose task") {
+		t.Error("loose root task missing from Backlog")
+	}
+
+	// Status mode is unaffected: the milestone is still a normal card there, and
+	// its child stays off-board.
+	status := getBody(t, client, base+"/w/general", http.StatusOK)
+	if !strings.Contains(status, "Phase One") {
+		t.Error("milestone should still be a card in status mode")
+	}
+	if strings.Contains(status, "Build the thing") {
+		t.Error("milestone child should stay off the status board")
+	}
+}
+
 func TestDeletePermanentFromArchive(t *testing.T) {
 	base, client := newTestServer(t)
 	token := csrfToken(t, client, base)

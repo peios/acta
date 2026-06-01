@@ -60,6 +60,16 @@ demotes it under that item. The picker excludes the item and its own
 descendants, and the server re-checks, so a reparent can never form a cycle.
 The item keeps its status and lands at the end of its new container.
 
+**Slice 8 — milestones.** Any item can be flagged a milestone (a toggle in its
+modal). The board gains a **mode** toggle — **Status | Milestone** (via
+`?mode=`). In Milestone mode the columns are: a **Backlog** of root
+non-milestones, then one column per root milestone holding its children as
+cards (a nested milestone shows as a card in its parent's column, not its own).
+Dragging a card between columns **reparents** it (to that milestone, or to the
+root for Backlog) — reusing slice 7 — and dragging within a milestone column
+reorders its children. Cards show a status chip since the status isn't the
+column anymore.
+
 ## Running
 
 ### Live-reload dev (recommended)

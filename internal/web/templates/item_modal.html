@@ -79,6 +79,7 @@
     </div>
 
     <footer class="modal-foot">
+      <label class="modal-ms"><input type="checkbox" class="modal-ms-toggle" {{if .Item.IsMilestone}}checked{{end}}> Milestone</label>
       {{if .Archived}}
       <button class="btn-secondary modal-unarchive" type="button">Unarchive</button>
       {{else}}

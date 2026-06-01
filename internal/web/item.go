@@ -256,6 +256,23 @@ func (h *handlers) subtaskCreate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, itemDTO{ID: it.ID, StatusID: it.StatusID, Title: it.Title, Position: it.Position})
 }
 
+func (h *handlers) itemMilestone(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.resolveWorkspace(w, r); !ok {
+		return
+	}
+	var req struct {
+		IsMilestone bool `json:"is_milestone"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if err := h.board.SetMilestone(r.Context(), r.PathValue("id"), req.IsMilestone); err != nil {
+		writeBoardErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *handlers) itemParent(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.resolveWorkspace(w, r); !ok {
 		return

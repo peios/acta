@@ -522,6 +522,10 @@ func (s *Store) SetItemParent(_ context.Context, id, parentID string) error {
 	return s.mutateItem(id, func(it *store.Item) { it.ParentID = parentID })
 }
 
+func (s *Store) SetItemMilestone(_ context.Context, id string, isMilestone bool) error {
+	return s.mutateItem(id, func(it *store.Item) { it.IsMilestone = isMilestone })
+}
+
 func (s *Store) SetItemPositions(_ context.Context, orderedIDs []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

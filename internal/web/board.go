@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -16,9 +17,11 @@ import (
 
 type boardData struct {
 	chrome
-	Principal *identity.Principal
-	Lanes     []lane
-	Modal     *modalView // set when ?item=<id> resolves within this workspace
+	Principal        *identity.Principal
+	Mode             string // "status" or "milestone"
+	Lanes            []lane // status mode
+	MilestoneColumns []milestoneColumn
+	Modal            *modalView // set when ?item=<id> resolves within this workspace
 }
 
 type lane struct {
@@ -26,9 +29,18 @@ type lane struct {
 	Cards  []cardView
 }
 
+// milestoneColumn is one column of Milestone mode: the Backlog (ID "") or a
+// root milestone (ID = its item id) holding that milestone's children.
+type milestoneColumn struct {
+	ID    string
+	Title string
+	Cards []cardView
+}
+
 type cardView struct {
-	Item     store.Item
-	Subtasks store.SubtaskCount
+	Item       store.Item
+	Subtasks   store.SubtaskCount
+	StatusName string // shown on cards only in Milestone mode
 }
 
 // boardPage renders a workspace's board: its statuses (lanes) and the items in
@@ -65,10 +77,24 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	mode := "status"
+	if r.URL.Query().Get("mode") == "milestone" {
+		mode = "milestone"
+	}
 	data := boardData{
 		chrome:    ch,
 		Principal: principalFrom(r.Context()),
-		Lanes:     groupLanes(statuses, items, counts),
+		Mode:      mode,
+	}
+	if mode == "milestone" {
+		cols, err := h.milestoneColumns(r.Context(), items, statuses, counts)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		data.MilestoneColumns = cols
+	} else {
+		data.Lanes = groupLanes(statuses, items, counts)
 	}
 	// A ?item=<id> deep link opens that item's modal (server-rendered, so it
 	// works on refresh and with JS off).
@@ -83,6 +109,36 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	render(w, http.StatusOK, "board.html", data)
+}
+
+// milestoneColumns builds Milestone mode: a Backlog column of root
+// non-milestones, then one column per root milestone holding its children.
+func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, statuses []store.Status, counts map[string]store.SubtaskCount) ([]milestoneColumn, error) {
+	statusName := make(map[string]string, len(statuses))
+	for _, s := range statuses {
+		statusName[s.ID] = s.Name
+	}
+	card := func(it store.Item) cardView {
+		return cardView{Item: it, Subtasks: counts[it.ID], StatusName: statusName[it.StatusID]}
+	}
+	backlog := milestoneColumn{Title: "Backlog"}
+	var msCols []milestoneColumn
+	for _, it := range roots {
+		if !it.IsMilestone {
+			backlog.Cards = append(backlog.Cards, card(it))
+			continue
+		}
+		kids, err := h.board.Children(ctx, it.ID)
+		if err != nil {
+			return nil, err
+		}
+		col := milestoneColumn{ID: it.ID, Title: it.Title}
+		for _, k := range kids {
+			col.Cards = append(col.Cards, card(k))
+		}
+		msCols = append(msCols, col)
+	}
+	return append([]milestoneColumn{backlog}, msCols...), nil
 }
 
 // groupLanes buckets items under their status, attaching each item's subtask
@@ -191,7 +247,7 @@ func (h *handlers) itemCreate(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	it, err := h.board.CreateItem(r.Context(), ws.ID, req.StatusID, req.Title)
+	it, err := h.board.CreateRootItem(r.Context(), ws.ID, req.StatusID, req.Title)
 	if err != nil {
 		writeBoardErr(w, err)
 		return
