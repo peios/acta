@@ -104,6 +104,11 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	api.HandleFunc("GET /api/v1/w/{slug}/items/{id}", h.apiItem)
 	api.HandleFunc("POST /api/v1/w/{slug}/items/{id}/subtasks", h.apiCreateSubtask)
 	api.HandleFunc("POST /api/v1/w/{slug}/items/{id}/transition", h.apiTransition)
+	// Agent + token management, so the CLI can provision an MCP integration.
+	api.HandleFunc("GET /api/v1/agents", h.apiListAgents)
+	api.HandleFunc("POST /api/v1/agents", h.apiCreateAgent)
+	api.HandleFunc("POST /api/v1/agents/{id}/tokens", h.apiCreateAgentToken)
+	api.HandleFunc("POST /api/v1/tokens", h.apiCreateSelfToken)
 
 	// Model Context Protocol endpoint (Streamable HTTP). Like the REST API it is
 	// Bearer-authed and carries no cookies, so it mounts outside CSRF.
