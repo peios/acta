@@ -101,6 +101,8 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	api.HandleFunc("GET /api/v1/workspaces", h.apiWorkspaces)
 	api.HandleFunc("GET /api/v1/w/{slug}/items", h.apiListItems)
 	api.HandleFunc("POST /api/v1/w/{slug}/items", h.apiCreateItem)
+	api.HandleFunc("GET /api/v1/w/{slug}/items/{id}", h.apiItem)
+	api.HandleFunc("POST /api/v1/w/{slug}/items/{id}/subtasks", h.apiCreateSubtask)
 	api.HandleFunc("POST /api/v1/w/{slug}/items/{id}/transition", h.apiTransition)
 
 	// Top-level dispatch: token-auth (no CSRF) for the API, cookie + CSRF for

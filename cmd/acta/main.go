@@ -10,13 +10,15 @@
 //
 // Commands:
 //
+//	acta login [host] / acta logout
 //	acta whoami
 //	acta workspaces
 //	acta board   [--workspace slug] [--json]
-//	acta item new  [--workspace slug] [--status name] <title>
-//	acta item move [--workspace slug] <id> <status>
+//	acta item new  [--workspace slug] [--status name | --parent id] <title>
+//	acta item <id>                 show an item and its subtasks
+//	acta item <id> status <name>   set the item's status
 //
-// Flags come before positional arguments.
+// Flags may appear before, after, or among the positional arguments.
 package main
 
 import (
@@ -74,8 +76,9 @@ Usage:
   acta whoami
   acta workspaces
   acta board   [--workspace slug] [--json]
-  acta item new  [--workspace slug] [--status name] <title>
-  acta item move [--workspace slug] <id> <status>
+  acta item new  [--workspace slug] [--status name | --parent id] <title>
+  acta item <id>                  show an item and its subtasks
+  acta item <id> status <name>    set the item's status
 
 Environment (override the stored login):
   ACTA_URL        server base URL (default http://localhost:8080)
@@ -163,40 +166,49 @@ func cmdBoard(args []string) error {
 	if err := json.Unmarshal(data, &items); err != nil {
 		return err
 	}
-	tw := newTable("ID", "STATUS", "TITLE", "ASSIGNEE", "CREATED BY")
+	tw := newTable("ID", "STATUS", "SUBS", "TITLE", "ASSIGNEE", "CREATED BY")
 	for _, it := range items {
 		title := it.Title
 		if it.Milestone {
 			title = "◆ " + title
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", it.ID, it.Status, title, dash(it.Assignee), dash(it.CreatedBy))
+		subs := "-"
+		if it.SubtasksTotal > 0 {
+			subs = fmt.Sprintf("%d/%d", it.SubtasksDone, it.SubtasksTotal)
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", it.ID, it.Status, subs, title, dash(it.Assignee), dash(it.CreatedBy))
 	}
 	return tw.Flush()
 }
 
+// cmdItem dispatches the item grammar: `item new …` creates; otherwise the
+// first arg is an item id, optionally followed by an action (`status`).
+// `item <id>` with no action shows it.
 func cmdItem(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("item: need a subcommand (new, move)")
+		return fmt.Errorf("item: need 'new' or an item id (e.g. acta item <id>)")
 	}
-	switch args[0] {
-	case "new":
+	if args[0] == "new" {
 		return cmdItemNew(args[1:])
-	case "move":
-		return cmdItemMove(args[1:])
-	default:
-		return fmt.Errorf("item: unknown subcommand %q (new, move)", args[0])
 	}
+	id, rest := args[0], args[1:]
+	if len(rest) > 0 && rest[0] == "status" {
+		return cmdItemStatus(id, rest[1:])
+	}
+	return cmdItemShow(id, rest)
 }
 
 func cmdItemNew(args []string) error {
 	fs := flag.NewFlagSet("item new", flag.ContinueOnError)
 	ws := fs.String("workspace", "", "workspace slug")
 	status := fs.String("status", "", "status name (defaults to the first lane)")
+	parent := fs.String("parent", "", "create as a subtask of this item id")
 	asJSON := fs.Bool("json", false, "output raw JSON")
-	if err := fs.Parse(args); err != nil {
+	pos, err := parseArgs(fs, args)
+	if err != nil {
 		return err
 	}
-	title := strings.TrimSpace(strings.Join(fs.Args(), " "))
+	title := strings.TrimSpace(strings.Join(pos, " "))
 	if title == "" {
 		return fmt.Errorf("item new: a title is required")
 	}
@@ -208,7 +220,13 @@ func cmdItemNew(args []string) error {
 	if err != nil {
 		return err
 	}
-	data, err := c.do("POST", "/api/v1/w/"+slug+"/items", map[string]string{"title": title, "status": *status})
+	var data []byte
+	if *parent != "" {
+		// Subtasks start in the first lane (transition to move); --status is N/A.
+		data, err = c.do("POST", "/api/v1/w/"+slug+"/items/"+*parent+"/subtasks", map[string]string{"title": title})
+	} else {
+		data, err = c.do("POST", "/api/v1/w/"+slug+"/items", map[string]string{"title": title, "status": *status})
+	}
 	if err != nil {
 		return err
 	}
@@ -217,21 +235,88 @@ func cmdItemNew(args []string) error {
 	}
 	var it item
 	_ = json.Unmarshal(data, &it)
-	fmt.Printf("created %s  [%s]  %s\n", it.ID, it.Status, it.Title)
+	what := "created"
+	if *parent != "" {
+		what = "created subtask"
+	}
+	fmt.Printf("%s %s  [%s]  %s\n", what, it.ID, it.Status, it.Title)
 	return nil
 }
 
-func cmdItemMove(args []string) error {
-	fs := flag.NewFlagSet("item move", flag.ContinueOnError)
+func cmdItemShow(id string, args []string) error {
+	fs := flag.NewFlagSet("item", flag.ContinueOnError)
 	ws := fs.String("workspace", "", "workspace slug")
 	asJSON := fs.Bool("json", false, "output raw JSON")
-	if err := fs.Parse(args); err != nil {
+	pos, err := parseArgs(fs, args)
+	if err != nil {
 		return err
 	}
-	if fs.NArg() < 2 {
-		return fmt.Errorf("item move: need <id> <status>")
+	if len(pos) > 0 {
+		return fmt.Errorf("item %s: unexpected argument %q (did you mean `item %s status %s`?)", id, pos[0], id, pos[0])
 	}
-	id, status := fs.Arg(0), strings.Join(fs.Args()[1:], " ")
+	c, err := newClient()
+	if err != nil {
+		return err
+	}
+	slug, err := c.workspaceSlug(*ws)
+	if err != nil {
+		return err
+	}
+	data, err := c.do("GET", "/api/v1/w/"+slug+"/items/"+id, nil)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(data)
+	}
+	var it item
+	if err := json.Unmarshal(data, &it); err != nil {
+		return err
+	}
+	printItem(it)
+	return nil
+}
+
+func printItem(it item) {
+	fmt.Println(it.Title)
+	tw := tabwriter.NewWriter(os.Stdout, 0, 2, 1, ' ', 0)
+	fmt.Fprintf(tw, "  id\t%s\n", it.ID)
+	fmt.Fprintf(tw, "  status\t%s\n", it.Status)
+	fmt.Fprintf(tw, "  assignee\t%s\n", dash(it.Assignee))
+	fmt.Fprintf(tw, "  created by\t%s\n", dash(it.CreatedBy))
+	if it.Milestone {
+		fmt.Fprintf(tw, "  milestone\tyes\n")
+	}
+	if it.ParentID != "" {
+		fmt.Fprintf(tw, "  parent\t%s\n", it.ParentID)
+	}
+	_ = tw.Flush()
+	if len(it.Subtasks) > 0 {
+		fmt.Printf("\nSubtasks (%d):\n", len(it.Subtasks))
+		st := newTable("ID", "STATUS", "TITLE")
+		for _, s := range it.Subtasks {
+			title := s.Title
+			if s.Milestone {
+				title = "◆ " + title
+			}
+			fmt.Fprintf(st, "%s\t%s\t%s\n", s.ID, s.Status, title)
+		}
+		_ = st.Flush()
+	}
+}
+
+func cmdItemStatus(id string, args []string) error {
+	fs := flag.NewFlagSet("item status", flag.ContinueOnError)
+	ws := fs.String("workspace", "", "workspace slug")
+	asJSON := fs.Bool("json", false, "output raw JSON")
+	pos, err := parseArgs(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) < 1 {
+		return fmt.Errorf("item %s status: need a status name", id)
+	}
+	status := strings.Join(pos, " ")
 	c, err := newClient()
 	if err != nil {
 		return err
@@ -249,19 +334,23 @@ func cmdItemMove(args []string) error {
 	}
 	var it item
 	_ = json.Unmarshal(data, &it)
-	fmt.Printf("moved %s -> %s\n", it.ID, it.Status)
+	fmt.Printf("%s -> %s\n", it.ID, it.Status)
 	return nil
 }
 
 // --- client ---
 
 type item struct {
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	Status    string `json:"status"`
-	Assignee  string `json:"assignee"`
-	Milestone bool   `json:"milestone"`
-	CreatedBy string `json:"created_by"`
+	ID            string `json:"id"`
+	Title         string `json:"title"`
+	Status        string `json:"status"`
+	Assignee      string `json:"assignee"`
+	Milestone     bool   `json:"milestone"`
+	CreatedBy     string `json:"created_by"`
+	ParentID      string `json:"parent_id"`
+	Subtasks      []item `json:"subtasks"`
+	SubtasksDone  int    `json:"subtasks_done"`
+	SubtasksTotal int    `json:"subtasks_total"`
 }
 
 type client struct {
@@ -358,6 +447,24 @@ func serverError(code int, data []byte) error {
 }
 
 // --- output ---
+
+// parseArgs parses flags that may appear before, after, or among the positional
+// arguments — the stdlib flag package otherwise stops at the first positional.
+// It returns the positionals in order.
+func parseArgs(fs *flag.FlagSet, args []string) ([]string, error) {
+	var pos []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			return nil, err
+		}
+		rest := fs.Args()
+		if len(rest) == 0 {
+			return pos, nil
+		}
+		pos = append(pos, rest[0])
+		args = rest[1:]
+	}
+}
 
 func newTable(headers ...string) *tabwriter.Writer {
 	tw := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
