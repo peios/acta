@@ -171,6 +171,13 @@
       catch (err2) { fail(err2); }
     });
 
+    // Reparenting (promote to None / demote under an item) restructures the
+    // board, so reload to reflect it; the ?item= in the URL reopens the modal.
+    el.querySelector('.modal-parent-select').addEventListener('change', async (e) => {
+      try { await api('/items/' + id + '/parent', { parent_id: e.target.value }); location.reload(); }
+      catch (err2) { fail(err2); }
+    });
+
     el.querySelector('.modal-desc-save').addEventListener('click', async () => {
       const description = el.querySelector('.modal-desc').value;
       try { await api('/items/' + id + '/description', { description }); }

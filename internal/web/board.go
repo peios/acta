@@ -298,6 +298,8 @@ func writeBoardErr(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusConflict, body{"status_not_empty"})
 	case errors.Is(err, board.ErrNoStatus):
 		writeJSON(w, http.StatusConflict, body{"no_status"})
+	case errors.Is(err, board.ErrCycle):
+		writeJSON(w, http.StatusConflict, body{"cycle"})
 	case errors.Is(err, board.ErrStatusMismatch):
 		writeJSON(w, http.StatusBadRequest, body{"status_mismatch"})
 	case errors.Is(err, store.ErrStatusNotFound):

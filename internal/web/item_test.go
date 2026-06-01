@@ -224,6 +224,54 @@ func TestArchiveParentCascadesWeb(t *testing.T) {
 	}
 }
 
+func TestPromoteAndDemoteViaModal(t *testing.T) {
+	base, client := newTestServer(t)
+	token := csrfToken(t, client, base)
+	login(t, client, base, token)
+	todo := statusID(t, client, base, "To do")
+	parent := makeItem(t, client, base, token, todo, "Parent")
+	sub := subtaskOf(t, client, base, token, parent, "Floater")
+
+	if strings.Contains(getBody(t, client, base+"/w/general", http.StatusOK), "Floater") {
+		t.Fatal("subtask should not start on the board")
+	}
+
+	// Promote: parent_id "" lifts it to the board.
+	resp := postJSON(t, client, base+"/w/general/items/"+sub+"/parent", token, map[string]any{"parent_id": ""})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("promote: want 204, got %d", resp.StatusCode)
+	}
+	if !strings.Contains(getBody(t, client, base+"/w/general", http.StatusOK), "Floater") {
+		t.Error("promoted item not on the board")
+	}
+
+	// Demote it back under the parent.
+	resp2 := postJSON(t, client, base+"/w/general/items/"+sub+"/parent", token, map[string]any{"parent_id": parent})
+	resp2.Body.Close()
+	if resp2.StatusCode != http.StatusNoContent {
+		t.Fatalf("demote: want 204, got %d", resp2.StatusCode)
+	}
+	if strings.Contains(getBody(t, client, base+"/w/general", http.StatusOK), "Floater") {
+		t.Error("demoted item should be off the board again")
+	}
+}
+
+func TestReparentCycleRejectedWeb(t *testing.T) {
+	base, client := newTestServer(t)
+	token := csrfToken(t, client, base)
+	login(t, client, base, token)
+	parent := makeItem(t, client, base, token, statusID(t, client, base, "To do"), "Parent")
+	child := subtaskOf(t, client, base, token, parent, "Child")
+
+	// Parenting the parent under its own child is a cycle -> 409.
+	resp := postJSON(t, client, base+"/w/general/items/"+parent+"/parent", token, map[string]any{"parent_id": child})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("cycle: want 409, got %d", resp.StatusCode)
+	}
+}
+
 func TestDeletePermanentFromArchive(t *testing.T) {
 	base, client := newTestServer(t)
 	token := csrfToken(t, client, base)

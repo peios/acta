@@ -442,6 +442,12 @@ func (p *Postgres) ItemsByWorkspace(ctx context.Context, workspaceID string) ([]
 	return p.queryItems(ctx, q, workspaceID)
 }
 
+func (p *Postgres) AllItemsByWorkspace(ctx context.Context, workspaceID string) ([]store.Item, error) {
+	q := `SELECT ` + itemCols + ` FROM items
+	      WHERE workspace_id = $1::uuid AND archived_at IS NULL ORDER BY lower(title)`
+	return p.queryItems(ctx, q, workspaceID)
+}
+
 func (p *Postgres) ItemsByStatus(ctx context.Context, statusID string) ([]store.Item, error) {
 	q := `SELECT ` + itemCols + ` FROM items
 	      WHERE status_id = $1::uuid AND parent_id IS NULL AND archived_at IS NULL ORDER BY position`
@@ -585,6 +591,22 @@ func (p *Postgres) ReorderItems(ctx context.Context, statusID string, orderedIDs
 
 func (p *Postgres) SetItemStatus(ctx context.Context, id, statusID string) error {
 	return p.execItem(ctx, `UPDATE items SET status_id = $2::uuid WHERE id = $1::uuid`, id, statusID)
+}
+
+func (p *Postgres) SetItemParent(ctx context.Context, id, parentID string) error {
+	// $2 is always present; nil becomes SQL NULL (a top-level item).
+	var parent any
+	if parentID != "" {
+		parent = parentID
+	}
+	ct, err := p.pool.Exec(ctx, `UPDATE items SET parent_id = $2::uuid WHERE id = $1::uuid`, id, parent)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrItemNotFound
+	}
+	return nil
 }
 
 // SetItemPositions renumbers items to their index in the slice, without

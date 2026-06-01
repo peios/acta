@@ -28,6 +28,15 @@
             {{end}}
           </select>
         </label>
+        <label class="modal-field">
+          <span class="modal-label">Parent</span>
+          <select class="modal-parent-select">
+            <option value="">None (top-level)</option>
+            {{range .Parents}}
+            <option value="{{.ID}}" {{if eq .ID $.Item.ParentID}}selected{{end}}>{{.Title}}</option>
+            {{end}}
+          </select>
+        </label>
       </div>
 
       <div class="modal-field">

@@ -413,6 +413,16 @@ func (s *Store) ItemsByWorkspace(_ context.Context, workspaceID string) ([]store
 	return out, nil
 }
 
+func (s *Store) AllItemsByWorkspace(_ context.Context, workspaceID string) ([]store.Item, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := s.filterItems(func(it store.Item) bool {
+		return it.WorkspaceID == workspaceID && it.ArchivedAt == nil
+	})
+	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Title) < strings.ToLower(out[j].Title) })
+	return out, nil
+}
+
 func (s *Store) ItemsByStatus(_ context.Context, statusID string) ([]store.Item, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -506,6 +516,10 @@ func (s *Store) SetItemAssignee(_ context.Context, id, assigneeID string) error 
 
 func (s *Store) SetItemStatus(_ context.Context, id, statusID string) error {
 	return s.mutateItem(id, func(it *store.Item) { it.StatusID = statusID })
+}
+
+func (s *Store) SetItemParent(_ context.Context, id, parentID string) error {
+	return s.mutateItem(id, func(it *store.Item) { it.ParentID = parentID })
 }
 
 func (s *Store) SetItemPositions(_ context.Context, orderedIDs []string) error {

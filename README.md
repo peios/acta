@@ -54,6 +54,12 @@ link back to the parent. Archiving a parent archives its whole subtree and
 restoring brings it back; the archive view lists subtree roots, and a permanent
 delete cascades via the FK.
 
+**Slice 7 — promote / demote.** A "Parent" dropdown in every item's modal
+reparents it: `None` promotes it to the board (top-level), picking an item
+demotes it under that item. The picker excludes the item and its own
+descendants, and the server re-checks, so a reparent can never form a cycle.
+The item keeps its status and lands at the end of its new container.
+
 ## Running
 
 ### Live-reload dev (recommended)

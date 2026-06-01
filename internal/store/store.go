@@ -190,6 +190,9 @@ type Store interface {
 	// ordered within one. ItemByID returns an item regardless of archive state.
 	CreateItem(ctx context.Context, i Item) (Item, error)
 	ItemsByWorkspace(ctx context.Context, workspaceID string) ([]Item, error)
+	// AllItemsByWorkspace returns every active item (top-level and nested), for
+	// the reparent picker.
+	AllItemsByWorkspace(ctx context.Context, workspaceID string) ([]Item, error)
 	ItemsByStatus(ctx context.Context, statusID string) ([]Item, error)
 	ArchivedItemsByWorkspace(ctx context.Context, workspaceID string) ([]Item, error)
 	ItemByID(ctx context.Context, id string) (Item, error)
@@ -204,6 +207,7 @@ type Store interface {
 	UpdateItemDescription(ctx context.Context, id, description string) error
 	SetItemAssignee(ctx context.Context, id, assigneeID string) error
 	SetItemStatus(ctx context.Context, id, statusID string) error
+	SetItemParent(ctx context.Context, id, parentID string) error
 	ArchiveItem(ctx context.Context, id string) error
 	UnarchiveItem(ctx context.Context, id string) error
 	ReorderItems(ctx context.Context, statusID string, orderedIDs []string) error

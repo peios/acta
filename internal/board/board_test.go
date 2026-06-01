@@ -253,6 +253,76 @@ func TestArchiveCascadesToSubtree(t *testing.T) {
 	}
 }
 
+func TestReparentPromote(t *testing.T) {
+	svc, wsID, st := setup(t)
+	ctx := context.Background()
+	p, _ := svc.CreateItem(ctx, wsID, st[0].ID, "Parent")
+	sub, _ := svc.CreateSubtask(ctx, p.ID, "Sub")
+
+	if err := svc.Reparent(ctx, sub.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	onBoard := false
+	for _, it := range mustItems(t, svc, wsID) {
+		if it.ID == sub.ID {
+			onBoard = true
+		}
+	}
+	if !onBoard {
+		t.Fatal("promoted item is not on the board")
+	}
+	if kids, _ := svc.Children(ctx, p.ID); len(kids) != 0 {
+		t.Fatalf("promoted item still a child: %d remain", len(kids))
+	}
+}
+
+func TestReparentDemote(t *testing.T) {
+	svc, wsID, st := setup(t)
+	ctx := context.Background()
+	a, _ := svc.CreateItem(ctx, wsID, st[0].ID, "A")
+	b, _ := svc.CreateItem(ctx, wsID, st[0].ID, "B")
+
+	if err := svc.Reparent(ctx, a.ID, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range mustItems(t, svc, wsID) {
+		if it.ID == a.ID {
+			t.Fatal("demoted item still on the board")
+		}
+	}
+	if kids, _ := svc.Children(ctx, b.ID); len(kids) != 1 || kids[0].ID != a.ID {
+		t.Fatal("A is not a child of B after demote")
+	}
+}
+
+func TestReparentCycleRejected(t *testing.T) {
+	svc, wsID, st := setup(t)
+	ctx := context.Background()
+	a, _ := svc.CreateItem(ctx, wsID, st[0].ID, "A")
+	b, _ := svc.CreateSubtask(ctx, a.ID, "B") // B under A
+
+	if err := svc.Reparent(ctx, a.ID, b.ID); !errors.Is(err, board.ErrCycle) {
+		t.Fatalf("A under its descendant B: want ErrCycle, got %v", err)
+	}
+	if err := svc.Reparent(ctx, a.ID, a.ID); !errors.Is(err, board.ErrCycle) {
+		t.Fatalf("A under itself: want ErrCycle, got %v", err)
+	}
+}
+
+func TestCandidateParentsExcludeSubtree(t *testing.T) {
+	svc, wsID, st := setup(t)
+	ctx := context.Background()
+	a, _ := svc.CreateItem(ctx, wsID, st[0].ID, "A")
+	b, _ := svc.CreateSubtask(ctx, a.ID, "B")
+	svc.CreateSubtask(ctx, b.ID, "C") // A > B > C
+	other, _ := svc.CreateItem(ctx, wsID, st[0].ID, "Other")
+
+	cands, _ := svc.CandidateParents(ctx, wsID, a.ID)
+	if len(cands) != 1 || cands[0].ID != other.ID {
+		t.Fatalf("candidates for A should be just [Other], got %d", len(cands))
+	}
+}
+
 func mustItems(t *testing.T, svc *board.Service, wsID string) []store.Item {
 	t.Helper()
 	items, err := svc.Items(context.Background(), wsID)

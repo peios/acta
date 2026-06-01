@@ -22,9 +22,15 @@ type modalView struct {
 	Archived    bool
 	ParentID    string // "" if this is a top-level item
 	ParentTitle string
+	Parents     []parentOption // candidates this item may be reparented under
 	Children    []childView
 	SubDone     int
 	SubTotal    int
+}
+
+type parentOption struct {
+	ID    string
+	Title string
 }
 
 type commentView struct {
@@ -108,6 +114,14 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 			parentTitle = p.Title
 		}
 	}
+	candidates, err := h.board.CandidateParents(ctx, ws.ID, item.ID)
+	if err != nil {
+		return modalView{}, false, err
+	}
+	parents := make([]parentOption, len(candidates))
+	for i, c := range candidates {
+		parents[i] = parentOption{ID: c.ID, Title: c.Title}
+	}
 
 	return modalView{
 		Slug:        ws.Slug,
@@ -120,6 +134,7 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		Archived:    item.ArchivedAt != nil,
 		ParentID:    item.ParentID,
 		ParentTitle: parentTitle,
+		Parents:     parents,
 		Children:    kids,
 		SubDone:     done,
 		SubTotal:    len(children),
@@ -239,6 +254,23 @@ func (h *handlers) subtaskCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, itemDTO{ID: it.ID, StatusID: it.StatusID, Title: it.Title, Position: it.Position})
+}
+
+func (h *handlers) itemParent(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.resolveWorkspace(w, r); !ok {
+		return
+	}
+	var req struct {
+		ParentID string `json:"parent_id"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if err := h.board.Reparent(r.Context(), r.PathValue("id"), req.ParentID); err != nil {
+		writeBoardErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *handlers) subtaskReorder(w http.ResponseWriter, r *http.Request) {

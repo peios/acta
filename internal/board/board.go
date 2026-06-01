@@ -31,6 +31,7 @@ var (
 	ErrInvalidComment     = errors.New("board: invalid comment")
 	ErrStatusNotEmpty     = errors.New("board: status still has items")
 	ErrNoStatus           = errors.New("board: workspace has no statuses")
+	ErrCycle              = errors.New("board: would create a cycle")
 	// ErrStatusMismatch is returned when a status doesn't belong to the
 	// workspace it's being used in — a malformed or cross-workspace request.
 	ErrStatusMismatch = errors.New("board: status not in this workspace")
@@ -391,6 +392,92 @@ func (s *Service) Children(ctx context.Context, parentID string) ([]store.Item, 
 
 func (s *Service) ReorderSubtasks(ctx context.Context, parentID string, orderedIDs []string) error {
 	return s.store.SetItemPositions(ctx, orderedIDs)
+}
+
+// Reparent moves an item under newParentID — "" promotes it back to the board
+// (top-level), an item id demotes it under that item. Parenting under itself or
+// one of its own descendants would form a cycle and is refused. The item keeps
+// its status and lands at the end of its new container.
+func (s *Service) Reparent(ctx context.Context, itemID, newParentID string) error {
+	item, err := s.store.ItemByID(ctx, itemID)
+	if err != nil {
+		return err
+	}
+	if newParentID == itemID {
+		return ErrCycle
+	}
+	if newParentID != "" {
+		parent, err := s.store.ItemByID(ctx, newParentID)
+		if err != nil {
+			return err
+		}
+		if parent.WorkspaceID != item.WorkspaceID {
+			return ErrStatusMismatch
+		}
+		desc, err := s.descendants(ctx, itemID)
+		if err != nil {
+			return err
+		}
+		if desc[newParentID] {
+			return ErrCycle
+		}
+	}
+	if err := s.store.SetItemParent(ctx, itemID, newParentID); err != nil {
+		return err
+	}
+	if item.ParentID == "" {
+		if err := s.densifyLane(ctx, item.StatusID); err != nil {
+			return err
+		}
+	} else if err := s.densifyChildren(ctx, item.ParentID); err != nil {
+		return err
+	}
+	if newParentID == "" {
+		return s.appendToLaneEnd(ctx, item.StatusID, itemID)
+	}
+	return s.appendToParentEnd(ctx, newParentID, itemID)
+}
+
+// descendants returns the set of item ids in itemID's subtree (excluding itself).
+func (s *Service) descendants(ctx context.Context, itemID string) (map[string]bool, error) {
+	out := map[string]bool{}
+	queue := []string{itemID}
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		kids, err := s.store.ChildrenByParent(ctx, id, true)
+		if err != nil {
+			return nil, err
+		}
+		for _, k := range kids {
+			if !out[k.ID] {
+				out[k.ID] = true
+				queue = append(queue, k.ID)
+			}
+		}
+	}
+	return out, nil
+}
+
+// CandidateParents lists the items an item may be reparented under: every active
+// item except itself and its descendants.
+func (s *Service) CandidateParents(ctx context.Context, workspaceID, itemID string) ([]store.Item, error) {
+	all, err := s.store.AllItemsByWorkspace(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	desc, err := s.descendants(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]store.Item, 0, len(all))
+	for _, it := range all {
+		if it.ID == itemID || desc[it.ID] {
+			continue
+		}
+		out = append(out, it)
+	}
+	return out, nil
 }
 
 // --- comments ---
