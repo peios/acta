@@ -36,6 +36,11 @@
 
   const cardOf = (id) => board.querySelector('.item[data-item-id="' + CSS.escape(id) + '"]');
 
+  function debounce(fn, ms) {
+    let t;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+  }
+
   // --- board items ---
 
   function newItem(it) {
@@ -207,12 +212,13 @@
     el.querySelector('[data-modal-close]').addEventListener('click', (e) => { e.preventDefault(); closeModal(); });
 
     const title = el.querySelector('.modal-title');
-    title.addEventListener('change', async () => {
+    const saveTitle = debounce(async () => {
       const t = title.value.trim();
       if (!t) return;
       try { await api('/items/' + id + '/rename', { title: t }); const c = cardOf(id); if (c) c.querySelector('.item-title').textContent = t; }
       catch (e) { fail(e); }
-    });
+    }, 500);
+    title.addEventListener('input', saveTitle);
 
     el.querySelector('.modal-status').addEventListener('change', async (e) => {
       const statusId = e.target.value;
@@ -236,16 +242,22 @@
       catch (err2) { fail(err2); }
     });
 
-    el.querySelector('.modal-desc-save').addEventListener('click', async () => {
-      const description = el.querySelector('.modal-desc').value;
-      try { await api('/items/' + id + '/description', { description }); }
-      catch (e) { fail(e); }
-    });
+    // Description auto-saves (debounced) — no save button.
+    const desc = el.querySelector('.modal-desc');
+    const hint = el.querySelector('[data-desc-saved]');
+    const setHint = (t) => { if (hint) hint.textContent = t; };
+    const saveDesc = debounce(async () => {
+      try { await api('/items/' + id + '/description', { description: desc.value }); setHint('saved'); setTimeout(() => setHint(''), 1400); }
+      catch (e) { fail(e); setHint(''); }
+    }, 600);
+    desc.addEventListener('input', () => { setHint('saving…'); saveDesc(); });
 
-    el.querySelector('[data-comment-form]').addEventListener('submit', async (e) => {
+    // Comments post on Cmd/Ctrl+Enter.
+    const commentInput = el.querySelector('[data-comment-input]');
+    commentInput.addEventListener('keydown', async (e) => {
+      if (!((e.metaKey || e.ctrlKey) && e.key === 'Enter')) return;
       e.preventDefault();
-      const input = el.querySelector('.comment-input');
-      const body = input.value.trim();
+      const body = commentInput.value.trim();
       if (!body) return;
       try {
         const c = await api('/items/' + id + '/comment', { body });
@@ -259,7 +271,7 @@
         text.textContent = c.body;
         div.append(meta, text);
         el.querySelector('[data-comment-list]').append(div);
-        input.value = '';
+        commentInput.value = '';
       } catch (err2) { fail(err2); }
     });
 
