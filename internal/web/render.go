@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"embed"
 	"html/template"
+	"io/fs"
 	"log/slog"
 	"net/http"
 )
@@ -11,11 +12,25 @@ import (
 //go:embed templates/*.html
 var templatesFS embed.FS
 
+//go:embed static
+var staticFS embed.FS
+
+// staticHandler serves the embedded /static assets (currently just the passkey
+// JS glue). Same-origin, so it's already permitted by our default-src 'self'
+// CSP without any inline script.
+func staticHandler() http.Handler {
+	sub, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		panic(err)
+	}
+	return http.StripPrefix("/static/", http.FileServerFS(sub))
+}
+
 // Each page is parsed in its own set together with the base layout, so the
 // "content"/"title" blocks don't collide across pages.
 var pages = func() map[string]*template.Template {
 	m := map[string]*template.Template{}
-	for _, name := range []string{"login.html", "home.html"} {
+	for _, name := range []string{"login.html", "home.html", "security.html", "welcome.html"} {
 		m[name] = template.Must(
 			template.New(name).ParseFS(templatesFS, "templates/base.html", "templates/"+name),
 		)

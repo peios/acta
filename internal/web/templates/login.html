@@ -34,5 +34,14 @@
 
     <button class="btn-primary" type="submit">Sign in&nbsp;&rarr;</button>
   </form>
+
+  <div class="stack reveal d2" style="margin-top: 1.1rem;">
+    <div class="divider">or</div>
+    <button id="passkey-login" class="btn-secondary btn-block" type="button" data-return-to="{{.ReturnTo}}">
+      Sign in with a passkey
+    </button>
+    <p class="alert" role="alert" data-passkey-error></p>
+  </div>
 </main>
 {{end}}
+{{define "scripts"}}<script src="/static/acta.js"></script>{{end}}

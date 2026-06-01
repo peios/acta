@@ -14,6 +14,7 @@ import (
 
 	"github.com/peios/acta/internal/authn/local"
 	"github.com/peios/acta/internal/config"
+	"github.com/peios/acta/internal/passkey"
 	"github.com/peios/acta/internal/session"
 	"github.com/peios/acta/internal/store"
 	"github.com/peios/acta/internal/store/memstore"
@@ -39,8 +40,14 @@ func newTestServer(t *testing.T) (string, *http.Client) {
 		IdleTimeout:     time.Hour,
 		AbsoluteTimeout: 24 * time.Hour,
 	})
-	provider := local.NewProvider(ms, sessions)
-	handler := web.NewHandler(config.Config{Env: "dev"}, sessions, provider)
+	passkeys, err := passkey.New(ms, passkey.Config{
+		RPID: "localhost", RPOrigin: "http://localhost:8080", RPName: "Acta",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := local.NewProvider(ms, sessions, passkeys, false)
+	handler := web.NewHandler(config.Config{Env: "dev"}, sessions, provider, passkeys)
 
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
@@ -175,8 +182,11 @@ func TestLoginLogoutFlow(t *testing.T) {
 		"username": {"jack"}, "password": {testPassword}, "csrf_token": {token},
 	})
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/" {
-		t.Fatalf("login: want 303 to /, got %d %q", resp.StatusCode, resp.Header.Get("Location"))
+	// A user with no passkeys is sent to the "add a passkey" interstitial
+	// first; the session is already established, so the protected pages serve.
+	if resp.StatusCode != http.StatusSeeOther ||
+		!strings.HasPrefix(resp.Header.Get("Location"), "/welcome/passkey") {
+		t.Fatalf("login: want 303 to /welcome/passkey, got %d %q", resp.StatusCode, resp.Header.Get("Location"))
 	}
 
 	// Protected page now serves and renders the signed-in identity.

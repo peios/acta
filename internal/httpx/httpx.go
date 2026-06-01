@@ -2,7 +2,49 @@
 // layers, with no dependencies of its own.
 package httpx
 
-import "strings"
+import (
+	"net/http"
+	"strings"
+)
+
+// ChallengeCookie carries the id of an in-flight WebAuthn ceremony between its
+// begin and finish requests. Short-lived and HttpOnly.
+const ChallengeCookie = "acta_wauth"
+
+// SetChallengeCookie stores the ceremony id for ~5 minutes.
+func SetChallengeCookie(w http.ResponseWriter, id string, secure bool) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     ChallengeCookie,
+		Value:    id,
+		Path:     "/",
+		MaxAge:   300,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// ChallengeCookieValue returns the ceremony id, or "" if absent.
+func ChallengeCookieValue(r *http.Request) string {
+	c, err := r.Cookie(ChallengeCookie)
+	if err != nil {
+		return ""
+	}
+	return c.Value
+}
+
+// ClearChallengeCookie removes the ceremony cookie.
+func ClearChallengeCookie(w http.ResponseWriter, secure bool) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     ChallengeCookie,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
 
 // SafeReturnTo sanitises a post-login redirect target. It only permits local,
 // absolute paths — anything that could redirect off-site (scheme-relative

@@ -2,18 +2,7 @@
 {{define "crumb"}}home{{end}}
 {{define "content"}}
 <main class="stage stage--wide">
-  <div class="home-head reveal d1">
-    <div class="brand">
-      <span class="mark sm">a</span>
-      <span class="name sm">acta</span>
-    </div>
-    <form class="signout" method="post" action="/logout">
-      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <button class="btn-secondary" type="submit">Sign out</button>
-    </form>
-  </div>
-
-  <section class="panel reveal d2">
+  <section class="panel reveal d1">
     <div class="identity">
       <span class="mark">{{printf "%.1s" .Principal.Display}}</span>
       <div class="who">

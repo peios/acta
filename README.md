@@ -14,29 +14,41 @@ defer identity to the kernel without touching the session or web layers.
 server-side sessions (real logout), CSRF protection, secure cookies,
 return-to redirects.
 
+**Slice 2 — passkeys.** WebAuthn (usernameless / discoverable login),
+registration from Settings → Security, and a post-login interstitial that
+offers to add one. Passkeys are a second method of the same pluggable `local`
+provider.
+
 ## Running
 
-### Whole stack in Docker (app + db)
+### Live-reload dev (recommended)
 
 ```sh
-docker compose up --build
+docker compose up        # app + Postgres; just leave it running
 ```
 
-Then open http://localhost:8080 and sign in with the bootstrap admin
-(`admin` / `admin` by default — set `ACTA_BOOTSTRAP_*` in `docker-compose.yml`
-to change). Migrations run automatically on first boot.
+The dev override mounts the source and runs the app under
+[air](https://github.com/air-verse/air), so any edit to Go, templates, or
+static assets rebuilds and restarts in ~1s — keep it up and refresh the
+browser. Open http://localhost:8080 and sign in with the bootstrap admin
+(`admin` / `admin` by default; set `ACTA_BOOTSTRAP_*` in `docker-compose.yml`).
+Migrations run on boot.
 
-### Host dev loop (app on host, db in Docker)
+### Plain build (no live reload)
 
 ```sh
-make db-up                                   # just Postgres
-ACTA_SEED_PASSWORD=secret \
-  go run ./cmd/acta createuser -username jack -display "Jack"
-make run                                     # serve on :8080
+docker compose -f docker-compose.yml up --build
 ```
 
-Either way, visiting http://localhost:8080 logged-out bounces you to the
-login page.
+### Host binary (Postgres in Docker)
+
+```sh
+make db-up
+ACTA_SEED_PASSWORD=secret go run ./cmd/acta createuser -username jack -display "Jack"
+make run
+```
+
+Visiting http://localhost:8080 logged-out bounces you to the login page.
 
 ## Configuration
 
@@ -47,3 +59,6 @@ login page.
 | `ACTA_ENV`              | `dev`                            | `prod` enables Secure cookies  |
 | `ACTA_SESSION_IDLE`     | `24h`                            | idle session timeout           |
 | `ACTA_SESSION_ABSOLUTE` | `720h`                           | absolute session lifetime      |
+| `ACTA_RP_ID`            | `localhost`                      | WebAuthn relying-party id (domain, no scheme/port) |
+| `ACTA_RP_ORIGIN`        | `http://localhost:8080`          | WebAuthn origin the browser sends |
+| `ACTA_RP_NAME`          | `Acta`                           | WebAuthn relying-party display name |

@@ -4,6 +4,7 @@
 package memstore
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -14,15 +15,19 @@ import (
 )
 
 type Store struct {
-	mu       sync.Mutex
-	users    map[string]store.User
-	sessions map[string]store.Session
+	mu          sync.Mutex
+	users       map[string]store.User
+	sessions    map[string]store.Session
+	credentials map[string]store.Credential
+	challenges  map[string]store.Challenge
 }
 
 func New() *Store {
 	return &Store{
-		users:    map[string]store.User{},
-		sessions: map[string]store.Session{},
+		users:       map[string]store.User{},
+		sessions:    map[string]store.Session{},
+		credentials: map[string]store.Credential{},
+		challenges:  map[string]store.Challenge{},
 	}
 }
 
@@ -113,6 +118,88 @@ func (s *Store) DeleteExpiredSessions(_ context.Context, now time.Time) (int64, 
 		}
 	}
 	return n, nil
+}
+
+// --- credentials ---
+
+func (s *Store) CreateCredential(_ context.Context, c store.Credential) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if c.ID == "" {
+		c.ID = newID()
+	}
+	if c.CreatedAt.IsZero() {
+		c.CreatedAt = time.Now()
+	}
+	s.credentials[c.ID] = c
+	return nil
+}
+
+func (s *Store) CredentialsByUserID(_ context.Context, userID string) ([]store.Credential, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.Credential
+	for _, c := range s.credentials {
+		if c.UserID == userID {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+func (s *Store) CredentialByCredentialID(_ context.Context, credentialID []byte) (store.Credential, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, c := range s.credentials {
+		if bytes.Equal(c.CredentialID, credentialID) {
+			return c, nil
+		}
+	}
+	return store.Credential{}, store.ErrCredentialNotFound
+}
+
+func (s *Store) TouchCredential(_ context.Context, credentialID []byte, signCount uint32, lastUsed time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, c := range s.credentials {
+		if bytes.Equal(c.CredentialID, credentialID) {
+			c.SignCount = signCount
+			c.LastUsedAt = &lastUsed
+			s.credentials[id] = c
+			return nil
+		}
+	}
+	return store.ErrCredentialNotFound
+}
+
+func (s *Store) DeleteCredential(_ context.Context, id, userID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if c, ok := s.credentials[id]; !ok || c.UserID != userID {
+		return store.ErrCredentialNotFound
+	}
+	delete(s.credentials, id)
+	return nil
+}
+
+// --- webauthn challenges ---
+
+func (s *Store) CreateChallenge(_ context.Context, c store.Challenge) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.challenges[c.ID] = c
+	return nil
+}
+
+func (s *Store) ConsumeChallenge(_ context.Context, id string) (store.Challenge, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.challenges[id]
+	if !ok {
+		return store.Challenge{}, store.ErrChallengeNotFound
+	}
+	delete(s.challenges, id)
+	return c, nil
 }
 
 func (s *Store) Close() {}

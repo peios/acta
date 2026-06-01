@@ -1,0 +1,25 @@
+{{define "title"}}Add a passkey · Acta{{end}}
+{{define "crumb"}}welcome{{end}}
+{{define "content"}}
+<main class="stage">
+  <div class="brand reveal d1">
+    <span class="mark">a</span>
+    <span class="name">acta</span>
+  </div>
+
+  <h1 class="title reveal d1">Add a passkey</h1>
+  <p class="subtitle reveal d1">
+    Skip the password next time — sign in with your fingerprint, face, or device
+    PIN. It's faster and phishing-resistant.
+  </p>
+
+  <div class="card stack reveal d2">
+    <button id="passkey-add" class="btn-primary" type="button" data-success="{{.ReturnTo}}">
+      Add a passkey
+    </button>
+    <a class="btn-secondary btn-block" href="{{.ReturnTo}}">Skip for now</a>
+    <p class="alert" role="alert" data-passkey-error></p>
+  </div>
+</main>
+{{end}}
+{{define "scripts"}}<script src="/static/acta.js"></script>{{end}}

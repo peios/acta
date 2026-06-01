@@ -12,6 +12,7 @@ import (
 	"github.com/peios/acta/internal/authn"
 	"github.com/peios/acta/internal/httpx"
 	"github.com/peios/acta/internal/identity"
+	"github.com/peios/acta/internal/passkey"
 	"github.com/peios/acta/internal/session"
 	"github.com/peios/acta/internal/store"
 )
@@ -19,25 +20,32 @@ import (
 type Provider struct {
 	store    store.Store
 	sessions *session.Manager
+	passkeys *passkey.Service
+	secure   bool
 	// dummyHash is verified against when the username is unknown, so a failed
 	// login takes the same time whether or not the account exists — closing
 	// the timing side-channel for username enumeration.
 	dummyHash string
 }
 
-func NewProvider(st store.Store, sessions *session.Manager) *Provider {
+func NewProvider(st store.Store, sessions *session.Manager, passkeys *passkey.Service, secure bool) *Provider {
 	dummy, _ := HashPassword("not-a-real-password")
-	return &Provider{store: st, sessions: sessions, dummyHash: dummy}
+	return &Provider{store: st, sessions: sessions, passkeys: passkeys, secure: secure, dummyHash: dummy}
 }
 
 func (p *Provider) Name() string { return "local" }
 
 func (p *Provider) Methods() []authn.Method {
-	return []authn.Method{{ID: "password", Label: "Password"}}
+	return []authn.Method{
+		{ID: "password", Label: "Password"},
+		{ID: "passkey", Label: "Passkey"},
+	}
 }
 
 func (p *Provider) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /login/password", p.handlePassword)
+	mux.HandleFunc("POST /login/passkey/begin", p.handlePasskeyBegin)
+	mux.HandleFunc("POST /login/passkey/finish", p.handlePasskeyFinish)
 }
 
 func (p *Provider) handlePassword(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +77,51 @@ func (p *Provider) handlePassword(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+
+	// Nudge first-time users to add a passkey, but only if they have none.
+	if has, err := p.passkeys.HasCredentials(r.Context(), u.ID); err == nil && !has {
+		q := url.Values{}
+		if returnTo != "/" {
+			q.Set("return_to", returnTo)
+		}
+		http.Redirect(w, r, "/welcome/passkey?"+q.Encode(), http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, returnTo, http.StatusSeeOther)
+}
+
+// handlePasskeyBegin starts a usernameless assertion and returns the options
+// as JSON for the browser's navigator.credentials.get().
+func (p *Provider) handlePasskeyBegin(w http.ResponseWriter, r *http.Request) {
+	options, challengeID, err := p.passkeys.BeginLogin(r.Context())
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	httpx.SetChallengeCookie(w, challengeID, p.secure)
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(options)
+}
+
+// handlePasskeyFinish validates the assertion, establishes a session, and
+// returns 204 — the browser script then navigates to the return target.
+func (p *Provider) handlePasskeyFinish(w http.ResponseWriter, r *http.Request) {
+	challengeID := httpx.ChallengeCookieValue(r)
+	httpx.ClearChallengeCookie(w, p.secure)
+	if challengeID == "" {
+		http.Error(w, "no ceremony in progress", http.StatusBadRequest)
+		return
+	}
+	principal, err := p.passkeys.FinishLogin(r.Context(), challengeID, r)
+	if err != nil {
+		http.Error(w, "passkey login failed", http.StatusUnauthorized)
+		return
+	}
+	if err := p.sessions.Establish(r.Context(), w, principal); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // fail redirects back to the login page with a generic error, preserving the

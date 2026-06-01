@@ -1,0 +1,49 @@
+{{define "title"}}Security · Acta{{end}}
+{{define "crumb"}}security{{end}}
+{{define "content"}}
+<main class="stage stage--wide">
+  <div class="settings reveal d1">
+    <nav class="menu">
+      <a class="active" href="/settings/security">Security</a>
+    </nav>
+
+    <section>
+      <h2 class="title" style="font-size: 1.8rem; margin-top: 0;">Security</h2>
+      <p class="section-title">Passkeys</p>
+
+      {{if .Credentials}}
+      <div class="cred-list">
+        {{range .Credentials}}
+        <div class="cred">
+          <div>
+            <div class="cred-name">{{.Name}}</div>
+            <div class="cred-meta">
+              Added {{.CreatedAt.Format "2 Jan 2006"}} ·
+              {{if .LastUsedAt}}last used {{.LastUsedAt.Format "2 Jan 2006"}}{{else}}never used{{end}}
+            </div>
+          </div>
+          <form method="post" action="/settings/passkeys/{{.ID}}/delete">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <button class="link-danger" type="submit">Remove</button>
+          </form>
+        </div>
+        {{end}}
+      </div>
+      {{else}}
+      <p class="subtitle">No passkeys yet — add one for faster, phishing-resistant sign-in.</p>
+      {{end}}
+
+      <div class="passkey-add" style="margin-top: 1.2rem;">
+        <div class="input-wrap">
+          <input id="passkey-name" class="input" placeholder="Name (optional)" autocomplete="off">
+        </div>
+        <button id="passkey-add" class="btn-primary" type="button" data-success="/settings/security">
+          Add a passkey
+        </button>
+      </div>
+      <p class="alert" role="alert" data-passkey-error></p>
+    </section>
+  </div>
+</main>
+{{end}}
+{{define "scripts"}}<script src="/static/acta.js"></script>{{end}}

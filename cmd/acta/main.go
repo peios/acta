@@ -21,6 +21,7 @@ import (
 
 	"github.com/peios/acta/internal/authn/local"
 	"github.com/peios/acta/internal/config"
+	"github.com/peios/acta/internal/passkey"
 	"github.com/peios/acta/internal/session"
 	"github.com/peios/acta/internal/store"
 	"github.com/peios/acta/internal/store/postgres"
@@ -73,8 +74,16 @@ func runServe(args []string) error {
 		IdleTimeout:     cfg.SessionIdle,
 		AbsoluteTimeout: cfg.SessionAbsolute,
 	})
-	provider := local.NewProvider(pg, sessions)
-	handler := web.NewHandler(cfg, sessions, provider)
+	passkeys, err := passkey.New(pg, passkey.Config{
+		RPID:     cfg.RPID,
+		RPOrigin: cfg.RPOrigin,
+		RPName:   cfg.RPName,
+	})
+	if err != nil {
+		return fmt.Errorf("passkey: %w", err)
+	}
+	provider := local.NewProvider(pg, sessions, passkeys, cfg.CookieSecure())
+	handler := web.NewHandler(cfg, sessions, provider, passkeys)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
