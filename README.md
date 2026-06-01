@@ -113,3 +113,33 @@ Visiting http://localhost:8080 logged-out bounces you to the login page.
 | `ACTA_RP_ID`            | `localhost`                      | WebAuthn relying-party id (domain, no scheme/port) |
 | `ACTA_RP_ORIGIN`        | `http://localhost:8080`          | WebAuthn origin the browser sends |
 | `ACTA_RP_NAME`          | `Acta`                           | WebAuthn relying-party display name |
+
+## MCP
+
+Acta speaks the [Model Context Protocol](https://modelcontextprotocol.io) at
+`/mcp` (Streamable HTTP). It is a sibling of the JSON API — an agent-shaped
+presentation of the same board — authenticated the same way: a personal access
+token as a `Bearer` header, no cookies, no CSRF. Point an MCP client at the
+endpoint with a token:
+
+```jsonc
+// e.g. an MCP client config
+{
+  "acta": {
+    "type": "http",
+    "url": "http://localhost:8080/mcp",
+    "headers": { "Authorization": "Bearer acta_pat_…" }
+  }
+}
+```
+
+**Use an agent token.** Mint the PAT for an **agent** (Settings → Agents → a
+`you/agentname` principal), not your own account. Every write the agent makes is
+attributed to that principal, so `created_by` and comment authorship read
+`you/agentname` rather than `you` — the board shows who (well, what) did the
+work. A human PAT works too; it just acts as you.
+
+Tools: `whoami`, `list_workspaces`, `list_items` (filter by status / assignee /
+`mine` / parent), `get_item` (deep — subtasks + comments), `create_item`,
+`set_item_status`, `set_item_assignee`, `add_comment`, `archive_item`,
+`unarchive_item`. Statuses and principals are referred to by name; items by id.

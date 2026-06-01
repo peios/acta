@@ -105,10 +105,15 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	api.HandleFunc("POST /api/v1/w/{slug}/items/{id}/subtasks", h.apiCreateSubtask)
 	api.HandleFunc("POST /api/v1/w/{slug}/items/{id}/transition", h.apiTransition)
 
-	// Top-level dispatch: token-auth (no CSRF) for the API, cookie + CSRF for
-	// the browser UI. Both share request logging and the security headers.
+	// Model Context Protocol endpoint (Streamable HTTP). Like the REST API it is
+	// Bearer-authed and carries no cookies, so it mounts outside CSRF.
+	mcpEndpoint := requireToken(tokens)(h.mcpHandler())
+
+	// Top-level dispatch: token-auth (no CSRF) for the API and MCP, cookie + CSRF
+	// for the browser UI. All share request logging and the security headers.
 	root := http.NewServeMux()
 	root.Handle("/api/v1/", requireToken(tokens)(api))
+	root.Handle("/mcp", mcpEndpoint)
 	root.Handle("/", csrf(cfg.CookieSecure())(mux))
 	return requestLogger(secureHeaders(root))
 }

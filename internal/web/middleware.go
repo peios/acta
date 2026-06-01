@@ -142,6 +142,14 @@ func (s *statusWriter) WriteHeader(code int) {
 	s.ResponseWriter.WriteHeader(code)
 }
 
+// Flush forwards to the underlying writer when it supports streaming, so the
+// logging wrapper stays transparent to SSE / chunked responses.
+func (s *statusWriter) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 func randToken() string {
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)

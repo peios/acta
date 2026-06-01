@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -141,7 +142,7 @@ func (h *handlers) apiItem(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	statusName, userName, err := h.nameMaps(r.Context(), ws)
+	statusName, userName, err := h.nameMaps(r.Context(), ws.ID)
 	if err != nil {
 		apiError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -238,6 +239,45 @@ func (h *handlers) apiWorkspace(w http.ResponseWriter, r *http.Request) (store.W
 	return ws, true
 }
 
+// errUnknownStatus / errUnknownUser are sentinels so callers can distinguish a
+// bad name (client error) from an internal failure. The wrapped message is
+// already human-readable, so the MCP surface returns it verbatim.
+var (
+	errUnknownStatus = errors.New("unknown status")
+	errUnknownUser   = errors.New("unknown user")
+)
+
+// statusIDByName resolves a status name to its id within a workspace,
+// case-insensitively. Unknown names wrap errUnknownStatus. This is the shared
+// core behind both the REST resolveStatus and the MCP tools.
+func (h *handlers) statusIDByName(ctx context.Context, workspaceID, name string) (string, error) {
+	statuses, err := h.board.Statuses(ctx, workspaceID)
+	if err != nil {
+		return "", err
+	}
+	for _, s := range statuses {
+		if strings.EqualFold(s.Name, name) {
+			return s.ID, nil
+		}
+	}
+	return "", fmt.Errorf("%w: %s", errUnknownStatus, name)
+}
+
+// userIDByName resolves a username to its id, case-insensitively. Unknown names
+// wrap errUnknownUser.
+func (h *handlers) userIDByName(ctx context.Context, name string) (string, error) {
+	users, err := h.board.Users(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, u := range users {
+		if strings.EqualFold(u.Username, name) {
+			return u.ID, nil
+		}
+	}
+	return "", fmt.Errorf("%w: %s", errUnknownUser, name)
+}
+
 // resolveStatus maps a status name to its id within ws. An empty name yields
 // ("", true) — the caller decides what that means (create defaults to the first
 // lane). An unknown name writes a 400 and returns ok=false.
@@ -246,22 +286,20 @@ func (h *handlers) resolveStatus(w http.ResponseWriter, ctx context.Context, ws 
 	if name == "" {
 		return "", true
 	}
-	statuses, err := h.board.Statuses(ctx, ws.ID)
-	if err != nil {
+	id, err := h.statusIDByName(ctx, ws.ID, name)
+	switch {
+	case err == nil:
+		return id, true
+	case errors.Is(err, errUnknownStatus):
+		apiError(w, http.StatusBadRequest, "unknown status: "+name)
+	default:
 		apiError(w, http.StatusInternalServerError, "internal error")
-		return "", false
 	}
-	for _, s := range statuses {
-		if strings.EqualFold(s.Name, name) {
-			return s.ID, true
-		}
-	}
-	apiError(w, http.StatusBadRequest, "unknown status: "+name)
 	return "", false
 }
 
-func (h *handlers) nameMaps(ctx context.Context, ws store.Workspace) (statusName, userName map[string]string, err error) {
-	statuses, err := h.board.Statuses(ctx, ws.ID)
+func (h *handlers) nameMaps(ctx context.Context, workspaceID string) (statusName, userName map[string]string, err error) {
+	statuses, err := h.board.Statuses(ctx, workspaceID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -281,7 +319,7 @@ func (h *handlers) nameMaps(ctx context.Context, ws store.Workspace) (statusName
 }
 
 func (h *handlers) writeItem(w http.ResponseWriter, ctx context.Context, ws store.Workspace, it store.Item, status int) {
-	statusName, userName, err := h.nameMaps(ctx, ws)
+	statusName, userName, err := h.nameMaps(ctx, ws.ID)
 	if err != nil {
 		apiError(w, http.StatusInternalServerError, "internal error")
 		return
