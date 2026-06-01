@@ -1,0 +1,15 @@
+# Dev override — auto-applied by `docker compose up`. Runs the app under air so
+# host edits rebuild + restart it live; mount the source, swap to the dev image.
+#
+# For a plain production-style run instead:  docker compose -f docker-compose.yml up
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: ["air", "-c", ".air.toml"]
+    volumes:
+      - .:/src
+    environment:
+      ACTA_RP_ID: localhost
+      ACTA_RP_ORIGIN: http://localhost:8080

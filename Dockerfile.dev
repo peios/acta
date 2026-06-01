@@ -1,0 +1,10 @@
+# Live-reload dev image: Go toolchain + air. The real source is bind-mounted
+# over /src at runtime (see docker-compose.override.yml); air watches it and
+# rebuilds + restarts on every change. Module cache lives in /go and persists
+# across the bind mount, so rebuilds are fast.
+FROM golang:1.26
+WORKDIR /src
+RUN go install github.com/air-verse/air@latest
+COPY go.mod go.sum ./
+RUN go mod download
+CMD ["air", "-c", ".air.toml"]

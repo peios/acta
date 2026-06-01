@@ -1,0 +1,16 @@
+# air live-reload config. Rebuilds on changes to Go source, templates, static
+# JS, and migrations (all of which are compiled / embedded into the binary).
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/acta ./cmd/acta"
+bin = "./tmp/acta"
+args_bin = ["serve"]
+include_ext = ["go", "html", "js", "sql"]
+exclude_dir = ["tmp", "bin", ".git", ".claude", "notes"]
+delay = 800
+stop_on_error = true
+
+[misc]
+clean_on_exit = true
