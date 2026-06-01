@@ -1,0 +1,49 @@
+{{define "title"}}Workspaces · Acta{{end}}
+{{define "content"}}
+<main class="stage stage--wide">
+  <div class="settings reveal d1">
+    <nav class="menu">
+      <a href="/settings/security">Security</a>
+      <a class="active" href="/settings/workspaces">Workspaces</a>
+    </nav>
+
+    <section>
+      <h2 class="title" style="font-size: 1.8rem; margin-top: 0;">Workspaces</h2>
+      <p class="section-title">Your workspaces</p>
+
+      {{if .Err}}<p class="alert" role="alert">{{.Err}}</p>{{end}}
+
+      <div class="ws-list">
+        {{range .Workspaces}}
+        <div class="ws-row">
+          <form class="ws-rename" method="post" action="/settings/workspaces/{{.ID}}/rename">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <div class="input-wrap">
+              <input class="input" name="name" value="{{.Name}}" maxlength="60" autocomplete="off" aria-label="Workspace name">
+            </div>
+            <button class="btn-secondary" type="submit">Rename</button>
+          </form>
+          <div class="ws-side">
+            <span class="ws-meta">/w/{{.Slug}}</span>
+            {{if gt (len $.Workspaces) 1}}
+            <form method="post" action="/settings/workspaces/{{.ID}}/delete">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+              <button class="link-danger" type="submit">Remove</button>
+            </form>
+            {{end}}
+          </div>
+        </div>
+        {{end}}
+      </div>
+
+      <form class="ws-create" method="post" action="/settings/workspaces">
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <div class="input-wrap">
+          <input class="input" name="name" placeholder="New workspace name" maxlength="60" autocomplete="off">
+        </div>
+        <button class="btn-primary" type="submit" style="width: auto;">Create</button>
+      </form>
+    </section>
+  </div>
+</main>
+{{end}}

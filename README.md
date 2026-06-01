@@ -19,6 +19,12 @@ registration from Settings → Security, and a post-login interstitial that
 offers to add one. Passkeys are a second method of the same pluggable `local`
 provider.
 
+**Slice 3 — workspaces.** Top-level work containers, URL-scoped at `/w/{slug}`
+(immutable slug, so a rename never breaks a link); `/` redirects to your last
+workspace. A top-bar switcher and a Settings → Workspaces page to create,
+rename, and delete them. Shared/global for now — every signed-in user sees all
+workspaces; membership is a later slice.
+
 ## Running
 
 ### Live-reload dev (recommended)

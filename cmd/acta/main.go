@@ -26,6 +26,7 @@ import (
 	"github.com/peios/acta/internal/store"
 	"github.com/peios/acta/internal/store/postgres"
 	"github.com/peios/acta/internal/web"
+	"github.com/peios/acta/internal/workspace"
 )
 
 func main() {
@@ -82,8 +83,9 @@ func runServe(args []string) error {
 	if err != nil {
 		return fmt.Errorf("passkey: %w", err)
 	}
+	workspaces := workspace.New(pg)
 	provider := local.NewProvider(pg, sessions, passkeys, cfg.CookieSecure())
-	handler := web.NewHandler(cfg, sessions, provider, passkeys)
+	handler := web.NewHandler(cfg, sessions, provider, passkeys, workspaces)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,

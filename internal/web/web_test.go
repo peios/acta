@@ -19,6 +19,7 @@ import (
 	"github.com/peios/acta/internal/store"
 	"github.com/peios/acta/internal/store/memstore"
 	"github.com/peios/acta/internal/web"
+	"github.com/peios/acta/internal/workspace"
 )
 
 const testPassword = "s3cret-passw0rd"
@@ -36,6 +37,11 @@ func newTestServer(t *testing.T) (string, *http.Client) {
 		t.Fatal(err)
 	}
 
+	workspaces := workspace.New(ms)
+	if _, err := workspaces.Create(context.Background(), "General", ""); err != nil {
+		t.Fatal(err)
+	}
+
 	sessions := session.New(ms, session.Config{
 		IdleTimeout:     time.Hour,
 		AbsoluteTimeout: 24 * time.Hour,
@@ -47,7 +53,7 @@ func newTestServer(t *testing.T) (string, *http.Client) {
 		t.Fatal(err)
 	}
 	provider := local.NewProvider(ms, sessions, passkeys, false)
-	handler := web.NewHandler(config.Config{Env: "dev"}, sessions, provider, passkeys)
+	handler := web.NewHandler(config.Config{Env: "dev"}, sessions, provider, passkeys, workspaces)
 
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
@@ -189,10 +195,19 @@ func TestLoginLogoutFlow(t *testing.T) {
 		t.Fatalf("login: want 303 to /welcome/passkey, got %d %q", resp.StatusCode, resp.Header.Get("Location"))
 	}
 
-	// Protected page now serves and renders the signed-in identity.
-	home := getBody(t, client, base+"/", http.StatusOK)
-	if !strings.Contains(home, "Jack") || !strings.Contains(home, "@jack") {
-		t.Fatalf("home page not showing signed-in identity:\n%s", home)
+	// "/" now redirects to the user's current workspace; follow it and confirm
+	// the workspace page serves the signed-in identity.
+	root, err := client.Get(base + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root.Body.Close()
+	if root.StatusCode != http.StatusSeeOther {
+		t.Fatalf("GET / after login: want 303, got %d", root.StatusCode)
+	}
+	home := getBody(t, client, base+root.Header.Get("Location"), http.StatusOK)
+	if !strings.Contains(home, "@jack") {
+		t.Fatalf("workspace page not showing signed-in identity:\n%s", home)
 	}
 
 	// Log out -> 303 to /login, session invalidated server-side.

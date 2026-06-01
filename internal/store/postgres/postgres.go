@@ -212,6 +212,108 @@ func (p *Postgres) ConsumeChallenge(ctx context.Context, id string) (store.Chall
 	return c, err
 }
 
+// --- workspaces ---
+
+func (p *Postgres) CreateWorkspace(ctx context.Context, w store.Workspace) (store.Workspace, error) {
+	const q = `INSERT INTO workspaces (slug, name, created_by)
+	           VALUES ($1, $2, $3::uuid)
+	           RETURNING id::text, slug, name, COALESCE(created_by::text, ''), created_at`
+	var createdBy any
+	if w.CreatedBy != "" {
+		createdBy = w.CreatedBy
+	}
+	var out store.Workspace
+	err := p.pool.QueryRow(ctx, q, w.Slug, w.Name, createdBy).
+		Scan(&out.ID, &out.Slug, &out.Name, &out.CreatedBy, &out.CreatedAt)
+	if err != nil {
+		return store.Workspace{}, mapWorkspaceConflict(err)
+	}
+	return out, nil
+}
+
+func (p *Postgres) ListWorkspaces(ctx context.Context) ([]store.Workspace, error) {
+	const q = `SELECT id::text, slug, name, COALESCE(created_by::text, ''), created_at
+	           FROM workspaces ORDER BY created_at`
+	rows, err := p.pool.Query(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Workspace
+	for rows.Next() {
+		w, err := scanWorkspace(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, w)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) WorkspaceByID(ctx context.Context, id string) (store.Workspace, error) {
+	const q = `SELECT id::text, slug, name, COALESCE(created_by::text, ''), created_at
+	           FROM workspaces WHERE id = $1::uuid`
+	return scanWorkspace(p.pool.QueryRow(ctx, q, id))
+}
+
+func (p *Postgres) WorkspaceBySlug(ctx context.Context, slug string) (store.Workspace, error) {
+	const q = `SELECT id::text, slug, name, COALESCE(created_by::text, ''), created_at
+	           FROM workspaces WHERE slug = $1`
+	return scanWorkspace(p.pool.QueryRow(ctx, q, slug))
+}
+
+func scanWorkspace(row pgx.Row) (store.Workspace, error) {
+	var w store.Workspace
+	err := row.Scan(&w.ID, &w.Slug, &w.Name, &w.CreatedBy, &w.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.Workspace{}, store.ErrWorkspaceNotFound
+	}
+	return w, err
+}
+
+func (p *Postgres) RenameWorkspace(ctx context.Context, id, name string) error {
+	const q = `UPDATE workspaces SET name = $2 WHERE id = $1::uuid`
+	ct, err := p.pool.Exec(ctx, q, id, name)
+	if err != nil {
+		return mapWorkspaceConflict(err)
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrWorkspaceNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) DeleteWorkspace(ctx context.Context, id string) error {
+	const q = `DELETE FROM workspaces WHERE id = $1::uuid`
+	ct, err := p.pool.Exec(ctx, q, id)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrWorkspaceNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) CountWorkspaces(ctx context.Context) (int, error) {
+	var n int
+	err := p.pool.QueryRow(ctx, `SELECT count(*) FROM workspaces`).Scan(&n)
+	return n, err
+}
+
+// mapWorkspaceConflict turns a unique-violation into the matching sentinel by
+// inspecting which constraint fired (name index vs the slug column).
+func mapWorkspaceConflict(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		if strings.Contains(pgErr.ConstraintName, "slug") {
+			return store.ErrWorkspaceSlugTaken
+		}
+		return store.ErrWorkspaceNameTaken
+	}
+	return err
+}
+
 // --- migrations ---
 
 // Migrate applies any embedded migrations not yet recorded, each in its own

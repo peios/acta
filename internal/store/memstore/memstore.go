@@ -8,6 +8,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,6 +22,7 @@ type Store struct {
 	sessions    map[string]store.Session
 	credentials map[string]store.Credential
 	challenges  map[string]store.Challenge
+	workspaces  map[string]store.Workspace
 }
 
 func New() *Store {
@@ -28,6 +31,7 @@ func New() *Store {
 		sessions:    map[string]store.Session{},
 		credentials: map[string]store.Credential{},
 		challenges:  map[string]store.Challenge{},
+		workspaces:  map[string]store.Workspace{},
 	}
 }
 
@@ -200,6 +204,94 @@ func (s *Store) ConsumeChallenge(_ context.Context, id string) (store.Challenge,
 	}
 	delete(s.challenges, id)
 	return c, nil
+}
+
+// --- workspaces ---
+
+func (s *Store) CreateWorkspace(_ context.Context, w store.Workspace) (store.Workspace, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, ex := range s.workspaces {
+		if strings.EqualFold(ex.Name, w.Name) {
+			return store.Workspace{}, store.ErrWorkspaceNameTaken
+		}
+		if ex.Slug == w.Slug {
+			return store.Workspace{}, store.ErrWorkspaceSlugTaken
+		}
+	}
+	if w.ID == "" {
+		w.ID = newID()
+	}
+	if w.CreatedAt.IsZero() {
+		w.CreatedAt = time.Now()
+	}
+	s.workspaces[w.ID] = w
+	return w, nil
+}
+
+func (s *Store) ListWorkspaces(_ context.Context) ([]store.Workspace, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]store.Workspace, 0, len(s.workspaces))
+	for _, w := range s.workspaces {
+		out = append(out, w)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out, nil
+}
+
+func (s *Store) WorkspaceByID(_ context.Context, id string) (store.Workspace, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	w, ok := s.workspaces[id]
+	if !ok {
+		return store.Workspace{}, store.ErrWorkspaceNotFound
+	}
+	return w, nil
+}
+
+func (s *Store) WorkspaceBySlug(_ context.Context, slug string) (store.Workspace, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, w := range s.workspaces {
+		if w.Slug == slug {
+			return w, nil
+		}
+	}
+	return store.Workspace{}, store.ErrWorkspaceNotFound
+}
+
+func (s *Store) RenameWorkspace(_ context.Context, id, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	w, ok := s.workspaces[id]
+	if !ok {
+		return store.ErrWorkspaceNotFound
+	}
+	for oid, ex := range s.workspaces {
+		if oid != id && strings.EqualFold(ex.Name, name) {
+			return store.ErrWorkspaceNameTaken
+		}
+	}
+	w.Name = name
+	s.workspaces[id] = w
+	return nil
+}
+
+func (s *Store) DeleteWorkspace(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.workspaces[id]; !ok {
+		return store.ErrWorkspaceNotFound
+	}
+	delete(s.workspaces, id)
+	return nil
+}
+
+func (s *Store) CountWorkspaces(_ context.Context) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.workspaces), nil
 }
 
 func (s *Store) Close() {}

@@ -15,6 +15,9 @@ var (
 	ErrUsernameTaken      = errors.New("store: username already taken")
 	ErrCredentialNotFound = errors.New("store: credential not found")
 	ErrChallengeNotFound  = errors.New("store: challenge not found")
+	ErrWorkspaceNotFound  = errors.New("store: workspace not found")
+	ErrWorkspaceNameTaken = errors.New("store: workspace name already taken")
+	ErrWorkspaceSlugTaken = errors.New("store: workspace slug already taken")
 )
 
 // User is the persisted account record.
@@ -74,6 +77,20 @@ type Challenge struct {
 	ExpiresAt time.Time
 }
 
+// Workspace is a top-level container for work. Everything the user creates
+// (boards, items — future slices) will belong to one. Slug is the URL-safe
+// identifier used in /w/{slug}/… paths and is immutable once assigned, so
+// links never break when a workspace is renamed. Name is the human label and
+// is unique case-insensitively. CreatedBy is the id of the creating user and
+// may be empty (e.g. the seeded default, or after the creator is deleted).
+type Workspace struct {
+	ID        string
+	Slug      string
+	Name      string
+	CreatedBy string
+	CreatedAt time.Time
+}
+
 // Store is the persistence interface for Acta.
 type Store interface {
 	CreateUser(ctx context.Context, u NewUser) (User, error)
@@ -96,6 +113,17 @@ type Store interface {
 	// deletes it in one shot (single-use).
 	CreateChallenge(ctx context.Context, c Challenge) error
 	ConsumeChallenge(ctx context.Context, id string) (Challenge, error)
+
+	// CreateWorkspace persists w (caller supplies a unique slug and name);
+	// it returns ErrWorkspaceNameTaken / ErrWorkspaceSlugTaken on collision.
+	// RenameWorkspace changes only the name (the slug is immutable).
+	CreateWorkspace(ctx context.Context, w Workspace) (Workspace, error)
+	ListWorkspaces(ctx context.Context) ([]Workspace, error)
+	WorkspaceByID(ctx context.Context, id string) (Workspace, error)
+	WorkspaceBySlug(ctx context.Context, slug string) (Workspace, error)
+	RenameWorkspace(ctx context.Context, id, name string) error
+	DeleteWorkspace(ctx context.Context, id string) error
+	CountWorkspaces(ctx context.Context) (int, error)
 
 	Close()
 }

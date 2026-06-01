@@ -1,0 +1,13 @@
+{{define "title"}}{{.Workspace.Name}} · Acta{{end}}
+{{define "content"}}
+<main class="stage stage--wide">
+  <section class="panel reveal d1">
+    <div class="empty">
+      <h2>{{.Workspace.Name}}</h2>
+      <p>This workspace is empty. Acta is being rebuilt one slice at a time — the board comes next.</p>
+    </div>
+    <hr class="rule">
+    <div class="who-handle">Signed in as @{{.Principal.Username}}</div>
+  </section>
+</main>
+{{end}}

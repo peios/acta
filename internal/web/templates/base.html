@@ -78,7 +78,8 @@
     font-size: .88rem;
   }
   .topbar-left, .topbar-right { display: flex; align-items: center; gap: 1.15rem; }
-  .crumbs .a { color: var(--text); font-weight: 700; }
+  .crumbs { display: inline-flex; align-items: center; }
+  .crumbs .a { color: var(--text); font-weight: 700; text-decoration: none; }
   .crumbs .sep { color: #514c45; margin: 0 .5rem; }
   .crumbs .page { color: var(--muted); }
   .org { color: var(--faint); letter-spacing: .04em; }
@@ -88,7 +89,38 @@
     color: var(--muted); text-decoration: none; font: inherit;
     background: none; border: 0; padding: 0; cursor: pointer;
   }
-  .toplink:hover { color: var(--text); }
+  .toplink:hover, .toplink.active { color: var(--text); }
+
+  /* ---- workspace switcher (a no-JS <details> dropdown) ---- */
+  .wsmenu { position: relative; display: inline-flex; }
+  .wsmenu > summary {
+    list-style: none; cursor: pointer;
+    display: inline-flex; align-items: center; gap: .4rem;
+  }
+  .wsmenu > summary::-webkit-details-marker { display: none; }
+  .wsmenu .wsname { color: var(--text); }
+  .wsmenu > summary:hover .wsname { color: var(--accent-hi); }
+  .wsmenu .caret { color: var(--faint); font-size: .65rem; transition: transform .15s, color .15s; }
+  .wsmenu[open] > summary .caret { color: var(--accent); transform: rotate(180deg); }
+  .wspanel {
+    position: absolute; top: calc(100% + .6rem); left: -.4rem; z-index: 20;
+    min-width: 12.5rem; display: grid; gap: .1rem; padding: .4rem;
+    background: linear-gradient(180deg, var(--card-top), var(--card-bot));
+    border: 1px solid var(--border); border-radius: .6rem;
+    box-shadow: 0 24px 48px -24px rgba(0,0,0,.9);
+  }
+  .wsitem {
+    display: block; padding: .46rem .6rem; border-radius: .42rem;
+    color: var(--muted); text-decoration: none; font-size: .9rem; white-space: nowrap;
+  }
+  .wsitem:hover { color: var(--text); background: #141210; }
+  .wsitem.active { color: var(--text); }
+  .wsitem.active::before { content: "› "; color: var(--accent); }
+  .wsitem.manage {
+    color: var(--faint); margin-top: .25rem; padding-top: .55rem;
+    border-top: 1px solid var(--border-soft);
+  }
+  .wsitem.manage:hover { color: var(--text); }
 
   /* ---- stage ---- */
   .stage {
@@ -254,6 +286,21 @@
   .link-danger:hover { text-decoration: underline; }
   .section-title { font-size: .72rem; letter-spacing: .13em; text-transform: uppercase; color: var(--faint); margin: 0 0 .9rem; }
 
+  /* ---- workspace management (settings) ---- */
+  .ws-list { display: grid; gap: .7rem; }
+  .ws-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    padding: .8rem 1rem; background: var(--field);
+    border: 1px solid var(--border-soft); border-radius: .6rem;
+  }
+  .ws-rename { display: flex; gap: .5rem; align-items: stretch; flex: 1; min-width: 0; margin: 0; }
+  .ws-rename .input-wrap { flex: 1; }
+  .ws-side { display: flex; align-items: center; gap: 1rem; white-space: nowrap; }
+  .ws-side form { margin: 0; }
+  .ws-meta { color: var(--faint); font-size: .78rem; }
+  .ws-create { display: flex; gap: .6rem; align-items: stretch; margin-top: 1.3rem; }
+  .ws-create .input-wrap { flex: 1; }
+
   /* ---- one quiet entrance ---- */
   @media (prefers-reduced-motion: no-preference) {
     .reveal { opacity: 0; transform: translateY(9px); animation: rise .55s cubic-bezier(.2,.7,.2,1) forwards; }
@@ -266,10 +313,30 @@
 <body>
 <div class="topbar">
   <div class="topbar-left">
-    <div class="crumbs"><span class="a">acta</span><span class="sep">/</span><span class="page">{{block "crumb" .}}acta{{end}}</span></div>
+    <div class="crumbs">
+      <a class="a" href="/">acta</a>
+      <span class="sep">/</span>
+      {{if .Nav}}
+        {{if .Workspace}}
+        <details class="wsmenu">
+          <summary><span class="wsname">{{.Workspace.Name}}</span><span class="caret">&#9662;</span></summary>
+          <div class="wspanel">
+            {{range .Workspaces}}
+            <a class="wsitem{{if eq .ID $.Workspace.ID}} active{{end}}" href="/w/{{.Slug}}">{{.Name}}</a>
+            {{end}}
+            <a class="wsitem manage" href="/settings/workspaces">Manage workspaces&hellip;</a>
+          </div>
+        </details>
+        {{else}}
+        <a class="wsitem manage" href="/settings/workspaces">Create a workspace&hellip;</a>
+        {{end}}
+      {{else}}
+        <span class="page">{{block "crumb" .}}acta{{end}}</span>
+      {{end}}
+    </div>
     {{if .Nav}}
-    <a class="toplink" href="/">Home</a>
-    <a class="toplink" href="/settings/security">Settings</a>
+    <a class="toplink{{if eq .Section "home"}} active{{end}}" href="/">Home</a>
+    <a class="toplink{{if eq .Section "settings"}} active{{end}}" href="/settings/security">Settings</a>
     {{end}}
   </div>
   <div class="topbar-right">

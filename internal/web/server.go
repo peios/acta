@@ -10,15 +10,17 @@ import (
 	"github.com/peios/acta/internal/config"
 	"github.com/peios/acta/internal/passkey"
 	"github.com/peios/acta/internal/session"
+	"github.com/peios/acta/internal/workspace"
 )
 
 // NewHandler builds the application handler.
-func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Provider, passkeys *passkey.Service) http.Handler {
+func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Provider, passkeys *passkey.Service, workspaces *workspace.Service) http.Handler {
 	h := &handlers{
-		sessions: sessions,
-		provider: provider,
-		passkeys: passkeys,
-		secure:   cfg.CookieSecure(),
+		sessions:   sessions,
+		provider:   provider,
+		passkeys:   passkeys,
+		workspaces: workspaces,
+		secure:     cfg.CookieSecure(),
 	}
 	mux := http.NewServeMux()
 
@@ -34,12 +36,17 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	protected := func(fn http.HandlerFunc) http.Handler {
 		return requireAuth(sessions)(fn)
 	}
-	mux.Handle("GET /{$}", protected(h.home))
+	mux.Handle("GET /{$}", protected(h.rootRedirect))
+	mux.Handle("GET /w/{slug}", protected(h.workspaceHome))
 	mux.Handle("GET /settings", protected(h.settingsIndex))
 	mux.Handle("GET /settings/security", protected(h.settingsSecurity))
 	mux.Handle("POST /settings/passkeys/register/begin", protected(h.passkeyRegisterBegin))
 	mux.Handle("POST /settings/passkeys/register/finish", protected(h.passkeyRegisterFinish))
 	mux.Handle("POST /settings/passkeys/{id}/delete", protected(h.passkeyDelete))
+	mux.Handle("GET /settings/workspaces", protected(h.settingsWorkspaces))
+	mux.Handle("POST /settings/workspaces", protected(h.workspaceCreate))
+	mux.Handle("POST /settings/workspaces/{id}/rename", protected(h.workspaceRename))
+	mux.Handle("POST /settings/workspaces/{id}/delete", protected(h.workspaceDelete))
 	mux.Handle("GET /welcome/passkey", protected(h.welcomePasskey))
 
 	// Global middleware chain (outermost first).

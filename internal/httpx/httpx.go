@@ -46,6 +46,34 @@ func ClearChallengeCookie(w http.ResponseWriter, secure bool) {
 	})
 }
 
+// WorkspaceCookie remembers the slug of the workspace the user last viewed, so
+// / and the top-bar switcher default back to it. It's only a UI hint — every
+// signed-in user may view every workspace, and the URL is the source of truth —
+// so it carries no security weight and is deliberately not HttpOnly-sensitive.
+const WorkspaceCookie = "acta_ws"
+
+// SetWorkspaceCookie records the last-viewed workspace slug for a year.
+func SetWorkspaceCookie(w http.ResponseWriter, slug string, secure bool) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     WorkspaceCookie,
+		Value:    slug,
+		Path:     "/",
+		MaxAge:   365 * 24 * 60 * 60,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// WorkspaceCookieValue returns the last-viewed workspace slug, or "" if absent.
+func WorkspaceCookieValue(r *http.Request) string {
+	c, err := r.Cookie(WorkspaceCookie)
+	if err != nil {
+		return ""
+	}
+	return c.Value
+}
+
 // SafeReturnTo sanitises a post-login redirect target. It only permits local,
 // absolute paths — anything that could redirect off-site (scheme-relative
 // "//host", absolute URLs, backslash tricks) collapses to "/". This is what
