@@ -24,7 +24,7 @@ func login(t *testing.T, client *http.Client, base, token string) {
 
 // wsRowRe pairs a workspace's row id (from its rename form action) with the
 // name shown in that row's input, so a test can find the id for a given name.
-var wsRowRe = regexp.MustCompile(`/settings/workspaces/([0-9a-f]+)/rename"[\s\S]*?name="name" value="([^"]+)"`)
+var wsRowRe = regexp.MustCompile(`/settings/workspaces/([a-z0-9]+)/rename"[\s\S]*?name="name" value="([^"]+)"`)
 
 func workspaceID(t *testing.T, client *http.Client, base, name string) string {
 	t.Helper()

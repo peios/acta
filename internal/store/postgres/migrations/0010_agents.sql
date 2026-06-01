@@ -12,9 +12,9 @@
 -- whose creator was later deleted, simply have no recorded author (SET NULL).
 
 ALTER TABLE users
-    ADD COLUMN agent_of_id uuid NULL REFERENCES users(id) ON DELETE CASCADE;
+    ADD COLUMN agent_of_id text NULL REFERENCES users(id) ON DELETE CASCADE;
 
 CREATE INDEX users_agent_of_id_idx ON users (agent_of_id);
 
 ALTER TABLE items
-    ADD COLUMN created_by uuid NULL REFERENCES users(id) ON DELETE SET NULL;
+    ADD COLUMN created_by text NULL REFERENCES users(id) ON DELETE SET NULL;

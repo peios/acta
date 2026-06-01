@@ -8,8 +8,8 @@
 -- identifiable in the account UI and in logs without revealing the secret.
 
 CREATE TABLE api_tokens (
-    id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id      uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    id           text        PRIMARY KEY DEFAULT gen_id(),
+    user_id      text        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name         text        NOT NULL DEFAULT '',
     token_hash   bytea       NOT NULL UNIQUE,
     prefix       text        NOT NULL DEFAULT '',

@@ -7,7 +7,7 @@
 -- recognisable ("Firefox on Linux") instead of three identical rows.
 
 ALTER TABLE sessions
-    ADD COLUMN public_id  uuid NOT NULL DEFAULT gen_random_uuid(),
+    ADD COLUMN public_id  text NOT NULL DEFAULT gen_id(),
     ADD COLUMN user_agent text NOT NULL DEFAULT '';
 
 CREATE UNIQUE INDEX sessions_public_id_idx ON sessions (public_id);

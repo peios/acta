@@ -9,8 +9,8 @@
 -- "ORDER BY position" is the lane order. Both tables cascade from the workspace.
 
 CREATE TABLE statuses (
-    id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-    workspace_id uuid        NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    id           text        PRIMARY KEY DEFAULT gen_id(),
+    workspace_id text        NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     name         text        NOT NULL,
     position     integer     NOT NULL,
     created_at   timestamptz NOT NULL DEFAULT now()
@@ -19,9 +19,9 @@ CREATE TABLE statuses (
 CREATE INDEX statuses_workspace_idx ON statuses (workspace_id, position);
 
 CREATE TABLE items (
-    id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-    workspace_id uuid        NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    status_id    uuid        NOT NULL REFERENCES statuses(id) ON DELETE CASCADE,
+    id           text        PRIMARY KEY DEFAULT gen_id(),
+    workspace_id text        NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    status_id    text        NOT NULL REFERENCES statuses(id) ON DELETE CASCADE,
     title        text        NOT NULL,
     position     integer     NOT NULL,
     created_at   timestamptz NOT NULL DEFAULT now()

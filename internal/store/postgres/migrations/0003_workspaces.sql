@@ -10,10 +10,10 @@
 -- human label, unique case-insensitively.
 
 CREATE TABLE workspaces (
-    id         uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    id         text        PRIMARY KEY DEFAULT gen_id(),
     slug       text        NOT NULL UNIQUE,
     name       text        NOT NULL,
-    created_by uuid        REFERENCES users(id) ON DELETE SET NULL,
+    created_by text        REFERENCES users(id) ON DELETE SET NULL,
     created_at timestamptz NOT NULL DEFAULT now()
 );
 

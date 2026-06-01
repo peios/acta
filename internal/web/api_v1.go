@@ -127,7 +127,7 @@ func (h *handlers) apiItem(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item, err := h.board.Item(r.Context(), r.PathValue("id"))
+	item, err := h.board.Item(r.Context(), strings.ToLower(r.PathValue("id")))
 	if errors.Is(err, store.ErrItemNotFound) || (err == nil && item.WorkspaceID != ws.ID) {
 		apiError(w, http.StatusNotFound, "item not found")
 		return
@@ -158,7 +158,7 @@ func (h *handlers) apiCreateSubtask(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	parent, err := h.board.Item(r.Context(), r.PathValue("id"))
+	parent, err := h.board.Item(r.Context(), strings.ToLower(r.PathValue("id")))
 	if errors.Is(err, store.ErrItemNotFound) || (err == nil && parent.WorkspaceID != ws.ID) {
 		apiError(w, http.StatusNotFound, "item not found")
 		return
@@ -197,7 +197,7 @@ func (h *handlers) apiTransition(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusBadRequest, "status required")
 		return
 	}
-	item, err := h.board.Item(r.Context(), r.PathValue("id"))
+	item, err := h.board.Item(r.Context(), strings.ToLower(r.PathValue("id")))
 	if errors.Is(err, store.ErrItemNotFound) || (err == nil && item.WorkspaceID != ws.ID) {
 		apiError(w, http.StatusNotFound, "item not found")
 		return
@@ -226,7 +226,7 @@ func (h *handlers) apiTransition(w http.ResponseWriter, r *http.Request) {
 
 // apiWorkspace resolves the {slug} path value, writing a JSON 404 if missing.
 func (h *handlers) apiWorkspace(w http.ResponseWriter, r *http.Request) (store.Workspace, bool) {
-	ws, err := h.workspaces.BySlug(r.Context(), r.PathValue("slug"))
+	ws, err := h.workspaces.BySlug(r.Context(), strings.ToLower(r.PathValue("slug")))
 	if errors.Is(err, store.ErrWorkspaceNotFound) {
 		apiError(w, http.StatusNotFound, "workspace not found")
 		return store.Workspace{}, false

@@ -6,13 +6,12 @@ package memstore
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/peios/acta/internal/id"
 	"github.com/peios/acta/internal/store"
 )
 
@@ -775,10 +774,6 @@ func (s *Store) SessionCount() int {
 	return len(s.sessions)
 }
 
-func newID() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
-}
+func newID() string { return id.New() }
 
 var _ store.Store = (*Store)(nil)

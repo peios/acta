@@ -7,6 +7,6 @@
 -- ON DELETE CASCADE means deleting an item removes its whole subtree.
 
 ALTER TABLE items
-    ADD COLUMN parent_id uuid REFERENCES items(id) ON DELETE CASCADE;
+    ADD COLUMN parent_id text REFERENCES items(id) ON DELETE CASCADE;
 
 CREATE INDEX items_parent_idx ON items (parent_id) WHERE parent_id IS NOT NULL;

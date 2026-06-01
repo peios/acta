@@ -38,19 +38,52 @@ func Connect(ctx context.Context, url string) (*Postgres, error) {
 
 func (p *Postgres) Close() { p.pool.Close() }
 
+// createWithRetry runs an insert whose id comes from the gen_id() default,
+// re-running so a fresh id is generated on the vanishingly rare primary-key
+// collision. Only primary-key violations are retried; other unique violations
+// (username, slug, …) are returned for the caller to interpret.
+func createWithRetry[T any](insert func() (T, error)) (T, error) {
+	var out T
+	var err error
+	for range 8 {
+		if out, err = insert(); !isPKCollision(err) {
+			return out, err
+		}
+	}
+	return out, err
+}
+
+// retryInsert is createWithRetry for inserts that return only an error.
+func retryInsert(insert func() error) error {
+	var err error
+	for range 8 {
+		if err = insert(); !isPKCollision(err) {
+			return err
+		}
+	}
+	return err
+}
+
+func isPKCollision(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && strings.HasSuffix(pgErr.ConstraintName, "_pkey")
+}
+
 // --- users ---
 
 const userCols = `id::text, username, display, password_hash, COALESCE(agent_of_id::text, ''), created_at`
 
 func (p *Postgres) CreateUser(ctx context.Context, u store.NewUser) (store.User, error) {
-	const q = `INSERT INTO users (username, display, password_hash, agent_of_id)
-	           VALUES ($1, $2, $3, $4::uuid)
-	           RETURNING ` + userCols
-	var owner any
-	if u.AgentOfID != "" {
-		owner = u.AgentOfID
-	}
-	out, err := scanUser(p.pool.QueryRow(ctx, q, u.Username, u.Display, u.PasswordHash, owner))
+	out, err := createWithRetry(func() (store.User, error) {
+		const q = `INSERT INTO users (username, display, password_hash, agent_of_id)
+		           VALUES ($1, $2, $3, $4)
+		           RETURNING ` + userCols
+		var owner any
+		if u.AgentOfID != "" {
+			owner = u.AgentOfID
+		}
+		return scanUser(p.pool.QueryRow(ctx, q, u.Username, u.Display, u.PasswordHash, owner))
+	})
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -67,7 +100,7 @@ func (p *Postgres) UserByUsername(ctx context.Context, username string) (store.U
 }
 
 func (p *Postgres) UserByID(ctx context.Context, id string) (store.User, error) {
-	const q = `SELECT ` + userCols + ` FROM users WHERE id = $1::uuid`
+	const q = `SELECT ` + userCols + ` FROM users WHERE id = $1`
 	return scanUser(p.pool.QueryRow(ctx, q, id))
 }
 
@@ -81,7 +114,7 @@ func (p *Postgres) ListUsers(ctx context.Context) ([]store.User, error) {
 }
 
 func (p *Postgres) AgentsByOwner(ctx context.Context, ownerID string) ([]store.User, error) {
-	const q = `SELECT ` + userCols + ` FROM users WHERE agent_of_id = $1::uuid ORDER BY lower(username)`
+	const q = `SELECT ` + userCols + ` FROM users WHERE agent_of_id = $1 ORDER BY lower(username)`
 	rows, err := p.pool.Query(ctx, q, ownerID)
 	if err != nil {
 		return nil, err
@@ -92,7 +125,7 @@ func (p *Postgres) AgentsByOwner(ctx context.Context, ownerID string) ([]store.U
 // DeleteUser removes the row; FKs cascade owned agents, credentials, tokens, and
 // sessions, and null out items.created_by.
 func (p *Postgres) DeleteUser(ctx context.Context, id string) error {
-	const q = `DELETE FROM users WHERE id = $1::uuid`
+	const q = `DELETE FROM users WHERE id = $1`
 	_, err := p.pool.Exec(ctx, q, id)
 	return err
 }
@@ -133,9 +166,9 @@ func scanSession(row pgx.Row) (store.Session, error) {
 }
 
 func (p *Postgres) CreateSession(ctx context.Context, s store.Session) error {
-	// public_id defaults to gen_random_uuid() in the DB.
+	// public_id defaults to gen_id() in the DB.
 	const q = `INSERT INTO sessions (id, user_id, created_at, expires_at, last_seen, user_agent)
-	           VALUES ($1, $2::uuid, $3, $4, $5, $6)`
+	           VALUES ($1, $2, $3, $4, $5, $6)`
 	_, err := p.pool.Exec(ctx, q, s.ID, s.UserID, s.CreatedAt, s.ExpiresAt, s.LastSeen, s.UserAgent)
 	return err
 }
@@ -151,7 +184,7 @@ func (p *Postgres) SessionByID(ctx context.Context, id string) (store.Session, e
 
 func (p *Postgres) SessionsByUserID(ctx context.Context, userID string, now time.Time) ([]store.Session, error) {
 	const q = `SELECT ` + sessionCols + `
-	           FROM sessions WHERE user_id = $1::uuid AND expires_at > $2
+	           FROM sessions WHERE user_id = $1 AND expires_at > $2
 	           ORDER BY last_seen DESC`
 	rows, err := p.pool.Query(ctx, q, userID, now)
 	if err != nil {
@@ -183,13 +216,13 @@ func (p *Postgres) DeleteSession(ctx context.Context, id string) error {
 }
 
 func (p *Postgres) DeleteUserSession(ctx context.Context, publicID, userID string) error {
-	const q = `DELETE FROM sessions WHERE public_id = $1::uuid AND user_id = $2::uuid`
+	const q = `DELETE FROM sessions WHERE public_id = $1 AND user_id = $2`
 	_, err := p.pool.Exec(ctx, q, publicID, userID)
 	return err
 }
 
 func (p *Postgres) DeleteOtherSessions(ctx context.Context, userID, keepID string) (int64, error) {
-	const q = `DELETE FROM sessions WHERE user_id = $1::uuid AND id <> $2`
+	const q = `DELETE FROM sessions WHERE user_id = $1 AND id <> $2`
 	ct, err := p.pool.Exec(ctx, q, userID, keepID)
 	return ct.RowsAffected(), err
 }
@@ -215,15 +248,17 @@ func scanAPIToken(row pgx.Row) (store.APIToken, error) {
 }
 
 func (p *Postgres) CreateAPIToken(ctx context.Context, t store.APIToken) (store.APIToken, error) {
-	const q = `INSERT INTO api_tokens (user_id, name, token_hash, prefix)
-	           VALUES ($1::uuid, $2, $3, $4)
-	           RETURNING ` + apiTokenCols
-	return scanAPIToken(p.pool.QueryRow(ctx, q, t.UserID, t.Name, t.Hash, t.Prefix))
+	return createWithRetry(func() (store.APIToken, error) {
+		const q = `INSERT INTO api_tokens (user_id, name, token_hash, prefix)
+		           VALUES ($1, $2, $3, $4)
+		           RETURNING ` + apiTokenCols
+		return scanAPIToken(p.pool.QueryRow(ctx, q, t.UserID, t.Name, t.Hash, t.Prefix))
+	})
 }
 
 func (p *Postgres) APITokensByUserID(ctx context.Context, userID string) ([]store.APIToken, error) {
 	const q = `SELECT ` + apiTokenCols + `
-	           FROM api_tokens WHERE user_id = $1::uuid
+	           FROM api_tokens WHERE user_id = $1
 	           ORDER BY created_at DESC`
 	rows, err := p.pool.Query(ctx, q, userID)
 	if err != nil {
@@ -251,13 +286,13 @@ func (p *Postgres) APITokenByHash(ctx context.Context, hash []byte) (store.APITo
 }
 
 func (p *Postgres) TouchAPIToken(ctx context.Context, id string, lastUsed time.Time) error {
-	const q = `UPDATE api_tokens SET last_used_at = $2 WHERE id = $1::uuid`
+	const q = `UPDATE api_tokens SET last_used_at = $2 WHERE id = $1`
 	_, err := p.pool.Exec(ctx, q, id, lastUsed)
 	return err
 }
 
 func (p *Postgres) DeleteAPIToken(ctx context.Context, id, userID string) error {
-	const q = `DELETE FROM api_tokens WHERE id = $1::uuid AND user_id = $2::uuid`
+	const q = `DELETE FROM api_tokens WHERE id = $1 AND user_id = $2`
 	ct, err := p.pool.Exec(ctx, q, id, userID)
 	if err != nil {
 		return err
@@ -271,18 +306,20 @@ func (p *Postgres) DeleteAPIToken(ctx context.Context, id, userID string) error 
 // --- credentials ---
 
 func (p *Postgres) CreateCredential(ctx context.Context, c store.Credential) error {
-	const q = `INSERT INTO credentials
-	    (user_id, credential_id, public_key, sign_count, transports, aaguid, name)
-	    VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)`
-	_, err := p.pool.Exec(ctx, q, c.UserID, c.CredentialID, c.PublicKey,
-		int64(c.SignCount), c.Transports, c.AAGUID, c.Name)
-	return err
+	return retryInsert(func() error {
+		const q = `INSERT INTO credentials
+		    (user_id, credential_id, public_key, sign_count, transports, aaguid, name)
+		    VALUES ($1, $2, $3, $4, $5, $6, $7)`
+		_, err := p.pool.Exec(ctx, q, c.UserID, c.CredentialID, c.PublicKey,
+			int64(c.SignCount), c.Transports, c.AAGUID, c.Name)
+		return err
+	})
 }
 
 func (p *Postgres) CredentialsByUserID(ctx context.Context, userID string) ([]store.Credential, error) {
 	const q = `SELECT id::text, user_id::text, credential_id, public_key, sign_count,
 	                  transports, aaguid, name, created_at, last_used_at
-	           FROM credentials WHERE user_id = $1::uuid ORDER BY created_at`
+	           FROM credentials WHERE user_id = $1 ORDER BY created_at`
 	rows, err := p.pool.Query(ctx, q, userID)
 	if err != nil {
 		return nil, err
@@ -325,7 +362,7 @@ func (p *Postgres) TouchCredential(ctx context.Context, credentialID []byte, sig
 }
 
 func (p *Postgres) DeleteCredential(ctx context.Context, id, userID string) error {
-	const q = `DELETE FROM credentials WHERE id = $1::uuid AND user_id = $2::uuid`
+	const q = `DELETE FROM credentials WHERE id = $1 AND user_id = $2`
 	ct, err := p.pool.Exec(ctx, q, id, userID)
 	if err != nil {
 		return err
@@ -340,7 +377,7 @@ func (p *Postgres) DeleteCredential(ctx context.Context, id, userID string) erro
 
 func (p *Postgres) CreateChallenge(ctx context.Context, c store.Challenge) error {
 	const q = `INSERT INTO webauthn_challenges (id, user_id, data, expires_at)
-	           VALUES ($1, $2::uuid, $3::jsonb, $4)`
+	           VALUES ($1, $2, $3::jsonb, $4)`
 	var userID any
 	if c.UserID != "" {
 		userID = c.UserID
@@ -363,16 +400,19 @@ func (p *Postgres) ConsumeChallenge(ctx context.Context, id string) (store.Chall
 // --- workspaces ---
 
 func (p *Postgres) CreateWorkspace(ctx context.Context, w store.Workspace) (store.Workspace, error) {
-	const q = `INSERT INTO workspaces (slug, name, created_by)
-	           VALUES ($1, $2, $3::uuid)
-	           RETURNING id::text, slug, name, COALESCE(created_by::text, ''), created_at`
-	var createdBy any
-	if w.CreatedBy != "" {
-		createdBy = w.CreatedBy
-	}
-	var out store.Workspace
-	err := p.pool.QueryRow(ctx, q, w.Slug, w.Name, createdBy).
-		Scan(&out.ID, &out.Slug, &out.Name, &out.CreatedBy, &out.CreatedAt)
+	out, err := createWithRetry(func() (store.Workspace, error) {
+		const q = `INSERT INTO workspaces (slug, name, created_by)
+		           VALUES ($1, $2, $3)
+		           RETURNING id::text, slug, name, COALESCE(created_by::text, ''), created_at`
+		var createdBy any
+		if w.CreatedBy != "" {
+			createdBy = w.CreatedBy
+		}
+		var out store.Workspace
+		err := p.pool.QueryRow(ctx, q, w.Slug, w.Name, createdBy).
+			Scan(&out.ID, &out.Slug, &out.Name, &out.CreatedBy, &out.CreatedAt)
+		return out, err
+	})
 	if err != nil {
 		return store.Workspace{}, mapWorkspaceConflict(err)
 	}
@@ -400,7 +440,7 @@ func (p *Postgres) ListWorkspaces(ctx context.Context) ([]store.Workspace, error
 
 func (p *Postgres) WorkspaceByID(ctx context.Context, id string) (store.Workspace, error) {
 	const q = `SELECT id::text, slug, name, COALESCE(created_by::text, ''), created_at
-	           FROM workspaces WHERE id = $1::uuid`
+	           FROM workspaces WHERE id = $1`
 	return scanWorkspace(p.pool.QueryRow(ctx, q, id))
 }
 
@@ -420,7 +460,7 @@ func scanWorkspace(row pgx.Row) (store.Workspace, error) {
 }
 
 func (p *Postgres) RenameWorkspace(ctx context.Context, id, name string) error {
-	const q = `UPDATE workspaces SET name = $2 WHERE id = $1::uuid`
+	const q = `UPDATE workspaces SET name = $2 WHERE id = $1`
 	ct, err := p.pool.Exec(ctx, q, id, name)
 	if err != nil {
 		return mapWorkspaceConflict(err)
@@ -432,7 +472,7 @@ func (p *Postgres) RenameWorkspace(ctx context.Context, id, name string) error {
 }
 
 func (p *Postgres) DeleteWorkspace(ctx context.Context, id string) error {
-	const q = `DELETE FROM workspaces WHERE id = $1::uuid`
+	const q = `DELETE FROM workspaces WHERE id = $1`
 	ct, err := p.pool.Exec(ctx, q, id)
 	if err != nil {
 		return err
@@ -465,18 +505,20 @@ func mapWorkspaceConflict(err error) error {
 // --- board: statuses ---
 
 func (p *Postgres) CreateStatus(ctx context.Context, s store.Status) (store.Status, error) {
-	const q = `INSERT INTO statuses (workspace_id, name, position)
-	           VALUES ($1::uuid, $2, $3)
-	           RETURNING id::text, workspace_id::text, name, position, created_at`
-	var out store.Status
-	err := p.pool.QueryRow(ctx, q, s.WorkspaceID, s.Name, s.Position).
-		Scan(&out.ID, &out.WorkspaceID, &out.Name, &out.Position, &out.CreatedAt)
-	return out, err
+	return createWithRetry(func() (store.Status, error) {
+		const q = `INSERT INTO statuses (workspace_id, name, position)
+		           VALUES ($1, $2, $3)
+		           RETURNING id::text, workspace_id::text, name, position, created_at`
+		var out store.Status
+		err := p.pool.QueryRow(ctx, q, s.WorkspaceID, s.Name, s.Position).
+			Scan(&out.ID, &out.WorkspaceID, &out.Name, &out.Position, &out.CreatedAt)
+		return out, err
+	})
 }
 
 func (p *Postgres) StatusesByWorkspace(ctx context.Context, workspaceID string) ([]store.Status, error) {
 	const q = `SELECT id::text, workspace_id::text, name, position, created_at
-	           FROM statuses WHERE workspace_id = $1::uuid ORDER BY position`
+	           FROM statuses WHERE workspace_id = $1 ORDER BY position`
 	rows, err := p.pool.Query(ctx, q, workspaceID)
 	if err != nil {
 		return nil, err
@@ -495,7 +537,7 @@ func (p *Postgres) StatusesByWorkspace(ctx context.Context, workspaceID string) 
 
 func (p *Postgres) StatusByID(ctx context.Context, id string) (store.Status, error) {
 	const q = `SELECT id::text, workspace_id::text, name, position, created_at
-	           FROM statuses WHERE id = $1::uuid`
+	           FROM statuses WHERE id = $1`
 	var s store.Status
 	err := p.pool.QueryRow(ctx, q, id).Scan(&s.ID, &s.WorkspaceID, &s.Name, &s.Position, &s.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -505,7 +547,7 @@ func (p *Postgres) StatusByID(ctx context.Context, id string) (store.Status, err
 }
 
 func (p *Postgres) RenameStatus(ctx context.Context, id, name string) error {
-	ct, err := p.pool.Exec(ctx, `UPDATE statuses SET name = $2 WHERE id = $1::uuid`, id, name)
+	ct, err := p.pool.Exec(ctx, `UPDATE statuses SET name = $2 WHERE id = $1`, id, name)
 	if err != nil {
 		return err
 	}
@@ -519,7 +561,7 @@ func (p *Postgres) ReorderStatuses(ctx context.Context, workspaceID string, orde
 	return p.inTx(ctx, func(tx pgx.Tx) error {
 		for i, id := range orderedIDs {
 			if _, err := tx.Exec(ctx,
-				`UPDATE statuses SET position = $1 WHERE id = $2::uuid AND workspace_id = $3::uuid`,
+				`UPDATE statuses SET position = $1 WHERE id = $2 AND workspace_id = $3`,
 				i, id, workspaceID); err != nil {
 				return err
 			}
@@ -529,7 +571,7 @@ func (p *Postgres) ReorderStatuses(ctx context.Context, workspaceID string, orde
 }
 
 func (p *Postgres) DeleteStatus(ctx context.Context, id string) error {
-	ct, err := p.pool.Exec(ctx, `DELETE FROM statuses WHERE id = $1::uuid`, id)
+	ct, err := p.pool.Exec(ctx, `DELETE FROM statuses WHERE id = $1`, id)
 	if err != nil {
 		return err
 	}
@@ -556,34 +598,36 @@ func scanItem(row pgx.Row) (store.Item, error) {
 }
 
 func (p *Postgres) CreateItem(ctx context.Context, i store.Item) (store.Item, error) {
-	const q = `INSERT INTO items (workspace_id, status_id, title, position, parent_id, created_by)
-	           VALUES ($1::uuid, $2::uuid, $3, $4, $5::uuid, $6::uuid)
-	           RETURNING ` + itemCols
-	var parent, creator any
-	if i.ParentID != "" {
-		parent = i.ParentID
-	}
-	if i.CreatedBy != "" {
-		creator = i.CreatedBy
-	}
-	return scanItem(p.pool.QueryRow(ctx, q, i.WorkspaceID, i.StatusID, i.Title, i.Position, parent, creator))
+	return createWithRetry(func() (store.Item, error) {
+		const q = `INSERT INTO items (workspace_id, status_id, title, position, parent_id, created_by)
+		           VALUES ($1, $2, $3, $4, $5, $6)
+		           RETURNING ` + itemCols
+		var parent, creator any
+		if i.ParentID != "" {
+			parent = i.ParentID
+		}
+		if i.CreatedBy != "" {
+			creator = i.CreatedBy
+		}
+		return scanItem(p.pool.QueryRow(ctx, q, i.WorkspaceID, i.StatusID, i.Title, i.Position, parent, creator))
+	})
 }
 
 func (p *Postgres) ItemsByWorkspace(ctx context.Context, workspaceID string) ([]store.Item, error) {
 	q := `SELECT ` + itemCols + ` FROM items
-	      WHERE workspace_id = $1::uuid AND parent_id IS NULL AND archived_at IS NULL ORDER BY position`
+	      WHERE workspace_id = $1 AND parent_id IS NULL AND archived_at IS NULL ORDER BY position`
 	return p.queryItems(ctx, q, workspaceID)
 }
 
 func (p *Postgres) AllItemsByWorkspace(ctx context.Context, workspaceID string) ([]store.Item, error) {
 	q := `SELECT ` + itemCols + ` FROM items
-	      WHERE workspace_id = $1::uuid AND archived_at IS NULL ORDER BY lower(title)`
+	      WHERE workspace_id = $1 AND archived_at IS NULL ORDER BY lower(title)`
 	return p.queryItems(ctx, q, workspaceID)
 }
 
 func (p *Postgres) ItemsByStatus(ctx context.Context, statusID string) ([]store.Item, error) {
 	q := `SELECT ` + itemCols + ` FROM items
-	      WHERE status_id = $1::uuid AND parent_id IS NULL AND archived_at IS NULL ORDER BY position`
+	      WHERE status_id = $1 AND parent_id IS NULL AND archived_at IS NULL ORDER BY position`
 	return p.queryItems(ctx, q, statusID)
 }
 
@@ -592,7 +636,7 @@ func (p *Postgres) ItemsByStatus(ctx context.Context, statusID string) ([]store.
 // separately from its parent.
 func (p *Postgres) ArchivedItemsByWorkspace(ctx context.Context, workspaceID string) ([]store.Item, error) {
 	q := `SELECT ` + itemCols + ` FROM items i
-	      WHERE i.workspace_id = $1::uuid AND i.archived_at IS NOT NULL
+	      WHERE i.workspace_id = $1 AND i.archived_at IS NOT NULL
 	        AND (i.parent_id IS NULL OR NOT EXISTS (
 	              SELECT 1 FROM items p WHERE p.id = i.parent_id AND p.archived_at IS NOT NULL))
 	      ORDER BY i.archived_at DESC`
@@ -600,7 +644,7 @@ func (p *Postgres) ArchivedItemsByWorkspace(ctx context.Context, workspaceID str
 }
 
 func (p *Postgres) ChildrenByParent(ctx context.Context, parentID string, includeArchived bool) ([]store.Item, error) {
-	q := `SELECT ` + itemCols + ` FROM items WHERE parent_id = $1::uuid`
+	q := `SELECT ` + itemCols + ` FROM items WHERE parent_id = $1`
 	if !includeArchived {
 		q += ` AND archived_at IS NULL`
 	}
@@ -611,9 +655,9 @@ func (p *Postgres) ChildrenByParent(ctx context.Context, parentID string, includ
 func (p *Postgres) SubtaskCountsByWorkspace(ctx context.Context, workspaceID, doneStatusID string) (map[string]store.SubtaskCount, error) {
 	const q = `SELECT parent_id::text,
 	                  count(*) AS total,
-	                  count(*) FILTER (WHERE status_id = $2::uuid) AS done
+	                  count(*) FILTER (WHERE status_id = $2) AS done
 	           FROM items
-	           WHERE workspace_id = $1::uuid AND parent_id IS NOT NULL AND archived_at IS NULL
+	           WHERE workspace_id = $1 AND parent_id IS NOT NULL AND archived_at IS NULL
 	           GROUP BY parent_id`
 	var done any
 	if doneStatusID != "" {
@@ -654,16 +698,16 @@ func (p *Postgres) queryItems(ctx context.Context, q, arg string) ([]store.Item,
 }
 
 func (p *Postgres) ItemByID(ctx context.Context, id string) (store.Item, error) {
-	q := `SELECT ` + itemCols + ` FROM items WHERE id = $1::uuid`
+	q := `SELECT ` + itemCols + ` FROM items WHERE id = $1`
 	return scanItem(p.pool.QueryRow(ctx, q, id))
 }
 
 func (p *Postgres) RenameItem(ctx context.Context, id, title string) error {
-	return p.execItem(ctx, `UPDATE items SET title = $2 WHERE id = $1::uuid`, id, title)
+	return p.execItem(ctx, `UPDATE items SET title = $2 WHERE id = $1`, id, title)
 }
 
 func (p *Postgres) UpdateItemDescription(ctx context.Context, id, description string) error {
-	return p.execItem(ctx, `UPDATE items SET description = $2 WHERE id = $1::uuid`, id, description)
+	return p.execItem(ctx, `UPDATE items SET description = $2 WHERE id = $1`, id, description)
 }
 
 func (p *Postgres) SetItemAssignee(ctx context.Context, id, assigneeID string) error {
@@ -672,7 +716,7 @@ func (p *Postgres) SetItemAssignee(ctx context.Context, id, assigneeID string) e
 	if assigneeID != "" {
 		a = assigneeID
 	}
-	ct, err := p.pool.Exec(ctx, `UPDATE items SET assignee_id = $2::uuid WHERE id = $1::uuid`, id, a)
+	ct, err := p.pool.Exec(ctx, `UPDATE items SET assignee_id = $2 WHERE id = $1`, id, a)
 	if err != nil {
 		return err
 	}
@@ -683,11 +727,11 @@ func (p *Postgres) SetItemAssignee(ctx context.Context, id, assigneeID string) e
 }
 
 func (p *Postgres) ArchiveItem(ctx context.Context, id string) error {
-	return p.execItem(ctx, `UPDATE items SET archived_at = now() WHERE id = $1::uuid`, id, nil)
+	return p.execItem(ctx, `UPDATE items SET archived_at = now() WHERE id = $1`, id, nil)
 }
 
 func (p *Postgres) UnarchiveItem(ctx context.Context, id string) error {
-	return p.execItem(ctx, `UPDATE items SET archived_at = NULL WHERE id = $1::uuid`, id, nil)
+	return p.execItem(ctx, `UPDATE items SET archived_at = NULL WHERE id = $1`, id, nil)
 }
 
 // execItem runs an item UPDATE, mapping no-rows-affected to ErrItemNotFound.
@@ -713,7 +757,7 @@ func (p *Postgres) ReorderItems(ctx context.Context, statusID string, orderedIDs
 	return p.inTx(ctx, func(tx pgx.Tx) error {
 		for i, id := range orderedIDs {
 			if _, err := tx.Exec(ctx,
-				`UPDATE items SET status_id = $1::uuid, position = $2 WHERE id = $3::uuid`,
+				`UPDATE items SET status_id = $1, position = $2 WHERE id = $3`,
 				statusID, i, id); err != nil {
 				return err
 			}
@@ -723,11 +767,11 @@ func (p *Postgres) ReorderItems(ctx context.Context, statusID string, orderedIDs
 }
 
 func (p *Postgres) SetItemStatus(ctx context.Context, id, statusID string) error {
-	return p.execItem(ctx, `UPDATE items SET status_id = $2::uuid WHERE id = $1::uuid`, id, statusID)
+	return p.execItem(ctx, `UPDATE items SET status_id = $2 WHERE id = $1`, id, statusID)
 }
 
 func (p *Postgres) SetItemMilestone(ctx context.Context, id string, isMilestone bool) error {
-	return p.execItem(ctx, `UPDATE items SET is_milestone = $2 WHERE id = $1::uuid`, id, isMilestone)
+	return p.execItem(ctx, `UPDATE items SET is_milestone = $2 WHERE id = $1`, id, isMilestone)
 }
 
 func (p *Postgres) SetItemParent(ctx context.Context, id, parentID string) error {
@@ -736,7 +780,7 @@ func (p *Postgres) SetItemParent(ctx context.Context, id, parentID string) error
 	if parentID != "" {
 		parent = parentID
 	}
-	ct, err := p.pool.Exec(ctx, `UPDATE items SET parent_id = $2::uuid WHERE id = $1::uuid`, id, parent)
+	ct, err := p.pool.Exec(ctx, `UPDATE items SET parent_id = $2 WHERE id = $1`, id, parent)
 	if err != nil {
 		return err
 	}
@@ -751,7 +795,7 @@ func (p *Postgres) SetItemParent(ctx context.Context, id, parentID string) error
 func (p *Postgres) SetItemPositions(ctx context.Context, orderedIDs []string) error {
 	return p.inTx(ctx, func(tx pgx.Tx) error {
 		for i, id := range orderedIDs {
-			if _, err := tx.Exec(ctx, `UPDATE items SET position = $1 WHERE id = $2::uuid`, i, id); err != nil {
+			if _, err := tx.Exec(ctx, `UPDATE items SET position = $1 WHERE id = $2`, i, id); err != nil {
 				return err
 			}
 		}
@@ -760,7 +804,7 @@ func (p *Postgres) SetItemPositions(ctx context.Context, orderedIDs []string) er
 }
 
 func (p *Postgres) DeleteItem(ctx context.Context, id string) error {
-	ct, err := p.pool.Exec(ctx, `DELETE FROM items WHERE id = $1::uuid`, id)
+	ct, err := p.pool.Exec(ctx, `DELETE FROM items WHERE id = $1`, id)
 	if err != nil {
 		return err
 	}
@@ -773,22 +817,24 @@ func (p *Postgres) DeleteItem(ctx context.Context, id string) error {
 // --- comments ---
 
 func (p *Postgres) CreateComment(ctx context.Context, c store.Comment) (store.Comment, error) {
-	const q = `INSERT INTO comments (item_id, author_id, body)
-	           VALUES ($1::uuid, $2::uuid, $3)
-	           RETURNING id::text, item_id::text, COALESCE(author_id::text, ''), body, created_at`
-	var author any
-	if c.AuthorID != "" {
-		author = c.AuthorID
-	}
-	var out store.Comment
-	err := p.pool.QueryRow(ctx, q, c.ItemID, author, c.Body).
-		Scan(&out.ID, &out.ItemID, &out.AuthorID, &out.Body, &out.CreatedAt)
-	return out, err
+	return createWithRetry(func() (store.Comment, error) {
+		const q = `INSERT INTO comments (item_id, author_id, body)
+		           VALUES ($1, $2, $3)
+		           RETURNING id::text, item_id::text, COALESCE(author_id::text, ''), body, created_at`
+		var author any
+		if c.AuthorID != "" {
+			author = c.AuthorID
+		}
+		var out store.Comment
+		err := p.pool.QueryRow(ctx, q, c.ItemID, author, c.Body).
+			Scan(&out.ID, &out.ItemID, &out.AuthorID, &out.Body, &out.CreatedAt)
+		return out, err
+	})
 }
 
 func (p *Postgres) CommentsByItem(ctx context.Context, itemID string) ([]store.Comment, error) {
 	const q = `SELECT id::text, item_id::text, COALESCE(author_id::text, ''), body, created_at
-	           FROM comments WHERE item_id = $1::uuid ORDER BY created_at`
+	           FROM comments WHERE item_id = $1 ORDER BY created_at`
 	rows, err := p.pool.Query(ctx, q, itemID)
 	if err != nil {
 		return nil, err

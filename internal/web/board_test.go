@@ -28,7 +28,7 @@ func postJSON(t *testing.T, client *http.Client, url, token string, body any) *h
 }
 
 // laneRe pairs a lane's status id with the name in its rename input.
-var laneRe = regexp.MustCompile(`data-status-id="([0-9a-f]+)"[\s\S]*?value="([^"]+)"`)
+var laneRe = regexp.MustCompile(`data-status-id="([a-z0-9]+)"[\s\S]*?value="([^"]+)"`)
 
 func statusID(t *testing.T, client *http.Client, base, name string) string {
 	t.Helper()

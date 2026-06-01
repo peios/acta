@@ -96,7 +96,7 @@ func TestDescriptionAndComment(t *testing.T) {
 	}
 }
 
-var assigneeOptRe = regexp.MustCompile(`<option value="([0-9a-f]+)"[^>]*>Jack</option>`)
+var assigneeOptRe = regexp.MustCompile(`<option value="([a-z0-9]+)"[^>]*>Jack</option>`)
 
 func TestAssignFromModal(t *testing.T) {
 	base, client := newTestServer(t)
