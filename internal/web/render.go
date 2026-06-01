@@ -26,17 +26,36 @@ func staticHandler() http.Handler {
 	return http.StripPrefix("/static/", http.FileServerFS(sub))
 }
 
-// Each page is parsed in its own set together with the base layout, so the
-// "content"/"title" blocks don't collide across pages.
+// Each page is parsed in its own set together with the base layout (and the
+// shared item-modal partial), so the "content"/"title" blocks don't collide
+// across pages.
 var pages = func() map[string]*template.Template {
 	m := map[string]*template.Template{}
-	for _, name := range []string{"login.html", "board.html", "security.html", "workspaces.html", "welcome.html"} {
+	for _, name := range []string{"login.html", "board.html", "security.html", "workspaces.html", "welcome.html", "archive.html"} {
 		m[name] = template.Must(
-			template.New(name).ParseFS(templatesFS, "templates/base.html", "templates/"+name),
+			template.New(name).ParseFS(templatesFS,
+				"templates/base.html", "templates/item_modal.html", "templates/"+name),
 		)
 	}
 	return m
 }()
+
+// itemModalTmpl renders just the modal markup, for board.js to inject when
+// opening an item without a full page reload.
+var itemModalTmpl = template.Must(
+	template.New("item_modal.html").ParseFS(templatesFS, "templates/item_modal.html"),
+)
+
+func renderItemModal(w http.ResponseWriter, data any) {
+	var buf bytes.Buffer
+	if err := itemModalTmpl.ExecuteTemplate(&buf, "item-modal", data); err != nil {
+		slog.Error("render modal", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = buf.WriteTo(w)
+}
 
 func render(w http.ResponseWriter, status int, page string, data any) {
 	t, ok := pages[page]

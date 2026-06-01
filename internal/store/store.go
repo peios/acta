@@ -105,14 +105,37 @@ type Status struct {
 
 // Item is a card on the board: a title living in exactly one status, ordered by
 // Position within that lane. WorkspaceID is denormalised from the status for
-// cheap workspace-wide queries and cascade integrity.
+// cheap workspace-wide queries and cascade integrity. AssigneeID is the
+// optional owner ("" = unassigned); ArchivedAt is nil for active items and set
+// when an item is archived (soft-deleted — hidden from the board, restorable).
 type Item struct {
 	ID          string
 	WorkspaceID string
 	StatusID    string
+	ParentID    string // "" for a top-level (board) item; otherwise its parent
 	Title       string
+	Description string
+	AssigneeID  string
 	Position    int
+	ArchivedAt  *time.Time
 	CreatedAt   time.Time
+}
+
+// SubtaskCount is a parent's direct-child progress: Total active children and
+// how many of them sit in the "done" status.
+type SubtaskCount struct {
+	Done  int
+	Total int
+}
+
+// Comment is an append-only note by a user on an item. AuthorID may be empty if
+// the author's account was later removed.
+type Comment struct {
+	ID        string
+	ItemID    string
+	AuthorID  string
+	Body      string
+	CreatedAt time.Time
 }
 
 // Store is the persistence interface for Acta.
@@ -120,6 +143,7 @@ type Store interface {
 	CreateUser(ctx context.Context, u NewUser) (User, error)
 	UserByUsername(ctx context.Context, username string) (User, error)
 	UserByID(ctx context.Context, id string) (User, error)
+	ListUsers(ctx context.Context) ([]User, error)
 
 	CreateSession(ctx context.Context, s Session) error
 	SessionByID(ctx context.Context, id string) (Session, error)
@@ -159,17 +183,36 @@ type Store interface {
 	ReorderStatuses(ctx context.Context, workspaceID string, orderedIDs []string) error
 	DeleteStatus(ctx context.Context, id string) error
 
-	// Items (board cards). ItemsByWorkspace and ItemsByStatus return items
-	// ordered by position. ReorderItems sets each id's status to statusID and
-	// its position to its index in the slice, atomically — this is how an item
-	// both moves between lanes and gets ordered within one.
+	// Items (board cards). ItemsByWorkspace and ItemsByStatus return only
+	// active (non-archived) items, ordered by position. ReorderItems sets each
+	// id's status to statusID and its position to its index in the slice,
+	// atomically — this is how an item both moves between lanes and gets
+	// ordered within one. ItemByID returns an item regardless of archive state.
 	CreateItem(ctx context.Context, i Item) (Item, error)
 	ItemsByWorkspace(ctx context.Context, workspaceID string) ([]Item, error)
 	ItemsByStatus(ctx context.Context, statusID string) ([]Item, error)
+	ArchivedItemsByWorkspace(ctx context.Context, workspaceID string) ([]Item, error)
 	ItemByID(ctx context.Context, id string) (Item, error)
+	// ChildrenByParent returns an item's direct children ordered by position;
+	// includeArchived false omits archived ones (the modal list), true keeps
+	// them (cascade walks).
+	ChildrenByParent(ctx context.Context, parentID string, includeArchived bool) ([]Item, error)
+	// SubtaskCountsByWorkspace returns per-parent direct-child progress for the
+	// top-level board, counting children in doneStatusID as done.
+	SubtaskCountsByWorkspace(ctx context.Context, workspaceID, doneStatusID string) (map[string]SubtaskCount, error)
 	RenameItem(ctx context.Context, id, title string) error
+	UpdateItemDescription(ctx context.Context, id, description string) error
+	SetItemAssignee(ctx context.Context, id, assigneeID string) error
+	SetItemStatus(ctx context.Context, id, statusID string) error
+	ArchiveItem(ctx context.Context, id string) error
+	UnarchiveItem(ctx context.Context, id string) error
 	ReorderItems(ctx context.Context, statusID string, orderedIDs []string) error
+	SetItemPositions(ctx context.Context, orderedIDs []string) error
 	DeleteItem(ctx context.Context, id string) error
+
+	// Comments on an item, returned oldest-first.
+	CreateComment(ctx context.Context, c Comment) (Comment, error)
+	CommentsByItem(ctx context.Context, itemID string) ([]Comment, error)
 
 	Close()
 }

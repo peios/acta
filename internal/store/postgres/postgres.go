@@ -69,6 +69,25 @@ func (p *Postgres) UserByID(ctx context.Context, id string) (store.User, error) 
 	return scanUser(p.pool.QueryRow(ctx, q, id))
 }
 
+func (p *Postgres) ListUsers(ctx context.Context) ([]store.User, error) {
+	const q = `SELECT id::text, username, display, password_hash, created_at
+	           FROM users ORDER BY lower(display), lower(username)`
+	rows, err := p.pool.Query(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.User
+	for rows.Next() {
+		var u store.User
+		if err := rows.Scan(&u.ID, &u.Username, &u.Display, &u.PasswordHash, &u.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
 func scanUser(row pgx.Row) (store.User, error) {
 	var u store.User
 	err := row.Scan(&u.ID, &u.Username, &u.Display, &u.PasswordHash, &u.CreatedAt)
@@ -393,26 +412,89 @@ func (p *Postgres) DeleteStatus(ctx context.Context, id string) error {
 
 // --- board: items ---
 
+const itemCols = `id::text, workspace_id::text, status_id::text, COALESCE(parent_id::text, ''),
+                  title, description, COALESCE(assignee_id::text, ''), position, archived_at, created_at`
+
+func scanItem(row pgx.Row) (store.Item, error) {
+	var i store.Item
+	err := row.Scan(&i.ID, &i.WorkspaceID, &i.StatusID, &i.ParentID, &i.Title, &i.Description,
+		&i.AssigneeID, &i.Position, &i.ArchivedAt, &i.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.Item{}, store.ErrItemNotFound
+	}
+	return i, err
+}
+
 func (p *Postgres) CreateItem(ctx context.Context, i store.Item) (store.Item, error) {
-	const q = `INSERT INTO items (workspace_id, status_id, title, position)
-	           VALUES ($1::uuid, $2::uuid, $3, $4)
-	           RETURNING id::text, workspace_id::text, status_id::text, title, position, created_at`
-	var out store.Item
-	err := p.pool.QueryRow(ctx, q, i.WorkspaceID, i.StatusID, i.Title, i.Position).
-		Scan(&out.ID, &out.WorkspaceID, &out.StatusID, &out.Title, &out.Position, &out.CreatedAt)
-	return out, err
+	const q = `INSERT INTO items (workspace_id, status_id, title, position, parent_id)
+	           VALUES ($1::uuid, $2::uuid, $3, $4, $5::uuid)
+	           RETURNING ` + itemCols
+	var parent any
+	if i.ParentID != "" {
+		parent = i.ParentID
+	}
+	return scanItem(p.pool.QueryRow(ctx, q, i.WorkspaceID, i.StatusID, i.Title, i.Position, parent))
 }
 
 func (p *Postgres) ItemsByWorkspace(ctx context.Context, workspaceID string) ([]store.Item, error) {
-	const q = `SELECT id::text, workspace_id::text, status_id::text, title, position, created_at
-	           FROM items WHERE workspace_id = $1::uuid ORDER BY position`
+	q := `SELECT ` + itemCols + ` FROM items
+	      WHERE workspace_id = $1::uuid AND parent_id IS NULL AND archived_at IS NULL ORDER BY position`
 	return p.queryItems(ctx, q, workspaceID)
 }
 
 func (p *Postgres) ItemsByStatus(ctx context.Context, statusID string) ([]store.Item, error) {
-	const q = `SELECT id::text, workspace_id::text, status_id::text, title, position, created_at
-	           FROM items WHERE status_id = $1::uuid ORDER BY position`
+	q := `SELECT ` + itemCols + ` FROM items
+	      WHERE status_id = $1::uuid AND parent_id IS NULL AND archived_at IS NULL ORDER BY position`
 	return p.queryItems(ctx, q, statusID)
+}
+
+// ArchivedItemsByWorkspace returns the archived subtree roots — archived items
+// whose parent isn't itself archived — so a cascade-archived child isn't listed
+// separately from its parent.
+func (p *Postgres) ArchivedItemsByWorkspace(ctx context.Context, workspaceID string) ([]store.Item, error) {
+	q := `SELECT ` + itemCols + ` FROM items i
+	      WHERE i.workspace_id = $1::uuid AND i.archived_at IS NOT NULL
+	        AND (i.parent_id IS NULL OR NOT EXISTS (
+	              SELECT 1 FROM items p WHERE p.id = i.parent_id AND p.archived_at IS NOT NULL))
+	      ORDER BY i.archived_at DESC`
+	return p.queryItems(ctx, q, workspaceID)
+}
+
+func (p *Postgres) ChildrenByParent(ctx context.Context, parentID string, includeArchived bool) ([]store.Item, error) {
+	q := `SELECT ` + itemCols + ` FROM items WHERE parent_id = $1::uuid`
+	if !includeArchived {
+		q += ` AND archived_at IS NULL`
+	}
+	q += ` ORDER BY position`
+	return p.queryItems(ctx, q, parentID)
+}
+
+func (p *Postgres) SubtaskCountsByWorkspace(ctx context.Context, workspaceID, doneStatusID string) (map[string]store.SubtaskCount, error) {
+	const q = `SELECT parent_id::text,
+	                  count(*) AS total,
+	                  count(*) FILTER (WHERE status_id = $2::uuid) AS done
+	           FROM items
+	           WHERE workspace_id = $1::uuid AND parent_id IS NOT NULL AND archived_at IS NULL
+	           GROUP BY parent_id`
+	var done any
+	if doneStatusID != "" {
+		done = doneStatusID
+	}
+	rows, err := p.pool.Query(ctx, q, workspaceID, done)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]store.SubtaskCount{}
+	for rows.Next() {
+		var pid string
+		var total, doneN int
+		if err := rows.Scan(&pid, &total, &doneN); err != nil {
+			return nil, err
+		}
+		out[pid] = store.SubtaskCount{Done: doneN, Total: total}
+	}
+	return out, rows.Err()
 }
 
 func (p *Postgres) queryItems(ctx context.Context, q, arg string) ([]store.Item, error) {
@@ -423,8 +505,8 @@ func (p *Postgres) queryItems(ctx context.Context, q, arg string) ([]store.Item,
 	defer rows.Close()
 	var out []store.Item
 	for rows.Next() {
-		var i store.Item
-		if err := rows.Scan(&i.ID, &i.WorkspaceID, &i.StatusID, &i.Title, &i.Position, &i.CreatedAt); err != nil {
+		i, err := scanItem(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, i)
@@ -433,18 +515,52 @@ func (p *Postgres) queryItems(ctx context.Context, q, arg string) ([]store.Item,
 }
 
 func (p *Postgres) ItemByID(ctx context.Context, id string) (store.Item, error) {
-	const q = `SELECT id::text, workspace_id::text, status_id::text, title, position, created_at
-	           FROM items WHERE id = $1::uuid`
-	var i store.Item
-	err := p.pool.QueryRow(ctx, q, id).Scan(&i.ID, &i.WorkspaceID, &i.StatusID, &i.Title, &i.Position, &i.CreatedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return store.Item{}, store.ErrItemNotFound
-	}
-	return i, err
+	q := `SELECT ` + itemCols + ` FROM items WHERE id = $1::uuid`
+	return scanItem(p.pool.QueryRow(ctx, q, id))
 }
 
 func (p *Postgres) RenameItem(ctx context.Context, id, title string) error {
-	ct, err := p.pool.Exec(ctx, `UPDATE items SET title = $2 WHERE id = $1::uuid`, id, title)
+	return p.execItem(ctx, `UPDATE items SET title = $2 WHERE id = $1::uuid`, id, title)
+}
+
+func (p *Postgres) UpdateItemDescription(ctx context.Context, id, description string) error {
+	return p.execItem(ctx, `UPDATE items SET description = $2 WHERE id = $1::uuid`, id, description)
+}
+
+func (p *Postgres) SetItemAssignee(ctx context.Context, id, assigneeID string) error {
+	// $2 is always present; nil becomes SQL NULL (unassigned).
+	var a any
+	if assigneeID != "" {
+		a = assigneeID
+	}
+	ct, err := p.pool.Exec(ctx, `UPDATE items SET assignee_id = $2::uuid WHERE id = $1::uuid`, id, a)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrItemNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) ArchiveItem(ctx context.Context, id string) error {
+	return p.execItem(ctx, `UPDATE items SET archived_at = now() WHERE id = $1::uuid`, id, nil)
+}
+
+func (p *Postgres) UnarchiveItem(ctx context.Context, id string) error {
+	return p.execItem(ctx, `UPDATE items SET archived_at = NULL WHERE id = $1::uuid`, id, nil)
+}
+
+// execItem runs an item UPDATE, mapping no-rows-affected to ErrItemNotFound.
+// arg is the second placeholder ($2); pass nil for statements that have none.
+func (p *Postgres) execItem(ctx context.Context, q, id string, arg any) error {
+	var ct pgconn.CommandTag
+	var err error
+	if arg == nil {
+		ct, err = p.pool.Exec(ctx, q, id)
+	} else {
+		ct, err = p.pool.Exec(ctx, q, id, arg)
+	}
 	if err != nil {
 		return err
 	}
@@ -467,6 +583,23 @@ func (p *Postgres) ReorderItems(ctx context.Context, statusID string, orderedIDs
 	})
 }
 
+func (p *Postgres) SetItemStatus(ctx context.Context, id, statusID string) error {
+	return p.execItem(ctx, `UPDATE items SET status_id = $2::uuid WHERE id = $1::uuid`, id, statusID)
+}
+
+// SetItemPositions renumbers items to their index in the slice, without
+// touching status or parent — used to reorder a parent's subtasks.
+func (p *Postgres) SetItemPositions(ctx context.Context, orderedIDs []string) error {
+	return p.inTx(ctx, func(tx pgx.Tx) error {
+		for i, id := range orderedIDs {
+			if _, err := tx.Exec(ctx, `UPDATE items SET position = $1 WHERE id = $2::uuid`, i, id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 func (p *Postgres) DeleteItem(ctx context.Context, id string) error {
 	ct, err := p.pool.Exec(ctx, `DELETE FROM items WHERE id = $1::uuid`, id)
 	if err != nil {
@@ -476,6 +609,41 @@ func (p *Postgres) DeleteItem(ctx context.Context, id string) error {
 		return store.ErrItemNotFound
 	}
 	return nil
+}
+
+// --- comments ---
+
+func (p *Postgres) CreateComment(ctx context.Context, c store.Comment) (store.Comment, error) {
+	const q = `INSERT INTO comments (item_id, author_id, body)
+	           VALUES ($1::uuid, $2::uuid, $3)
+	           RETURNING id::text, item_id::text, COALESCE(author_id::text, ''), body, created_at`
+	var author any
+	if c.AuthorID != "" {
+		author = c.AuthorID
+	}
+	var out store.Comment
+	err := p.pool.QueryRow(ctx, q, c.ItemID, author, c.Body).
+		Scan(&out.ID, &out.ItemID, &out.AuthorID, &out.Body, &out.CreatedAt)
+	return out, err
+}
+
+func (p *Postgres) CommentsByItem(ctx context.Context, itemID string) ([]store.Comment, error) {
+	const q = `SELECT id::text, item_id::text, COALESCE(author_id::text, ''), body, created_at
+	           FROM comments WHERE item_id = $1::uuid ORDER BY created_at`
+	rows, err := p.pool.Query(ctx, q, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Comment
+	for rows.Next() {
+		var c store.Comment
+		if err := rows.Scan(&c.ID, &c.ItemID, &c.AuthorID, &c.Body, &c.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
 
 // inTx runs fn inside a transaction, rolling back on error.

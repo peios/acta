@@ -170,6 +170,89 @@ func TestInvalidInput(t *testing.T) {
 	}
 }
 
+func TestSubtaskBasics(t *testing.T) {
+	svc, wsID, st := setup(t)
+	ctx := context.Background()
+	parent, _ := svc.CreateItem(ctx, wsID, st[0].ID, "Parent")
+	sub, err := svc.CreateSubtask(ctx, parent.ID, "Child")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub.ParentID != parent.ID {
+		t.Fatalf("subtask parent not set: %q", sub.ParentID)
+	}
+	if sub.StatusID != st[0].ID {
+		t.Fatalf("subtask should start in the first status")
+	}
+	// A subtask never shows on the board.
+	for _, it := range mustItems(t, svc, wsID) {
+		if it.ID == sub.ID {
+			t.Fatal("subtask leaked onto the board")
+		}
+	}
+	kids, _ := svc.Children(ctx, parent.ID)
+	if len(kids) != 1 || kids[0].ID != sub.ID {
+		t.Fatalf("child missing from parent")
+	}
+}
+
+func TestArbitraryDepth(t *testing.T) {
+	svc, wsID, st := setup(t)
+	ctx := context.Background()
+	p, _ := svc.CreateItem(ctx, wsID, st[0].ID, "P")
+	c, _ := svc.CreateSubtask(ctx, p.ID, "C")
+	g, err := svc.CreateSubtask(ctx, c.ID, "G")
+	if err != nil {
+		t.Fatalf("a subtask should be able to have its own subtask: %v", err)
+	}
+	kids, _ := svc.Children(ctx, c.ID)
+	if len(kids) != 1 || kids[0].ID != g.ID {
+		t.Fatal("grandchild not nested under child")
+	}
+}
+
+func TestSubtaskCounts(t *testing.T) {
+	svc, wsID, st := setup(t)
+	ctx := context.Background()
+	last := st[len(st)-1].ID
+	p, _ := svc.CreateItem(ctx, wsID, st[0].ID, "P")
+	svc.CreateSubtask(ctx, p.ID, "a")
+	svc.CreateSubtask(ctx, p.ID, "b")
+	c, _ := svc.CreateSubtask(ctx, p.ID, "c")
+	if err := svc.SetStatus(ctx, c.ID, last); err != nil {
+		t.Fatal(err)
+	}
+	counts, _ := svc.SubtaskCounts(ctx, wsID, last)
+	if counts[p.ID].Total != 3 || counts[p.ID].Done != 1 {
+		t.Fatalf("counts: want 1/3, got %d/%d", counts[p.ID].Done, counts[p.ID].Total)
+	}
+}
+
+func TestArchiveCascadesToSubtree(t *testing.T) {
+	svc, wsID, st := setup(t)
+	ctx := context.Background()
+	p, _ := svc.CreateItem(ctx, wsID, st[0].ID, "P")
+	svc.CreateSubtask(ctx, p.ID, "c1")
+	svc.CreateSubtask(ctx, p.ID, "c2")
+
+	if err := svc.Archive(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if kids, _ := svc.Children(ctx, p.ID); len(kids) != 0 {
+		t.Fatalf("children not archived with parent: %d remain active", len(kids))
+	}
+	arch, _ := svc.ArchivedItems(ctx, wsID)
+	if len(arch) != 1 || arch[0].ID != p.ID {
+		t.Fatalf("archive should show only the subtree root, got %d items", len(arch))
+	}
+	if err := svc.Unarchive(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if kids, _ := svc.Children(ctx, p.ID); len(kids) != 2 {
+		t.Fatalf("children not restored with parent: got %d", len(kids))
+	}
+}
+
 func mustItems(t *testing.T, svc *board.Service, wsID string) []store.Item {
 	t.Helper()
 	items, err := svc.Items(context.Background(), wsID)
@@ -177,4 +260,91 @@ func mustItems(t *testing.T, svc *board.Service, wsID string) []store.Item {
 		t.Fatal(err)
 	}
 	return items
+}
+
+func TestArchiveHidesAndReDensifies(t *testing.T) {
+	svc, wsID, st := setup(t)
+	ctx := context.Background()
+	todo := st[0].ID
+
+	svc.CreateItem(ctx, wsID, todo, "A")
+	b, _ := svc.CreateItem(ctx, wsID, todo, "B")
+	svc.CreateItem(ctx, wsID, todo, "C")
+
+	if err := svc.Archive(ctx, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	// B is gone from the lane, and A/C are renumbered to 0,1 (no gap at 1).
+	if got := laneTitles(t, svc, wsID, todo); len(got) != 2 || got[0] != "A" || got[1] != "C" {
+		t.Fatalf("after archive: want [A C], got %v", got)
+	}
+	for _, it := range mustItems(t, svc, wsID) {
+		if it.Position > 1 {
+			t.Fatalf("lane not re-densified: %q at %d", it.Title, it.Position)
+		}
+	}
+	arch, _ := svc.ArchivedItems(ctx, wsID)
+	if len(arch) != 1 || arch[0].Title != "B" {
+		t.Fatalf("archived list: want [B], got %v", arch)
+	}
+
+	// Unarchiving puts B back at the end of its lane.
+	if err := svc.Unarchive(ctx, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := laneTitles(t, svc, wsID, todo); len(got) != 3 || got[2] != "B" {
+		t.Fatalf("after unarchive: want B last in [A C B], got %v", got)
+	}
+}
+
+func TestSetAssigneeValidatesUser(t *testing.T) {
+	svc, wsID, st := setup(t)
+	ctx := context.Background()
+	it, _ := svc.CreateItem(ctx, wsID, st[0].ID, "A")
+
+	if err := svc.SetAssignee(ctx, it.ID, "nope"); !errors.Is(err, store.ErrUserNotFound) {
+		t.Fatalf("unknown assignee: want ErrUserNotFound, got %v", err)
+	}
+	// Clearing (empty) is always allowed.
+	if err := svc.SetAssignee(ctx, it.ID, ""); err != nil {
+		t.Fatalf("clearing assignee: %v", err)
+	}
+}
+
+func TestSetStatusMovesToLaneEnd(t *testing.T) {
+	svc, wsID, st := setup(t)
+	ctx := context.Background()
+	todo, doing := st[0].ID, st[1].ID
+	svc.CreateItem(ctx, wsID, doing, "existing")
+	a, _ := svc.CreateItem(ctx, wsID, todo, "A")
+
+	if err := svc.SetStatus(ctx, a.ID, doing); err != nil {
+		t.Fatal(err)
+	}
+	if got := laneTitles(t, svc, wsID, doing); len(got) != 2 || got[1] != "A" {
+		t.Fatalf("set status: want A appended -> [existing A], got %v", got)
+	}
+	if got := laneTitles(t, svc, wsID, todo); len(got) != 0 {
+		t.Fatalf("source lane should be empty, got %v", got)
+	}
+}
+
+func TestComments(t *testing.T) {
+	svc, wsID, st := setup(t)
+	ctx := context.Background()
+	it, _ := svc.CreateItem(ctx, wsID, st[0].ID, "A")
+
+	if _, err := svc.AddComment(ctx, it.ID, "author1", "   "); !errors.Is(err, board.ErrInvalidComment) {
+		t.Fatalf("blank comment: want ErrInvalidComment, got %v", err)
+	}
+	if _, err := svc.AddComment(ctx, it.ID, "author1", "first"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddComment(ctx, it.ID, "author2", "second"); err != nil {
+		t.Fatal(err)
+	}
+	cs, _ := svc.Comments(ctx, it.ID)
+	if len(cs) != 2 || cs[0].Body != "first" || cs[1].Body != "second" {
+		t.Fatalf("comments out of order: %v", cs)
+	}
 }

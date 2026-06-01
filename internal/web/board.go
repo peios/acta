@@ -18,11 +18,17 @@ type boardData struct {
 	chrome
 	Principal *identity.Principal
 	Lanes     []lane
+	Modal     *modalView // set when ?item=<id> resolves within this workspace
 }
 
 type lane struct {
 	Status store.Status
-	Items  []store.Item
+	Cards  []cardView
+}
+
+type cardView struct {
+	Item     store.Item
+	Subtasks store.SubtaskCount
 }
 
 // boardPage renders a workspace's board: its statuses (lanes) and the items in
@@ -50,23 +56,45 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	render(w, http.StatusOK, "board.html", boardData{
+	doneStatusID := ""
+	if len(statuses) > 0 {
+		doneStatusID = statuses[len(statuses)-1].ID // "done" = the last lane
+	}
+	counts, err := h.board.SubtaskCounts(r.Context(), ws.ID, doneStatusID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	data := boardData{
 		chrome:    ch,
 		Principal: principalFrom(r.Context()),
-		Lanes:     groupLanes(statuses, items),
-	})
+		Lanes:     groupLanes(statuses, items, counts),
+	}
+	// A ?item=<id> deep link opens that item's modal (server-rendered, so it
+	// works on refresh and with JS off).
+	if itemID := r.URL.Query().Get("item"); itemID != "" {
+		mv, found, err := h.buildModal(r, ws, itemID)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if found {
+			data.Modal = &mv
+		}
+	}
+	render(w, http.StatusOK, "board.html", data)
 }
 
-// groupLanes buckets items under their status. items arrives ordered by
-// position, so each lane's slice stays in position order.
-func groupLanes(statuses []store.Status, items []store.Item) []lane {
-	byStatus := map[string][]store.Item{}
+// groupLanes buckets items under their status, attaching each item's subtask
+// progress. items arrives ordered by position, so each lane stays in order.
+func groupLanes(statuses []store.Status, items []store.Item, counts map[string]store.SubtaskCount) []lane {
+	byStatus := map[string][]cardView{}
 	for _, it := range items {
-		byStatus[it.StatusID] = append(byStatus[it.StatusID], it)
+		byStatus[it.StatusID] = append(byStatus[it.StatusID], cardView{Item: it, Subtasks: counts[it.ID]})
 	}
 	lanes := make([]lane, len(statuses))
 	for i, st := range statuses {
-		lanes[i] = lane{Status: st, Items: byStatus[st.ID]}
+		lanes[i] = lane{Status: st, Cards: byStatus[st.ID]}
 	}
 	return lanes
 }
@@ -207,14 +235,15 @@ func (h *handlers) itemMove(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handlers) itemDelete(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.resolveWorkspace(w, r); !ok {
+	ws, ok := h.resolveWorkspace(w, r)
+	if !ok {
 		return
 	}
 	if err := h.board.DeleteItem(r.Context(), r.PathValue("id")); err != nil {
 		writeBoardErr(w, err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	respond204OrRedirect(w, r, "/w/"+ws.Slug+"/archive")
 }
 
 // --- helpers ---
@@ -261,14 +290,22 @@ func writeBoardErr(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusBadRequest, body{"invalid_name"})
 	case errors.Is(err, board.ErrInvalidTitle):
 		writeJSON(w, http.StatusBadRequest, body{"invalid_title"})
+	case errors.Is(err, board.ErrInvalidDescription):
+		writeJSON(w, http.StatusBadRequest, body{"invalid_description"})
+	case errors.Is(err, board.ErrInvalidComment):
+		writeJSON(w, http.StatusBadRequest, body{"invalid_comment"})
 	case errors.Is(err, board.ErrStatusNotEmpty):
 		writeJSON(w, http.StatusConflict, body{"status_not_empty"})
+	case errors.Is(err, board.ErrNoStatus):
+		writeJSON(w, http.StatusConflict, body{"no_status"})
 	case errors.Is(err, board.ErrStatusMismatch):
 		writeJSON(w, http.StatusBadRequest, body{"status_mismatch"})
 	case errors.Is(err, store.ErrStatusNotFound):
 		writeJSON(w, http.StatusNotFound, body{"status_not_found"})
 	case errors.Is(err, store.ErrItemNotFound):
 		writeJSON(w, http.StatusNotFound, body{"item_not_found"})
+	case errors.Is(err, store.ErrUserNotFound):
+		writeJSON(w, http.StatusBadRequest, body{"user_not_found"})
 	default:
 		writeJSON(w, http.StatusInternalServerError, body{"internal"})
 	}

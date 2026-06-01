@@ -25,6 +25,7 @@ type Store struct {
 	workspaces  map[string]store.Workspace
 	statuses    map[string]store.Status
 	items       map[string]store.Item
+	comments    map[string]store.Comment
 }
 
 func New() *Store {
@@ -36,6 +37,7 @@ func New() *Store {
 		workspaces:  map[string]store.Workspace{},
 		statuses:    map[string]store.Status{},
 		items:       map[string]store.Item{},
+		comments:    map[string]store.Comment{},
 	}
 }
 
@@ -77,6 +79,22 @@ func (s *Store) UserByID(_ context.Context, id string) (store.User, error) {
 		return store.User{}, store.ErrUserNotFound
 	}
 	return u, nil
+}
+
+func (s *Store) ListUsers(_ context.Context) ([]store.User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]store.User, 0, len(s.users))
+	for _, u := range s.users {
+		out = append(out, u)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if strings.EqualFold(out[i].Display, out[j].Display) {
+			return out[i].Username < out[j].Username
+		}
+		return strings.ToLower(out[i].Display) < strings.ToLower(out[j].Display)
+	})
+	return out, nil
 }
 
 func (s *Store) CreateSession(_ context.Context, sess store.Session) error {
@@ -388,16 +406,72 @@ func (s *Store) CreateItem(_ context.Context, it store.Item) (store.Item, error)
 func (s *Store) ItemsByWorkspace(_ context.Context, workspaceID string) ([]store.Item, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.filterItems(func(it store.Item) bool { return it.WorkspaceID == workspaceID }), nil
+	out := s.filterItems(func(it store.Item) bool {
+		return it.WorkspaceID == workspaceID && it.ParentID == "" && it.ArchivedAt == nil
+	})
+	sort.Slice(out, func(i, j int) bool { return out[i].Position < out[j].Position })
+	return out, nil
 }
 
 func (s *Store) ItemsByStatus(_ context.Context, statusID string) ([]store.Item, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.filterItems(func(it store.Item) bool { return it.StatusID == statusID }), nil
+	out := s.filterItems(func(it store.Item) bool {
+		return it.StatusID == statusID && it.ParentID == "" && it.ArchivedAt == nil
+	})
+	sort.Slice(out, func(i, j int) bool { return out[i].Position < out[j].Position })
+	return out, nil
 }
 
-// filterItems collects matching items ordered by position. Caller holds the lock.
+func (s *Store) ArchivedItemsByWorkspace(_ context.Context, workspaceID string) ([]store.Item, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Archived subtree roots: archived, and either top-level or with a parent
+	// that isn't itself archived.
+	out := s.filterItems(func(it store.Item) bool {
+		if it.WorkspaceID != workspaceID || it.ArchivedAt == nil {
+			return false
+		}
+		if it.ParentID == "" {
+			return true
+		}
+		parent, ok := s.items[it.ParentID]
+		return !ok || parent.ArchivedAt == nil
+	})
+	sort.Slice(out, func(i, j int) bool { return out[i].ArchivedAt.After(*out[j].ArchivedAt) })
+	return out, nil
+}
+
+func (s *Store) ChildrenByParent(_ context.Context, parentID string, includeArchived bool) ([]store.Item, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := s.filterItems(func(it store.Item) bool {
+		return it.ParentID == parentID && (includeArchived || it.ArchivedAt == nil)
+	})
+	sort.Slice(out, func(i, j int) bool { return out[i].Position < out[j].Position })
+	return out, nil
+}
+
+func (s *Store) SubtaskCountsByWorkspace(_ context.Context, workspaceID, doneStatusID string) (map[string]store.SubtaskCount, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := map[string]store.SubtaskCount{}
+	for _, it := range s.items {
+		if it.WorkspaceID != workspaceID || it.ParentID == "" || it.ArchivedAt != nil {
+			continue
+		}
+		c := out[it.ParentID]
+		c.Total++
+		if doneStatusID != "" && it.StatusID == doneStatusID {
+			c.Done++
+		}
+		out[it.ParentID] = c
+	}
+	return out, nil
+}
+
+// filterItems collects matching items (unordered). Caller holds the lock and
+// sorts as needed.
 func (s *Store) filterItems(keep func(store.Item) bool) []store.Item {
 	var out []store.Item
 	for _, it := range s.items {
@@ -405,7 +479,6 @@ func (s *Store) filterItems(keep func(store.Item) bool) []store.Item {
 			out = append(out, it)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Position < out[j].Position })
 	return out
 }
 
@@ -420,13 +493,51 @@ func (s *Store) ItemByID(_ context.Context, id string) (store.Item, error) {
 }
 
 func (s *Store) RenameItem(_ context.Context, id, title string) error {
+	return s.mutateItem(id, func(it *store.Item) { it.Title = title })
+}
+
+func (s *Store) UpdateItemDescription(_ context.Context, id, description string) error {
+	return s.mutateItem(id, func(it *store.Item) { it.Description = description })
+}
+
+func (s *Store) SetItemAssignee(_ context.Context, id, assigneeID string) error {
+	return s.mutateItem(id, func(it *store.Item) { it.AssigneeID = assigneeID })
+}
+
+func (s *Store) SetItemStatus(_ context.Context, id, statusID string) error {
+	return s.mutateItem(id, func(it *store.Item) { it.StatusID = statusID })
+}
+
+func (s *Store) SetItemPositions(_ context.Context, orderedIDs []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, id := range orderedIDs {
+		if it, ok := s.items[id]; ok {
+			it.Position = i
+			s.items[id] = it
+		}
+	}
+	return nil
+}
+
+func (s *Store) ArchiveItem(_ context.Context, id string) error {
+	now := time.Now()
+	return s.mutateItem(id, func(it *store.Item) { it.ArchivedAt = &now })
+}
+
+func (s *Store) UnarchiveItem(_ context.Context, id string) error {
+	return s.mutateItem(id, func(it *store.Item) { it.ArchivedAt = nil })
+}
+
+// mutateItem applies fn to a stored item, or returns ErrItemNotFound.
+func (s *Store) mutateItem(id string, fn func(*store.Item)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	it, ok := s.items[id]
 	if !ok {
 		return store.ErrItemNotFound
 	}
-	it.Title = title
+	fn(&it)
 	s.items[id] = it
 	return nil
 }
@@ -452,6 +563,34 @@ func (s *Store) DeleteItem(_ context.Context, id string) error {
 	}
 	delete(s.items, id)
 	return nil
+}
+
+// --- comments ---
+
+func (s *Store) CreateComment(_ context.Context, c store.Comment) (store.Comment, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if c.ID == "" {
+		c.ID = newID()
+	}
+	if c.CreatedAt.IsZero() {
+		c.CreatedAt = time.Now()
+	}
+	s.comments[c.ID] = c
+	return c, nil
+}
+
+func (s *Store) CommentsByItem(_ context.Context, itemID string) ([]store.Comment, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.Comment
+	for _, c := range s.comments {
+		if c.ItemID == itemID {
+			out = append(out, c)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out, nil
 }
 
 func (s *Store) Close() {}

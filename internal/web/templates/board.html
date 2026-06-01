@@ -1,6 +1,9 @@
 {{define "title"}}{{.Workspace.Name}} · Acta{{end}}
 {{define "content"}}
 <main class="board-wrap" data-slug="{{.Workspace.Slug}}">
+  <div class="board-bar">
+    <a class="board-archive-link" href="/w/{{.Workspace.Slug}}/archive">Archived</a>
+  </div>
   <div class="board" id="board">
     {{range .Lanes}}
     <section class="lane" data-status-id="{{.Status.ID}}">
@@ -10,10 +13,11 @@
         <button class="lane-del" type="button" title="Delete lane" aria-label="Delete lane">×</button>
       </header>
       <div class="lane-items">
-        {{range .Items}}
-        <article class="item" data-item-id="{{.ID}}">
-          <span class="item-title">{{.Title}}</span>
-          <button class="item-del" type="button" title="Delete" aria-label="Delete item">×</button>
+        {{range .Cards}}
+        <article class="item" data-item-id="{{.Item.ID}}">
+          <span class="item-title">{{.Item.Title}}</span>
+          {{if .Subtasks.Total}}<span class="item-sub" title="Subtasks done">{{.Subtasks.Done}}/{{.Subtasks.Total}}</span>{{end}}
+          <button class="item-del" type="button" title="Archive" aria-label="Archive item">×</button>
         </article>
         {{end}}
       </div>
@@ -31,10 +35,12 @@
   <p class="alert board-err" role="alert" data-board-error></p>
 </main>
 
+{{if .Modal}}{{template "item-modal" .Modal}}{{end}}
+
 <template id="item-tmpl">
   <article class="item">
     <span class="item-title"></span>
-    <button class="item-del" type="button" title="Delete" aria-label="Delete item">×</button>
+    <button class="item-del" type="button" title="Archive" aria-label="Archive item">×</button>
   </article>
 </template>
 <template id="lane-tmpl">

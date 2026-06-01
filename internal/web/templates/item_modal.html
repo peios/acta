@@ -1,0 +1,82 @@
+{{define "item-modal"}}
+<div class="modal-backdrop" data-modal data-item-id="{{.Item.ID}}">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Item detail">
+    <header class="modal-head">
+      <input class="modal-title" value="{{.Item.Title}}" maxlength="200" aria-label="Title">
+      <a class="modal-close" href="/w/{{.Slug}}" data-modal-close aria-label="Close">×</a>
+    </header>
+
+    <div class="modal-body">
+      {{if .ParentID}}<a class="modal-parent" href="?item={{.ParentID}}" data-parent-link="{{.ParentID}}">&lsaquo; {{.ParentTitle}}</a>{{end}}
+      {{if .Archived}}<p class="modal-archived-note">This item is archived.</p>{{end}}
+
+      <div class="modal-meta">
+        <label class="modal-field">
+          <span class="modal-label">Status</span>
+          <select class="modal-status">
+            {{range .Statuses}}
+            <option value="{{.ID}}" {{if eq .ID $.Item.StatusID}}selected{{end}}>{{.Name}}</option>
+            {{end}}
+          </select>
+        </label>
+        <label class="modal-field">
+          <span class="modal-label">Assignee</span>
+          <select class="modal-assignee">
+            <option value="">Unassigned</option>
+            {{range .Users}}
+            <option value="{{.ID}}" {{if eq .ID $.Item.AssigneeID}}selected{{end}}>{{.Display}}</option>
+            {{end}}
+          </select>
+        </label>
+      </div>
+
+      <div class="modal-field">
+        <span class="modal-label">Description</span>
+        <textarea class="modal-desc" rows="5" placeholder="Add a description…">{{.Item.Description}}</textarea>
+        <button class="btn-secondary modal-desc-save" type="button">Save description</button>
+      </div>
+
+      <div class="modal-subtasks" data-subtasks>
+        <p class="section-title">Subtasks{{if .SubTotal}} · {{.SubDone}}/{{.SubTotal}}{{end}}</p>
+        <div class="subtask-list" data-subtask-list>
+          {{range .Children}}
+          <div class="subtask" data-item-id="{{.ID}}">
+            <span class="subtask-grip" title="Drag to reorder">⠿</span>
+            <button class="subtask-open" type="button" data-open="{{.ID}}">{{.Title}}</button>
+            <span class="subtask-status">{{.StatusName}}</span>
+          </div>
+          {{end}}
+        </div>
+        <form class="subtask-add" data-subtask-form>
+          <input class="subtask-input" placeholder="+ Add subtask" maxlength="200" aria-label="New subtask">
+        </form>
+      </div>
+
+      <div class="modal-comments">
+        <p class="section-title">Comments</p>
+        <div class="comment-list" data-comment-list>
+          {{range .Comments}}
+          <div class="comment">
+            <div class="comment-meta">{{.Author}} · {{.At}}</div>
+            <div class="comment-body">{{.Body}}</div>
+          </div>
+          {{end}}
+        </div>
+        <form class="comment-add" data-comment-form>
+          <textarea class="comment-input" rows="2" placeholder="Add a comment…" maxlength="5000" aria-label="New comment"></textarea>
+          <button class="btn-primary" type="submit" style="width: auto;">Comment</button>
+        </form>
+      </div>
+    </div>
+
+    <footer class="modal-foot">
+      {{if .Archived}}
+      <button class="btn-secondary modal-unarchive" type="button">Unarchive</button>
+      {{else}}
+      <button class="btn-secondary modal-archive" type="button">Archive</button>
+      {{end}}
+      <p class="alert" role="alert" data-modal-error></p>
+    </footer>
+  </div>
+</div>
+{{end}}

@@ -14,14 +14,23 @@ import (
 )
 
 const (
-	MaxStatusNameLen = 40
-	MaxItemTitleLen  = 200
+	MaxStatusNameLen  = 40
+	MaxItemTitleLen   = 200
+	MaxDescriptionLen = 20000
+	MaxCommentLen     = 5000
+
+	// endOfLane is a large index that MoveItem clamps to a lane's end; used by
+	// status changes that carry no explicit position.
+	endOfLane = 1 << 30
 )
 
 var (
-	ErrInvalidName    = errors.New("board: invalid status name")
-	ErrInvalidTitle   = errors.New("board: invalid item title")
-	ErrStatusNotEmpty = errors.New("board: status still has items")
+	ErrInvalidName        = errors.New("board: invalid status name")
+	ErrInvalidTitle       = errors.New("board: invalid item title")
+	ErrInvalidDescription = errors.New("board: description too long")
+	ErrInvalidComment     = errors.New("board: invalid comment")
+	ErrStatusNotEmpty     = errors.New("board: status still has items")
+	ErrNoStatus           = errors.New("board: workspace has no statuses")
 	// ErrStatusMismatch is returned when a status doesn't belong to the
 	// workspace it's being used in — a malformed or cross-workspace request.
 	ErrStatusMismatch = errors.New("board: status not in this workspace")
@@ -172,6 +181,234 @@ func (s *Service) MoveItem(ctx context.Context, itemID, toStatusID string, index
 
 func (s *Service) DeleteItem(ctx context.Context, id string) error {
 	return s.store.DeleteItem(ctx, id)
+}
+
+// --- item detail ---
+
+func (s *Service) Item(ctx context.Context, id string) (store.Item, error) {
+	return s.store.ItemByID(ctx, id)
+}
+
+// Users lists every account, for the assignee picker (there's no membership
+// model yet, so any user can be assigned).
+func (s *Service) Users(ctx context.Context) ([]store.User, error) {
+	return s.store.ListUsers(ctx)
+}
+
+func (s *Service) UpdateDescription(ctx context.Context, id, description string) error {
+	if len([]rune(description)) > MaxDescriptionLen {
+		return ErrInvalidDescription
+	}
+	return s.store.UpdateItemDescription(ctx, id, description)
+}
+
+// SetAssignee assigns the item to a user, or clears it when assigneeID is "".
+func (s *Service) SetAssignee(ctx context.Context, id, assigneeID string) error {
+	if assigneeID != "" {
+		if _, err := s.store.UserByID(ctx, assigneeID); err != nil {
+			return err
+		}
+	}
+	return s.store.SetItemAssignee(ctx, id, assigneeID)
+}
+
+// SetStatus changes an item's status. A top-level item is repositioned to the
+// end of the target lane; a subtask (which isn't on the board) just takes the
+// new status, keeping its order within its parent.
+func (s *Service) SetStatus(ctx context.Context, id, statusID string) error {
+	item, err := s.store.ItemByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := s.requireStatusInWorkspace(ctx, statusID, item.WorkspaceID); err != nil {
+		return err
+	}
+	if item.ParentID != "" {
+		return s.store.SetItemStatus(ctx, id, statusID)
+	}
+	return s.MoveItem(ctx, id, statusID, endOfLane)
+}
+
+// Archive hides an item and its whole subtree, then re-densifies the container
+// (lane or parent) it left so positions stay contiguous.
+func (s *Service) Archive(ctx context.Context, id string) error {
+	item, err := s.store.ItemByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := s.archiveSubtree(ctx, id); err != nil {
+		return err
+	}
+	if item.ParentID == "" {
+		return s.densifyLane(ctx, item.StatusID)
+	}
+	return s.densifyChildren(ctx, item.ParentID)
+}
+
+func (s *Service) archiveSubtree(ctx context.Context, id string) error {
+	if err := s.store.ArchiveItem(ctx, id); err != nil {
+		return err
+	}
+	kids, err := s.store.ChildrenByParent(ctx, id, false)
+	if err != nil {
+		return err
+	}
+	for _, k := range kids {
+		if err := s.archiveSubtree(ctx, k.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Unarchive restores an item and its subtree, putting the root back at the end
+// of its container.
+func (s *Service) Unarchive(ctx context.Context, id string) error {
+	item, err := s.store.ItemByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := s.unarchiveSubtree(ctx, id); err != nil {
+		return err
+	}
+	if item.ParentID == "" {
+		return s.appendToLaneEnd(ctx, item.StatusID, id)
+	}
+	return s.appendToParentEnd(ctx, item.ParentID, id)
+}
+
+func (s *Service) unarchiveSubtree(ctx context.Context, id string) error {
+	if err := s.store.UnarchiveItem(ctx, id); err != nil {
+		return err
+	}
+	kids, err := s.store.ChildrenByParent(ctx, id, true) // all — they were cascade-archived
+	if err != nil {
+		return err
+	}
+	for _, k := range kids {
+		if err := s.unarchiveSubtree(ctx, k.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) ArchivedItems(ctx context.Context, workspaceID string) ([]store.Item, error) {
+	return s.store.ArchivedItemsByWorkspace(ctx, workspaceID)
+}
+
+func (s *Service) SubtaskCounts(ctx context.Context, workspaceID, doneStatusID string) (map[string]store.SubtaskCount, error) {
+	return s.store.SubtaskCountsByWorkspace(ctx, workspaceID, doneStatusID)
+}
+
+// densifyLane renumbers a lane's active top-level items to 0..n-1.
+func (s *Service) densifyLane(ctx context.Context, statusID string) error {
+	active, err := s.store.ItemsByStatus(ctx, statusID)
+	if err != nil {
+		return err
+	}
+	return s.store.ReorderItems(ctx, statusID, idsOf(active))
+}
+
+// densifyChildren renumbers a parent's active children to 0..n-1.
+func (s *Service) densifyChildren(ctx context.Context, parentID string) error {
+	active, err := s.store.ChildrenByParent(ctx, parentID, false)
+	if err != nil {
+		return err
+	}
+	return s.store.SetItemPositions(ctx, idsOf(active))
+}
+
+func (s *Service) appendToLaneEnd(ctx context.Context, statusID, id string) error {
+	active, err := s.store.ItemsByStatus(ctx, statusID)
+	if err != nil {
+		return err
+	}
+	return s.store.ReorderItems(ctx, statusID, appendLast(idsOf(active), id))
+}
+
+func (s *Service) appendToParentEnd(ctx context.Context, parentID, id string) error {
+	active, err := s.store.ChildrenByParent(ctx, parentID, false)
+	if err != nil {
+		return err
+	}
+	return s.store.SetItemPositions(ctx, appendLast(idsOf(active), id))
+}
+
+func idsOf(items []store.Item) []string {
+	ids := make([]string, len(items))
+	for i, it := range items {
+		ids[i] = it.ID
+	}
+	return ids
+}
+
+// appendLast returns ids with target removed (if present) then appended at the end.
+func appendLast(ids []string, target string) []string {
+	out := make([]string, 0, len(ids)+1)
+	for _, id := range ids {
+		if id != target {
+			out = append(out, id)
+		}
+	}
+	return append(out, target)
+}
+
+// --- subtasks ---
+
+func (s *Service) CreateSubtask(ctx context.Context, parentID, title string) (store.Item, error) {
+	title, err := cleanTitle(title)
+	if err != nil {
+		return store.Item{}, err
+	}
+	parent, err := s.store.ItemByID(ctx, parentID)
+	if err != nil {
+		return store.Item{}, err
+	}
+	statuses, err := s.store.StatusesByWorkspace(ctx, parent.WorkspaceID)
+	if err != nil {
+		return store.Item{}, err
+	}
+	if len(statuses) == 0 {
+		return store.Item{}, ErrNoStatus
+	}
+	siblings, err := s.store.ChildrenByParent(ctx, parentID, false)
+	if err != nil {
+		return store.Item{}, err
+	}
+	return s.store.CreateItem(ctx, store.Item{
+		WorkspaceID: parent.WorkspaceID,
+		StatusID:    statuses[0].ID, // a fresh subtask starts in the first lane
+		ParentID:    parentID,
+		Title:       title,
+		Position:    len(siblings),
+	})
+}
+
+func (s *Service) Children(ctx context.Context, parentID string) ([]store.Item, error) {
+	return s.store.ChildrenByParent(ctx, parentID, false)
+}
+
+func (s *Service) ReorderSubtasks(ctx context.Context, parentID string, orderedIDs []string) error {
+	return s.store.SetItemPositions(ctx, orderedIDs)
+}
+
+// --- comments ---
+
+func (s *Service) Comments(ctx context.Context, itemID string) ([]store.Comment, error) {
+	return s.store.CommentsByItem(ctx, itemID)
+}
+
+func (s *Service) AddComment(ctx context.Context, itemID, authorID, body string) (store.Comment, error) {
+	body = strings.TrimSpace(body)
+	if body == "" || len([]rune(body)) > MaxCommentLen {
+		return store.Comment{}, ErrInvalidComment
+	}
+	return s.store.CreateComment(ctx, store.Comment{
+		ItemID:   itemID,
+		AuthorID: authorID,
+		Body:     body,
+	})
 }
 
 // SeedDefaults gives a new workspace its starter lanes.

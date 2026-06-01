@@ -36,6 +36,24 @@ vendored, self-hosted copy of [SortableJS](https://sortablejs.github.io/Sortable
 (`internal/web/static/sortable.min.js`, MIT) — no CDN, so it stays CSP-clean and
 runs offline.
 
+**Slice 5 — deeper items.** Items gain a description, an optional assignee (any
+user), comments, and archiving. They open in a **modal** via `?item=<id>` on the
+board — deep-linkable and refresh-safe because the server renders it when the
+param is present; `board.js` opens it without a reload (card click) and closes
+on Esc / back / backdrop. Archiving (the card ×, or the modal) soft-deletes —
+items drop off the board but are restorable from the **archive view**
+(`/w/{slug}/archive`), where they can also be permanently deleted. Every edit
+flows through the JSON API the MCP will share.
+
+**Slice 6 — subtasks.** An item can nest under a parent (`parent_id`), to any
+depth — a subtask is a *full item* (own status, assignee, description,
+comments) that lives in its parent's modal rather than on the board. The board
+shows only top-level items, with a `done/total` badge on parents (done = the
+last lane). Modals carry a Subtasks section (add / open / drag-reorder) and a
+link back to the parent. Archiving a parent archives its whole subtree and
+restoring brings it back; the archive view lists subtree roots, and a permanent
+delete cascades via the FK.
+
 ## Running
 
 ### Live-reload dev (recommended)

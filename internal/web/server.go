@@ -42,13 +42,23 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 
 	// A workspace's board and its JSON mutation API (consumed by board.js).
 	mux.Handle("GET /w/{slug}", protected(h.boardPage))
+	mux.Handle("GET /w/{slug}/archive", protected(h.archivePage))
 	mux.Handle("POST /w/{slug}/statuses", protected(h.statusCreate))
 	mux.Handle("POST /w/{slug}/statuses/reorder", protected(h.statusReorder))
 	mux.Handle("POST /w/{slug}/statuses/{id}/rename", protected(h.statusRename))
 	mux.Handle("POST /w/{slug}/statuses/{id}/delete", protected(h.statusDelete))
 	mux.Handle("POST /w/{slug}/items", protected(h.itemCreate))
+	mux.Handle("GET /w/{slug}/items/{id}/modal", protected(h.itemModal))
 	mux.Handle("POST /w/{slug}/items/{id}/rename", protected(h.itemRename))
 	mux.Handle("POST /w/{slug}/items/{id}/move", protected(h.itemMove))
+	mux.Handle("POST /w/{slug}/items/{id}/description", protected(h.itemDescription))
+	mux.Handle("POST /w/{slug}/items/{id}/assignee", protected(h.itemAssignee))
+	mux.Handle("POST /w/{slug}/items/{id}/status", protected(h.itemSetStatus))
+	mux.Handle("POST /w/{slug}/items/{id}/comment", protected(h.itemComment))
+	mux.Handle("POST /w/{slug}/items/{id}/subtasks", protected(h.subtaskCreate))
+	mux.Handle("POST /w/{slug}/items/{id}/subtasks/reorder", protected(h.subtaskReorder))
+	mux.Handle("POST /w/{slug}/items/{id}/archive", protected(h.itemArchive))
+	mux.Handle("POST /w/{slug}/items/{id}/unarchive", protected(h.itemUnarchive))
 	mux.Handle("POST /w/{slug}/items/{id}/delete", protected(h.itemDelete))
 
 	mux.Handle("GET /settings", protected(h.settingsIndex))
