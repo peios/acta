@@ -88,12 +88,25 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("POST /settings/agents/{id}/tokens/{tokenID}/delete", protected(h.agentTokenDelete))
 	mux.Handle("GET /welcome/passkey", protected(h.welcomePasskey))
 
-	// JSON API, authenticated by personal access token. Bearer auth carries no
-	// cookies, so CSRF doesn't apply; the GET below is safe under the global
-	// CSRF check regardless. API mutations (a later slice) will mount outside
-	// the cookie/CSRF chain.
-	mux.Handle("GET /api/v1/me", requireToken(tokens)(http.HandlerFunc(h.apiMe)))
+	// CLI login (gh-style loopback): a browser page that mints a token and hands
+	// it back to a local `acta login` listener. Cookie-authed + CSRF like any UI.
+	mux.Handle("GET /cli/authorize", protected(h.cliAuthorize))
+	mux.Handle("POST /cli/authorize", protected(h.cliAuthorizeSubmit))
 
-	// Global middleware chain (outermost first).
-	return requestLogger(secureHeaders(csrf(cfg.CookieSecure())(mux)))
+	// JSON API, authenticated by personal access token (Bearer). It carries no
+	// cookies, so it mounts outside the CSRF chain — the token is the auth.
+	api := http.NewServeMux()
+	api.HandleFunc("GET /api/v1/me", h.apiMe)
+	api.HandleFunc("POST /api/v1/logout", h.apiLogout)
+	api.HandleFunc("GET /api/v1/workspaces", h.apiWorkspaces)
+	api.HandleFunc("GET /api/v1/w/{slug}/items", h.apiListItems)
+	api.HandleFunc("POST /api/v1/w/{slug}/items", h.apiCreateItem)
+	api.HandleFunc("POST /api/v1/w/{slug}/items/{id}/transition", h.apiTransition)
+
+	// Top-level dispatch: token-auth (no CSRF) for the API, cookie + CSRF for
+	// the browser UI. Both share request logging and the security headers.
+	root := http.NewServeMux()
+	root.Handle("/api/v1/", requireToken(tokens)(api))
+	root.Handle("/", csrf(cfg.CookieSecure())(mux))
+	return requestLogger(secureHeaders(root))
 }

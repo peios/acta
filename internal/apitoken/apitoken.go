@@ -87,6 +87,24 @@ func (s *Service) Revoke(ctx context.Context, id, userID string) error {
 	return s.store.DeleteAPIToken(ctx, id, userID)
 }
 
+// RevokeByPlaintext revokes the token matching plaintext, if any. It is
+// idempotent — an unknown or malformed token is not an error — so logout always
+// succeeds.
+func (s *Service) RevokeByPlaintext(ctx context.Context, plaintext string) error {
+	if !strings.HasPrefix(plaintext, Prefix) {
+		return nil
+	}
+	sum := sha256.Sum256([]byte(plaintext))
+	tok, err := s.store.APITokenByHash(ctx, sum[:])
+	if errors.Is(err, store.ErrAPITokenNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return s.store.DeleteAPIToken(ctx, tok.ID, tok.UserID)
+}
+
 // Authenticate resolves a presented bearer token to its owning principal,
 // refreshing the token's last-used stamp (throttled). It returns
 // ErrInvalidToken for anything malformed, unknown, or orphaned — the caller

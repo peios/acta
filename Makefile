@@ -1,9 +1,10 @@
 .PHONY: run build test vet tidy db-up db-down
 
 run:
-	go run ./cmd/acta serve
+	go run ./cmd/acta-server serve
 
 build:
+	go build -o bin/acta-server ./cmd/acta-server
 	go build -o bin/acta ./cmd/acta
 
 test:

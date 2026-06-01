@@ -54,6 +54,15 @@ func (h *handlers) apiMe(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// apiLogout revokes the token presented on this request — the CLI's `logout`.
+func (h *handlers) apiLogout(w http.ResponseWriter, r *http.Request) {
+	if err := h.tokens.RevokeByPlaintext(r.Context(), bearerToken(r)); err != nil {
+		apiError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func apiError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }

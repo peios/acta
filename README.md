@@ -95,7 +95,7 @@ docker compose -f docker-compose.yml up --build
 
 ```sh
 make db-up
-ACTA_SEED_PASSWORD=secret go run ./cmd/acta createuser -username jack -display "Jack"
+ACTA_SEED_PASSWORD=secret go run ./cmd/acta-server createuser -username jack -display "Jack"
 make run
 ```
 

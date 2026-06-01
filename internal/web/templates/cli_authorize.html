@@ -1,0 +1,32 @@
+{{define "title"}}Authorize Acta CLI · Acta{{end}}
+{{define "content"}}
+<main class="stage">
+  <div class="reveal d1" style="max-width: 34rem; margin: 2rem auto 0;">
+    <h1 class="title" style="font-size: 1.6rem; margin-bottom: .5rem;">Authorize the Acta&nbsp;CLI</h1>
+    <p class="subtitle">
+      A command-line tool on this machine wants to create a personal access token for
+      <strong>{{.Principal.Display}}</strong>. It will be able to act as you through the API.
+    </p>
+
+    <div class="cred" style="margin-bottom: 1.4rem;">
+      <div>
+        <div class="cred-name">Token name</div>
+        <div class="cred-meta"><code>{{.Label}}</code></div>
+      </div>
+    </div>
+
+    <form method="post" action="/cli/authorize" class="passkey-add">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <input type="hidden" name="redirect_uri" value="{{.RedirectURI}}">
+      <input type="hidden" name="state" value="{{.State}}">
+      <input type="hidden" name="label" value="{{.Label}}">
+      <button class="btn-primary" type="submit" name="action" value="authorize">Authorize</button>
+      <button class="btn-secondary" type="submit" name="action" value="cancel">Cancel</button>
+    </form>
+
+    <p class="subtitle" style="margin-top: 1.2rem; font-size: .85rem;">
+      Only authorize this if you just ran <code>acta login</code> yourself.
+    </p>
+  </div>
+</main>
+{{end}}

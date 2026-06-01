@@ -4,8 +4,8 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-cmd = "go build -o ./tmp/acta ./cmd/acta"
-bin = "./tmp/acta"
+cmd = "go build -o ./tmp/acta-server ./cmd/acta-server"
+bin = "./tmp/acta-server"
 args_bin = ["serve"]
 include_ext = ["go", "html", "js", "sql"]
 exclude_dir = ["tmp", "bin", ".git", ".claude", "notes"]
