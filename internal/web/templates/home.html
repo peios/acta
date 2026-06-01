@@ -1,0 +1,31 @@
+{{define "title"}}Acta{{end}}
+{{define "crumb"}}home{{end}}
+{{define "content"}}
+<main class="stage stage--wide">
+  <div class="home-head reveal d1">
+    <div class="brand">
+      <span class="mark sm">a</span>
+      <span class="name sm">acta</span>
+    </div>
+    <form class="signout" method="post" action="/logout">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <button class="btn-secondary" type="submit">Sign out</button>
+    </form>
+  </div>
+
+  <section class="panel reveal d2">
+    <div class="identity">
+      <span class="mark">{{printf "%.1s" .Principal.Display}}</span>
+      <div class="who">
+        <div class="who-name">{{.Principal.Display}}</div>
+        <div class="who-handle">@{{.Principal.Username}}</div>
+      </div>
+    </div>
+    <hr class="rule">
+    <div class="empty">
+      <h2>You&rsquo;re signed in.</h2>
+      <p>This is where your work will live. Acta is being rebuilt one slice at a time — the board comes next.</p>
+    </div>
+  </section>
+</main>
+{{end}}

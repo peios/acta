@@ -1,0 +1,223 @@
+{{define "base"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{block "title" .}}Acta{{end}}</title>
+<style>
+  /* ---- Acta · technical / monospace, dark, amber accent --------------------
+     A developer-tool aesthetic: near-black warm background, faint blueprint
+     grid, mono type throughout, one amber accent. Pure CSS — no external
+     fonts or fetched assets, so it stays CSP-clean and runs offline on Peios.
+     (The mono is a system stack for now; a bundled woff2 would match a custom
+     face like Berkeley/Commit Mono exactly — a later slice.) */
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  :root {
+    color-scheme: dark;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", "Roboto Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+
+    --bg:#0a0908;
+    --grid: rgba(255,255,255,.035);
+    --card-top:#15130f;
+    --card-bot:#100e0c;
+    --border:#272320;
+    --border-soft:#201c19;
+    --field:#0d0c0a;
+
+    --text:#edeae4;
+    --muted:#8a847a;
+    --faint:#6c665c;
+
+    --accent:#e8995a;
+    --accent-2:#e58f4d;
+    --accent-hi:#edab73;
+    --on-accent:#1c1206;
+
+    --danger:#c0563f;
+    --danger-text:#e8a08a;
+    --status:#6cc18a;
+
+    --radius:1rem;
+  }
+
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: var(--mono);
+    color: var(--text);
+    line-height: 1.5;
+    background:
+      radial-gradient(70% 45% at 50% -5%, rgba(232,153,90,.10), transparent 60%),
+      var(--bg);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Blueprint grid, fixed behind everything, faded toward the edges. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(to right, var(--grid) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+    background-size: 64px 64px;
+    -webkit-mask-image: radial-gradient(115% 80% at 50% 0%, #000 35%, transparent 88%);
+            mask-image: radial-gradient(115% 80% at 50% 0%, #000 35%, transparent 88%);
+  }
+
+  /* ---- top bar / breadcrumb ---- */
+  .topbar {
+    position: relative; z-index: 1;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.35rem 1.6rem;
+    font-size: .88rem;
+  }
+  .crumbs .a { color: var(--text); font-weight: 700; }
+  .crumbs .sep { color: #514c45; margin: 0 .5rem; }
+  .crumbs .page { color: var(--muted); }
+  .org { color: var(--faint); letter-spacing: .04em; }
+
+  /* ---- stage ---- */
+  .stage {
+    position: relative; z-index: 1;
+    width: min(38rem, 92vw);
+    margin: 0 auto;
+    padding: 4.5rem 0 4rem;
+  }
+  .stage--wide { width: min(48rem, 92vw); }
+
+  /* ---- brand lockup ---- */
+  .brand { display: flex; align-items: center; gap: .8rem; }
+  .mark {
+    width: 3rem; height: 3rem; flex: none;
+    display: grid; place-items: center;
+    border-radius: .7rem;
+    background: linear-gradient(155deg, var(--accent-hi), var(--accent-2));
+    color: var(--on-accent);
+    font-weight: 700; font-size: 1.65rem; line-height: 1;
+    box-shadow: 0 6px 18px -8px rgba(229,143,77,.55), inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .mark.sm { width: 2.1rem; height: 2.1rem; border-radius: .5rem; font-size: 1.15rem; }
+  .brand .name { font-size: 1.85rem; font-weight: 700; letter-spacing: -.02em; color: var(--text); }
+  .brand .name.sm { font-size: 1.2rem; }
+
+  /* ---- headings ---- */
+  .title { margin: 1.5rem 0 .4rem; font-size: 2.35rem; font-weight: 700; letter-spacing: -.01em; color: var(--text); }
+  .subtitle { margin: 0 0 1.7rem; color: var(--muted); font-size: 1rem; }
+
+  /* ---- card ---- */
+  .card {
+    background: linear-gradient(180deg, var(--card-top), var(--card-bot));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.75rem 1.6rem;
+    display: grid; gap: 1.2rem;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.02), 0 32px 64px -34px rgba(0,0,0,.85);
+  }
+
+  /* ---- fields ---- */
+  .field { display: grid; gap: .5rem; }
+  .lblrow { display: flex; align-items: baseline; justify-content: space-between; }
+  .lbl { font-size: .72rem; letter-spacing: .13em; text-transform: uppercase; color: var(--faint); }
+  .input-wrap {
+    display: flex; align-items: center; gap: .65rem;
+    background: var(--field);
+    border: 1px solid var(--border);
+    border-radius: .65rem;
+    padding: 0 .9rem;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .input-wrap:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(232,153,90,.16);
+  }
+  .pfx { color: var(--faint); font-size: 1rem; user-select: none; }
+  .input {
+    flex: 1; min-width: 0;
+    background: transparent; border: 0; outline: 0;
+    color: var(--text); font: inherit;
+    padding: .82rem 0;
+  }
+  .input::placeholder { color: #56514a; }
+
+  /* ---- buttons ---- */
+  .btn-primary {
+    width: 100%;
+    font: inherit; font-weight: 700; font-size: 1rem;
+    color: var(--on-accent);
+    background: linear-gradient(180deg, var(--accent-hi), var(--accent-2));
+    border: 0; border-radius: .65rem;
+    padding: .95rem 1rem;
+    cursor: pointer;
+    box-shadow: 0 10px 26px -12px rgba(229,143,77,.55);
+    transition: filter .15s, transform .08s, box-shadow .15s;
+  }
+  .btn-primary:hover { filter: brightness(1.05); transform: translateY(-1px); }
+  .btn-primary:active { transform: translateY(0); }
+  .btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(232,153,90,.35); }
+
+  .btn-secondary {
+    font: inherit;
+    color: #d4cfc6;
+    background: #141210;
+    border: 1px solid var(--border);
+    border-radius: .6rem;
+    padding: .62rem .9rem;
+    cursor: pointer;
+    transition: border-color .15s, color .15s, background .15s;
+  }
+  .btn-secondary:hover { color: var(--text); border-color: #39342d; background: #181513; }
+  .btn-secondary:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(232,153,90,.25); }
+
+  /* ---- alert ---- */
+  .alert {
+    margin: 0;
+    font-size: .85rem;
+    color: var(--danger-text);
+    background: rgba(192,86,63,.12);
+    border: 1px solid rgba(192,86,63,.32);
+    border-left: 3px solid var(--danger);
+    border-radius: .45rem;
+    padding: .6rem .75rem;
+  }
+
+  /* ---- home: topbar row + panel ---- */
+  .home-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+  .signout { margin: 0; }
+
+  .panel {
+    background: linear-gradient(180deg, var(--card-top), var(--card-bot));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.75rem 1.6rem;
+    display: grid; gap: 1.3rem;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.02), 0 32px 64px -34px rgba(0,0,0,.85);
+  }
+  .identity { display: flex; align-items: center; gap: .9rem; }
+  .who-name { font-weight: 700; font-size: 1.05rem; }
+  .who-handle { color: var(--muted); font-size: .9rem; }
+  .rule { border: 0; border-top: 1px solid var(--border-soft); margin: 0; }
+  .empty h2 { margin: 0 0 .4rem; font-size: 1.4rem; font-weight: 700; letter-spacing: -.01em; }
+  .empty p { margin: 0; color: var(--muted); font-size: .95rem; max-width: 36rem; }
+
+  /* ---- one quiet entrance ---- */
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal { opacity: 0; transform: translateY(9px); animation: rise .55s cubic-bezier(.2,.7,.2,1) forwards; }
+    .reveal.d1 { animation-delay: .04s; }
+    .reveal.d2 { animation-delay: .12s; }
+    @keyframes rise { to { opacity: 1; transform: none; } }
+  }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="crumbs"><span class="a">acta</span><span class="sep">/</span><span class="page">{{block "crumb" .}}acta{{end}}</span></div>
+  <span class="org">peios</span>
+</div>
+{{block "content" .}}{{end}}
+</body>
+</html>{{end}}

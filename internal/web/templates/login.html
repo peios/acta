@@ -1,0 +1,38 @@
+{{define "title"}}Sign in · Acta{{end}}
+{{define "crumb"}}sign-in{{end}}
+{{define "content"}}
+<main class="stage">
+  <div class="brand reveal d1">
+    <span class="mark">a</span>
+    <span class="name">acta</span>
+  </div>
+
+  <h1 class="title reveal d1">Sign in</h1>
+  <p class="subtitle reveal d1">Continue to your workspace.</p>
+
+  <form class="card reveal d2" method="post" action="/login/password">
+    {{if .Err}}<p class="alert" role="alert">{{.Err}}</p>{{end}}
+
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+
+    <div class="field">
+      <div class="lblrow"><label class="lbl" for="username">Username</label></div>
+      <div class="input-wrap">
+        <span class="pfx">@</span>
+        <input class="input" id="username" name="username" placeholder="username" autocomplete="username" autofocus required>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="lblrow"><label class="lbl" for="password">Password</label></div>
+      <div class="input-wrap">
+        <span class="pfx">*</span>
+        <input class="input" id="password" type="password" name="password" placeholder="••••••••" autocomplete="current-password" required>
+      </div>
+    </div>
+
+    <button class="btn-primary" type="submit">Sign in&nbsp;&rarr;</button>
+  </form>
+</main>
+{{end}}

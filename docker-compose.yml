@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: acta
+      POSTGRES_PASSWORD: acta
+      POSTGRES_DB: acta
+    ports:
+      - "5432:5432"
+    volumes:
+      - acta-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U acta"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    environment:
+      ACTA_DATABASE_URL: postgres://acta:acta@db:5432/acta?sslmode=disable
+      ACTA_ENV: dev
+      # First-run admin account. Change these for anything beyond local dev;
+      # ACTA_ENV=prod is also required to enable Secure cookies behind HTTPS.
+      ACTA_BOOTSTRAP_USERNAME: admin
+      ACTA_BOOTSTRAP_PASSWORD: admin
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  acta-pgdata:
