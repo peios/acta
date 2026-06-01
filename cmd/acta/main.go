@@ -59,6 +59,8 @@ func run(cmd string, args []string) error {
 		return cmdBoard(args)
 	case "item":
 		return cmdItem(args)
+	case "mcp":
+		return cmdMCP(args)
 	case "help", "-h", "--help":
 		usage()
 		return nil
@@ -79,6 +81,7 @@ Usage:
   acta item new  [--workspace slug] [--status name | --parent id] <title>
   acta item <id>                  show an item and its subtasks
   acta item <id> status <name>    set the item's status
+  acta mcp install                wire an MCP client (Claude Code) to Acta
 
 Environment (override the stored login):
   ACTA_URL        server base URL (default http://localhost:8080)

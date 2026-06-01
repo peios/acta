@@ -27,18 +27,39 @@ func cmdLogin(args []string) error {
 	if err != nil {
 		return err
 	}
+	token, err := authorize(base, tokenLabel())
+	if err != nil {
+		return err
+	}
+	if err := saveConfig(config{URL: base, Token: token}); err != nil {
+		return err
+	}
+	c := &client{base: base, token: token, hc: &http.Client{Timeout: 15 * time.Second}}
+	if data, err := c.do("GET", "/api/v1/me", nil); err == nil {
+		var me struct{ Username string }
+		_ = json.Unmarshal(data, &me)
+		fmt.Printf("Logged in to %s as %s\n", base, me.Username)
+	} else {
+		fmt.Printf("Logged in to %s\n", base)
+	}
+	return nil
+}
 
+// authorize runs the gh-style loopback flow against base and returns the minted
+// token plaintext. label names the token in the account's token list. It opens
+// the browser, serves a one-shot 127.0.0.1 callback, and waits for the redirect.
+func authorize(base, label string) (string, error) {
 	// Local listener that the browser is redirected back to.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer ln.Close()
 	redirectURI := fmt.Sprintf("http://127.0.0.1:%d/callback", ln.Addr().(*net.TCPAddr).Port)
 
 	state, err := randString()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	type result struct {
@@ -71,30 +92,16 @@ func cmdLogin(args []string) error {
 	authURL := base + "/cli/authorize?" + url.Values{
 		"redirect_uri": {redirectURI},
 		"state":        {state},
-		"label":        {tokenLabel()},
+		"label":        {label},
 	}.Encode()
 	fmt.Fprintf(os.Stderr, "Opening your browser to authorize. If it doesn't open, visit:\n  %s\n\n", authURL)
 	_ = openBrowser(authURL)
 
 	select {
 	case res := <-resCh:
-		if res.err != nil {
-			return res.err
-		}
-		if err := saveConfig(config{URL: base, Token: res.token}); err != nil {
-			return err
-		}
-		c := &client{base: base, token: res.token, hc: &http.Client{Timeout: 15 * time.Second}}
-		if data, err := c.do("GET", "/api/v1/me", nil); err == nil {
-			var me struct{ Username string }
-			_ = json.Unmarshal(data, &me)
-			fmt.Printf("Logged in to %s as %s\n", base, me.Username)
-		} else {
-			fmt.Printf("Logged in to %s\n", base)
-		}
-		return nil
+		return res.token, res.err
 	case <-time.After(3 * time.Minute):
-		return fmt.Errorf("timed out waiting for authorization")
+		return "", fmt.Errorf("timed out waiting for authorization")
 	}
 }
 
