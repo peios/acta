@@ -890,6 +890,93 @@ func (p *Postgres) CommentsByItem(ctx context.Context, itemID string) ([]store.C
 	return out, rows.Err()
 }
 
+// --- activity log ---
+
+func (p *Postgres) RecordEvent(ctx context.Context, e store.Event) (store.Event, error) {
+	return createWithRetry(func() (store.Event, error) {
+		data, err := json.Marshal(normalizeEventData(e.Data))
+		if err != nil {
+			return store.Event{}, err
+		}
+		const q = `INSERT INTO events
+		             (workspace_id, item_id, item_title, actor_id, actor_name, verb, data)
+		           VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+		           RETURNING id::text, workspace_id::text, item_id, item_title,
+		                     actor_id, actor_name, verb, data, created_at`
+		row := p.pool.QueryRow(ctx, q,
+			e.WorkspaceID, e.ItemID, e.ItemTitle, e.ActorID, e.ActorName, e.Verb, data)
+		return scanEvent(row)
+	})
+}
+
+func (p *Postgres) EventsByItem(ctx context.Context, itemID string, limit int) ([]store.Event, error) {
+	const q = `SELECT id::text, workspace_id::text, item_id, item_title,
+	                  actor_id, actor_name, verb, data, created_at
+	           FROM events WHERE item_id = $1
+	           ORDER BY created_at DESC, id DESC LIMIT $2`
+	return p.queryEvents(ctx, q, itemID, clampEventLimit(limit))
+}
+
+func (p *Postgres) EventsByWorkspace(ctx context.Context, workspaceID string, limit int) ([]store.Event, error) {
+	const q = `SELECT id::text, workspace_id::text, item_id, item_title,
+	                  actor_id, actor_name, verb, data, created_at
+	           FROM events WHERE workspace_id = $1
+	           ORDER BY created_at DESC, id DESC LIMIT $2`
+	return p.queryEvents(ctx, q, workspaceID, clampEventLimit(limit))
+}
+
+func (p *Postgres) queryEvents(ctx context.Context, q string, args ...any) ([]store.Event, error) {
+	rows, err := p.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Event
+	for rows.Next() {
+		e, err := scanEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+func scanEvent(row pgx.Row) (store.Event, error) {
+	var (
+		e   store.Event
+		raw []byte
+	)
+	if err := row.Scan(&e.ID, &e.WorkspaceID, &e.ItemID, &e.ItemTitle,
+		&e.ActorID, &e.ActorName, &e.Verb, &raw, &e.CreatedAt); err != nil {
+		return store.Event{}, err
+	}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &e.Data); err != nil {
+			return store.Event{}, err
+		}
+	}
+	if e.Data == nil {
+		e.Data = map[string]string{}
+	}
+	return e, nil
+}
+
+// normalizeEventData makes a nil map marshal to {} rather than null.
+func normalizeEventData(d map[string]string) map[string]string {
+	if d == nil {
+		return map[string]string{}
+	}
+	return d
+}
+
+func clampEventLimit(limit int) int {
+	if limit <= 0 || limit > 500 {
+		return 200
+	}
+	return limit
+}
+
 // --- app settings ---
 
 func (p *Postgres) AppSetting(ctx context.Context, key string) (string, error) {

@@ -105,3 +105,59 @@ func TestPGMCPPromptCRUD(t *testing.T) {
 		t.Fatalf("want not-found on second delete, got %v", err)
 	}
 }
+
+func TestPGEvents(t *testing.T) {
+	pg := openTestDB(t)
+	ctx := context.Background()
+
+	rec, err := pg.RecordEvent(ctx, store.Event{
+		WorkspaceID: "ws1",
+		ItemID:      "it1",
+		ItemTitle:   "Wire the log",
+		ActorID:     "u1",
+		ActorName:   "Ada",
+		Verb:        store.EventItemStatusChange,
+		Data:        map[string]string{"from": "To do", "to": "Doing"},
+	})
+	if err != nil {
+		t.Fatalf("record: %v", err)
+	}
+	if rec.ID == "" || rec.CreatedAt.IsZero() {
+		t.Fatalf("record didn't populate id/created_at: %+v", rec)
+	}
+
+	// A nil-data event must round-trip as {} rather than failing or yielding null.
+	if _, err := pg.RecordEvent(ctx, store.Event{
+		WorkspaceID: "ws1", ItemID: "it1", Verb: store.EventItemArchived,
+	}); err != nil {
+		t.Fatalf("record nil-data: %v", err)
+	}
+
+	byItem, err := pg.EventsByItem(ctx, "it1", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(byItem) != 2 {
+		t.Fatalf("EventsByItem: want 2, got %d", len(byItem))
+	}
+	// Newest first: the archive event we wrote second.
+	if byItem[0].Verb != store.EventItemArchived {
+		t.Fatalf("want newest-first ordering, got %q first", byItem[0].Verb)
+	}
+	if byItem[0].Data == nil {
+		t.Fatalf("nil-data event should decode to a non-nil empty map")
+	}
+	// The jsonb payload round-trips.
+	sc := byItem[1]
+	if sc.Data["from"] != "To do" || sc.Data["to"] != "Doing" {
+		t.Fatalf("jsonb data didn't round-trip: %+v", sc.Data)
+	}
+
+	byWs, err := pg.EventsByWorkspace(ctx, "ws1", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(byWs) != 2 {
+		t.Fatalf("EventsByWorkspace: want 2, got %d", len(byWs))
+	}
+}

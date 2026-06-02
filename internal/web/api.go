@@ -1,11 +1,11 @@
 package web
 
 import (
-	"context"
 	"net/http"
 	"strings"
 
 	"github.com/peios/acta/internal/apitoken"
+	"github.com/peios/acta/internal/identity"
 )
 
 // requireToken authenticates API requests by bearer token (a personal access
@@ -28,7 +28,7 @@ func requireToken(tokens *apitoken.Service) func(http.Handler) http.Handler {
 				apiError(w, http.StatusUnauthorized, "invalid token")
 				return
 			}
-			ctx := context.WithValue(r.Context(), ctxPrincipal, &p)
+			ctx := identity.NewContext(r.Context(), &p)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

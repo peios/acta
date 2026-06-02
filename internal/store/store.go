@@ -50,6 +50,38 @@ type MCPPromptArg struct {
 	Required    bool   `json:"required,omitempty"`
 }
 
+// Event verbs. Each names a recorded mutation; an Event's Data map carries the
+// verb-specific, already-resolved strings (status names, assignee names, old
+// title) so the activity log renders without joins and survives the referenced
+// rows changing or being deleted.
+const (
+	EventItemCreated      = "item.created"        // data: status
+	EventItemRenamed      = "item.renamed"        // data: from, to
+	EventItemStatusChange = "item.status_changed" // data: from, to
+	EventItemAssigned     = "item.assigned"       // data: from, to ("" = unassigned)
+	EventItemDescribed    = "item.described"      // (no data)
+	EventItemArchived     = "item.archived"       // (no data)
+	EventItemUnarchived   = "item.unarchived"     // (no data)
+	EventItemMilestone    = "item.milestone"      // data: on ("true"/"false")
+	EventItemReparented   = "item.reparented"     // data: to ("" = top level)
+	EventCommentAdded     = "comment.added"       // data: excerpt
+)
+
+// Event is one entry in the append-only activity log. ActorID/ActorName are ""
+// for a system action (no principal in context); ItemTitle and ActorName are
+// snapshots taken at write time.
+type Event struct {
+	ID          string
+	WorkspaceID string
+	ItemID      string
+	ItemTitle   string
+	ActorID     string
+	ActorName   string
+	Verb        string
+	Data        map[string]string
+	CreatedAt   time.Time
+}
+
 // User is the persisted account record.
 //
 // PasswordHash is empty for accounts that authenticate by some non-password
@@ -312,6 +344,13 @@ type Store interface {
 	// Comments on an item, returned oldest-first.
 	CreateComment(ctx context.Context, c Comment) (Comment, error)
 	CommentsByItem(ctx context.Context, itemID string) ([]Comment, error)
+
+	// Activity log. RecordEvent appends an entry (assigning its id). The two
+	// readers return newest-first, capped at limit (a non-positive limit is
+	// clamped to a sane default).
+	RecordEvent(ctx context.Context, e Event) (Event, error)
+	EventsByItem(ctx context.Context, itemID string, limit int) ([]Event, error)
+	EventsByWorkspace(ctx context.Context, workspaceID string, limit int) ([]Event, error)
 
 	// AppSetting reads an instance-global key/value setting, returning "" (no
 	// error) when the key is absent. SetAppSetting upserts it. The MCP guide

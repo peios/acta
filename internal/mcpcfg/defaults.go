@@ -94,9 +94,10 @@ Read the conventions in the ` + "`acta://guide`" + ` resource first if you haven
 Target workspace (blank = use list_workspaces and pick the default board): {{workspace}}
 
 1. Call ` + "`whoami`" + `, then ` + "`list_items`" + ` filtered to me.
-2. Group my open items by status, most-recently-touched first.
-3. Flag anything that looks stale or stuck.
-4. Recommend the one or two items I should pick up next, and why.
+2. Call ` + "`list_activity`" + ` to see what's actually changed recently across the board.
+3. Group my open items by status, most-recently-active first (use the activity log for recency).
+4. Flag anything stale or stuck — no recent activity, or sitting in progress too long.
+5. Recommend the one or two items I should pick up next, and why.
 
 Keep it tight — this is a quick orientation, not a report.`,
 	},

@@ -51,6 +51,20 @@ type mcpItemsT struct {
 	Items []mcpItemT `json:"items"`
 }
 
+type mcpEventT struct {
+	Actor     string            `json:"actor"`
+	Verb      string            `json:"verb"`
+	Summary   string            `json:"summary"`
+	ItemID    string            `json:"item_id"`
+	ItemTitle string            `json:"item_title"`
+	Data      map[string]string `json:"data"`
+	At        string            `json:"at"`
+}
+
+type mcpActivityT struct {
+	Events []mcpEventT `json:"events"`
+}
+
 type bearerRT struct{ token string }
 
 func (b bearerRT) RoundTrip(r *http.Request) (*http.Response, error) {

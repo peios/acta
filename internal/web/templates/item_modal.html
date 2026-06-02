@@ -57,6 +57,20 @@
           </div>
           <textarea class="comment-input" rows="2" placeholder="Add a comment…  (⌘↵)" maxlength="5000" aria-label="New comment" data-comment-input></textarea>
         </div>
+
+        {{if .History}}
+        <div class="modal-history">
+          <p class="section-title">Activity</p>
+          <ol class="history-list">
+            {{range .History}}
+            <li class="history-row">
+              <span class="history-line"><span class="history-actor">{{.Actor}}</span> {{.Summary}}</span>
+              <span class="history-when">{{.When}}</span>
+            </li>
+            {{end}}
+          </ol>
+        </div>
+        {{end}}
       </div>
 
       <aside class="modal-side">

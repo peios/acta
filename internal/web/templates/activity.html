@@ -1,0 +1,26 @@
+{{define "title"}}Activity · {{.Workspace.Name}} · Acta{{end}}
+{{define "content"}}
+<main class="stage stage--wide">
+  <div class="archive-head reveal d1">
+    <h1 class="title" style="font-size: 1.45rem; margin: 0;">Activity</h1>
+    <a class="toplink" href="/w/{{.Workspace.Slug}}">&lsaquo; Back to board</a>
+  </div>
+
+  {{if .Events}}
+  <ol class="feed reveal d1">
+    {{range .Events}}
+    <li class="feed-row">
+      <div class="feed-body">
+        <span class="feed-actor">{{.Actor}}</span>
+        <span class="feed-summary">{{.Summary}}</span>
+        {{if .ItemID}}<a class="feed-item" href="/w/{{$.Workspace.Slug}}?item={{.ItemID}}">{{.ItemTitle}}</a>{{end}}
+      </div>
+      <time class="feed-when">{{.When}}</time>
+    </li>
+    {{end}}
+  </ol>
+  {{else}}
+  <p class="subtitle reveal d1">No activity yet.</p>
+  {{end}}
+</main>
+{{end}}

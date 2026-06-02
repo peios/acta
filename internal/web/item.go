@@ -29,6 +29,7 @@ type modalView struct {
 	SubTotal       int
 	CreatedBy      string // display name of the creator, "" if unrecorded
 	CreatedByAgent bool
+	History        []eventView // activity log for this item, newest first
 }
 
 type parentOption struct {
@@ -134,6 +135,11 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		parents[i] = parentOption{ID: c.ID, Title: c.Title}
 	}
 
+	history, err := h.board.ItemHistory(ctx, item.ID, 50)
+	if err != nil {
+		return modalView{}, false, err
+	}
+
 	return modalView{
 		Slug:           ws.Slug,
 		CSRFToken:      csrfTokenFrom(ctx),
@@ -152,6 +158,7 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		SubTotal:       len(children),
 		CreatedBy:      createdBy,
 		CreatedByAgent: isAgent[item.CreatedBy],
+		History:        toEventViews(history),
 	}, true, nil
 }
 

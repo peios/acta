@@ -28,6 +28,7 @@ type Store struct {
 	apiTokens   map[string]store.APIToken
 	settings    map[string]string
 	mcpPrompts  map[string]store.MCPPrompt
+	events      map[string]store.Event
 }
 
 func New() *Store {
@@ -43,6 +44,7 @@ func New() *Store {
 		apiTokens:   map[string]store.APIToken{},
 		settings:    map[string]string{},
 		mcpPrompts:  map[string]store.MCPPrompt{},
+		events:      map[string]store.Event{},
 	}
 }
 
@@ -808,6 +810,61 @@ func (s *Store) CommentsByItem(_ context.Context, itemID string) ([]store.Commen
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
 	return out, nil
+}
+
+// --- activity log ---
+
+func (s *Store) RecordEvent(_ context.Context, e store.Event) (store.Event, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if e.ID == "" {
+		e.ID = newID()
+	}
+	if e.CreatedAt.IsZero() {
+		e.CreatedAt = time.Now()
+	}
+	if e.Data == nil {
+		e.Data = map[string]string{}
+	}
+	s.events[e.ID] = e
+	return e, nil
+}
+
+func (s *Store) EventsByItem(_ context.Context, itemID string, limit int) ([]store.Event, error) {
+	return s.recentEvents(func(e store.Event) bool { return e.ItemID == itemID }, limit), nil
+}
+
+func (s *Store) EventsByWorkspace(_ context.Context, workspaceID string, limit int) ([]store.Event, error) {
+	return s.recentEvents(func(e store.Event) bool { return e.WorkspaceID == workspaceID }, limit), nil
+}
+
+// recentEvents returns the events matching pred newest-first, capped at limit.
+func (s *Store) recentEvents(pred func(store.Event) bool, limit int) []store.Event {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.Event
+	for _, e := range s.events {
+		if pred(e) {
+			out = append(out, e)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].ID > out[j].ID
+		}
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	if limit = clampLimit(limit); len(out) > limit {
+		out = out[:limit]
+	}
+	return out
+}
+
+func clampLimit(limit int) int {
+	if limit <= 0 || limit > 500 {
+		return 200
+	}
+	return limit
 }
 
 // --- app settings ---

@@ -8,8 +8,10 @@ package board
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 
+	"github.com/peios/acta/internal/identity"
 	"github.com/peios/acta/internal/store"
 )
 
@@ -75,6 +77,67 @@ type Service struct {
 }
 
 func New(st store.Store) *Service { return &Service{store: st} }
+
+// recordEvent appends an entry to the activity log, attributing it to the
+// principal carried by ctx (recorded as a system action when none is present).
+// Recording is best-effort observability: a failure is logged but never fails
+// the mutation it describes, and it is intentionally a separate write — the log
+// is history, not part of the operation's consistency.
+func (s *Service) recordEvent(ctx context.Context, item store.Item, verb string, data map[string]string) {
+	ev := store.Event{
+		WorkspaceID: item.WorkspaceID,
+		ItemID:      item.ID,
+		ItemTitle:   item.Title,
+		Verb:        verb,
+		Data:        data,
+	}
+	if p, ok := identity.FromContext(ctx); ok && p != nil {
+		ev.ActorID = p.ID
+		ev.ActorName = principalName(p)
+	}
+	if _, err := s.store.RecordEvent(ctx, ev); err != nil {
+		slog.Error("record activity event", "verb", verb, "item", item.ID, "err", err)
+	}
+}
+
+func principalName(p *identity.Principal) string {
+	if p.Display != "" {
+		return p.Display
+	}
+	return p.Username
+}
+
+// userName resolves a user id to a display name for an event payload, returning
+// "" for the empty id (e.g. an unassignment).
+func (s *Service) userName(ctx context.Context, userID string) string {
+	if userID == "" {
+		return ""
+	}
+	u, err := s.store.UserByID(ctx, userID)
+	if err != nil {
+		return ""
+	}
+	if u.Display != "" {
+		return u.Display
+	}
+	return u.Username
+}
+
+// excerpt collapses body to a single short line for an event payload.
+func excerpt(body string, max int) string {
+	s := strings.Join(strings.Fields(body), " ")
+	if len([]rune(s)) > max {
+		s = string([]rune(s)[:max]) + "…"
+	}
+	return s
+}
+
+func boolStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
 
 // --- statuses ---
 
@@ -175,13 +238,19 @@ func (s *Service) createItem(ctx context.Context, workspaceID, statusID, title, 
 	if err != nil {
 		return store.Item{}, err
 	}
-	return s.store.CreateItem(ctx, store.Item{
+	it, err := s.store.CreateItem(ctx, store.Item{
 		WorkspaceID: workspaceID,
 		StatusID:    statusID,
 		Title:       title,
 		Position:    len(lane),
 		CreatedBy:   createdBy,
 	})
+	if err != nil {
+		return store.Item{}, err
+	}
+	status, _ := s.store.StatusByID(ctx, statusID)
+	s.recordEvent(ctx, it, store.EventItemCreated, map[string]string{"status": status.Name})
+	return it, nil
 }
 
 func (s *Service) RenameItem(ctx context.Context, id, title string) error {
@@ -189,7 +258,20 @@ func (s *Service) RenameItem(ctx context.Context, id, title string) error {
 	if err != nil {
 		return err
 	}
-	return s.store.RenameItem(ctx, id, title)
+	item, err := s.store.ItemByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if item.Title == title {
+		return nil
+	}
+	if err := s.store.RenameItem(ctx, id, title); err != nil {
+		return err
+	}
+	from := item.Title
+	item.Title = title
+	s.recordEvent(ctx, item, store.EventItemRenamed, map[string]string{"from": from, "to": title})
+	return nil
 }
 
 // MoveItem transitions an item into toStatusID at the given index, keeping both
@@ -229,7 +311,7 @@ func (s *Service) MoveItem(ctx context.Context, itemID, toStatusID string, index
 		return err
 	}
 
-	// Re-densify the source lane if the item left it.
+	// Re-densify the source lane if the item left it, and log the transition.
 	if item.StatusID != toStatusID {
 		src, err := s.store.ItemsByStatus(ctx, item.StatusID)
 		if err != nil {
@@ -239,7 +321,14 @@ func (s *Service) MoveItem(ctx context.Context, itemID, toStatusID string, index
 		for i, it := range src {
 			srcIDs[i] = it.ID
 		}
-		return s.store.ReorderItems(ctx, item.StatusID, srcIDs)
+		if err := s.store.ReorderItems(ctx, item.StatusID, srcIDs); err != nil {
+			return err
+		}
+		from, _ := s.store.StatusByID(ctx, item.StatusID)
+		to, _ := s.store.StatusByID(ctx, toStatusID)
+		item.StatusID = toStatusID
+		s.recordEvent(ctx, item, store.EventItemStatusChange,
+			map[string]string{"from": from.Name, "to": to.Name})
 	}
 	return nil
 }
@@ -264,17 +353,41 @@ func (s *Service) UpdateDescription(ctx context.Context, id, description string)
 	if len([]rune(description)) > MaxDescriptionLen {
 		return ErrInvalidDescription
 	}
-	return s.store.UpdateItemDescription(ctx, id, description)
+	item, err := s.store.ItemByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if item.Description == description {
+		return nil
+	}
+	if err := s.store.UpdateItemDescription(ctx, id, description); err != nil {
+		return err
+	}
+	s.recordEvent(ctx, item, store.EventItemDescribed, nil)
+	return nil
 }
 
 // SetAssignee assigns the item to a user, or clears it when assigneeID is "".
 func (s *Service) SetAssignee(ctx context.Context, id, assigneeID string) error {
+	item, err := s.store.ItemByID(ctx, id)
+	if err != nil {
+		return err
+	}
 	if assigneeID != "" {
 		if _, err := s.store.UserByID(ctx, assigneeID); err != nil {
 			return err
 		}
 	}
-	return s.store.SetItemAssignee(ctx, id, assigneeID)
+	if item.AssigneeID == assigneeID {
+		return nil
+	}
+	from := s.userName(ctx, item.AssigneeID)
+	to := s.userName(ctx, assigneeID)
+	if err := s.store.SetItemAssignee(ctx, id, assigneeID); err != nil {
+		return err
+	}
+	s.recordEvent(ctx, item, store.EventItemAssigned, map[string]string{"from": from, "to": to})
+	return nil
 }
 
 // SetStatus changes an item's status. A top-level item is repositioned to the
@@ -289,7 +402,18 @@ func (s *Service) SetStatus(ctx context.Context, id, statusID string) error {
 		return err
 	}
 	if item.ParentID != "" {
-		return s.store.SetItemStatus(ctx, id, statusID)
+		if item.StatusID == statusID {
+			return nil
+		}
+		from, _ := s.store.StatusByID(ctx, item.StatusID)
+		to, _ := s.store.StatusByID(ctx, statusID)
+		if err := s.store.SetItemStatus(ctx, id, statusID); err != nil {
+			return err
+		}
+		item.StatusID = statusID
+		s.recordEvent(ctx, item, store.EventItemStatusChange,
+			map[string]string{"from": from.Name, "to": to.Name})
+		return nil
 	}
 	return s.MoveItem(ctx, id, statusID, endOfLane)
 }
@@ -305,9 +429,14 @@ func (s *Service) Archive(ctx context.Context, id string) error {
 		return err
 	}
 	if item.ParentID == "" {
-		return s.densifyLane(ctx, item.StatusID)
+		if err := s.densifyLane(ctx, item.StatusID); err != nil {
+			return err
+		}
+	} else if err := s.densifyChildren(ctx, item.ParentID); err != nil {
+		return err
 	}
-	return s.densifyChildren(ctx, item.ParentID)
+	s.recordEvent(ctx, item, store.EventItemArchived, nil)
+	return nil
 }
 
 func (s *Service) archiveSubtree(ctx context.Context, id string) error {
@@ -337,9 +466,14 @@ func (s *Service) Unarchive(ctx context.Context, id string) error {
 		return err
 	}
 	if item.ParentID == "" {
-		return s.appendToLaneEnd(ctx, item.StatusID, id)
+		if err := s.appendToLaneEnd(ctx, item.StatusID, id); err != nil {
+			return err
+		}
+	} else if err := s.appendToParentEnd(ctx, item.ParentID, id); err != nil {
+		return err
 	}
-	return s.appendToParentEnd(ctx, item.ParentID, id)
+	s.recordEvent(ctx, item, store.EventItemUnarchived, nil)
+	return nil
 }
 
 func (s *Service) unarchiveSubtree(ctx context.Context, id string) error {
@@ -446,7 +580,7 @@ func (s *Service) CreateSubtaskAs(ctx context.Context, parentID, title, createdB
 	if err != nil {
 		return store.Item{}, err
 	}
-	return s.store.CreateItem(ctx, store.Item{
+	it, err := s.store.CreateItem(ctx, store.Item{
 		WorkspaceID: parent.WorkspaceID,
 		StatusID:    statuses[0].ID, // a fresh subtask starts in the first lane
 		ParentID:    parentID,
@@ -454,6 +588,11 @@ func (s *Service) CreateSubtaskAs(ctx context.Context, parentID, title, createdB
 		Position:    len(siblings),
 		CreatedBy:   createdBy,
 	})
+	if err != nil {
+		return store.Item{}, err
+	}
+	s.recordEvent(ctx, it, store.EventItemCreated, map[string]string{"status": statuses[0].Name})
+	return it, nil
 }
 
 func (s *Service) Children(ctx context.Context, parentID string) ([]store.Item, error) {
@@ -461,7 +600,19 @@ func (s *Service) Children(ctx context.Context, parentID string) ([]store.Item, 
 }
 
 func (s *Service) SetMilestone(ctx context.Context, id string, isMilestone bool) error {
-	return s.store.SetItemMilestone(ctx, id, isMilestone)
+	item, err := s.store.ItemByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if item.IsMilestone == isMilestone {
+		return nil
+	}
+	if err := s.store.SetItemMilestone(ctx, id, isMilestone); err != nil {
+		return err
+	}
+	item.IsMilestone = isMilestone
+	s.recordEvent(ctx, item, store.EventItemMilestone, map[string]string{"on": boolStr(isMilestone)})
+	return nil
 }
 
 // CreateRootItem makes a top-level item; if statusID is "" it lands in the
@@ -517,6 +668,9 @@ func (s *Service) Reparent(ctx context.Context, itemID, newParentID string) erro
 			return ErrCycle
 		}
 	}
+	if item.ParentID == newParentID {
+		return nil
+	}
 	if err := s.store.SetItemParent(ctx, itemID, newParentID); err != nil {
 		return err
 	}
@@ -527,10 +681,21 @@ func (s *Service) Reparent(ctx context.Context, itemID, newParentID string) erro
 	} else if err := s.densifyChildren(ctx, item.ParentID); err != nil {
 		return err
 	}
+	toParent := ""
 	if newParentID == "" {
-		return s.appendToLaneEnd(ctx, item.StatusID, itemID)
+		if err := s.appendToLaneEnd(ctx, item.StatusID, itemID); err != nil {
+			return err
+		}
+	} else {
+		if err := s.appendToParentEnd(ctx, newParentID, itemID); err != nil {
+			return err
+		}
+		if p, perr := s.store.ItemByID(ctx, newParentID); perr == nil {
+			toParent = p.Title
+		}
 	}
-	return s.appendToParentEnd(ctx, newParentID, itemID)
+	s.recordEvent(ctx, item, store.EventItemReparented, map[string]string{"to": toParent})
+	return nil
 }
 
 // descendants returns the set of item ids in itemID's subtree (excluding itself).
@@ -586,11 +751,32 @@ func (s *Service) AddComment(ctx context.Context, itemID, authorID, body string)
 	if body == "" || len([]rune(body)) > MaxCommentLen {
 		return store.Comment{}, ErrInvalidComment
 	}
-	return s.store.CreateComment(ctx, store.Comment{
+	c, err := s.store.CreateComment(ctx, store.Comment{
 		ItemID:   itemID,
 		AuthorID: authorID,
 		Body:     body,
 	})
+	if err != nil {
+		return store.Comment{}, err
+	}
+	if item, ierr := s.store.ItemByID(ctx, itemID); ierr == nil {
+		s.recordEvent(ctx, item, store.EventCommentAdded, map[string]string{"excerpt": excerpt(body, 100)})
+	}
+	return c, nil
+}
+
+// --- activity ---
+
+// ItemHistory returns the most recent activity-log entries for one item,
+// newest first.
+func (s *Service) ItemHistory(ctx context.Context, itemID string, limit int) ([]store.Event, error) {
+	return s.store.EventsByItem(ctx, itemID, limit)
+}
+
+// WorkspaceActivity returns the most recent activity-log entries across a whole
+// workspace, newest first.
+func (s *Service) WorkspaceActivity(ctx context.Context, workspaceID string, limit int) ([]store.Event, error) {
+	return s.store.EventsByWorkspace(ctx, workspaceID, limit)
 }
 
 // SeedDefaults gives a new workspace its starter lanes.

@@ -110,6 +110,11 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 		Name:        "unarchive_item",
 		Description: "Restore a previously archived item (and its subtree) to the board.",
 	}, h.mcpUnarchiveItem)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "list_activity",
+		Description: "Read the activity log, newest first: who changed what and when (creations, status moves, assignments, comments, archives, …). Pass item to get one item's history, or omit it for the whole workspace feed. Use this to answer \"what changed since yesterday\" for a standup instead of diffing the board. Each entry has a human-readable summary plus the raw verb and data for precise parsing.",
+	}, h.mcpListActivity)
 }
 
 // --- tool input/output types ---
@@ -247,6 +252,28 @@ type setItemMilestoneInput struct {
 type setItemParentInput struct {
 	ID     string `json:"id" jsonschema:"the item id to reparent"`
 	Parent string `json:"parent,omitempty" jsonschema:"new parent item id; omit to promote to a top-level board item"`
+}
+
+type listActivityInput struct {
+	Workspace string `json:"workspace" jsonschema:"slug of the workspace whose activity to read"`
+	Item      string `json:"item,omitempty" jsonschema:"restrict to a single item id's history; omit for the whole-workspace feed"`
+	Limit     int    `json:"limit,omitempty" jsonschema:"max entries to return, newest first (default 50)"`
+}
+
+// mcpEvent is one activity-log entry for agents: a human-readable summary plus
+// the raw verb and resolved data fields, so it can be read at a glance or parsed.
+type mcpEvent struct {
+	Actor     string            `json:"actor,omitempty"`
+	Verb      string            `json:"verb"`
+	Summary   string            `json:"summary"`
+	ItemID    string            `json:"item_id,omitempty"`
+	ItemTitle string            `json:"item_title,omitempty"`
+	Data      map[string]string `json:"data,omitempty"`
+	At        string            `json:"at"`
+}
+
+type activityOutput struct {
+	Events []mcpEvent `json:"events"`
 }
 
 // --- tool handlers ---
@@ -536,6 +563,44 @@ func (h *handlers) mcpUnarchiveItem(ctx context.Context, _ *mcp.CallToolRequest,
 		return nil, mcpItem{}, mcpErr(err)
 	}
 	return h.mcpReloadResult(ctx, item.ID)
+}
+
+func (h *handlers) mcpListActivity(ctx context.Context, _ *mcp.CallToolRequest, in listActivityInput) (*mcp.CallToolResult, activityOutput, error) {
+	ws, err := h.mcpWorkspace(ctx, in.Workspace)
+	if err != nil {
+		return nil, activityOutput{}, err
+	}
+	limit := in.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	var events []store.Event
+	if item := strings.TrimSpace(in.Item); item != "" {
+		// Scope to one item, but keep it inside the named workspace.
+		it, ierr := h.mcpItem(ctx, item, ws.ID)
+		if ierr != nil {
+			return nil, activityOutput{}, ierr
+		}
+		events, err = h.board.ItemHistory(ctx, it.ID, limit)
+	} else {
+		events, err = h.board.WorkspaceActivity(ctx, ws.ID, limit)
+	}
+	if err != nil {
+		return nil, activityOutput{}, mcpErr(err)
+	}
+	out := activityOutput{Events: make([]mcpEvent, len(events))}
+	for i, e := range events {
+		out.Events[i] = mcpEvent{
+			Actor:     e.ActorName,
+			Verb:      e.Verb,
+			Summary:   humanizeEvent(e),
+			ItemID:    e.ItemID,
+			ItemTitle: e.ItemTitle,
+			Data:      e.Data,
+			At:        e.CreatedAt.Format(time.RFC3339),
+		}
+	}
+	return &mcp.CallToolResult{}, out, nil
 }
 
 // --- shared helpers ---

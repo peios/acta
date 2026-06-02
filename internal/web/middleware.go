@@ -21,12 +21,15 @@ import (
 type ctxKey int
 
 const (
-	ctxPrincipal ctxKey = iota
-	ctxCSRF
+	ctxCSRF ctxKey = iota
 )
 
+// principalFrom reads the authenticated principal off the request context. The
+// principal itself is carried under the shared identity context key (set by
+// requireAuth here and by the MCP/API bearer middleware), so the board service
+// can attribute activity-log entries to the same actor.
 func principalFrom(ctx context.Context) *identity.Principal {
-	p, _ := ctx.Value(ctxPrincipal).(*identity.Principal)
+	p, _ := identity.FromContext(ctx)
 	return p
 }
 
@@ -52,7 +55,7 @@ func requireAuth(sessions *session.Manager) func(http.Handler) http.Handler {
 				http.Redirect(w, r, "/login?"+q.Encode(), http.StatusSeeOther)
 				return
 			}
-			ctx := context.WithValue(r.Context(), ctxPrincipal, p)
+			ctx := identity.NewContext(r.Context(), p)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

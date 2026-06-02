@@ -71,6 +71,38 @@ func TestMCPResourcesAndPrompts(t *testing.T) {
 	}
 }
 
+func TestMCPListActivity(t *testing.T) {
+	base, client := newTestServer(t)
+	csrf := signIn(t, client, base)
+	token := mintToken(t, client, base, csrf)
+	sess := mcpConnect(t, base, token)
+
+	// A create then a status move should both land in the log, newest first.
+	it := callTool[mcpItemT](t, sess, "create_item",
+		map[string]any{"workspace": "general", "title": "Ship activity log"})
+	callTool[mcpItemT](t, sess, "set_item_status",
+		map[string]any{"id": it.ID, "status": "Doing"})
+
+	act := callTool[mcpActivityT](t, sess, "list_activity", map[string]any{"workspace": "general"})
+	if len(act.Events) < 2 {
+		t.Fatalf("want >=2 events, got %d: %+v", len(act.Events), act.Events)
+	}
+	newest := act.Events[0]
+	if newest.Verb != "item.status_changed" || newest.Data["to"] != "Doing" {
+		t.Fatalf("newest event = %+v, want a status change to Doing", newest)
+	}
+	if newest.Summary == "" || newest.ItemID != it.ID {
+		t.Fatalf("event missing summary/item id: %+v", newest)
+	}
+
+	// Scoped to the item, the same two events appear and nothing else.
+	scoped := callTool[mcpActivityT](t, sess, "list_activity",
+		map[string]any{"workspace": "general", "item": it.ID})
+	if len(scoped.Events) != 2 {
+		t.Fatalf("item-scoped activity: want 2, got %d", len(scoped.Events))
+	}
+}
+
 func readResource(t *testing.T, s *mcp.ClientSession, uri string) string {
 	t.Helper()
 	res, err := s.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: uri})

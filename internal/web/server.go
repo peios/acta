@@ -58,6 +58,7 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	// A workspace's board and its JSON mutation API (consumed by board.js).
 	mux.Handle("GET /w/{slug}", protected(h.boardPage))
 	mux.Handle("GET /w/{slug}/archive", protected(h.archivePage))
+	mux.Handle("GET /w/{slug}/activity", protected(h.activityPage))
 	mux.Handle("POST /w/{slug}/statuses", protected(h.statusCreate))
 	mux.Handle("POST /w/{slug}/statuses/reorder", protected(h.statusReorder))
 	mux.Handle("POST /w/{slug}/statuses/{id}/rename", protected(h.statusRename))

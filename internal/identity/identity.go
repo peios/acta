@@ -9,9 +9,29 @@
 // anything but the provider itself.
 package identity
 
+import "context"
+
 // Principal is an authenticated actor.
 type Principal struct {
 	ID       string
 	Username string
 	Display  string
+}
+
+type ctxKey int
+
+const principalKey ctxKey = 0
+
+// NewContext returns a copy of ctx carrying p as the authenticated principal.
+// The auth middleware sets this once per request; everything downstream — HTTP
+// handlers, MCP tools, the board service's activity log — reads it back with
+// FromContext, so attribution is uniform regardless of how the request arrived.
+func NewContext(ctx context.Context, p *Principal) context.Context {
+	return context.WithValue(ctx, principalKey, p)
+}
+
+// FromContext returns the principal carried by ctx, if any.
+func FromContext(ctx context.Context) (*Principal, bool) {
+	p, ok := ctx.Value(principalKey).(*Principal)
+	return p, ok
 }

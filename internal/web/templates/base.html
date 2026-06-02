@@ -639,6 +639,19 @@
   .modal-ms { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .85rem; cursor: pointer; }
   .modal-ms input { accent-color: var(--accent); }
 
+  /* ---- item activity (modal) ---- */
+  /* a quiet, secondary record under comments: hairline rows, faint text */
+  .modal-history { margin-top: 1.4rem; }
+  .history-list { list-style: none; margin: 0; padding: 0; display: grid; }
+  .history-row {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
+    padding: .32rem .1rem; font-size: .8rem; color: var(--muted);
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .history-row:last-child { border-bottom: 0; }
+  .history-actor { color: var(--text); font-weight: 500; }
+  .history-when { flex: none; color: var(--faint); font-size: .72rem; font-variant-numeric: tabular-nums; }
+
   /* ---- subtasks ---- */
   /* float right after the full-width title drops the count to the bottom-right */
   .item-sub { float: right; margin-top: .4rem; font-size: .72rem; color: var(--muted); background: var(--field); border: 1px solid var(--border-soft); border-radius: .4rem; padding: .05rem .35rem; line-height: 1.35; }
@@ -667,6 +680,20 @@
   .arch-meta { color: var(--faint); font-size: .78rem; margin-top: .15rem; }
   .arch-actions { display: flex; align-items: center; gap: .8rem; }
   .arch-actions form { margin: 0; }
+
+  /* ---- activity feed (page) ---- */
+  .feed { list-style: none; margin: 0; padding: 0; display: grid; }
+  .feed-row {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
+    padding: .6rem .1rem; border-bottom: 1px solid var(--border-soft);
+  }
+  .feed-row:last-child { border-bottom: 0; }
+  .feed-body { min-width: 0; font-size: .9rem; line-height: 1.5; }
+  .feed-actor { color: var(--text); font-weight: 500; }
+  .feed-summary { color: var(--muted); }
+  .feed-item { color: var(--accent-hi); text-decoration: none; }
+  .feed-item:hover { text-decoration: underline; }
+  .feed-when { flex: none; color: var(--faint); font-size: .74rem; font-variant-numeric: tabular-nums; }
 
   /* ---- one quiet entrance ---- */
   @media (prefers-reduced-motion: no-preference) {
