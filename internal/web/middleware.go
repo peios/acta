@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"time"
 
 	"github.com/peios/acta/internal/httpx"
@@ -111,14 +112,39 @@ func unsafeMethod(m string) bool {
 	}
 }
 
-// secureHeaders sets conservative security headers on every response.
-func secureHeaders(next http.Handler) http.Handler {
+// secureHeaders sets conservative security headers on every response. HSTS is
+// emitted only when hsts is set (i.e. in prod behind real HTTPS), since it's
+// meaningless — and a footgun — over plain http during local dev.
+func secureHeaders(hsts bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			h := w.Header()
+			h.Set("X-Content-Type-Options", "nosniff")
+			h.Set("X-Frame-Options", "DENY")
+			h.Set("Referrer-Policy", "same-origin")
+			h.Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'")
+			if hsts {
+				h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// recoverPanic turns a panic in any downstream handler into a logged 500 rather
+// than a dropped connection. It sits inside requestLogger, so the panic log
+// carries the request id that correlates it with the access-log line.
+func recoverPanic(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		h := w.Header()
-		h.Set("X-Content-Type-Options", "nosniff")
-		h.Set("X-Frame-Options", "DENY")
-		h.Set("Referrer-Policy", "same-origin")
-		h.Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'")
+		defer func() {
+			if rec := recover(); rec != nil {
+				slog.Error("panic",
+					"req_id", httpx.RequestID(r.Context()),
+					"method", r.Method, "path", r.URL.Path,
+					"err", rec, "stack", string(debug.Stack()))
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+			}
+		}()
 		next.ServeHTTP(w, r)
 	})
 }

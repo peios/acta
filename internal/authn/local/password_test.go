@@ -40,3 +40,16 @@ func TestVerifyInvalidHash(t *testing.T) {
 		}
 	}
 }
+
+func TestValidatePassword(t *testing.T) {
+	for _, bad := range []string{"", "short", "1234567"} { // all < 8
+		if err := ValidatePassword(bad); err == nil {
+			t.Errorf("expected %q to be rejected", bad)
+		}
+	}
+	for _, good := range []string{"12345678", "correct horse", "πππππππππ"} { // >= 8 runes
+		if err := ValidatePassword(good); err != nil {
+			t.Errorf("expected %q to be accepted, got %v", good, err)
+		}
+	}
+}

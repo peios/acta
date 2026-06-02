@@ -101,11 +101,19 @@ func runServe(args []string) error {
 		BackoffMax:  cfg.LoginBackoffMax,
 	})
 	provider := local.NewProvider(pg, sessions, passkeys, cfg.CookieSecure(), local.WithThrottle(guard))
-	handler := web.NewHandler(cfg, sessions, provider, passkeys, tokens, agents, workspaces, boards)
+	app := web.NewHandler(cfg, sessions, provider, passkeys, tokens, agents, workspaces, boards)
+
+	// Health probes mount ahead of the app handler, so they skip auth, CSRF, and
+	// the access log. /readyz pings the database.
+	health := web.HealthHandler(pg.Ping)
+	mux := http.NewServeMux()
+	mux.Handle("/healthz", health)
+	mux.Handle("/readyz", health)
+	mux.Handle("/", app)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           handler,
+		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,
@@ -174,8 +182,8 @@ func runCreateUser(args []string) error {
 	if err != nil {
 		return err
 	}
-	if password == "" {
-		return errors.New("password must not be empty")
+	if err := local.ValidatePassword(password); err != nil {
+		return err
 	}
 	hash, err := local.HashPassword(password)
 	if err != nil {
@@ -221,8 +229,8 @@ func runSetPassword(args []string) error {
 	if err != nil {
 		return err
 	}
-	if password == "" {
-		return errors.New("password must not be empty")
+	if err := local.ValidatePassword(password); err != nil {
+		return err
 	}
 	hash, err := local.HashPassword(password)
 	if err != nil {

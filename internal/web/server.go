@@ -17,6 +17,11 @@ import (
 	"github.com/peios/acta/internal/workspace"
 )
 
+// maxBodyBytes caps the request body for every route. Acta's payloads — form
+// posts, small JSON mutations, MCP tool calls — are tiny, so a 1 MiB ceiling is
+// generous while still bounding memory against an oversized or hung upload.
+const maxBodyBytes = 1 << 20
+
 // NewHandler builds the application handler.
 func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Provider, passkeys *passkey.Service, tokens *apitoken.Service, agents *agent.Service, workspaces *workspace.Service, boards *board.Service) http.Handler {
 	h := &handlers{
@@ -122,5 +127,11 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	root.Handle("/api/v1/", requireToken(tokens)(api))
 	root.Handle("/mcp", mcpEndpoint)
 	root.Handle("/", csrf(cfg.CookieSecure())(mux))
-	return requestLogger(cfg.TrustedProxies)(secureHeaders(root))
+
+	// Outer chain (outermost first): log + tag the request, recover panics into
+	// a clean 500, set security headers, cap the request body, then route.
+	var chain http.Handler = http.MaxBytesHandler(root, maxBodyBytes)
+	chain = secureHeaders(cfg.CookieSecure())(chain)
+	chain = recoverPanic(chain)
+	return requestLogger(cfg.TrustedProxies)(chain)
 }

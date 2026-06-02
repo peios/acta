@@ -26,6 +26,19 @@ const (
 // ErrInvalidHash is returned when an encoded hash cannot be parsed.
 var ErrInvalidHash = errors.New("password: invalid encoded hash")
 
+// MinPasswordLen is the floor for a new password. A gentle minimum: enough to
+// rule out trivially weak passwords without dictating composition rules.
+const MinPasswordLen = 8
+
+// ValidatePassword enforces the minimum-length policy on a new password,
+// counting runes so multi-byte characters each count once.
+func ValidatePassword(password string) error {
+	if len([]rune(password)) < MinPasswordLen {
+		return fmt.Errorf("password must be at least %d characters", MinPasswordLen)
+	}
+	return nil
+}
+
 // HashPassword returns a PHC-format argon2id hash:
 //
 //	$argon2id$v=19$m=65536,t=2,p=4$<salt>$<hash>

@@ -38,6 +38,9 @@ func Connect(ctx context.Context, url string) (*Postgres, error) {
 
 func (p *Postgres) Close() { p.pool.Close() }
 
+// Ping verifies database connectivity, for readiness checks.
+func (p *Postgres) Ping(ctx context.Context) error { return p.pool.Ping(ctx) }
+
 // createWithRetry runs an insert whose id comes from the gen_id() default,
 // re-running so a fresh id is generated on the vanishingly rare primary-key
 // collision. Only primary-key violations are retried; other unique violations
