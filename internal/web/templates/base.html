@@ -360,21 +360,47 @@
   }
   .lane-name:hover { border-color: var(--border-soft); }
   .lane-name:focus { outline: none; border-color: var(--accent); background: var(--field); }
+  /* lane colour dot + the swatch picker it opens (the colour legend) */
+  .lane-swatch { position: relative; display: flex; align-items: center; flex: none; }
+  .lane-dot {
+    width: .72rem; height: .72rem; border-radius: 50%; border: 0; padding: 0; flex: none; cursor: pointer;
+    background: var(--lane-color, var(--faint)); box-shadow: inset 0 0 0 1px rgba(0,0,0,.3); transition: transform .12s;
+  }
+  .lane-dot:hover { transform: scale(1.15); }
+  .lane-palette {
+    position: absolute; top: 1.5rem; left: -.2rem; z-index: 20;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: .35rem; padding: .5rem;
+    background: var(--card-top); border: 1px solid var(--border); border-radius: .55rem;
+    box-shadow: 0 14px 30px -14px rgba(0,0,0,.85);
+  }
+  .lane-palette[hidden] { display: none; }
+  .swatch {
+    width: 1.15rem; height: 1.15rem; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.3); transition: transform .1s;
+  }
+  .swatch:hover { transform: scale(1.18); }
   .lane-del, .item-del {
     background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 1rem; line-height: 1;
     padding: .05rem .28rem; border-radius: .3rem; opacity: 0; transition: opacity .12s, color .12s;
   }
   .lane-del:hover, .item-del:hover { color: var(--danger-text); }
-  .lane:hover .lane-del, .item:hover .item-del { opacity: 1; }
+  .lane:hover .lane-del { opacity: 1; }
+  /* the card's archive × shares the top-right corner with the diamond: the
+     diamond shows at rest, the × takes over on hover */
+  .item-del { position: absolute; top: .28rem; right: .3rem; }
+  .item:hover .item-del { opacity: 1; }
+  .item:hover .item-ms { opacity: 0; }
   .lane-items { display: flex; flex-direction: column; gap: .45rem; padding: .2rem .55rem; overflow-y: auto; min-height: .6rem; flex: 1; }
   .item {
-    display: flex; align-items: flex-start; justify-content: space-between; gap: .4rem;
+    position: relative;
     background: linear-gradient(180deg, var(--card-top), var(--card-bot));
-    border: 1px solid var(--border); border-radius: .5rem; padding: .5rem .6rem;
+    border: 1px solid var(--border); border-radius: .5rem; padding: .5rem .65rem;
     font-size: .88rem; cursor: grab;
-    box-shadow: 0 8px 18px -14px rgba(0,0,0,.8);
+    /* the inset left bar is the card's status colour (see --lane-color) */
+    box-shadow: inset .18rem 0 0 var(--lane-color, transparent), 0 8px 18px -14px rgba(0,0,0,.8);
   }
-  .item-title { flex: 1; min-width: 0; word-break: break-word; }
+  /* padding-right clears the top-right corner (milestone diamond / archive ×) */
+  .item-title { display: block; min-width: 0; word-break: break-word; padding-right: 1rem; }
   .item-edit { flex: 1; min-width: 0; background: var(--field); border: 1px solid var(--accent); border-radius: .35rem; color: var(--text); font: inherit; font-size: .88rem; padding: .12rem .3rem; }
   .item-add { padding: .35rem .55rem .55rem; margin: 0; }
   .item-add-input, .lane-add-input {
@@ -400,8 +426,7 @@
   .mcol-title { background: none; border: 0; color: var(--text); font: inherit; font-weight: 600; font-size: .9rem; cursor: pointer; padding: 0; text-align: left; }
   .mcol-title:hover:not(.mcol-backlog) { color: var(--accent-hi); }
   .mcol-backlog { color: var(--muted); cursor: default; }
-  .item-ms { flex: none; color: var(--accent); font-size: .72rem; }
-  .item-status { flex: none; font-size: .72rem; color: var(--faint); background: var(--field); border: 1px solid var(--border-soft); border-radius: .4rem; padding: .05rem .35rem; }
+  .item-ms { position: absolute; top: .5rem; right: .55rem; color: var(--accent); font-size: .72rem; line-height: 1; transition: opacity .12s; }
 
   /* ---- item modal ---- */
   .modal-backdrop {
@@ -461,7 +486,8 @@
   .modal-ms input { accent-color: var(--accent); }
 
   /* ---- subtasks ---- */
-  .item-sub { flex: none; font-size: .72rem; color: var(--muted); background: var(--field); border: 1px solid var(--border-soft); border-radius: .4rem; padding: .05rem .35rem; }
+  /* float right after the full-width title drops the count to the bottom-right */
+  .item-sub { float: right; margin-top: .4rem; font-size: .72rem; color: var(--muted); background: var(--field); border: 1px solid var(--border-soft); border-radius: .4rem; padding: .05rem .35rem; line-height: 1.35; }
   .modal-parent { justify-self: start; color: var(--muted); text-decoration: none; font-size: .85rem; }
   .modal-parent:hover { color: var(--accent-hi); }
   .modal-subtasks { display: grid; gap: .5rem; }

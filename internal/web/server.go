@@ -59,6 +59,7 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("POST /w/{slug}/statuses", protected(h.statusCreate))
 	mux.Handle("POST /w/{slug}/statuses/reorder", protected(h.statusReorder))
 	mux.Handle("POST /w/{slug}/statuses/{id}/rename", protected(h.statusRename))
+	mux.Handle("POST /w/{slug}/statuses/{id}/color", protected(h.statusColor))
 	mux.Handle("POST /w/{slug}/statuses/{id}/delete", protected(h.statusDelete))
 	mux.Handle("POST /w/{slug}/items", protected(h.itemCreate))
 	mux.Handle("GET /w/{slug}/items/{id}/modal", protected(h.itemModal))

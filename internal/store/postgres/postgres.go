@@ -533,18 +533,18 @@ func mapWorkspaceConflict(err error) error {
 
 func (p *Postgres) CreateStatus(ctx context.Context, s store.Status) (store.Status, error) {
 	return createWithRetry(func() (store.Status, error) {
-		const q = `INSERT INTO statuses (workspace_id, name, position)
-		           VALUES ($1, $2, $3)
-		           RETURNING id::text, workspace_id::text, name, position, created_at`
+		const q = `INSERT INTO statuses (workspace_id, name, position, color)
+		           VALUES ($1, $2, $3, $4)
+		           RETURNING id::text, workspace_id::text, name, position, color, created_at`
 		var out store.Status
-		err := p.pool.QueryRow(ctx, q, s.WorkspaceID, s.Name, s.Position).
-			Scan(&out.ID, &out.WorkspaceID, &out.Name, &out.Position, &out.CreatedAt)
+		err := p.pool.QueryRow(ctx, q, s.WorkspaceID, s.Name, s.Position, s.Color).
+			Scan(&out.ID, &out.WorkspaceID, &out.Name, &out.Position, &out.Color, &out.CreatedAt)
 		return out, err
 	})
 }
 
 func (p *Postgres) StatusesByWorkspace(ctx context.Context, workspaceID string) ([]store.Status, error) {
-	const q = `SELECT id::text, workspace_id::text, name, position, created_at
+	const q = `SELECT id::text, workspace_id::text, name, position, color, created_at
 	           FROM statuses WHERE workspace_id = $1 ORDER BY position`
 	rows, err := p.pool.Query(ctx, q, workspaceID)
 	if err != nil {
@@ -554,7 +554,7 @@ func (p *Postgres) StatusesByWorkspace(ctx context.Context, workspaceID string) 
 	var out []store.Status
 	for rows.Next() {
 		var s store.Status
-		if err := rows.Scan(&s.ID, &s.WorkspaceID, &s.Name, &s.Position, &s.CreatedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.WorkspaceID, &s.Name, &s.Position, &s.Color, &s.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, s)
@@ -563,10 +563,10 @@ func (p *Postgres) StatusesByWorkspace(ctx context.Context, workspaceID string) 
 }
 
 func (p *Postgres) StatusByID(ctx context.Context, id string) (store.Status, error) {
-	const q = `SELECT id::text, workspace_id::text, name, position, created_at
+	const q = `SELECT id::text, workspace_id::text, name, position, color, created_at
 	           FROM statuses WHERE id = $1`
 	var s store.Status
-	err := p.pool.QueryRow(ctx, q, id).Scan(&s.ID, &s.WorkspaceID, &s.Name, &s.Position, &s.CreatedAt)
+	err := p.pool.QueryRow(ctx, q, id).Scan(&s.ID, &s.WorkspaceID, &s.Name, &s.Position, &s.Color, &s.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.Status{}, store.ErrStatusNotFound
 	}
@@ -575,6 +575,17 @@ func (p *Postgres) StatusByID(ctx context.Context, id string) (store.Status, err
 
 func (p *Postgres) RenameStatus(ctx context.Context, id, name string) error {
 	ct, err := p.pool.Exec(ctx, `UPDATE statuses SET name = $2 WHERE id = $1`, id, name)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrStatusNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) SetStatusColor(ctx context.Context, id, color string) error {
+	ct, err := p.pool.Exec(ctx, `UPDATE statuses SET color = $2 WHERE id = $1`, id, color)
 	if err != nil {
 		return err
 	}

@@ -64,10 +64,47 @@
     });
   }
 
+  // --- lane colour picker ---
+
+  function closePalettes() {
+    document.querySelectorAll('.lane-palette').forEach((p) => { p.hidden = true; });
+  }
+
+  // setLaneColor repaints a lane's dot and every card's left bar in that lane.
+  function setLaneColor(lane, color) {
+    lane.dataset.color = color;
+    const dot = lane.querySelector('.lane-dot');
+    if (dot) dot.style.setProperty('--lane-color', color);
+    lane.querySelectorAll('.lane-items .item').forEach((c) => c.style.setProperty('--lane-color', color));
+  }
+
+  function wireSwatch(lane) {
+    const dot = lane.querySelector('.lane-dot');
+    const panel = lane.querySelector('.lane-palette');
+    if (!dot || !panel) return;
+    dot.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const willOpen = panel.hidden;
+      closePalettes();
+      panel.hidden = !willOpen;
+    });
+    panel.addEventListener('click', (e) => e.stopPropagation());
+    panel.querySelectorAll('.swatch').forEach((sw) => {
+      sw.addEventListener('click', async () => {
+        try {
+          await api('/statuses/' + lane.dataset.statusId + '/color', { color: sw.dataset.color });
+          setLaneColor(lane, sw.dataset.color);
+        } catch (e) { if (boardErr) boardErr.textContent = msg(e); }
+        panel.hidden = true;
+      });
+    });
+  }
+
   function wireLane(lane) {
     const statusId = () => lane.dataset.statusId;
     const nameInput = lane.querySelector('.lane-name');
     let lastName = nameInput.value;
+    wireSwatch(lane);
 
     nameInput.addEventListener('change', async () => {
       const name = nameInput.value.trim();
@@ -90,7 +127,9 @@
       if (!title) return;
       try {
         const it = await api('/items', { status_id: statusId(), title });
-        lane.querySelector('.lane-items').append(newItem(it));
+        const card = newItem(it);
+        card.style.setProperty('--lane-color', lane.dataset.color || '');
+        lane.querySelector('.lane-items').append(card);
         input.value = '';
         input.focus();
       } catch (err) { if (boardErr) boardErr.textContent = msg(err); }
@@ -105,8 +144,9 @@
       chosenClass: 'sortable-chosen',
       onEnd: (evt) => {
         const id = evt.item.dataset.itemId;
-        const toStatus = evt.to.closest('.lane').dataset.statusId;
-        api('/items/' + id + '/move', { status_id: toStatus, index: evt.newIndex })
+        const destLane = evt.to.closest('.lane');
+        evt.item.style.setProperty('--lane-color', destLane.dataset.color || '');
+        api('/items/' + id + '/move', { status_id: destLane.dataset.statusId, index: evt.newIndex })
           .catch((e) => { if (boardErr) boardErr.textContent = msg(e); location.reload(); });
       },
     });
@@ -126,9 +166,15 @@
       const title = input.value.trim();
       if (!title) return;
       try {
-        if (parentId) await api('/items/' + parentId + '/subtasks', { title });
-        else await api('/items', { title }); // root item; server defaults the status
-        location.reload();
+        // Subtask of a milestone, or a Backlog root (server defaults the status).
+        const it = parentId
+          ? await api('/items/' + parentId + '/subtasks', { title })
+          : await api('/items', { title });
+        const card = newItem(it);
+        card.style.setProperty('--lane-color', it.color || '');
+        col.querySelector('.lane-items').append(card);
+        input.value = '';
+        input.focus();
       } catch (err) { if (boardErr) boardErr.textContent = msg(err); }
     });
 
@@ -225,8 +271,11 @@
       try {
         await api('/items/' + id + '/status', { status_id: statusId });
         const c = cardOf(id);
-        const lane = board.querySelector('.lane[data-status-id="' + CSS.escape(statusId) + '"] .lane-items');
-        if (c && lane) lane.append(c);
+        const laneEl = board.querySelector('.lane[data-status-id="' + CSS.escape(statusId) + '"]');
+        if (c && laneEl) {
+          laneEl.querySelector('.lane-items').append(c);
+          c.style.setProperty('--lane-color', laneEl.dataset.color || '');
+        }
       } catch (err2) { fail(err2); }
     });
 
@@ -370,7 +419,9 @@
         const st = await api('/statuses', { name });
         const lane = document.getElementById('lane-tmpl').content.firstElementChild.cloneNode(true);
         lane.dataset.statusId = st.id;
+        lane.dataset.color = st.color;
         lane.querySelector('.lane-name').value = st.name;
+        lane.querySelector('.lane-dot').style.setProperty('--lane-color', st.color);
         board.insertBefore(lane, document.querySelector('.lane-add'));
         wireLane(lane);
         input.value = '';
@@ -383,7 +434,14 @@
   const existing = document.querySelector('[data-modal]');
   if (existing) { modalEl = existing; wireModal(existing); }
 
-  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && modalEl) closeModal(); });
+  // A click anywhere but a dot/swatch (those stop propagation) closes any open
+  // colour picker; Escape closes it too.
+  document.addEventListener('click', closePalettes);
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    closePalettes();
+    if (modalEl) closeModal();
+  });
   window.addEventListener('popstate', () => {
     const item = new URLSearchParams(location.search).get('item');
     if (item && !modalEl) openModal(item, false);

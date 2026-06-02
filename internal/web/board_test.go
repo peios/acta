@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/peios/acta/internal/board"
 )
 
 // postJSON sends a JSON body with the CSRF token in the header, the way board.js
@@ -185,5 +187,80 @@ func TestBoardRejectsMissingCSRF(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("missing csrf: want 403, got %d", resp.StatusCode)
+	}
+}
+
+func TestStatusColorSetValidatedAndRendered(t *testing.T) {
+	base, client := newTestServer(t)
+	token := csrfToken(t, client, base)
+	login(t, client, base, token)
+
+	todo := statusID(t, client, base, "To do")
+
+	// A palette colour is accepted.
+	want := board.Palette[4]
+	resp := postJSON(t, client, base+"/w/general/statuses/"+todo+"/color", token, map[string]any{"color": want})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("set colour: want 204, got %d", resp.StatusCode)
+	}
+
+	// An off-palette colour is rejected so only known-safe values reach the UI.
+	bad := postJSON(t, client, base+"/w/general/statuses/"+todo+"/color", token, map[string]any{"color": "#ff0000"})
+	defer bad.Body.Close()
+	if bad.StatusCode != http.StatusBadRequest {
+		t.Fatalf("off-palette colour: want 400, got %d", bad.StatusCode)
+	}
+	var e struct{ Error string }
+	json.NewDecoder(bad.Body).Decode(&e)
+	if e.Error != "invalid_color" {
+		t.Fatalf("want invalid_color, got %q", e.Error)
+	}
+
+	// The board renders the chosen colour as a --lane-color custom property and
+	// offers the palette swatches; the old text status badge is gone.
+	body := getBody(t, client, base+"/w/general", http.StatusOK)
+	if !strings.Contains(body, "--lane-color:"+want) {
+		t.Errorf("board missing --lane-color:%s", want)
+	}
+	if !strings.Contains(body, `class="lane-palette"`) || !strings.Contains(body, `data-color="`+board.Palette[0]+`"`) {
+		t.Error("board missing the colour-picker swatches")
+	}
+	if strings.Contains(body, `class="item-status"`) {
+		t.Error("the old text status badge should be gone from cards")
+	}
+}
+
+func TestCreateItemReturnsColor(t *testing.T) {
+	base, client := newTestServer(t)
+	token := csrfToken(t, client, base)
+	login(t, client, base, token)
+
+	todo := statusID(t, client, base, "To do") // first lane, no explicit colour -> palette[0]
+	resp := postJSON(t, client, base+"/w/general/items", token, map[string]any{
+		"status_id": todo, "title": "Paint my bar",
+	})
+	defer resp.Body.Close()
+	var v struct{ Color string }
+	json.NewDecoder(resp.Body).Decode(&v)
+	if v.Color != board.Palette[0] {
+		t.Fatalf("create item colour: want %q, got %q (board.js needs it to paint the new card)", board.Palette[0], v.Color)
+	}
+}
+
+func TestCreateStatusReturnsColor(t *testing.T) {
+	base, client := newTestServer(t)
+	token := csrfToken(t, client, base)
+	login(t, client, base, token)
+
+	resp := postJSON(t, client, base+"/w/general/statuses", token, map[string]any{"name": "Review"})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create status: want 200, got %d", resp.StatusCode)
+	}
+	var v struct{ Color string }
+	json.NewDecoder(resp.Body).Decode(&v)
+	if v.Color == "" {
+		t.Fatal("create status returned no colour (board.js needs it to paint the new lane)")
 	}
 }

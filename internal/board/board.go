@@ -35,11 +35,40 @@ var (
 	// ErrStatusMismatch is returned when a status doesn't belong to the
 	// workspace it's being used in — a malformed or cross-workspace request.
 	ErrStatusMismatch = errors.New("board: status not in this workspace")
+	// ErrInvalidColor is returned for a lane colour that isn't "" (auto) or a
+	// member of Palette — guarding the value that reaches an inline style.
+	ErrInvalidColor = errors.New("board: invalid lane colour")
 )
 
 // DefaultStatuses are the lanes seeded into a new workspace so its board is
 // usable immediately.
 var DefaultStatuses = []string{"To do", "Doing", "Done"}
+
+// Palette is the set of lane colours the board offers. A status without an
+// explicit colour falls back to one of these by position, so a fresh board is
+// colourful with no configuration; picking a swatch pins an explicit choice.
+// Soft pastels including a red/amber/green traffic-light trio; ordered so the
+// default To do / Doing / Done seed reads as unstarted-slate → active-blue →
+// done-green.
+var Palette = []string{
+	"#9aa6b8", // slate
+	"#7cb8e8", // sky
+	"#86c98f", // green
+	"#e8b96d", // amber
+	"#e08585", // red
+	"#b79fe6", // lavender
+	"#e394b5", // pink
+	"#79d2c4", // teal
+}
+
+// ColorFor returns a status's display colour: its explicit Color when set,
+// otherwise a stable palette colour derived from its board position.
+func ColorFor(s store.Status) string {
+	if s.Color != "" {
+		return s.Color
+	}
+	return Palette[((s.Position%len(Palette))+len(Palette))%len(Palette)]
+}
 
 type Service struct {
 	store store.Store
@@ -51,6 +80,10 @@ func New(st store.Store) *Service { return &Service{store: st} }
 
 func (s *Service) Statuses(ctx context.Context, workspaceID string) ([]store.Status, error) {
 	return s.store.StatusesByWorkspace(ctx, workspaceID)
+}
+
+func (s *Service) StatusByID(ctx context.Context, id string) (store.Status, error) {
+	return s.store.StatusByID(ctx, id)
 }
 
 func (s *Service) CreateStatus(ctx context.Context, workspaceID, name string) (store.Status, error) {
@@ -75,6 +108,30 @@ func (s *Service) RenameStatus(ctx context.Context, id, name string) error {
 		return err
 	}
 	return s.store.RenameStatus(ctx, id, name)
+}
+
+// SetStatusColor pins a lane's colour to a palette entry, or clears it to ""
+// (auto). Anything else is rejected so only known-safe values reach the UI.
+func (s *Service) SetStatusColor(ctx context.Context, id, color string) error {
+	color, err := cleanColor(color)
+	if err != nil {
+		return err
+	}
+	return s.store.SetStatusColor(ctx, id, color)
+}
+
+// cleanColor canonicalises a colour: "" passes through (auto), a palette member
+// is normalised to its canonical casing, anything else is ErrInvalidColor.
+func cleanColor(c string) (string, error) {
+	if c == "" {
+		return "", nil
+	}
+	for _, p := range Palette {
+		if strings.EqualFold(c, p) {
+			return p, nil
+		}
+	}
+	return "", ErrInvalidColor
 }
 
 func (s *Service) ReorderStatuses(ctx context.Context, workspaceID string, orderedIDs []string) error {

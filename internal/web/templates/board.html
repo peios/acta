@@ -1,12 +1,11 @@
 {{define "title"}}{{.Workspace.Name}} · Acta{{end}}
 
 {{define "card"}}
-<article class="item" data-item-id="{{.Item.ID}}">
+<article class="item" data-item-id="{{.Item.ID}}" style="{{.ColorVar}}"{{if .StatusName}} title="{{.StatusName}}"{{end}}>
   <span class="item-title">{{.Item.Title}}</span>
   {{if .Item.IsMilestone}}<span class="item-ms" title="Milestone">◆</span>{{end}}
-  {{if .StatusName}}<span class="item-status">{{.StatusName}}</span>{{end}}
-  {{if .Subtasks.Total}}<span class="item-sub" title="Subtasks done">{{.Subtasks.Done}}/{{.Subtasks.Total}}</span>{{end}}
   <button class="item-del" type="button" title="Archive" aria-label="Archive item">×</button>
+  {{if .Subtasks.Total}}<span class="item-sub" title="Subtasks done">{{.Subtasks.Done}}/{{.Subtasks.Total}}</span>{{end}}
 </article>
 {{end}}
 
@@ -40,9 +39,15 @@
   {{else}}
   <div class="board" id="board" data-mode="status">
     {{range .Lanes}}
-    <section class="lane" data-status-id="{{.Status.ID}}">
+    <section class="lane" data-status-id="{{.Status.ID}}" data-color="{{.Color}}">
       <header class="lane-head">
         <span class="lane-grip" title="Drag to reorder">⠿</span>
+        <div class="lane-swatch">
+          <button class="lane-dot" type="button" style="{{.ColorVar}}" title="Lane colour" aria-label="Lane colour"></button>
+          <div class="lane-palette" hidden>
+            {{range $.Palette}}<button class="swatch" type="button" data-color="{{.Hex}}" style="{{.Style}}" aria-label="Set lane colour"></button>{{end}}
+          </div>
+        </div>
         <input class="lane-name" value="{{.Status.Name}}" maxlength="40" aria-label="Status name">
         <button class="lane-del" type="button" title="Delete lane" aria-label="Delete lane">×</button>
       </header>
@@ -77,6 +82,12 @@
   <section class="lane">
     <header class="lane-head">
       <span class="lane-grip" title="Drag to reorder">⠿</span>
+      <div class="lane-swatch">
+        <button class="lane-dot" type="button" title="Lane colour" aria-label="Lane colour"></button>
+        <div class="lane-palette" hidden>
+          {{range $.Palette}}<button class="swatch" type="button" data-color="{{.Hex}}" style="{{.Style}}" aria-label="Set lane colour"></button>{{end}}
+        </div>
+      </div>
       <input class="lane-name" maxlength="40" aria-label="Status name">
       <button class="lane-del" type="button" title="Delete lane" aria-label="Delete lane">×</button>
     </header>

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"html/template"
 	"io"
 	"net/http"
 
@@ -18,16 +19,38 @@ import (
 type boardData struct {
 	chrome
 	Principal        *identity.Principal
-	Mode             string // "status" or "milestone"
-	Lanes            []lane // status mode
+	Mode             string   // "status" or "milestone"
+	Lanes            []lane   // status mode
+	Palette          []swatch // lane-colour options for the header picker
 	MilestoneColumns []milestoneColumn
 	Modal            *modalView // set when ?item=<id> resolves within this workspace
 }
 
+// swatch is one option in the lane-colour picker: its hex (sent back on pick)
+// and a pre-built, template-safe background declaration.
+type swatch struct {
+	Hex   string
+	Style template.CSS
+}
+
+func palette() []swatch {
+	out := make([]swatch, len(board.Palette))
+	for i, hex := range board.Palette {
+		out[i] = swatch{Hex: hex, Style: template.CSS("background:" + hex)}
+	}
+	return out
+}
+
 type lane struct {
 	Status store.Status
+	Color  string
 	Cards  []cardView
 }
+
+// ColorVar is the lane's colour as a template-safe `--lane-color` declaration
+// for the header dot. The value is always a palette hex (explicit or derived),
+// so wrapping it as trusted CSS is safe.
+func (l lane) ColorVar() template.CSS { return colorVar(l.Color) }
 
 // milestoneColumn is one column of Milestone mode: the Backlog (ID "") or a
 // root milestone (ID = its item id) holding that milestone's children.
@@ -40,7 +63,22 @@ type milestoneColumn struct {
 type cardView struct {
 	Item       store.Item
 	Subtasks   store.SubtaskCount
-	StatusName string // shown on cards only in Milestone mode
+	StatusName string // the card's status name (hover tooltip / accessible label)
+	Color      string // the card's lane colour, for the left bar
+}
+
+// ColorVar is the card's lane colour as a template-safe `--lane-color`
+// declaration driving the left bar; see lane.ColorVar.
+func (c cardView) ColorVar() template.CSS { return colorVar(c.Color) }
+
+// colorVar wraps a palette hex as a trusted `--lane-color` CSS declaration.
+// Values are always palette members (explicit choices are validated server-side
+// and auto colours come from the palette), so they're safe to emit verbatim.
+func colorVar(hex string) template.CSS {
+	if hex == "" {
+		return ""
+	}
+	return template.CSS("--lane-color:" + hex)
 }
 
 // boardPage renders a workspace's board: its statuses (lanes) and the items in
@@ -85,6 +123,7 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 		chrome:    ch,
 		Principal: principalFrom(r.Context()),
 		Mode:      mode,
+		Palette:   palette(),
 	}
 	if mode == "milestone" {
 		cols, err := h.milestoneColumns(r.Context(), items, statuses, counts)
@@ -114,12 +153,13 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 // milestoneColumns builds Milestone mode: a Backlog column of root
 // non-milestones, then one column per root milestone holding its children.
 func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, statuses []store.Status, counts map[string]store.SubtaskCount) ([]milestoneColumn, error) {
-	statusName := make(map[string]string, len(statuses))
+	statusByID := make(map[string]store.Status, len(statuses))
 	for _, s := range statuses {
-		statusName[s.ID] = s.Name
+		statusByID[s.ID] = s
 	}
 	card := func(it store.Item) cardView {
-		return cardView{Item: it, Subtasks: counts[it.ID], StatusName: statusName[it.StatusID]}
+		st := statusByID[it.StatusID]
+		return cardView{Item: it, Subtasks: counts[it.ID], StatusName: st.Name, Color: board.ColorFor(st)}
 	}
 	backlog := milestoneColumn{Title: "Backlog"}
 	var msCols []milestoneColumn
@@ -144,13 +184,20 @@ func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, sta
 // groupLanes buckets items under their status, attaching each item's subtask
 // progress. items arrives ordered by position, so each lane stays in order.
 func groupLanes(statuses []store.Status, items []store.Item, counts map[string]store.SubtaskCount) []lane {
+	byID := make(map[string]store.Status, len(statuses))
+	for _, st := range statuses {
+		byID[st.ID] = st
+	}
 	byStatus := map[string][]cardView{}
 	for _, it := range items {
-		byStatus[it.StatusID] = append(byStatus[it.StatusID], cardView{Item: it, Subtasks: counts[it.ID]})
+		st := byID[it.StatusID]
+		byStatus[it.StatusID] = append(byStatus[it.StatusID], cardView{
+			Item: it, Subtasks: counts[it.ID], StatusName: st.Name, Color: board.ColorFor(st),
+		})
 	}
 	lanes := make([]lane, len(statuses))
 	for i, st := range statuses {
-		lanes[i] = lane{Status: st, Cards: byStatus[st.ID]}
+		lanes[i] = lane{Status: st, Color: board.ColorFor(st), Cards: byStatus[st.ID]}
 	}
 	return lanes
 }
@@ -161,6 +208,7 @@ type statusDTO struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Position int    `json:"position"`
+	Color    string `json:"color"` // resolved display colour (never empty)
 }
 
 type itemDTO struct {
@@ -168,6 +216,17 @@ type itemDTO struct {
 	StatusID string `json:"status_id"`
 	Title    string `json:"title"`
 	Position int    `json:"position"`
+	Color    string `json:"color"` // resolved lane colour, so the client can paint the new card
+}
+
+// itemDTOFor builds the response for a freshly created item, resolving its lane
+// colour so board.js can render the card's left bar without a reload.
+func (h *handlers) itemDTOFor(ctx context.Context, it store.Item) itemDTO {
+	dto := itemDTO{ID: it.ID, StatusID: it.StatusID, Title: it.Title, Position: it.Position}
+	if st, err := h.board.StatusByID(ctx, it.StatusID); err == nil {
+		dto.Color = board.ColorFor(st)
+	}
+	return dto
 }
 
 func (h *handlers) statusCreate(w http.ResponseWriter, r *http.Request) {
@@ -186,7 +245,24 @@ func (h *handlers) statusCreate(w http.ResponseWriter, r *http.Request) {
 		writeBoardErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, statusDTO{ID: st.ID, Name: st.Name, Position: st.Position})
+	writeJSON(w, http.StatusOK, statusDTO{ID: st.ID, Name: st.Name, Position: st.Position, Color: board.ColorFor(st)})
+}
+
+func (h *handlers) statusColor(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.resolveWorkspace(w, r); !ok {
+		return
+	}
+	var req struct {
+		Color string `json:"color"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if err := h.board.SetStatusColor(r.Context(), r.PathValue("id"), req.Color); err != nil {
+		writeBoardErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *handlers) statusRename(w http.ResponseWriter, r *http.Request) {
@@ -252,7 +328,7 @@ func (h *handlers) itemCreate(w http.ResponseWriter, r *http.Request) {
 		writeBoardErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, itemDTO{ID: it.ID, StatusID: it.StatusID, Title: it.Title, Position: it.Position})
+	writeJSON(w, http.StatusOK, h.itemDTOFor(r.Context(), it))
 }
 
 func (h *handlers) itemRename(w http.ResponseWriter, r *http.Request) {
@@ -358,6 +434,8 @@ func writeBoardErr(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusConflict, body{"cycle"})
 	case errors.Is(err, board.ErrStatusMismatch):
 		writeJSON(w, http.StatusBadRequest, body{"status_mismatch"})
+	case errors.Is(err, board.ErrInvalidColor):
+		writeJSON(w, http.StatusBadRequest, body{"invalid_color"})
 	case errors.Is(err, store.ErrStatusNotFound):
 		writeJSON(w, http.StatusNotFound, body{"status_not_found"})
 	case errors.Is(err, store.ErrItemNotFound):

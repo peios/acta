@@ -265,7 +265,7 @@ func (h *handlers) subtaskCreate(w http.ResponseWriter, r *http.Request) {
 		writeBoardErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, itemDTO{ID: it.ID, StatusID: it.StatusID, Title: it.Title, Position: it.Position})
+	writeJSON(w, http.StatusOK, h.itemDTOFor(r.Context(), it))
 }
 
 func (h *handlers) itemMilestone(w http.ResponseWriter, r *http.Request) {

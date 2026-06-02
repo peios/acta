@@ -128,7 +128,10 @@ type Status struct {
 	WorkspaceID string
 	Name        string
 	Position    int
-	CreatedAt   time.Time
+	// Color is an explicit lane colour (a hex string from the board palette),
+	// or "" to fall back to a palette colour derived from Position.
+	Color     string
+	CreatedAt time.Time
 }
 
 // Item is a card on the board: a title living in exactly one status, ordered by
@@ -243,6 +246,7 @@ type Store interface {
 	StatusesByWorkspace(ctx context.Context, workspaceID string) ([]Status, error)
 	StatusByID(ctx context.Context, id string) (Status, error)
 	RenameStatus(ctx context.Context, id, name string) error
+	SetStatusColor(ctx context.Context, id, color string) error
 	ReorderStatuses(ctx context.Context, workspaceID string, orderedIDs []string) error
 	DeleteStatus(ctx context.Context, id string) error
 

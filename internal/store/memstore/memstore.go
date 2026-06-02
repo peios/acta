@@ -549,6 +549,18 @@ func (s *Store) RenameStatus(_ context.Context, id, name string) error {
 	return nil
 }
 
+func (s *Store) SetStatusColor(_ context.Context, id, color string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, ok := s.statuses[id]
+	if !ok {
+		return store.ErrStatusNotFound
+	}
+	st.Color = color
+	s.statuses[id] = st
+	return nil
+}
+
 func (s *Store) ReorderStatuses(_ context.Context, workspaceID string, orderedIDs []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

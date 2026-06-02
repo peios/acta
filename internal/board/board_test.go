@@ -446,3 +446,64 @@ func TestComments(t *testing.T) {
 		t.Fatalf("comments out of order: %v", cs)
 	}
 }
+
+// --- lane colour ---
+
+func TestColorForAutoAndExplicit(t *testing.T) {
+	// No explicit colour: derive from position, wrapping past the palette.
+	if got := board.ColorFor(store.Status{Position: 0}); got != board.Palette[0] {
+		t.Fatalf("position 0: want %q, got %q", board.Palette[0], got)
+	}
+	wrap := len(board.Palette) + 1
+	if got := board.ColorFor(store.Status{Position: wrap}); got != board.Palette[1] {
+		t.Fatalf("position %d should wrap to palette[1] %q, got %q", wrap, board.Palette[1], got)
+	}
+	// An explicit colour always wins over the position default.
+	pick := board.Palette[3]
+	if got := board.ColorFor(store.Status{Position: 0, Color: pick}); got != pick {
+		t.Fatalf("explicit colour: want %q, got %q", pick, got)
+	}
+}
+
+func TestSetStatusColorValidates(t *testing.T) {
+	svc, wsID, statuses := setup(t)
+	ctx := context.Background()
+	id := statuses[0].ID
+
+	// A palette member is accepted (and canonicalised from any casing).
+	want := board.Palette[4]
+	if err := svc.SetStatusColor(ctx, id, want); err != nil {
+		t.Fatalf("set palette colour: %v", err)
+	}
+	if got := colorOf(t, svc, wsID, id); got != want {
+		t.Fatalf("colour not stored: want %q, got %q", want, got)
+	}
+
+	// A non-palette colour is rejected (only known-safe values reach the UI).
+	if err := svc.SetStatusColor(ctx, id, "#ff0000"); !errors.Is(err, board.ErrInvalidColor) {
+		t.Fatalf("off-palette colour: want ErrInvalidColor, got %v", err)
+	}
+
+	// Empty resets to auto.
+	if err := svc.SetStatusColor(ctx, id, ""); err != nil {
+		t.Fatalf("reset colour: %v", err)
+	}
+	if got := colorOf(t, svc, wsID, id); got != "" {
+		t.Fatalf("colour not reset: got %q", got)
+	}
+}
+
+func colorOf(t *testing.T, svc *board.Service, wsID, id string) string {
+	t.Helper()
+	statuses, err := svc.Statuses(context.Background(), wsID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range statuses {
+		if s.ID == id {
+			return s.Color
+		}
+	}
+	t.Fatalf("status %s not found", id)
+	return ""
+}
