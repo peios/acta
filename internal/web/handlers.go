@@ -122,6 +122,8 @@ func loginError(code string) string {
 	switch code {
 	case "invalid_credentials":
 		return "Incorrect username or password."
+	case "too_many":
+		return "Too many attempts. Please wait a few minutes and try again."
 	default:
 		return ""
 	}

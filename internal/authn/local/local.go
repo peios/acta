@@ -5,6 +5,7 @@
 package local
 
 import (
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -26,11 +27,26 @@ type Provider struct {
 	// login takes the same time whether or not the account exists — closing
 	// the timing side-channel for username enumeration.
 	dummyHash string
+	// guard rate-limits password attempts. nil disables throttling (its methods
+	// are nil-safe), which is the default for tests.
+	guard *Guard
 }
 
-func NewProvider(st store.Store, sessions *session.Manager, passkeys *passkey.Service, secure bool) *Provider {
+// Option configures a Provider at construction.
+type Option func(*Provider)
+
+// WithThrottle enables login brute-force protection using g.
+func WithThrottle(g *Guard) Option {
+	return func(p *Provider) { p.guard = g }
+}
+
+func NewProvider(st store.Store, sessions *session.Manager, passkeys *passkey.Service, secure bool, opts ...Option) *Provider {
 	dummy, _ := HashPassword("not-a-real-password")
-	return &Provider{store: st, sessions: sessions, passkeys: passkeys, secure: secure, dummyHash: dummy}
+	p := &Provider{store: st, sessions: sessions, passkeys: passkeys, secure: secure, dummyHash: dummy}
+	for _, o := range opts {
+		o(p)
+	}
+	return p
 }
 
 func (p *Provider) Name() string { return "local" }
@@ -57,21 +73,31 @@ func (p *Provider) handlePassword(w http.ResponseWriter, r *http.Request) {
 	password := r.PostFormValue("password")
 	returnTo := httpx.SafeReturnTo(r.PostFormValue("return_to"))
 
+	ip := httpx.ClientIP(r.Context())
+	if !p.guard.Allowed(ip) {
+		// Refuse before verifying, so a flood costs no argon2 work. Looks like
+		// any other failed login to the client; logged for the operator.
+		slog.Warn("login throttled", "ip", ip, "req_id", httpx.RequestID(r.Context()))
+		p.failThrottled(w, r, returnTo)
+		return
+	}
+
 	u, err := p.store.UserByUsername(r.Context(), username)
 	if err != nil {
 		// Unknown user (or lookup error): burn the same time as a real
 		// verify, then fail generically. No account-existence leak.
 		_, _ = VerifyPassword(p.dummyHash, password)
-		p.fail(w, r, returnTo)
+		p.failAttempt(w, r, ip, username, returnTo)
 		return
 	}
 
 	ok, err := VerifyPassword(u.PasswordHash, password)
 	if err != nil || !ok {
-		p.fail(w, r, returnTo)
+		p.failAttempt(w, r, ip, username, returnTo)
 		return
 	}
 
+	p.guard.RecordSuccess(username)
 	principal := identity.Principal{ID: u.ID, Username: u.Username, Display: u.Display}
 	if err := p.sessions.EstablishWithRequest(r.Context(), w, r, principal); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -124,11 +150,29 @@ func (p *Provider) handlePasskeyFinish(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// failAttempt records a failed credential check against the throttle, applies
+// any resulting per-username backoff, then fails generically. The backoff delay
+// depends only on the submitted username, so it adds no account-existence
+// timing leak beyond what fail already equalises.
+func (p *Provider) failAttempt(w http.ResponseWriter, r *http.Request, ip, username, returnTo string) {
+	p.guard.Backoff(p.guard.RecordFailure(ip, username))
+	p.fail(w, r, returnTo)
+}
+
 // fail redirects back to the login page with a generic error, preserving the
 // intended destination so a successful retry still lands where the user meant.
 func (p *Provider) fail(w http.ResponseWriter, r *http.Request, returnTo string) {
+	p.failWith(w, r, "invalid_credentials", returnTo)
+}
+
+// failThrottled is shown when the client IP is rate-limited.
+func (p *Provider) failThrottled(w http.ResponseWriter, r *http.Request, returnTo string) {
+	p.failWith(w, r, "too_many", returnTo)
+}
+
+func (p *Provider) failWith(w http.ResponseWriter, r *http.Request, code, returnTo string) {
 	q := url.Values{}
-	q.Set("err", "invalid_credentials")
+	q.Set("err", code)
 	if returnTo != "/" {
 		q.Set("return_to", returnTo)
 	}

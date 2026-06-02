@@ -90,7 +90,14 @@ func runServe(args []string) error {
 	boards := board.New(pg)
 	tokens := apitoken.New(pg)
 	agents := agent.New(pg)
-	provider := local.NewProvider(pg, sessions, passkeys, cfg.CookieSecure())
+
+	guard := local.NewGuard(local.ThrottleConfig{
+		Window:      cfg.LoginWindow,
+		IPMax:       cfg.LoginIPMax,
+		BackoffStep: cfg.LoginBackoffStep,
+		BackoffMax:  cfg.LoginBackoffMax,
+	})
+	provider := local.NewProvider(pg, sessions, passkeys, cfg.CookieSecure(), local.WithThrottle(guard))
 	handler := web.NewHandler(cfg, sessions, provider, passkeys, tokens, agents, workspaces, boards)
 
 	srv := &http.Server{
@@ -104,6 +111,8 @@ func runServe(args []string) error {
 
 	shutdownCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	go sweepLoop(shutdownCtx, guard, cfg.LoginWindow)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -121,6 +130,24 @@ func runServe(args []string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		return srv.Shutdown(ctx)
+	}
+}
+
+// sweepLoop periodically evicts aged-out entries from the login guard so its
+// maps don't grow without bound, until the server shuts down.
+func sweepLoop(ctx context.Context, guard *local.Guard, every time.Duration) {
+	if every <= 0 {
+		return
+	}
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			guard.Sweep()
+		}
 	}
 }
 

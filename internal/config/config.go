@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -31,6 +32,16 @@ type Config struct {
 	// it (e.g. with Cloudflare's ranges) only once traffic genuinely arrives via
 	// that proxy.
 	TrustedProxies []*net.IPNet
+
+	// Login brute-force throttle. Failures are remembered for LoginWindow. An IP
+	// is blocked once it accumulates LoginIPMax failures in that window. Each
+	// consecutive failure against a given username adds LoginBackoffStep of delay
+	// to the response (capped at LoginBackoffMax) — a soft slow-down that never
+	// hard-locks an account, so it can't be used to deny a real user access.
+	LoginWindow      time.Duration
+	LoginIPMax       int
+	LoginBackoffStep time.Duration
+	LoginBackoffMax  time.Duration
 }
 
 // CookieSecure reports whether session/CSRF cookies should carry the Secure
@@ -48,7 +59,21 @@ func Load() Config {
 		RPOrigin:        env("ACTA_RP_ORIGIN", "http://localhost:8080"),
 		RPName:          env("ACTA_RP_NAME", "Acta"),
 		TrustedProxies:  parseTrustedProxies(os.Getenv("ACTA_TRUSTED_PROXIES")),
+
+		LoginWindow:      envDuration("ACTA_LOGIN_WINDOW", 15*time.Minute),
+		LoginIPMax:       envInt("ACTA_LOGIN_IP_MAX", 20),
+		LoginBackoffStep: envDuration("ACTA_LOGIN_BACKOFF_STEP", time.Second),
+		LoginBackoffMax:  envDuration("ACTA_LOGIN_BACKOFF_MAX", 10*time.Second),
 	}
+}
+
+func envInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
 }
 
 // parseTrustedProxies reads a comma/space-separated list of CIDRs (or bare IPs,
