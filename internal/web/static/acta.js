@@ -37,10 +37,10 @@
   }
 
   async function registerPasskey(name, success) {
-    var finishURL = "/settings/passkeys/register/finish";
+    var finishURL = "/account/passkeys/register/finish";
     if (name) finishURL += "?name=" + encodeURIComponent(name);
 
-    var resp = await postJSON("/settings/passkeys/register/begin", null);
+    var resp = await postJSON("/account/passkeys/register/begin", null);
     if (!resp.ok) throw new Error("begin failed: " + resp.status);
     var options = (await resp.json()).publicKey;
 
@@ -63,7 +63,7 @@
 
     var fin = await postJSON(finishURL, body);
     if (!fin.ok) throw new Error("finish failed: " + fin.status);
-    window.location = success || "/settings/security";
+    window.location = success || "/account/security";
   }
 
   async function loginPasskey(returnTo) {

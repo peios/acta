@@ -72,7 +72,9 @@
 
   /* ---- top bar / breadcrumb ---- */
   .topbar {
-    position: relative; z-index: 1;
+    /* Above .board-wrap (z-index 1) so the workspace dropdown — trapped in this
+       stacking context — paints over the board; still below the modal (50). */
+    position: relative; z-index: 30;
     display: flex; align-items: center; justify-content: space-between;
     padding: 1.35rem 1.6rem;
     font-size: .88rem;
@@ -82,7 +84,6 @@
   .crumbs .a { color: var(--text); font-weight: 700; text-decoration: none; }
   .crumbs .sep { color: #514c45; margin: 0 .5rem; }
   .crumbs .page { color: var(--muted); }
-  .org { color: var(--faint); letter-spacing: .04em; }
   /* understated top-bar links, in keeping with the breadcrumb */
   .topbar form { margin: 0; display: inline-flex; }
   .toplink {
@@ -121,6 +122,13 @@
     border-top: 1px solid var(--border-soft);
   }
   .wsitem.manage:hover { color: var(--text); }
+  /* the same dropdown, reused for the account menu on the right of the bar */
+  .usermenu .wspanel { left: auto; right: -.4rem; min-width: 8rem; }
+  .usermenu form { margin: 0; display: block; }
+  button.wsitem {
+    width: 100%; text-align: left; cursor: pointer;
+    background: none; border: 0; font-family: inherit;
+  }
 
   /* ---- stage ---- */
   .stage {
@@ -504,16 +512,21 @@
     </div>
     {{if .Nav}}
     <a class="toplink{{if eq .Section "home"}} active{{end}}" href="/">Home</a>
-    <a class="toplink{{if eq .Section "settings"}} active{{end}}" href="/settings/security">Settings</a>
+    <a class="toplink{{if eq .Section "settings"}} active{{end}}" href="/settings">Settings</a>
     {{end}}
   </div>
   <div class="topbar-right">
-    <span class="org">peios</span>
     {{if .Nav}}
-    <form method="post" action="/logout">
-      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <button class="toplink" type="submit">Sign out</button>
-    </form>
+    <details class="wsmenu usermenu">
+      <summary><span class="wsname">{{.Display}}</span><span class="caret">&#9662;</span></summary>
+      <div class="wspanel">
+        <a class="wsitem{{if eq .Section "account"}} active{{end}}" href="/account">Settings</a>
+        <form method="post" action="/logout">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <button class="wsitem" type="submit">Sign out</button>
+        </form>
+      </div>
+    </details>
     {{end}}
   </div>
 </div>

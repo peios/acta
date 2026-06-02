@@ -9,7 +9,7 @@ import (
 	"github.com/peios/acta/internal/store"
 )
 
-// --- settings: agents ---
+// --- account: agents ---
 
 type agentsData struct {
 	chrome
@@ -18,8 +18,8 @@ type agentsData struct {
 	Err       string
 }
 
-func (h *handlers) settingsAgents(w http.ResponseWriter, r *http.Request) {
-	ch, err := h.chromeFor(r, "settings", nil)
+func (h *handlers) accountAgents(w http.ResponseWriter, r *http.Request) {
+	ch, err := h.chromeFor(r, "account", nil)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -51,11 +51,11 @@ func (h *handlers) agentCreate(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		http.Redirect(w, r, "/settings/agents?err="+code, http.StatusSeeOther)
+		http.Redirect(w, r, "/account/agents?err="+code, http.StatusSeeOther)
 		return
 	}
 	// Land on the new agent's page so the owner can mint its first token.
-	http.Redirect(w, r, "/settings/agents/"+a.ID, http.StatusSeeOther)
+	http.Redirect(w, r, "/account/agents/"+a.ID, http.StatusSeeOther)
 }
 
 func (h *handlers) agentDelete(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +65,7 @@ func (h *handlers) agentDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/settings/agents", http.StatusSeeOther)
+	http.Redirect(w, r, "/account/agents", http.StatusSeeOther)
 }
 
 type agentDetailData struct {
@@ -99,11 +99,11 @@ func (h *handlers) buildAgentDetail(r *http.Request, newToken string) (agentDeta
 	if err != nil {
 		return agentDetailData{}, err
 	}
-	ch, err := h.chromeFor(r, "settings", nil)
+	ch, err := h.chromeFor(r, "account", nil)
 	if err != nil {
 		return agentDetailData{}, err
 	}
-	base := "/settings/agents/" + a.ID + "/tokens"
+	base := "/account/agents/" + a.ID + "/tokens"
 	return agentDetailData{
 		chrome:    ch,
 		Principal: p,
@@ -156,7 +156,7 @@ func (h *handlers) agentTokenDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/settings/agents/"+a.ID, http.StatusSeeOther)
+	http.Redirect(w, r, "/account/agents/"+a.ID, http.StatusSeeOther)
 }
 
 // agentErrCode maps a known agent error to a query code, or "" for anything

@@ -50,7 +50,8 @@ type tokensView struct {
 type chrome struct {
 	CSRFToken  string
 	Nav        bool
-	Section    string // "home" | "settings" — drives the nav highlight
+	Section    string // "home" | "settings" | "account" — drives the nav highlight
+	Display    string // the signed-in user's display name, shown in the account menu
 	Workspaces []store.Workspace
 	Workspace  *store.Workspace // the currently-selected workspace
 }
@@ -67,10 +68,15 @@ func (h *handlers) chromeFor(r *http.Request, section string, current *store.Wor
 	if current == nil {
 		current = pickWorkspace(list, httpx.WorkspaceCookieValue(r))
 	}
+	who := ""
+	if p := principalFrom(r.Context()); p != nil {
+		who = p.Display
+	}
 	return chrome{
 		CSRFToken:  csrfTokenFrom(r.Context()),
 		Nav:        true,
 		Section:    section,
+		Display:    who,
 		Workspaces: list,
 		Workspace:  current,
 	}, nil
@@ -159,7 +165,7 @@ func (h *handlers) rootRedirect(w http.ResponseWriter, r *http.Request) {
 
 // (The workspace landing at /w/{slug} is the board — see board.go.)
 
-// --- settings: security ---
+// --- account: security ---
 
 type securityData struct {
 	chrome
@@ -181,16 +187,21 @@ type sessionView struct {
 }
 
 func (h *handlers) settingsIndex(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/settings/security", http.StatusSeeOther)
+	http.Redirect(w, r, "/settings/workspaces", http.StatusSeeOther)
 }
 
-func (h *handlers) settingsSecurity(w http.ResponseWriter, r *http.Request) {
+// accountIndex lands the account menu on its first section.
+func (h *handlers) accountIndex(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/account/security", http.StatusSeeOther)
+}
+
+func (h *handlers) account(w http.ResponseWriter, r *http.Request) {
 	data, err := h.buildSecurityData(r, "")
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	render(w, http.StatusOK, "security.html", data)
+	render(w, http.StatusOK, "account.html", data)
 }
 
 // buildSecurityData assembles the Security page: passkeys, API tokens, and
@@ -221,7 +232,7 @@ func (h *handlers) buildSecurityData(r *http.Request, newToken string) (security
 			LastSeen:  s.LastSeen,
 		})
 	}
-	ch, err := h.chromeFor(r, "settings", nil)
+	ch, err := h.chromeFor(r, "account", nil)
 	if err != nil {
 		return securityData{}, err
 	}
@@ -233,15 +244,15 @@ func (h *handlers) buildSecurityData(r *http.Request, newToken string) (security
 			CSRFToken:    ch.CSRFToken,
 			Tokens:       tokens,
 			NewToken:     newToken,
-			CreateAction: "/settings/tokens",
-			DeleteBase:   "/settings/tokens",
+			CreateAction: "/account/tokens",
+			DeleteBase:   "/account/tokens",
 			Placeholder:  "Token name (e.g. laptop CLI)",
 		},
 		Sessions: views,
 	}, nil
 }
 
-// --- settings: api tokens ---
+// --- account: api tokens ---
 
 func (h *handlers) tokenCreate(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
@@ -261,7 +272,7 @@ func (h *handlers) tokenCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	render(w, http.StatusOK, "security.html", data)
+	render(w, http.StatusOK, "account.html", data)
 }
 
 func (h *handlers) tokenDelete(w http.ResponseWriter, r *http.Request) {
@@ -271,10 +282,10 @@ func (h *handlers) tokenDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/settings/security", http.StatusSeeOther)
+	http.Redirect(w, r, "/account/security", http.StatusSeeOther)
 }
 
-// --- settings: sessions ---
+// --- account: sessions ---
 
 func (h *handlers) sessionRevoke(w http.ResponseWriter, r *http.Request) {
 	p := principalFrom(r.Context())
@@ -282,7 +293,7 @@ func (h *handlers) sessionRevoke(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/settings/security", http.StatusSeeOther)
+	http.Redirect(w, r, "/account/security", http.StatusSeeOther)
 }
 
 func (h *handlers) sessionRevokeOthers(w http.ResponseWriter, r *http.Request) {
@@ -291,7 +302,7 @@ func (h *handlers) sessionRevokeOthers(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/settings/security", http.StatusSeeOther)
+	http.Redirect(w, r, "/account/security", http.StatusSeeOther)
 }
 
 // --- settings: workspaces ---
@@ -388,7 +399,7 @@ func workspaceError(code string) string {
 	}
 }
 
-// --- settings: passkeys ---
+// --- account: passkeys ---
 
 func (h *handlers) passkeyRegisterBegin(w http.ResponseWriter, r *http.Request) {
 	p := principalFrom(r.Context())
@@ -425,7 +436,7 @@ func (h *handlers) passkeyDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/settings/security", http.StatusSeeOther)
+	http.Redirect(w, r, "/account/security", http.StatusSeeOther)
 }
 
 // --- welcome interstitial ---

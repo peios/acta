@@ -303,11 +303,11 @@ func TestMCPAgentAttribution(t *testing.T) {
 	csrf := signIn(t, client, base)
 
 	// Create an agent and mint its token.
-	resp := postForm(t, client, base+"/settings/agents", url.Values{
+	resp := postForm(t, client, base+"/account/agents", url.Values{
 		"name": {"deploybot"}, "csrf_token": {csrf},
 	})
 	resp.Body.Close()
-	loc := resp.Header.Get("Location") // /settings/agents/{id}
+	loc := resp.Header.Get("Location") // /account/agents/{id}
 	mint := postForm(t, client, base+loc+"/tokens", url.Values{"name": {"ci"}, "csrf_token": {csrf}})
 	m := tokenValueRe.FindStringSubmatch(readBody(t, mint))
 	if m == nil {

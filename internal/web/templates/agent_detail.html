@@ -3,13 +3,12 @@
 <main class="stage stage--wide">
   <div class="settings reveal d1">
     <nav class="menu">
-      <a href="/settings/security">Security</a>
-      <a class="active" href="/settings/agents">Agents</a>
-      <a href="/settings/workspaces">Workspaces</a>
+      <a href="/account/security">Security</a>
+      <a class="active" href="/account/agents">Agents</a>
     </nav>
 
     <section>
-      <a class="toplink" href="/settings/agents">&lsaquo; All agents</a>
+      <a class="toplink" href="/account/agents">&lsaquo; All agents</a>
       <h2 class="title" style="font-size: 1.45rem; margin: .6rem 0 .2rem;">
         {{.Agent.Display}} <span class="badge-agent">agent</span>
       </h2>
@@ -23,7 +22,7 @@
       {{template "token-section" .TokenSection}}
 
       <p class="section-title" style="margin-top: 2.4rem;">Danger zone</p>
-      <form method="post" action="/settings/agents/{{.Agent.ID}}/delete">
+      <form method="post" action="/account/agents/{{.Agent.ID}}/delete">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <button class="link-danger" type="submit">Delete this agent</button>
       </form>

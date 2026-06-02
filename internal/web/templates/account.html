@@ -3,9 +3,8 @@
 <main class="stage stage--wide">
   <div class="settings reveal d1">
     <nav class="menu">
-      <a class="active" href="/settings/security">Security</a>
-      <a href="/settings/agents">Agents</a>
-      <a href="/settings/workspaces">Workspaces</a>
+      <a class="active" href="/account/security">Security</a>
+      <a href="/account/agents">Agents</a>
     </nav>
 
     <section>
@@ -24,7 +23,7 @@
               {{if .LastUsedAt}}last used {{.LastUsedAt.Format "2 Jan 2006"}}{{else}}never used{{end}}
             </div>
           </div>
-          <form method="post" action="/settings/passkeys/{{.ID}}/delete">
+          <form method="post" action="/account/passkeys/{{.ID}}/delete">
             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
             <button class="link-danger" type="submit">Remove</button>
           </form>
@@ -39,7 +38,7 @@
         <div class="input-wrap">
           <input id="passkey-name" class="input" placeholder="Name (optional)" autocomplete="off">
         </div>
-        <button id="passkey-add" class="btn-primary" type="button" data-success="/settings/security">
+        <button id="passkey-add" class="btn-primary" type="button" data-success="/account/security">
           Add a passkey
         </button>
       </div>
@@ -67,7 +66,7 @@
             </div>
           </div>
           {{if not .Current}}
-          <form method="post" action="/settings/sessions/{{.PublicID}}/revoke">
+          <form method="post" action="/account/sessions/{{.PublicID}}/revoke">
             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
             <button class="link-danger" type="submit">Revoke</button>
           </form>
@@ -76,7 +75,7 @@
         {{end}}
       </div>
       {{if gt (len .Sessions) 1}}
-      <form class="passkey-add" method="post" action="/settings/sessions/revoke-others" style="margin-top: 1.2rem;">
+      <form class="passkey-add" method="post" action="/account/sessions/revoke-others" style="margin-top: 1.2rem;">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <button class="btn-secondary" type="submit">Sign out all other sessions</button>
       </form>

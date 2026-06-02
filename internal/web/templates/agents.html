@@ -3,9 +3,8 @@
 <main class="stage stage--wide">
   <div class="settings reveal d1">
     <nav class="menu">
-      <a href="/settings/security">Security</a>
-      <a class="active" href="/settings/agents">Agents</a>
-      <a href="/settings/workspaces">Workspaces</a>
+      <a href="/account/security">Security</a>
+      <a class="active" href="/account/agents">Agents</a>
     </nav>
 
     <section>
@@ -26,8 +25,8 @@
             <div class="cred-meta"><code>{{.Username}}</code></div>
           </div>
           <div class="arch-actions">
-            <a class="btn-secondary" href="/settings/agents/{{.ID}}">Manage</a>
-            <form method="post" action="/settings/agents/{{.ID}}/delete">
+            <a class="btn-secondary" href="/account/agents/{{.ID}}">Manage</a>
+            <form method="post" action="/account/agents/{{.ID}}/delete">
               <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
               <button class="link-danger" type="submit">Remove</button>
             </form>
@@ -39,7 +38,7 @@
       <p class="subtitle">No agents yet.</p>
       {{end}}
 
-      <form class="passkey-add" method="post" action="/settings/agents" style="margin-top: 1.4rem;">
+      <form class="passkey-add" method="post" action="/account/agents" style="margin-top: 1.4rem;">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <div class="input-wrap">
           <input class="input" name="name" placeholder="name (e.g. deploy-bot)" maxlength="40" autocomplete="off" required>

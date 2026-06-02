@@ -28,8 +28,8 @@ func readBody(t *testing.T, resp *http.Response) string {
 
 var (
 	tokenValueRe  = regexp.MustCompile(`token-reveal-value">(acta_pat_[A-Za-z0-9_-]+)<`)
-	tokenDeleteRe = regexp.MustCompile(`/settings/tokens/([^/"]+)/delete`)
-	sessRevokeRe  = regexp.MustCompile(`/settings/sessions/([^/"]+)/revoke`)
+	tokenDeleteRe = regexp.MustCompile(`/account/tokens/([^/"]+)/delete`)
+	sessRevokeRe  = regexp.MustCompile(`/account/sessions/([^/"]+)/revoke`)
 )
 
 // bearerGet does an unauthenticated-by-cookie request (fresh client, no jar)
@@ -52,13 +52,13 @@ func TestAPITokenLifecycle(t *testing.T) {
 	csrf := signIn(t, client, base)
 
 	// The security page advertises the API tokens section.
-	page := getBody(t, client, base+"/settings/security", http.StatusOK)
+	page := getBody(t, client, base+"/account/security", http.StatusOK)
 	if !strings.Contains(page, "API tokens") {
 		t.Fatal("security page missing API tokens section")
 	}
 
 	// Mint a token; the plaintext is revealed exactly once on the response page.
-	resp := postForm(t, client, base+"/settings/tokens", url.Values{
+	resp := postForm(t, client, base+"/account/tokens", url.Values{
 		"name": {"laptop cli"}, "csrf_token": {csrf},
 	})
 	body := readBody(t, resp)
@@ -97,12 +97,12 @@ func TestAPITokenLifecycle(t *testing.T) {
 	}
 
 	// Revoke the token (scrape its row id from the security page).
-	page = getBody(t, client, base+"/settings/security", http.StatusOK)
+	page = getBody(t, client, base+"/account/security", http.StatusOK)
 	dm := tokenDeleteRe.FindStringSubmatch(page)
 	if dm == nil {
 		t.Fatalf("no token delete control on page:\n%s", page)
 	}
-	resp = postForm(t, client, base+"/settings/tokens/"+dm[1]+"/delete", url.Values{"csrf_token": {csrf}})
+	resp = postForm(t, client, base+"/account/tokens/"+dm[1]+"/delete", url.Values{"csrf_token": {csrf}})
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("revoke: want 303, got %d", resp.StatusCode)
@@ -131,7 +131,7 @@ func TestSessionRevoke(t *testing.T) {
 
 	// From A, the security page lists its own session ("this device") plus B's,
 	// which carries a revoke control.
-	page := getBody(t, clientA, base+"/settings/security", http.StatusOK)
+	page := getBody(t, clientA, base+"/account/security", http.StatusOK)
 	if !strings.Contains(page, "this device") {
 		t.Fatal("session list missing current-device marker")
 	}
@@ -141,7 +141,7 @@ func TestSessionRevoke(t *testing.T) {
 	}
 
 	// Revoke B's session from A.
-	resp := postForm(t, clientA, base+"/settings/sessions/"+rm[1]+"/revoke", url.Values{"csrf_token": {csrfA}})
+	resp := postForm(t, clientA, base+"/account/sessions/"+rm[1]+"/revoke", url.Values{"csrf_token": {csrfA}})
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("session revoke: want 303, got %d", resp.StatusCode)
@@ -164,7 +164,7 @@ func TestSessionRevokeOthers(t *testing.T) {
 	loginB := csrfToken(t, clientB, base)
 	login(t, clientB, base, loginB)
 
-	resp := postForm(t, clientA, base+"/settings/sessions/revoke-others", url.Values{"csrf_token": {csrfA}})
+	resp := postForm(t, clientA, base+"/account/sessions/revoke-others", url.Values{"csrf_token": {csrfA}})
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("revoke-others: want 303, got %d", resp.StatusCode)

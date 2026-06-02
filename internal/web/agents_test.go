@@ -12,7 +12,7 @@ func TestAgentLifecycle(t *testing.T) {
 	csrf := signIn(t, client, base)
 
 	// Create an agent; the owner lands on its detail page.
-	resp := postForm(t, client, base+"/settings/agents", url.Values{
+	resp := postForm(t, client, base+"/account/agents", url.Values{
 		"name": {"deploybot"}, "display": {"Deploy Bot"}, "csrf_token": {csrf},
 	})
 	resp.Body.Close()
@@ -20,7 +20,7 @@ func TestAgentLifecycle(t *testing.T) {
 		t.Fatalf("create agent: want 303, got %d", resp.StatusCode)
 	}
 	loc := resp.Header.Get("Location")
-	if !strings.HasPrefix(loc, "/settings/agents/") {
+	if !strings.HasPrefix(loc, "/account/agents/") {
 		t.Fatalf("unexpected redirect %q", loc)
 	}
 
@@ -48,7 +48,7 @@ func TestAgentLifecycle(t *testing.T) {
 func TestAgentCreateRejectsBadName(t *testing.T) {
 	base, client := newTestServer(t)
 	csrf := signIn(t, client, base)
-	resp := postForm(t, client, base+"/settings/agents", url.Values{
+	resp := postForm(t, client, base+"/account/agents", url.Values{
 		"name": {"Bad Name!"}, "csrf_token": {csrf},
 	})
 	resp.Body.Close()
