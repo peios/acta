@@ -511,6 +511,7 @@
     setFacetCount(form, 'status', statuses.length, 'Status');
     setFacetCount(form, 'assignee', assignees.length, 'Assignee');
     syncFilterURL(statuses, assignees);
+    if (window.__actaBoardPrefs) window.__actaBoardPrefs.save(); // remember filters per workspace
     const clear = form.querySelector('.facet-clear');
     if (clear) clear.hidden = statuses.length + assignees.length === 0;
   }

@@ -1,5 +1,7 @@
 {{define "title"}}{{.Workspace.Name}} · Acta{{end}}
 
+{{define "head"}}<script src="{{asset "/static/board-prefs.js"}}"></script>{{end}}
+
 {{define "card"}}
 <article class="item{{if .Hidden}} is-filtered{{end}}" data-item-id="{{.Item.ID}}" data-status-id="{{.Item.StatusID}}" data-assignee-id="{{.Item.AssigneeID}}" style="{{.ColorVar}}"{{if .StatusName}} title="{{.StatusName}}"{{end}}>
   <span class="item-title">{{.Item.Title}}</span>
@@ -13,7 +15,7 @@
 <main class="board-wrap" data-slug="{{.Workspace.Slug}}" data-me="{{with .Principal}}{{.ID}}{{end}}">
   <div class="board-bar">
     <div class="board-modes">
-      <a class="board-mode{{if eq .Mode "status"}} active{{end}}" href="/w/{{.Workspace.Slug}}">Status</a>
+      <a class="board-mode{{if eq .Mode "status"}} active{{end}}" href="/w/{{.Workspace.Slug}}?mode=status">Status</a>
       <a class="board-mode{{if eq .Mode "milestone"}} active{{end}}" href="/w/{{.Workspace.Slug}}?mode=milestone">Milestone</a>
     </div>
 
@@ -67,7 +69,7 @@
       </details>
 
       <button type="submit" class="facet-apply">Apply</button>
-      <a class="facet-clear" href="/w/{{.Workspace.Slug}}{{if eq .Mode "milestone"}}?mode=milestone{{end}}"{{if not .FilterActive}} hidden{{end}}>Clear</a>
+      <a class="facet-clear" href="/w/{{.Workspace.Slug}}?mode={{.Mode}}"{{if not .FilterActive}} hidden{{end}}>Clear</a>
     </form>
 
     <a class="board-archive-link" href="/w/{{.Workspace.Slug}}/activity">Activity</a>
