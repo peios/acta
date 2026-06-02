@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/peios/acta/internal/account"
 	"github.com/peios/acta/internal/agent"
 	"github.com/peios/acta/internal/apitoken"
 	"github.com/peios/acta/internal/authn"
@@ -24,6 +25,7 @@ type handlers struct {
 	passkeys   *passkey.Service
 	tokens     *apitoken.Service
 	agents     *agent.Service
+	accounts   *account.Service
 	workspaces *workspace.Service
 	board      *board.Service
 	secure     bool
@@ -130,6 +132,8 @@ func loginError(code string) string {
 		return "Incorrect username or password."
 	case "too_many":
 		return "Too many attempts. Please wait a few minutes and try again."
+	case "account_disabled":
+		return "This account has been disabled. Contact an administrator."
 	default:
 		return ""
 	}

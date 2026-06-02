@@ -97,6 +97,14 @@ func (p *Provider) handlePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if u.DisabledAt != nil {
+		// Correct credentials, but the account is disabled. Only revealed after
+		// a successful verify, so it leaks nothing to someone guessing.
+		p.guard.RecordSuccess(username)
+		http.Redirect(w, r, "/login?err=account_disabled", http.StatusSeeOther)
+		return
+	}
+
 	p.guard.RecordSuccess(username)
 	principal := identity.Principal{ID: u.ID, Username: u.Username, Display: u.Display}
 	if err := p.sessions.EstablishWithRequest(r.Context(), w, r, principal); err != nil {
@@ -140,6 +148,10 @@ func (p *Provider) handlePasskeyFinish(w http.ResponseWriter, r *http.Request) {
 	}
 	principal, err := p.passkeys.FinishLogin(r.Context(), challengeID, r)
 	if err != nil {
+		http.Error(w, "passkey login failed", http.StatusUnauthorized)
+		return
+	}
+	if u, err := p.store.UserByID(r.Context(), principal.ID); err != nil || u.DisabledAt != nil {
 		http.Error(w, "passkey login failed", http.StatusUnauthorized)
 		return
 	}

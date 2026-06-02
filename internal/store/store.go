@@ -38,6 +38,9 @@ type User struct {
 	// personal access token; it never has a password or passkey.
 	AgentOfID string
 	CreatedAt time.Time
+	// DisabledAt is non-nil when the user has been disabled (a soft delete):
+	// they keep all their data and attribution but can no longer authenticate.
+	DisabledAt *time.Time
 }
 
 // NewUser is the input to CreateUser.
@@ -182,6 +185,9 @@ type Store interface {
 	// SetUserPassword replaces a user's password hash. Returns ErrUserNotFound
 	// if no such user exists.
 	SetUserPassword(ctx context.Context, id, passwordHash string) error
+	// SetUserDisabled toggles a user's disabled flag (true sets disabled_at to
+	// now, false clears it). Returns ErrUserNotFound if no such user exists.
+	SetUserDisabled(ctx context.Context, id string, disabled bool) error
 
 	CreateSession(ctx context.Context, s Session) error
 	SessionByID(ctx context.Context, id string) (Session, error)

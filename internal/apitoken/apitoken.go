@@ -129,6 +129,10 @@ func (s *Service) Authenticate(ctx context.Context, plaintext string) (identity.
 	if err != nil {
 		return identity.Principal{}, err
 	}
+	if u.DisabledAt != nil {
+		// The token's owner was disabled; the token no longer authenticates.
+		return identity.Principal{}, ErrInvalidToken
+	}
 	now := s.now()
 	if tok.LastUsedAt == nil || now.Sub(*tok.LastUsedAt) >= touchInterval {
 		_ = s.store.TouchAPIToken(ctx, tok.ID, now)

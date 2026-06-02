@@ -31,7 +31,7 @@ func staticHandler() http.Handler {
 // across pages.
 var pages = func() map[string]*template.Template {
 	m := map[string]*template.Template{}
-	for _, name := range []string{"login.html", "board.html", "account.html", "workspaces.html", "welcome.html", "archive.html", "agents.html", "agent_detail.html", "cli_authorize.html"} {
+	for _, name := range []string{"login.html", "board.html", "account.html", "workspaces.html", "principals.html", "welcome.html", "archive.html", "agents.html", "agent_detail.html", "cli_authorize.html"} {
 		m[name] = template.Must(
 			template.New(name).ParseFS(templatesFS,
 				"templates/base.html", "templates/item_modal.html", "templates/tokens.html", "templates/"+name),

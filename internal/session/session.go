@@ -114,6 +114,11 @@ func (m *Manager) Current(ctx context.Context, r *http.Request) (*identity.Princ
 	if err != nil {
 		return nil, err
 	}
+	if u.DisabledAt != nil {
+		// User was disabled while signed in; drop the session.
+		_ = m.store.DeleteSession(ctx, s.ID)
+		return nil, nil
+	}
 
 	return &identity.Principal{ID: u.ID, Username: u.Username, Display: u.Display}, nil
 }

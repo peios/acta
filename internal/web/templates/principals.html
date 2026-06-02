@@ -1,0 +1,80 @@
+{{define "title"}}Principals · Acta{{end}}
+{{define "content"}}
+<main class="stage stage--wide">
+  <div class="settings reveal d1">
+    <nav class="menu">
+      <a href="/settings/workspaces">Workspaces</a>
+      <a class="active" href="/settings/principals">Principals</a>
+    </nav>
+
+    <section>
+      <h2 class="title" style="font-size: 1.45rem; margin-top: 0;">Principals</h2>
+      <p class="subtitle">
+        Everyone who can act on this instance. Disabling a user blocks their sign-in
+        and tokens but keeps their history intact; their agents are listed beneath them.
+      </p>
+
+      {{if .Err}}<p class="alert" role="alert">{{.Err}}</p>{{end}}
+
+      <div class="cred-list">
+        {{range .Users}}
+        <div class="cred{{if .Disabled}} cred-off{{end}}">
+          <div>
+            <div class="cred-name">
+              {{.Display}}
+              {{if .Disabled}}<span class="badge-off">disabled</span>{{end}}
+            </div>
+            <div class="cred-meta"><code>{{.Username}}</code> · joined {{.CreatedAt.Format "2 Jan 2006"}}</div>
+          </div>
+          {{if .IsSelf}}
+          <span class="badge-current">you</span>
+          {{else if .Disabled}}
+          <form method="post" action="/settings/principals/{{.ID}}/enable">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <button class="btn-secondary" type="submit">Enable</button>
+          </form>
+          {{else}}
+          <form method="post" action="/settings/principals/{{.ID}}/disable">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <button class="link-danger" type="submit">Disable</button>
+          </form>
+          {{end}}
+        </div>
+        {{range .Agents}}
+        <div class="cred cred-nested">
+          <div>
+            <div class="cred-name">{{.Display}} <span class="badge-agent">agent</span></div>
+            <div class="cred-meta"><code>{{.Username}}</code></div>
+          </div>
+        </div>
+        {{end}}
+        {{end}}
+      </div>
+
+      <p class="section-title" style="margin-top: 2.4rem;">Add a user</p>
+      <p class="subtitle" style="margin-bottom: 1rem;">
+        Creates a human account with an initial password. Share it out-of-band — they
+        can change it and add a passkey from their own Security page.
+      </p>
+      <form class="stack" method="post" action="/settings/principals" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <div class="input-wrap">
+          <input class="input" name="username" placeholder="username (e.g. jordan)" maxlength="40" autocomplete="off" required>
+        </div>
+        <div class="input-wrap">
+          <input class="input" name="display" placeholder="Display name (optional)" maxlength="60" autocomplete="off">
+        </div>
+        <div class="passkey-add">
+          <div class="input-wrap">
+            <input id="new-user-password" class="input" name="password" type="text"
+                   placeholder="Initial password (min 8)" minlength="8" autocomplete="off" required>
+          </div>
+          <button id="gen-password" class="btn-secondary" type="button">Generate</button>
+        </div>
+        <button class="btn-primary" type="submit">Create user</button>
+      </form>
+    </section>
+  </div>
+</main>
+{{end}}
+{{define "scripts"}}<script src="/static/acta.js"></script>{{end}}

@@ -74,7 +74,7 @@ func isPKCollision(err error) bool {
 
 // --- users ---
 
-const userCols = `id::text, username, display, password_hash, COALESCE(agent_of_id::text, ''), created_at`
+const userCols = `id::text, username, display, password_hash, COALESCE(agent_of_id::text, ''), created_at, disabled_at`
 
 func (p *Postgres) CreateUser(ctx context.Context, u store.NewUser) (store.User, error) {
 	out, err := createWithRetry(func() (store.User, error) {
@@ -145,9 +145,21 @@ func (p *Postgres) SetUserPassword(ctx context.Context, id, passwordHash string)
 	return nil
 }
 
+func (p *Postgres) SetUserDisabled(ctx context.Context, id string, disabled bool) error {
+	const q = `UPDATE users SET disabled_at = CASE WHEN $2 THEN now() ELSE NULL END WHERE id = $1`
+	ct, err := p.pool.Exec(ctx, q, id, disabled)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrUserNotFound
+	}
+	return nil
+}
+
 func scanUser(row pgx.Row) (store.User, error) {
 	var u store.User
-	err := row.Scan(&u.ID, &u.Username, &u.Display, &u.PasswordHash, &u.AgentOfID, &u.CreatedAt)
+	err := row.Scan(&u.ID, &u.Username, &u.Display, &u.PasswordHash, &u.AgentOfID, &u.CreatedAt, &u.DisabledAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.User{}, store.ErrUserNotFound
 	}
@@ -159,7 +171,7 @@ func collectUsers(rows pgx.Rows) ([]store.User, error) {
 	var out []store.User
 	for rows.Next() {
 		var u store.User
-		if err := rows.Scan(&u.ID, &u.Username, &u.Display, &u.PasswordHash, &u.AgentOfID, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.Display, &u.PasswordHash, &u.AgentOfID, &u.CreatedAt, &u.DisabledAt); err != nil {
 			return nil, err
 		}
 		out = append(out, u)

@@ -95,6 +95,23 @@ func (s *Store) SetUserPassword(_ context.Context, id, passwordHash string) erro
 	return nil
 }
 
+func (s *Store) SetUserDisabled(_ context.Context, id string, disabled bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	u, ok := s.users[id]
+	if !ok {
+		return store.ErrUserNotFound
+	}
+	if disabled {
+		now := time.Now().UTC()
+		u.DisabledAt = &now
+	} else {
+		u.DisabledAt = nil
+	}
+	s.users[id] = u
+	return nil
+}
+
 func (s *Store) ListUsers(_ context.Context) ([]store.User, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

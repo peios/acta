@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/peios/acta/internal/account"
 	"github.com/peios/acta/internal/agent"
 	"github.com/peios/acta/internal/apitoken"
 	"github.com/peios/acta/internal/authn"
@@ -23,13 +24,14 @@ import (
 const maxBodyBytes = 1 << 20
 
 // NewHandler builds the application handler.
-func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Provider, passkeys *passkey.Service, tokens *apitoken.Service, agents *agent.Service, workspaces *workspace.Service, boards *board.Service) http.Handler {
+func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Provider, passkeys *passkey.Service, tokens *apitoken.Service, agents *agent.Service, accounts *account.Service, workspaces *workspace.Service, boards *board.Service) http.Handler {
 	h := &handlers{
 		sessions:   sessions,
 		provider:   provider,
 		passkeys:   passkeys,
 		tokens:     tokens,
 		agents:     agents,
+		accounts:   accounts,
 		workspaces: workspaces,
 		board:      boards,
 		secure:     cfg.CookieSecure(),
@@ -98,6 +100,10 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("POST /settings/workspaces", protected(h.workspaceCreate))
 	mux.Handle("POST /settings/workspaces/{id}/rename", protected(h.workspaceRename))
 	mux.Handle("POST /settings/workspaces/{id}/delete", protected(h.workspaceDelete))
+	mux.Handle("GET /settings/principals", protected(h.settingsPrincipals))
+	mux.Handle("POST /settings/principals", protected(h.principalCreate))
+	mux.Handle("POST /settings/principals/{id}/disable", protected(h.principalDisable))
+	mux.Handle("POST /settings/principals/{id}/enable", protected(h.principalEnable))
 	mux.Handle("GET /welcome/passkey", protected(h.welcomePasskey))
 
 	// CLI login (gh-style loopback): a browser page that mints a token and hands

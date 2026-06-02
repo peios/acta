@@ -100,6 +100,17 @@
     if (btn) btn.disabled = false;
   }
 
+  // genPassword returns n random characters for an admin-set initial password.
+  // The slight modulo bias is irrelevant for a one-time, soon-changed secret.
+  function genPassword(n) {
+    var chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%*-_";
+    var buf = new Uint8Array(n);
+    crypto.getRandomValues(buf);
+    var out = "";
+    for (var i = 0; i < n; i++) out += chars.charAt(buf[i] % chars.length);
+    return out;
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     var login = document.getElementById("passkey-login");
     if (login) {
@@ -115,6 +126,15 @@
         add.disabled = true;
         var nameEl = document.getElementById("passkey-name");
         registerPasskey(nameEl ? nameEl.value : "", add.dataset.success).catch(function (e) { fail(add, e); });
+      });
+    }
+
+    var gen = document.getElementById("gen-password");
+    var pw = document.getElementById("new-user-password");
+    if (gen && pw) {
+      gen.addEventListener("click", function () {
+        pw.value = genPassword(20);
+        pw.focus();
       });
     }
   });
