@@ -130,6 +130,18 @@ func (p *Postgres) DeleteUser(ctx context.Context, id string) error {
 	return err
 }
 
+func (p *Postgres) SetUserPassword(ctx context.Context, id, passwordHash string) error {
+	const q = `UPDATE users SET password_hash = $2 WHERE id = $1`
+	ct, err := p.pool.Exec(ctx, q, id, passwordHash)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrUserNotFound
+	}
+	return nil
+}
+
 func scanUser(row pgx.Row) (store.User, error) {
 	var u store.User
 	err := row.Scan(&u.ID, &u.Username, &u.Display, &u.PasswordHash, &u.AgentOfID, &u.CreatedAt)

@@ -179,6 +179,9 @@ type Store interface {
 	// cascade away; items the user created keep their history with a null
 	// creator. Currently used only for agent removal.
 	DeleteUser(ctx context.Context, id string) error
+	// SetUserPassword replaces a user's password hash. Returns ErrUserNotFound
+	// if no such user exists.
+	SetUserPassword(ctx context.Context, id, passwordHash string) error
 
 	CreateSession(ctx context.Context, s Session) error
 	SessionByID(ctx context.Context, id string) (Session, error)

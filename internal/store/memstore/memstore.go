@@ -83,6 +83,18 @@ func (s *Store) UserByID(_ context.Context, id string) (store.User, error) {
 	return u, nil
 }
 
+func (s *Store) SetUserPassword(_ context.Context, id, passwordHash string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	u, ok := s.users[id]
+	if !ok {
+		return store.ErrUserNotFound
+	}
+	u.PasswordHash = passwordHash
+	s.users[id] = u
+	return nil
+}
+
 func (s *Store) ListUsers(_ context.Context) ([]store.User, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

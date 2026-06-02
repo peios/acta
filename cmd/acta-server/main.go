@@ -2,6 +2,7 @@
 //
 //	acta-server serve                          run the HTTP server (default)
 //	acta-server createuser -username <name>    create a local account
+//	acta-server setpassword -username <name>   reset a local account's password
 package main
 
 import (
@@ -47,8 +48,10 @@ func main() {
 		err = runServe(args)
 	case "createuser":
 		err = runCreateUser(args)
+	case "setpassword":
+		err = runSetPassword(args)
 	default:
-		err = fmt.Errorf("unknown command %q (want: serve, createuser)", cmd)
+		err = fmt.Errorf("unknown command %q (want: serve, createuser, setpassword)", cmd)
 	}
 	if err != nil {
 		slog.Error(cmd, "err", err)
@@ -196,6 +199,58 @@ func runCreateUser(args []string) error {
 		return err
 	}
 	fmt.Printf("created user %s (%s)\n", u.Username, u.ID)
+	return nil
+}
+
+// runSetPassword resets an existing account's password (an admin's escape hatch
+// for a forgotten password or a lockout). The new password is read the same way
+// as createuser — ACTA_SEED_PASSWORD or a stdin prompt — and all of the user's
+// existing sessions are revoked, so a reset also boots any active logins.
+func runSetPassword(args []string) error {
+	fs := flag.NewFlagSet("setpassword", flag.ContinueOnError)
+	username := fs.String("username", "", "username (required)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *username == "" {
+		return errors.New("-username is required")
+	}
+	uname := local.NormalizeUsername(*username)
+
+	password, err := readPassword()
+	if err != nil {
+		return err
+	}
+	if password == "" {
+		return errors.New("password must not be empty")
+	}
+	hash, err := local.HashPassword(password)
+	if err != nil {
+		return err
+	}
+
+	cfg := config.Load()
+	pg, err := openAndMigrate(context.Background(), cfg)
+	if err != nil {
+		return err
+	}
+	defer pg.Close()
+
+	u, err := pg.UserByUsername(context.Background(), uname)
+	if errors.Is(err, store.ErrUserNotFound) {
+		return fmt.Errorf("no such user %q", uname)
+	}
+	if err != nil {
+		return err
+	}
+	if err := pg.SetUserPassword(context.Background(), u.ID, hash); err != nil {
+		return err
+	}
+	revoked, err := pg.DeleteOtherSessions(context.Background(), u.ID, "")
+	if err != nil {
+		return err
+	}
+	fmt.Printf("updated password for %s (revoked %d session(s))\n", u.Username, revoked)
 	return nil
 }
 
