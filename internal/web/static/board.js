@@ -250,6 +250,77 @@
     if (opener) { opener.focus(); opener = null; }
   }
 
+  // saveDescription posts the raw markdown and returns the server-rendered,
+  // sanitized view fragment (markdown -> safe HTML) to swap into the modal.
+  async function saveDescription(id, text) {
+    const res = await fetch(base + '/items/' + id + '/description', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      body: JSON.stringify({ description: text }),
+    });
+    if (!res.ok) {
+      let code = String(res.status);
+      try { code = (await res.json()).error || code; } catch (_) {}
+      throw new Error(code);
+    }
+    return res.text();
+  }
+
+  // wireDescription runs the description's read view (rendered markdown + a
+  // show-more clamp) and its editor (pencil -> textarea, autosave, Done).
+  function wireDescription(el, id, fail) {
+    const field = el.querySelector('[data-desc-field]');
+    if (!field) return;
+    const view = field.querySelector('[data-desc-view]');
+    const editor = field.querySelector('[data-desc-editor]');
+    const input = field.querySelector('[data-desc-input]');
+    const editBtn = field.querySelector('[data-desc-edit]');
+    const doneBtn = field.querySelector('[data-desc-done]');
+    const hint = field.querySelector('[data-desc-saved]');
+    const setHint = (t) => { if (hint) hint.textContent = t; };
+    let pending = null; // latest rendered view from a save, applied on Done
+
+    function wireMore() {
+      const more = view.querySelector('[data-desc-more]');
+      if (!more) return;
+      more.addEventListener('click', () => {
+        const full = view.querySelector('[data-desc-full]');
+        const prev = view.querySelector('[data-desc-preview]');
+        const expanded = more.getAttribute('aria-expanded') === 'true';
+        if (full) full.hidden = expanded;
+        if (prev) prev.hidden = !expanded;
+        more.setAttribute('aria-expanded', String(!expanded));
+        more.textContent = expanded ? 'Show more' : 'Show less';
+      });
+    }
+    wireMore();
+
+    editBtn.addEventListener('click', () => {
+      editor.hidden = false;
+      view.hidden = true;
+      editBtn.hidden = true;
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+
+    doneBtn.addEventListener('click', () => {
+      if (pending !== null) { view.innerHTML = pending; wireMore(); pending = null; }
+      editor.hidden = true;
+      view.hidden = false;
+      editBtn.hidden = false;
+      setHint('');
+    });
+
+    const save = debounce(async () => {
+      try {
+        pending = await saveDescription(id, input.value);
+        setHint('saved');
+        setTimeout(() => { if (!editor.hidden) setHint(''); }, 1400);
+      } catch (e) { fail(e); setHint(''); }
+    }, 600);
+    input.addEventListener('input', () => { setHint('saving…'); save(); });
+  }
+
   function wireModal(el) {
     const id = el.dataset.itemId;
     opener = cardOf(id);
@@ -300,15 +371,7 @@
       catch (err2) { fail(err2); }
     });
 
-    // Description auto-saves (debounced) — no save button.
-    const desc = el.querySelector('.modal-desc');
-    const hint = el.querySelector('[data-desc-saved]');
-    const setHint = (t) => { if (hint) hint.textContent = t; };
-    const saveDesc = debounce(async () => {
-      try { await api('/items/' + id + '/description', { description: desc.value }); setHint('saved'); setTimeout(() => setHint(''), 1400); }
-      catch (e) { fail(e); setHint(''); }
-    }, 600);
-    desc.addEventListener('input', () => { setHint('saving…'); saveDesc(); });
+    wireDescription(el, id, fail);
 
     // Comments post on Cmd/Ctrl+Enter.
     const commentInput = el.querySelector('[data-comment-input]');

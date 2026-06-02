@@ -63,8 +63,13 @@ func (l lane) ColorVar() template.CSS { return colorVar(l.Color) }
 type milestoneColumn struct {
 	ID    string
 	Title string
+	Color string // the milestone's own status colour, tinting its ◆ (Backlog: "")
 	Cards []cardView
 }
+
+// ColorVar is the milestone's status colour as a template-safe `--lane-color`
+// declaration for its header diamond.
+func (m milestoneColumn) ColorVar() template.CSS { return colorVar(m.Color) }
 
 type cardView struct {
 	Item       store.Item
@@ -193,7 +198,7 @@ func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, sta
 		if err != nil {
 			return nil, err
 		}
-		col := milestoneColumn{ID: it.ID, Title: it.Title}
+		col := milestoneColumn{ID: it.ID, Title: it.Title, Color: board.ColorFor(statusByID[it.StatusID])}
 		for _, k := range kids {
 			col.Cards = append(col.Cards, card(k))
 		}

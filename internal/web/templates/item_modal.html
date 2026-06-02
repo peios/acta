@@ -11,12 +11,22 @@
         {{if .ParentID}}<a class="modal-parent" href="?item={{.ParentID}}" data-parent-link="{{.ParentID}}">&lsaquo; {{.ParentTitle}}</a>{{end}}
         {{if .Archived}}<p class="modal-archived-note">This item is archived.</p>{{end}}
 
-        <div class="modal-field">
+        <div class="modal-field" data-desc-field>
           <div class="modal-label-row">
             <span class="modal-label">Description</span>
+            <button class="modal-desc-edit" type="button" data-desc-edit aria-label="Edit description">&#9998; Edit</button>
             <span class="save-hint" data-desc-saved></span>
           </div>
-          <textarea class="modal-desc" rows="4" placeholder="Add a description…">{{.Item.Description}}</textarea>
+
+          <div class="modal-desc-view" data-desc-view>{{template "desc-view" .Desc}}</div>
+
+          <div class="modal-desc-editor" data-desc-editor hidden>
+            <textarea class="modal-desc" rows="10" placeholder="Add a description…  (markdown supported)" data-desc-input>{{.Item.Description}}</textarea>
+            <div class="modal-desc-tools">
+              <span class="modal-desc-md">Markdown supported</span>
+              <button class="btn-secondary modal-desc-done" type="button" data-desc-done>Done</button>
+            </div>
+          </div>
         </div>
 
         <div class="modal-subtasks" data-subtasks>
@@ -92,4 +102,20 @@
     </div>
   </div>
 </div>
+{{end}}
+
+{{define "desc-view"}}
+{{- if .HasText}}
+<div class="md" data-desc-rendered>
+  {{- if .Truncated}}
+  <div data-desc-preview>{{.Preview}}</div>
+  <div data-desc-full hidden>{{.HTML}}</div>
+  {{- else}}
+  {{.HTML}}
+  {{- end}}
+</div>
+{{- if .Truncated}}<button type="button" class="modal-desc-more" data-desc-more aria-expanded="false">Show more</button>{{end}}
+{{- else}}
+<p class="modal-desc-empty" data-desc-empty>No description yet.</p>
+{{- end}}
 {{end}}

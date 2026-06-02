@@ -69,9 +69,13 @@ func TestDescriptionAndComment(t *testing.T) {
 	desc := postJSON(t, client, base+"/w/general/items/"+id+"/description", token, map[string]any{
 		"description": "the full story",
 	})
-	desc.Body.Close()
-	if desc.StatusCode != http.StatusNoContent {
-		t.Fatalf("description: want 204, got %d", desc.StatusCode)
+	descBody := readBody(t, desc)
+	if desc.StatusCode != http.StatusOK {
+		t.Fatalf("description: want 200, got %d", desc.StatusCode)
+	}
+	// The endpoint returns the rendered, collapsible view fragment.
+	if !strings.Contains(descBody, "the full story") {
+		t.Errorf("description response missing rendered text:\n%s", descBody)
 	}
 
 	cm := postJSON(t, client, base+"/w/general/items/"+id+"/comment", token, map[string]any{

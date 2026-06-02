@@ -356,3 +356,23 @@ func TestStaticHandlerSetsImmutableCache(t *testing.T) {
 		t.Fatalf("static assets should be cached immutable, got Cache-Control %q", cc)
 	}
 }
+
+func TestMilestoneDiamondTintedByStatus(t *testing.T) {
+	base, client := newTestServer(t)
+	token := csrfToken(t, client, base)
+	login(t, client, base, token)
+
+	todo := statusID(t, client, base, "To do") // first lane -> Palette[0]
+	id := decodeID(t, postJSON(t, client, base+"/w/general/items", token, map[string]any{
+		"status_id": todo, "title": "Launch",
+	}))
+	postJSON(t, client, base+"/w/general/items/"+id+"/milestone", token, map[string]any{
+		"is_milestone": true,
+	}).Body.Close()
+
+	// In milestone mode the column header's ◆ is tinted by the milestone's status.
+	body := getBody(t, client, base+"/w/general?mode=milestone", http.StatusOK)
+	if !strings.Contains(body, `class="mcol-diamond" style="--lane-color:`+board.Palette[0]+`"`) {
+		t.Errorf("milestone diamond not tinted by status colour (want %s):\n%s", board.Palette[0], body)
+	}
+}

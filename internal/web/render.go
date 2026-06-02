@@ -87,6 +87,19 @@ var itemModalTmpl = template.Must(
 	template.New("item_modal.html").ParseFS(templatesFS, "templates/item_modal.html"),
 )
 
+// renderDescView writes just the rendered description fragment (the markdown
+// view + its show-more control), so the editor can swap it in after a save.
+func renderDescView(w http.ResponseWriter, dv descView) {
+	var buf bytes.Buffer
+	if err := itemModalTmpl.ExecuteTemplate(&buf, "desc-view", dv); err != nil {
+		slog.Error("render desc", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = buf.WriteTo(w)
+}
+
 func renderItemModal(w http.ResponseWriter, data any) {
 	var buf bytes.Buffer
 	if err := itemModalTmpl.ExecuteTemplate(&buf, "item-modal", data); err != nil {

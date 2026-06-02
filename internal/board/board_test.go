@@ -3,6 +3,7 @@ package board_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/peios/acta/internal/board"
@@ -506,4 +507,21 @@ func colorOf(t *testing.T, svc *board.Service, wsID, id string) string {
 	}
 	t.Fatalf("status %s not found", id)
 	return ""
+}
+
+func TestUpdateDescriptionLengthCap(t *testing.T) {
+	svc, wsID, statuses := setup(t)
+	ctx := context.Background()
+	it, err := svc.CreateItem(ctx, wsID, statuses[0].ID, "task")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// At the cap is accepted; one over is rejected.
+	if err := svc.UpdateDescription(ctx, it.ID, strings.Repeat("a", board.MaxDescriptionLen)); err != nil {
+		t.Fatalf("description at cap rejected: %v", err)
+	}
+	if err := svc.UpdateDescription(ctx, it.ID, strings.Repeat("a", board.MaxDescriptionLen+1)); !errors.Is(err, board.ErrInvalidDescription) {
+		t.Fatalf("over cap: want ErrInvalidDescription, got %v", err)
+	}
 }

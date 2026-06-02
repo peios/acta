@@ -15,6 +15,7 @@ type modalView struct {
 	Slug           string
 	CSRFToken      string
 	Item           store.Item
+	Desc           descView // the rendered, collapsible description
 	Statuses       []store.Status
 	Users          []store.User
 	Assignee       string // display name of the assignee, "" if unassigned
@@ -137,6 +138,7 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		Slug:           ws.Slug,
 		CSRFToken:      csrfTokenFrom(ctx),
 		Item:           item,
+		Desc:           renderDescription(item.Description),
 		Statuses:       statuses,
 		Users:          users,
 		Assignee:       nameByID[item.AssigneeID],
@@ -188,7 +190,9 @@ func (h *handlers) itemDescription(w http.ResponseWriter, r *http.Request) {
 		writeBoardErr(w, err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	// Return the freshly rendered, collapsible view so the modal can swap it in
+	// without a reload when the editor closes.
+	renderDescView(w, renderDescription(req.Description))
 }
 
 func (h *handlers) itemAssignee(w http.ResponseWriter, r *http.Request) {

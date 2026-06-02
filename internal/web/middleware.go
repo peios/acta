@@ -122,7 +122,10 @@ func secureHeaders(hsts bool) func(http.Handler) http.Handler {
 			h.Set("X-Content-Type-Options", "nosniff")
 			h.Set("X-Frame-Options", "DENY")
 			h.Set("Referrer-Policy", "same-origin")
-			h.Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'")
+			// img-src allows external https images so markdown descriptions can
+			// embed them; <img> can't execute script, so this doesn't widen the
+			// script surface. (bluemonday strips data:/javascript: img URLs.)
+			h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' https:; style-src 'self' 'unsafe-inline'")
 			if hsts {
 				h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 			}

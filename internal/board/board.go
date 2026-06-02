@@ -16,7 +16,7 @@ import (
 const (
 	MaxStatusNameLen  = 40
 	MaxItemTitleLen   = 200
-	MaxDescriptionLen = 20000
+	MaxDescriptionLen = 1_000_000
 	MaxCommentLen     = 5000
 
 	// endOfLane is a large index that MoveItem clamps to a lane's end; used by
