@@ -394,9 +394,84 @@ EOF
 systemctl enable --now acta-image-prune.timer
 ```
 
+**Unattended updates (optional)** — keep the box on the newest released image
+without logging in. Each run is a *cheap* registry manifest check; it only
+downloads, backs up, and recreates when the image tag you deploy actually
+points at something new, so it's safe to run often. It advances **whatever tag
+you run** — `:latest`, or the `ACTA_VERSION` you pinned in `.env` — so pinning a
+version disables surprise jumps while still picking up that line's patches once
+you move the pin. Because the same person cuts the releases and runs the box,
+the blast radius is small; a fresh backup is taken immediately before each
+update regardless.
+
+```sh
+cat > /usr/local/sbin/acta-update.sh <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+cd /opt/acta || { logger -t acta-update "FAILED: /opt/acta missing"; exit 1; }
+
+# Match this to your §5 TLS choice:
+#   path A:  docker compose -f docker-compose.prod.yml
+#   path B:  add  -f docker-compose.cloudflare.yml
+compose() { docker compose -f docker-compose.prod.yml "$@"; }
+
+REF=$(compose config --images 2>/dev/null | grep '^ghcr.io/peios/acta-server' | head -n1)
+REF=${REF:-ghcr.io/peios/acta-server:latest}
+before=$(docker image inspect --format '{{.Id}}' "$REF" 2>/dev/null || echo none)
+
+# Cheap manifest check; pulls layers only if the digest moved. A registry
+# hiccup is not fatal -- skip this round and retry next tick.
+compose pull app >/dev/null 2>&1 || { logger -t acta-update "registry check failed; retry next run"; exit 0; }
+
+after=$(docker image inspect --format '{{.Id}}' "$REF")
+[ "$before" = "$after" ] && exit 0   # up to date -- the fail-fast common case
+
+logger -t acta-update "new image: ${before#sha256:} -> ${after#sha256:}; backing up then updating"
+/usr/local/sbin/acta-backup.sh || { logger -t acta-update "ABORT: pre-update backup failed"; exit 1; }
+compose up -d app
+
+sleep 10   # light crash-loop gate (no auto-rollback; prior image stays in the local store)
+st=$(docker inspect --format '{{.State.Status}}' acta-app-1 2>/dev/null || echo missing)
+rs=$(docker inspect --format '{{.State.Restarting}}' acta-app-1 2>/dev/null || echo true)
+if [ "$st" = running ] && [ "$rs" = false ]; then
+  logger -t acta-update "updated OK: ${after#sha256:}"
+else
+  logger -t acta-update "WARNING: acta-app-1 status=$st restarting=$rs; check 'docker logs acta-app-1'"
+fi
+EOF
+chmod +x /usr/local/sbin/acta-update.sh
+
+cat > /etc/systemd/system/acta-update.service <<'EOF'
+[Unit]
+Description=Acta unattended update (check GHCR; back up + recreate on new image)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/acta-update.sh
+EOF
+cat > /etc/systemd/system/acta-update.timer <<'EOF'
+[Unit]
+Description=Check for Acta updates frequently
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+[Install]
+WantedBy=timers.target
+EOF
+systemctl enable --now acta-update.timer
+```
+
+Watch it work with `journalctl -t acta-update -f`. Adjust `OnUnitActiveSec` for
+a slower/faster cadence. To pause auto-updates, `systemctl disable --now
+acta-update.timer` (or pin `ACTA_VERSION` so it can't advance past your line).
+
 With these in place the box self-maintains: daily patching (04:00 auto-reboot
-for kernels), nightly backups, weekly CDN-range refresh, monthly prune, capped
-logs, and containers that restart on crash or reboot. TLS is hands-off —
+for kernels), nightly backups, **unattended app updates** (optional), weekly
+CDN-range refresh, monthly prune, capped logs, and containers that restart on
+crash or reboot. TLS is hands-off —
 Cloudflare's edge cert auto-renews and the Origin cert lasts ~15 years (path B),
 or Caddy auto-renews Let's Encrypt (path A).
 
@@ -418,6 +493,9 @@ reproducible deploys):
 cd /opt/acta
 dc pull && dc up -d
 ```
+
+To do this automatically on a schedule (with a pre-update backup), wire the
+**Unattended updates** timer in §9 instead.
 
 If the compose file or Caddyfile changed upstream, re-fetch the bundle (§3) —
 it won't touch your `.env` or certs. After a `--force-recreate`, re-run the
