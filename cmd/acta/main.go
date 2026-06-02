@@ -34,6 +34,9 @@ import (
 	"time"
 )
 
+// version is stamped at build time via -ldflags "-X main.version=...".
+var version = "dev"
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -61,6 +64,9 @@ func run(cmd string, args []string) error {
 		return cmdItem(args)
 	case "mcp":
 		return cmdMCP(args)
+	case "version", "--version", "-v":
+		fmt.Println(version)
+		return nil
 	case "help", "-h", "--help":
 		usage()
 		return nil

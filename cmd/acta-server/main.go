@@ -33,6 +33,9 @@ import (
 	"github.com/peios/acta/internal/workspace"
 )
 
+// version is stamped at build time via -ldflags "-X main.version=...".
+var version = "dev"
+
 func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, nil)))
 
@@ -40,6 +43,11 @@ func main() {
 	cmd := "serve"
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		cmd, args = args[0], args[1:]
+	}
+
+	if cmd == "version" {
+		fmt.Println(version)
+		return
 	}
 
 	var err error
@@ -51,7 +59,7 @@ func main() {
 	case "setpassword":
 		err = runSetPassword(args)
 	default:
-		err = fmt.Errorf("unknown command %q (want: serve, createuser, setpassword)", cmd)
+		err = fmt.Errorf("unknown command %q (want: serve, createuser, setpassword, version)", cmd)
 	}
 	if err != nil {
 		slog.Error(cmd, "err", err)

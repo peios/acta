@@ -1,0 +1,95 @@
+name: Release
+
+# Tag a release to fire this:  git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # create the GitHub Release
+  packages: write # push the image to GHCR
+
+jobs:
+  # Cross-compiled CLI + server binaries, one tarball per platform.
+  binaries:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          ldflags="-s -w -X main.version=${GITHUB_REF_NAME}"
+          mkdir -p out
+          go build -trimpath -ldflags="$ldflags" -o out/acta-server ./cmd/acta-server
+          go build -trimpath -ldflags="$ldflags" -o out/acta        ./cmd/acta
+          tar -C out -czf "acta_${GITHUB_REF_NAME}_${GOOS}_${GOARCH}.tar.gz" acta-server acta
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: 'acta_*.tar.gz'
+
+  # Multi-arch server image to GHCR.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/acta-server
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+
+  # Bundle the self-host distributables and cut the GitHub Release.
+  release:
+    needs: binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: binaries-*
+          merge-multiple: true
+      - name: Bundle deploy files
+        run: |
+          mkdir -p acta-deploy
+          cp docker-compose.prod.yml Caddyfile .env.example DEPLOY.md README.md acta-deploy/
+          tar -czf "acta-deploy_${GITHUB_REF_NAME}.tar.gz" acta-deploy
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Acta ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            acta_*.tar.gz
+            acta-deploy_*.tar.gz
