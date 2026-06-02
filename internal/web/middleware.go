@@ -6,10 +6,13 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"time"
 
+	"github.com/peios/acta/internal/httpx"
+	"github.com/peios/acta/internal/id"
 	"github.com/peios/acta/internal/identity"
 	"github.com/peios/acta/internal/session"
 )
@@ -120,16 +123,29 @@ func secureHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// requestLogger emits one structured line per request.
-func requestLogger(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
-		next.ServeHTTP(sw, r)
-		slog.Info("http",
-			"method", r.Method, "path", r.URL.Path,
-			"status", sw.status, "dur", time.Since(start))
-	})
+// requestLogger assigns each request an id and resolves its client IP (honouring
+// the trusted-proxy set), stashes both in the context and the X-Request-ID
+// response header, and emits one structured line per request. As the outermost
+// middleware it covers everything inside it, so handler logs and the access log
+// share a request id.
+func requestLogger(trusted []*net.IPNet) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			reqID := id.New()
+			ip := clientIP(r, trusted)
+			w.Header().Set("X-Request-ID", reqID)
+			r = r.WithContext(httpx.WithRequestMeta(r.Context(), reqID, ip))
+
+			sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+			next.ServeHTTP(sw, r)
+			slog.Info("http",
+				"req_id", reqID,
+				"method", r.Method, "path", r.URL.Path,
+				"status", sw.status, "ip", ip,
+				"dur", time.Since(start))
+		})
+	}
 }
 
 type statusWriter struct {

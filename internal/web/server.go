@@ -122,5 +122,5 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	root.Handle("/api/v1/", requireToken(tokens)(api))
 	root.Handle("/mcp", mcpEndpoint)
 	root.Handle("/", csrf(cfg.CookieSecure())(mux))
-	return requestLogger(secureHeaders(root))
+	return requestLogger(cfg.TrustedProxies)(secureHeaders(root))
 }

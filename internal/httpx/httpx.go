@@ -3,9 +3,37 @@
 package httpx
 
 import (
+	"context"
 	"net/http"
 	"strings"
 )
+
+type ctxKey int
+
+const (
+	ctxRequestID ctxKey = iota
+	ctxClientIP
+)
+
+// WithRequestMeta attaches the per-request id and resolved client IP to ctx, so
+// any layer — handlers, the auth provider, panic recovery — can read them for
+// correlated logging. The web request logger sets these at the edge.
+func WithRequestMeta(ctx context.Context, requestID, clientIP string) context.Context {
+	ctx = context.WithValue(ctx, ctxRequestID, requestID)
+	return context.WithValue(ctx, ctxClientIP, clientIP)
+}
+
+// RequestID returns the request id attached by WithRequestMeta, or "".
+func RequestID(ctx context.Context) string {
+	s, _ := ctx.Value(ctxRequestID).(string)
+	return s
+}
+
+// ClientIP returns the resolved originating client IP, or "".
+func ClientIP(ctx context.Context) string {
+	s, _ := ctx.Value(ctxClientIP).(string)
+	return s
+}
 
 // ChallengeCookie carries the id of an in-flight WebAuthn ceremony between its
 // begin and finish requests. Short-lived and HttpOnly.

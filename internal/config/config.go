@@ -3,7 +3,10 @@
 package config
 
 import (
+	"log/slog"
+	"net"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -20,6 +23,14 @@ type Config struct {
 	RPID     string
 	RPOrigin string
 	RPName   string
+
+	// TrustedProxies are the CIDRs of reverse proxies allowed to set forwarding
+	// headers (CF-Connecting-IP / X-Forwarded-For). Empty by default, which is
+	// the safe stance for a directly-exposed origin: only the socket address is
+	// believed, so a client can't spoof its IP to dodge per-IP limits. Populate
+	// it (e.g. with Cloudflare's ranges) only once traffic genuinely arrives via
+	// that proxy.
+	TrustedProxies []*net.IPNet
 }
 
 // CookieSecure reports whether session/CSRF cookies should carry the Secure
@@ -36,7 +47,33 @@ func Load() Config {
 		RPID:            env("ACTA_RP_ID", "localhost"),
 		RPOrigin:        env("ACTA_RP_ORIGIN", "http://localhost:8080"),
 		RPName:          env("ACTA_RP_NAME", "Acta"),
+		TrustedProxies:  parseTrustedProxies(os.Getenv("ACTA_TRUSTED_PROXIES")),
 	}
+}
+
+// parseTrustedProxies reads a comma/space-separated list of CIDRs (or bare IPs,
+// treated as a single host) into networks. Invalid entries are logged and
+// skipped rather than failing startup.
+func parseTrustedProxies(s string) []*net.IPNet {
+	var out []*net.IPNet
+	for _, field := range strings.FieldsFunc(s, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t' || r == '\n'
+	}) {
+		if _, n, err := net.ParseCIDR(field); err == nil {
+			out = append(out, n)
+			continue
+		}
+		if ip := net.ParseIP(field); ip != nil {
+			bits := 32
+			if ip.To4() == nil {
+				bits = 128
+			}
+			out = append(out, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+			continue
+		}
+		slog.Warn("ignoring invalid ACTA_TRUSTED_PROXIES entry", "value", field)
+	}
+	return out
 }
 
 func env(key, def string) string {
