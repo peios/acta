@@ -13,6 +13,7 @@ import (
 	"github.com/peios/acta/internal/authn"
 	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/config"
+	"github.com/peios/acta/internal/mcpcfg"
 	"github.com/peios/acta/internal/passkey"
 	"github.com/peios/acta/internal/session"
 	"github.com/peios/acta/internal/workspace"
@@ -24,7 +25,7 @@ import (
 const maxBodyBytes = 1 << 20
 
 // NewHandler builds the application handler.
-func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Provider, passkeys *passkey.Service, tokens *apitoken.Service, agents *agent.Service, accounts *account.Service, workspaces *workspace.Service, boards *board.Service) http.Handler {
+func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Provider, passkeys *passkey.Service, tokens *apitoken.Service, agents *agent.Service, accounts *account.Service, workspaces *workspace.Service, boards *board.Service, mcpConfig *mcpcfg.Service) http.Handler {
 	h := &handlers{
 		sessions:   sessions,
 		provider:   provider,
@@ -34,6 +35,7 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 		accounts:   accounts,
 		workspaces: workspaces,
 		board:      boards,
+		mcpcfg:     mcpConfig,
 		secure:     cfg.CookieSecure(),
 		publicURL:  strings.TrimRight(cfg.RPOrigin, "/"),
 	}
@@ -105,6 +107,15 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("POST /settings/principals", protected(h.principalCreate))
 	mux.Handle("POST /settings/principals/{id}/disable", protected(h.principalDisable))
 	mux.Handle("POST /settings/principals/{id}/enable", protected(h.principalEnable))
+	// MCP customisation: the guide (acta://guide) and user-defined prompts.
+	mux.Handle("GET /settings/guide", protected(h.settingsGuide))
+	mux.Handle("POST /settings/guide", protected(h.guideSave))
+	mux.Handle("GET /settings/prompts", protected(h.settingsPrompts))
+	mux.Handle("GET /settings/prompts/new", protected(h.promptNew))
+	mux.Handle("POST /settings/prompts", protected(h.promptCreate))
+	mux.Handle("GET /settings/prompts/{id}", protected(h.promptEdit))
+	mux.Handle("POST /settings/prompts/{id}", protected(h.promptUpdate))
+	mux.Handle("POST /settings/prompts/{id}/delete", protected(h.promptDelete))
 	mux.Handle("GET /welcome/passkey", protected(h.welcomePasskey))
 
 	// CLI login (gh-style loopback): a browser page that mints a token and hands

@@ -1,0 +1,35 @@
+{{define "title"}}MCP Guide · Acta{{end}}
+{{define "content"}}
+<main class="stage stage--wide">
+  <div class="settings reveal d1">
+    <nav class="menu">
+      <a href="/settings/workspaces">Workspaces</a>
+      <a href="/settings/principals">Principals</a>
+      <a class="active" href="/settings/guide">MCP Guide</a>
+      <a href="/settings/prompts">Prompts</a>
+    </nav>
+
+    <section>
+      <h2 class="title" style="font-size: 1.45rem; margin-top: 0;">MCP Guide</h2>
+      <p class="help">The conventions document agents read over MCP, served as the <code>acta://guide</code> resource. Leave it empty to serve the built-in default; edit it to tailor the conventions for this instance. Changes are live on the next MCP request.</p>
+
+      {{if .Saved}}<p class="notice">Guide saved.</p>{{end}}
+      {{if .Err}}<p class="alert" role="alert">{{.Err}}</p>{{end}}
+
+      <form method="post" action="/settings/guide" class="guide-form">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        {{if .UsingDefault}}<p class="help">No override set — currently serving the built-in default (previewed below). Edit and save to customise, or use <em>Start from default</em> to begin from the shipped text.</p>{{end}}
+        <textarea class="input guide-text" name="guide" rows="22" placeholder="Leave empty to use the built-in default…" spellcheck="false">{{.Custom}}</textarea>
+        <div class="guide-actions">
+          <button class="btn-primary" type="submit" style="width:auto;">Save</button>
+          <button class="btn-secondary" type="submit" name="action" value="default" formnovalidate>Start from default</button>
+        </div>
+      </form>
+
+      <p class="section-title">Preview</p>
+      <div class="md guide-preview">{{.Preview}}</div>
+    </section>
+  </div>
+</main>
+{{end}}
+{{define "scripts"}}<script src="{{asset "/static/acta.js"}}"></script>{{end}}

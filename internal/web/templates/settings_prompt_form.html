@@ -1,0 +1,59 @@
+{{define "title"}}{{if .New}}New prompt{{else}}Edit prompt{{end}} · Acta{{end}}
+{{define "content"}}
+<main class="stage stage--wide">
+  <div class="settings reveal d1">
+    <nav class="menu">
+      <a href="/settings/workspaces">Workspaces</a>
+      <a href="/settings/principals">Principals</a>
+      <a href="/settings/guide">MCP Guide</a>
+      <a class="active" href="/settings/prompts">Prompts</a>
+    </nav>
+
+    <section>
+      <h2 class="title" style="font-size: 1.45rem; margin-top: 0;">{{if .New}}New prompt{{else}}Edit prompt{{end}}</h2>
+
+      {{if .Err}}<p class="alert" role="alert">{{.Err}}</p>{{end}}
+
+      <form method="post" action="{{if .New}}/settings/prompts{{else}}/settings/prompts/{{.ID}}{{end}}" class="prompt-form">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+        <label class="field">
+          <span class="field-label">Name</span>
+          <span class="help">Lowercase letters, digits, underscores, starting with a letter. Becomes <code>/mcp__acta__&lt;name&gt;</code>.</span>
+          <div class="input-wrap"><input class="input" name="name" value="{{.Name}}" maxlength="64" autocomplete="off" spellcheck="false" placeholder="standup"></div>
+        </label>
+
+        <label class="field">
+          <span class="field-label">Title</span>
+          <span class="help">A human-readable label clients may show.</span>
+          <div class="input-wrap"><input class="input" name="title" value="{{.Title}}" maxlength="80" autocomplete="off" placeholder="Standup"></div>
+        </label>
+
+        <label class="field">
+          <span class="field-label">Description</span>
+          <span class="help">A one-line summary of what the prompt does.</span>
+          <div class="input-wrap"><input class="input" name="description" value="{{.Description}}" maxlength="300" autocomplete="off"></div>
+        </label>
+
+        <label class="field">
+          <span class="field-label">Arguments</span>
+          <span class="help">One per line, <code>name: description</code>. End the name with <code>*</code> to mark it required.</span>
+          <textarea class="input prompt-args-text" name="args" rows="4" spellcheck="false" placeholder="workspace: which board to scope to (blank = default)">{{.ArgsText}}</textarea>
+        </label>
+
+        <label class="field">
+          <span class="field-label">Body</span>
+          <span class="help">The message sent when the prompt runs. Insert an argument with <code>{{"{{name}}"}}</code>.</span>
+          <textarea class="input prompt-body" name="body" rows="14" spellcheck="false" placeholder="Give me a standup in Acta…">{{.Body}}</textarea>
+        </label>
+
+        <div class="prompt-actions">
+          <button class="btn-primary" type="submit" style="width:auto;">{{if .New}}Create{{else}}Save{{end}}</button>
+          <a class="btn-secondary" href="/settings/prompts" style="width:auto;">Cancel</a>
+        </div>
+      </form>
+    </section>
+  </div>
+</main>
+{{end}}
+{{define "scripts"}}<script src="{{asset "/static/acta.js"}}"></script>{{end}}

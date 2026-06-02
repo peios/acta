@@ -1,0 +1,123 @@
+package mcpcfg
+
+import "github.com/peios/acta/internal/store"
+
+// DefaultGuide is the built-in conventions document served as acta://guide when
+// no custom guide is set. It is deliberately deployment-neutral — operators add
+// their own project specifics by editing the guide in Settings.
+const DefaultGuide = `# Using Acta
+
+Acta is a shared project tracker. You're connected to it as an agent over MCP.
+This guide is the source of truth for how to work in Acta — read it before you
+create or change anything.
+
+## Orient yourself first
+
+- Call ` + "`whoami`" + ` to learn who you're acting as. You may be a **human** principal
+  or an **agent** principal that belongs to a human (your "owner").
+- Call ` + "`list_workspaces`" + ` to see the projects available. Items always live in one
+  workspace, addressed by its ` + "`slug`" + `.
+- Call ` + "`list_items`" + ` to read the board before you change it. Don't re-create work
+  that's already tracked.
+
+## The model
+
+- **Item** — the unit of work: a task, bug, idea, or milestone. Has a title, an
+  optional markdown **description**, a **status**, an optional **assignee**, and
+  an optional **parent**.
+- **Status** — which column an item sits in (e.g. To do / In progress / Done).
+  Statuses are defined per workspace; read them from the board — don't guess the
+  names.
+- **Milestone** — an item flagged as a milestone: an anchor point the project is
+  steering toward, with ordinary tasks hanging off it. Toggle with
+  ` + "`set_item_milestone`" + `.
+- **Parent / subtask** — items nest. Break large work into a parent with child
+  subtasks via ` + "`set_item_parent`" + `; the parent's progress rolls up from its
+  children.
+- **Assignee** — the principal responsible. Both humans and agents can be
+  assignees. Set with ` + "`set_item_assignee`" + `.
+
+## Humans and agents
+
+Each human can have agents acting on their behalf; agents appear nested under
+their owning human. When you assign work, assign to a **human** when a person
+must own or decide it, and to an **agent** when carrying it out is the agent's
+job. ` + "`whoami`" + ` tells you which you are — assign work you're actually doing to
+yourself when that's the honest answer.
+
+## How to behave
+
+- **Acta is the canonical record.** Track work here — not in scratch files, a
+  TODO.md, or chat-only notes. If it's worth remembering as work, it's an item.
+- **Read before you write.** List the board, look for an existing item, and
+  prefer updating it over creating a near-duplicate.
+- **Keep items current.** Advance status as work progresses — a board that
+  reflects reality is the whole point.
+- **Description is the spec; comments are the narrative.** Put the durable what
+  and why in the markdown description; use ` + "`add_comment`" + ` for progress notes and
+  decisions over time.
+- **Archive, don't delete.** Finished or abandoned work gets ` + "`archive_item`" + `
+  (reversible via ` + "`unarchive_item`" + `), so history is preserved.
+
+## Tool map
+
+| Goal | Tool |
+| --- | --- |
+| Who am I? | ` + "`whoami`" + ` |
+| What projects exist? | ` + "`list_workspaces`" + ` |
+| Read the board | ` + "`list_items`" + ` |
+| Read one item in full | ` + "`get_item`" + ` |
+| Create an item | ` + "`create_item`" + ` |
+| Move its column | ` + "`set_item_status`" + ` |
+| Assign it | ` + "`set_item_assignee`" + ` |
+| Edit the description | ` + "`set_item_description`" + ` |
+| Flag / unflag a milestone | ` + "`set_item_milestone`" + ` |
+| Nest under a parent | ` + "`set_item_parent`" + ` |
+| Add a progress note | ` + "`add_comment`" + ` |
+| Retire / restore | ` + "`archive_item`" + ` / ` + "`unarchive_item`" + ` |
+`
+
+// DefaultPrompts are the starter prompts seeded on first run. They are ordinary
+// editable rows once seeded — an operator can reword, delete, or add to them.
+// Both reference acta://guide so they inherit the operator's conventions.
+var DefaultPrompts = []store.MCPPrompt{
+	{
+		Name:        "standup",
+		Title:       "Standup",
+		Description: "Summarise my open items and suggest what to pick up next.",
+		Arguments: []store.MCPPromptArg{
+			{Name: "workspace", Description: "Workspace slug to scope to (blank = the default board)"},
+		},
+		Body: `Give me a standup in Acta.
+
+Read the conventions in the ` + "`acta://guide`" + ` resource first if you haven't.
+Target workspace (blank = use list_workspaces and pick the default board): {{workspace}}
+
+1. Call ` + "`whoami`" + `, then ` + "`list_items`" + ` filtered to me.
+2. Group my open items by status, most-recently-touched first.
+3. Flag anything that looks stale or stuck.
+4. Recommend the one or two items I should pick up next, and why.
+
+Keep it tight — this is a quick orientation, not a report.`,
+	},
+	{
+		Name:        "triage",
+		Title:       "Triage",
+		Description: "Walk un-triaged items and help sort them.",
+		Arguments: []store.MCPPromptArg{
+			{Name: "workspace", Description: "Workspace slug to scope to (blank = the default board)"},
+		},
+		Body: `Help me triage the backlog in Acta.
+
+Read the conventions in the ` + "`acta://guide`" + ` resource first if you haven't.
+Target workspace (blank = use list_workspaces and pick the default board): {{workspace}}
+
+1. List items that are unassigned or sitting in the first/"inbox" status.
+2. For each, propose one of: an assignee, a status, flag as a milestone, or
+   archive if it's stale or already done.
+3. Show me your proposed changes as a short list and wait for my go-ahead
+   before applying them with the set_* / archive tools.
+
+Work in small batches; don't make changes I haven't confirmed.`,
+	},
+}

@@ -26,6 +26,8 @@ type Store struct {
 	items       map[string]store.Item
 	comments    map[string]store.Comment
 	apiTokens   map[string]store.APIToken
+	settings    map[string]string
+	mcpPrompts  map[string]store.MCPPrompt
 }
 
 func New() *Store {
@@ -39,6 +41,8 @@ func New() *Store {
 		items:       map[string]store.Item{},
 		comments:    map[string]store.Comment{},
 		apiTokens:   map[string]store.APIToken{},
+		settings:    map[string]string{},
+		mcpPrompts:  map[string]store.MCPPrompt{},
 	}
 }
 
@@ -804,6 +808,102 @@ func (s *Store) CommentsByItem(_ context.Context, itemID string) ([]store.Commen
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
 	return out, nil
+}
+
+// --- app settings ---
+
+func (s *Store) AppSetting(_ context.Context, key string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.settings[key], nil
+}
+
+func (s *Store) SetAppSetting(_ context.Context, key, value string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.settings[key] = value
+	return nil
+}
+
+// --- mcp prompts ---
+
+func (s *Store) CreateMCPPrompt(_ context.Context, p store.MCPPrompt) (store.MCPPrompt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, ex := range s.mcpPrompts {
+		if strings.EqualFold(ex.Name, p.Name) {
+			return store.MCPPrompt{}, store.ErrMCPPromptNameTaken
+		}
+	}
+	if p.ID == "" {
+		p.ID = newID()
+	}
+	now := time.Now()
+	if p.CreatedAt.IsZero() {
+		p.CreatedAt = now
+	}
+	p.UpdatedAt = now
+	s.mcpPrompts[p.ID] = p
+	return p, nil
+}
+
+func (s *Store) ListMCPPrompts(_ context.Context) ([]store.MCPPrompt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]store.MCPPrompt, 0, len(s.mcpPrompts))
+	for _, p := range s.mcpPrompts {
+		out = append(out, p)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Position != out[j].Position {
+			return out[i].Position < out[j].Position
+		}
+		return out[i].CreatedAt.Before(out[j].CreatedAt)
+	})
+	return out, nil
+}
+
+func (s *Store) MCPPromptByID(_ context.Context, id string) (store.MCPPrompt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.mcpPrompts[id]
+	if !ok {
+		return store.MCPPrompt{}, store.ErrMCPPromptNotFound
+	}
+	return p, nil
+}
+
+func (s *Store) UpdateMCPPrompt(_ context.Context, p store.MCPPrompt) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur, ok := s.mcpPrompts[p.ID]
+	if !ok {
+		return store.ErrMCPPromptNotFound
+	}
+	for oid, ex := range s.mcpPrompts {
+		if oid != p.ID && strings.EqualFold(ex.Name, p.Name) {
+			return store.ErrMCPPromptNameTaken
+		}
+	}
+	cur.Name = p.Name
+	cur.Title = p.Title
+	cur.Description = p.Description
+	cur.Body = p.Body
+	cur.Arguments = p.Arguments
+	cur.Position = p.Position
+	cur.UpdatedAt = time.Now()
+	s.mcpPrompts[p.ID] = cur
+	return nil
+}
+
+func (s *Store) DeleteMCPPrompt(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.mcpPrompts[id]; !ok {
+		return store.ErrMCPPromptNotFound
+	}
+	delete(s.mcpPrompts, id)
+	return nil
 }
 
 func (s *Store) Close() {}

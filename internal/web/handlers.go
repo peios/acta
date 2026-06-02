@@ -13,6 +13,7 @@ import (
 	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/httpx"
 	"github.com/peios/acta/internal/identity"
+	"github.com/peios/acta/internal/mcpcfg"
 	"github.com/peios/acta/internal/passkey"
 	"github.com/peios/acta/internal/session"
 	"github.com/peios/acta/internal/store"
@@ -28,6 +29,7 @@ type handlers struct {
 	accounts   *account.Service
 	workspaces *workspace.Service
 	board      *board.Service
+	mcpcfg     *mcpcfg.Service
 	secure     bool
 	publicURL  string // browser-facing origin, for building item permalinks
 }

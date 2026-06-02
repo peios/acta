@@ -18,6 +18,7 @@ import (
 	"github.com/peios/acta/internal/authn/local"
 	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/config"
+	"github.com/peios/acta/internal/mcpcfg"
 	"github.com/peios/acta/internal/passkey"
 	"github.com/peios/acta/internal/session"
 	"github.com/peios/acta/internal/store"
@@ -64,8 +65,12 @@ func newTestServer(t *testing.T) (string, *http.Client) {
 	tokens := apitoken.New(ms)
 	agents := agent.New(ms)
 	accounts := account.New(ms)
+	mcpConfig := mcpcfg.New(ms)
+	if err := mcpConfig.EnsureSeeded(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	provider := local.NewProvider(ms, sessions, passkeys, false)
-	handler := web.NewHandler(config.Config{Env: "dev", RPOrigin: "http://localhost:8080"}, sessions, provider, passkeys, tokens, agents, accounts, workspaces, boards)
+	handler := web.NewHandler(config.Config{Env: "dev", RPOrigin: "http://localhost:8080"}, sessions, provider, passkeys, tokens, agents, accounts, workspaces, boards, mcpConfig)
 
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)

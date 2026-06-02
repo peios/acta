@@ -1,0 +1,42 @@
+{{define "title"}}MCP Prompts · Acta{{end}}
+{{define "content"}}
+<main class="stage stage--wide">
+  <div class="settings reveal d1">
+    <nav class="menu">
+      <a href="/settings/workspaces">Workspaces</a>
+      <a href="/settings/principals">Principals</a>
+      <a href="/settings/guide">MCP Guide</a>
+      <a class="active" href="/settings/prompts">Prompts</a>
+    </nav>
+
+    <section>
+      <div class="prompts-head">
+        <h2 class="title" style="font-size: 1.45rem; margin: 0;">MCP Prompts</h2>
+        <a class="btn-secondary" href="/settings/prompts/new" style="width:auto;">New prompt</a>
+      </div>
+      <p class="help">User-defined prompts agents invoke as slash commands (<code>/mcp__acta__&lt;name&gt;</code>). Bodies can reference <code>acta://guide</code> and fill <code>{{"{{arg}}"}}</code> placeholders from their arguments. Changes are live on the next MCP request.</p>
+
+      {{if .Prompts}}
+      <div class="prompt-list">
+        {{range .Prompts}}
+        <div class="prompt-row">
+          <a class="prompt-main" href="/settings/prompts/{{.ID}}">
+            <span class="prompt-name">{{.Slash}}</span>
+            {{if .Description}}<span class="prompt-desc">{{.Description}}</span>{{end}}
+            <span class="prompt-args">args: {{.Args}}</span>
+          </a>
+          <form method="post" action="/settings/prompts/{{.ID}}/delete" class="prompt-del">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <button class="link-danger" type="submit">Delete</button>
+          </form>
+        </div>
+        {{end}}
+      </div>
+      {{else}}
+      <p class="help">No prompts yet. <a href="/settings/prompts/new">Create one.</a></p>
+      {{end}}
+    </section>
+  </div>
+</main>
+{{end}}
+{{define "scripts"}}<script src="{{asset "/static/acta.js"}}"></script>{{end}}

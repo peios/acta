@@ -4,6 +4,7 @@ package postgres
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -887,6 +888,135 @@ func (p *Postgres) CommentsByItem(ctx context.Context, itemID string) ([]store.C
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// --- app settings ---
+
+func (p *Postgres) AppSetting(ctx context.Context, key string) (string, error) {
+	const q = `SELECT value FROM app_settings WHERE key = $1`
+	var v string
+	err := p.pool.QueryRow(ctx, q, key).Scan(&v)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return v, err
+}
+
+func (p *Postgres) SetAppSetting(ctx context.Context, key, value string) error {
+	const q = `INSERT INTO app_settings (key, value) VALUES ($1, $2)
+	           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`
+	_, err := p.pool.Exec(ctx, q, key, value)
+	return err
+}
+
+// --- mcp prompts ---
+
+func mapMCPPromptConflict(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "name") {
+		return store.ErrMCPPromptNameTaken
+	}
+	return err
+}
+
+func (p *Postgres) CreateMCPPrompt(ctx context.Context, m store.MCPPrompt) (store.MCPPrompt, error) {
+	argsJSON, err := json.Marshal(normalizeArgs(m.Arguments))
+	if err != nil {
+		return store.MCPPrompt{}, err
+	}
+	out, err := createWithRetry(func() (store.MCPPrompt, error) {
+		const q = `INSERT INTO mcp_prompts (name, title, description, body, arguments, position)
+		           VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+		           RETURNING id::text, name, title, description, body, arguments, position, created_at, updated_at`
+		return scanMCPPrompt(p.pool.QueryRow(ctx, q, m.Name, m.Title, m.Description, m.Body, string(argsJSON), m.Position))
+	})
+	if err != nil {
+		return store.MCPPrompt{}, mapMCPPromptConflict(err)
+	}
+	return out, nil
+}
+
+func (p *Postgres) ListMCPPrompts(ctx context.Context) ([]store.MCPPrompt, error) {
+	const q = `SELECT id::text, name, title, description, body, arguments, position, created_at, updated_at
+	           FROM mcp_prompts ORDER BY position, created_at`
+	rows, err := p.pool.Query(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.MCPPrompt
+	for rows.Next() {
+		m, err := scanMCPPrompt(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) MCPPromptByID(ctx context.Context, id string) (store.MCPPrompt, error) {
+	const q = `SELECT id::text, name, title, description, body, arguments, position, created_at, updated_at
+	           FROM mcp_prompts WHERE id = $1`
+	m, err := scanMCPPrompt(p.pool.QueryRow(ctx, q, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.MCPPrompt{}, store.ErrMCPPromptNotFound
+	}
+	return m, err
+}
+
+func (p *Postgres) UpdateMCPPrompt(ctx context.Context, m store.MCPPrompt) error {
+	argsJSON, err := json.Marshal(normalizeArgs(m.Arguments))
+	if err != nil {
+		return err
+	}
+	const q = `UPDATE mcp_prompts
+	           SET name = $2, title = $3, description = $4, body = $5, arguments = $6::jsonb, position = $7, updated_at = now()
+	           WHERE id = $1`
+	ct, err := p.pool.Exec(ctx, q, m.ID, m.Name, m.Title, m.Description, m.Body, string(argsJSON), m.Position)
+	if err != nil {
+		return mapMCPPromptConflict(err)
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrMCPPromptNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) DeleteMCPPrompt(ctx context.Context, id string) error {
+	ct, err := p.pool.Exec(ctx, `DELETE FROM mcp_prompts WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrMCPPromptNotFound
+	}
+	return nil
+}
+
+// scanMCPPrompt reads one prompt row; the arguments jsonb comes back as bytes.
+// It accepts both QueryRow results and a Rows cursor (both expose Scan).
+func scanMCPPrompt(row pgx.Row) (store.MCPPrompt, error) {
+	var m store.MCPPrompt
+	var argsJSON []byte
+	if err := row.Scan(&m.ID, &m.Name, &m.Title, &m.Description, &m.Body, &argsJSON, &m.Position, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		return store.MCPPrompt{}, err
+	}
+	if len(argsJSON) > 0 {
+		if err := json.Unmarshal(argsJSON, &m.Arguments); err != nil {
+			return store.MCPPrompt{}, err
+		}
+	}
+	return m, nil
+}
+
+// normalizeArgs keeps a nil slice from marshalling to JSON null (the column is
+// NOT NULL and the round-trip should yield [] not null).
+func normalizeArgs(a []store.MCPPromptArg) []store.MCPPromptArg {
+	if a == nil {
+		return []store.MCPPromptArg{}
+	}
+	return a
 }
 
 // inTx runs fn inside a transaction, rolling back on error.

@@ -27,10 +27,20 @@ import (
 // our purely request/response tools and survives the request-logging middleware,
 // which does not support streaming.
 func (h *handlers) mcpHandler() http.Handler {
-	srv := mcp.NewServer(&mcp.Implementation{Name: "acta", Version: "v1"}, nil)
-	h.registerMCPTools(srv)
+	// The server is rebuilt per request (cheap, and the transport is stateless
+	// so nothing is cached between requests). That lets the resource and prompt
+	// sets reflect the current database — a guide edit or a new custom prompt is
+	// live on the very next request, with no restart. The request context here
+	// already carries the authenticated principal (the /mcp route is wrapped in
+	// requireToken), so the registration reads use it directly.
 	return mcp.NewStreamableHTTPHandler(
-		func(*http.Request) *mcp.Server { return srv },
+		func(r *http.Request) *mcp.Server {
+			srv := mcp.NewServer(&mcp.Implementation{Name: "acta", Version: "v1"}, nil)
+			h.registerMCPTools(srv)
+			h.registerMCPResources(r.Context(), srv)
+			h.registerMCPPrompts(r.Context(), srv)
+			return srv
+		},
 		&mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true},
 	)
 }

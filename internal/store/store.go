@@ -21,7 +21,34 @@ var (
 	ErrWorkspaceSlugTaken = errors.New("store: workspace slug already taken")
 	ErrStatusNotFound     = errors.New("store: status not found")
 	ErrItemNotFound       = errors.New("store: item not found")
+	ErrMCPPromptNotFound  = errors.New("store: mcp prompt not found")
+	ErrMCPPromptNameTaken = errors.New("store: mcp prompt name already taken")
 )
+
+// MCPPrompt is a user-defined Model Context Protocol prompt: a named, optionally
+// parameterised template that MCP clients surface as a slash command
+// (/mcp__acta__<Name>). Body is the message text, with {{arg}} placeholders
+// filled from Arguments at invocation. Prompts are instance-global and ordered
+// by Position (then CreatedAt).
+type MCPPrompt struct {
+	ID          string
+	Name        string
+	Title       string
+	Description string
+	Body        string
+	Arguments   []MCPPromptArg
+	Position    int
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// MCPPromptArg declares one argument a prompt accepts. Name is the placeholder
+// key used in the body as {{Name}}; Required marks it as mandatory to the client.
+type MCPPromptArg struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Required    bool   `json:"required,omitempty"`
+}
 
 // User is the persisted account record.
 //
@@ -285,6 +312,21 @@ type Store interface {
 	// Comments on an item, returned oldest-first.
 	CreateComment(ctx context.Context, c Comment) (Comment, error)
 	CommentsByItem(ctx context.Context, itemID string) ([]Comment, error)
+
+	// AppSetting reads an instance-global key/value setting, returning "" (no
+	// error) when the key is absent. SetAppSetting upserts it. The MCP guide
+	// lives here under "mcp.guide".
+	AppSetting(ctx context.Context, key string) (string, error)
+	SetAppSetting(ctx context.Context, key, value string) error
+
+	// User-defined MCP prompts, ordered by position then creation. Create assigns
+	// the id; ErrMCPPromptNameTaken signals a name collision. Update replaces
+	// every mutable field of the row identified by p.ID.
+	CreateMCPPrompt(ctx context.Context, p MCPPrompt) (MCPPrompt, error)
+	ListMCPPrompts(ctx context.Context) ([]MCPPrompt, error)
+	MCPPromptByID(ctx context.Context, id string) (MCPPrompt, error)
+	UpdateMCPPrompt(ctx context.Context, p MCPPrompt) error
+	DeleteMCPPrompt(ctx context.Context, id string) error
 
 	Close()
 }
