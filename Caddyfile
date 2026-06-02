@@ -1,0 +1,17 @@
+# Caddy terminates TLS for Acta and reverse-proxies to the app. The site address
+# comes from $ACTA_DOMAIN (set in .env), and Caddy provisions a Let's Encrypt
+# certificate for it automatically. Caddy sets X-Forwarded-For to the real
+# client, which the app honours because it trusts this network (see
+# ACTA_TRUSTED_PROXIES in docker-compose.prod.yml).
+
+{$ACTA_DOMAIN} {
+	encode zstd gzip
+
+	reverse_proxy app:8080 {
+		# Drop any client-supplied CF-Connecting-IP: on a directly-reachable
+		# origin it would otherwise be a spoofable way to forge the client IP.
+		# When you put Cloudflare's proxy in front (and restrict ingress to its
+		# ranges), remove this line and add those ranges to ACTA_TRUSTED_PROXIES.
+		header_up -CF-Connecting-IP
+	}
+}

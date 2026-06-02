@@ -107,12 +107,65 @@ Visiting http://localhost:8080 logged-out bounces you to the login page.
 | ----------------------- | -------------------------------- | ------------------------------ |
 | `ACTA_HTTP_ADDR`        | `:8080`                          | listen address                 |
 | `ACTA_DATABASE_URL`     | `postgres://acta:acta@localhost:5432/acta?sslmode=disable` | Postgres DSN |
-| `ACTA_ENV`              | `dev`                            | `prod` enables Secure cookies  |
+| `ACTA_ENV`              | `dev`                            | `prod` enables Secure cookies + HSTS |
 | `ACTA_SESSION_IDLE`     | `24h`                            | idle session timeout           |
 | `ACTA_SESSION_ABSOLUTE` | `720h`                           | absolute session lifetime      |
 | `ACTA_RP_ID`            | `localhost`                      | WebAuthn relying-party id (domain, no scheme/port) |
 | `ACTA_RP_ORIGIN`        | `http://localhost:8080`          | WebAuthn origin the browser sends |
 | `ACTA_RP_NAME`          | `Acta`                           | WebAuthn relying-party display name |
+| `ACTA_TRUSTED_PROXIES`  | (empty)                          | reverse-proxy CIDRs trusted for `X-Forwarded-For`; empty = use the socket peer |
+| `ACTA_LOGIN_WINDOW`     | `15m`                            | how long a failed login is remembered |
+| `ACTA_LOGIN_IP_MAX`     | `20`                             | failed logins per IP in that window before it's blocked |
+| `ACTA_LOGIN_BACKOFF_STEP` | `1s`                           | delay added per consecutive failure against a username |
+| `ACTA_LOGIN_BACKOFF_MAX`  | `10s`                          | cap on that per-username backoff |
+
+## Self-hosting
+
+Acta is built to sit behind a TLS-terminating reverse proxy. The included
+`docker-compose.prod.yml` runs the app, Postgres, and **Caddy** (which obtains a
+Let's Encrypt certificate automatically). The origin is built to be safe when
+reached directly — a CDN like Cloudflare in front is a bonus layer, not a
+dependency.
+
+1. **Provision a host** (any Linux box with Docker + Compose) and point a DNS
+   `A`/`AAAA` record for your domain at it. Leave it unproxied (DNS-only) for
+   now so Caddy can complete the ACME challenge.
+2. **Configure.** Clone the repo, then `cp .env.example .env` and fill it in:
+   set `ACTA_DOMAIN`, and generate strong secrets — `openssl rand -base64 32`
+   for `POSTGRES_PASSWORD`, and a real `ACTA_BOOTSTRAP_PASSWORD`.
+3. **Launch.**
+   ```sh
+   docker compose -f docker-compose.prod.yml up -d --build
+   ```
+   Caddy provisions the certificate on first request; visit
+   `https://acta.example.com` and sign in as the bootstrap admin. Migrations run
+   on boot.
+4. **Rotate the admin password** off the bootstrap value (it prompts, so the
+   secret never lands in your shell history):
+   ```sh
+   docker compose -f docker-compose.prod.yml exec app /acta-server setpassword -username admin
+   ```
+   The same command is the recovery path for a forgotten password or lockout; it
+   also revokes the account's existing sessions.
+5. **Firewall** the host to `80`, `443`, and SSH only — Postgres and the app
+   port are never published (Caddy reaches the app over the internal network).
+6. **Back up** Postgres on a schedule, and test a restore:
+   ```sh
+   docker compose -f docker-compose.prod.yml exec -T db pg_dump -U acta acta | gzip > acta-$(date +%F).sql.gz
+   ```
+7. **Monitor** by pointing an uptime check at
+   `https://acta.example.com/healthz` (liveness); `/readyz` additionally
+   verifies the database.
+
+### Putting Cloudflare in front
+
+Once the certificate is issued you can enable Cloudflare's proxy (orange cloud).
+Set the SSL/TLS mode to **Full (strict)** so it validates the real origin
+certificate. Two changes keep per-client features (like the login throttle)
+seeing real client IPs: remove the `header_up -CF-Connecting-IP` line from the
+`Caddyfile`, and add [Cloudflare's published IP ranges](https://www.cloudflare.com/ips/)
+to `ACTA_TRUSTED_PROXIES`. For the strongest posture, also restrict the host
+firewall to accept `443` only from those ranges.
 
 ## MCP
 

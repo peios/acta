@@ -1,0 +1,69 @@
+# Production stack: Caddy (TLS termination) -> app -> Postgres.
+#
+# Copy .env.example to .env and fill it in first, then:
+#   docker compose -f docker-compose.prod.yml up -d --build
+# See the "Self-hosting" section of the README for the full runbook.
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: acta
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: acta
+    volumes:
+      - acta-pgdata:/var/lib/postgresql/data
+    networks: [internal]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U acta"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    environment:
+      ACTA_ENV: prod
+      ACTA_DATABASE_URL: postgres://acta:${POSTGRES_PASSWORD}@db:5432/acta?sslmode=disable
+      ACTA_RP_ID: ${ACTA_DOMAIN:?set ACTA_DOMAIN in .env}
+      ACTA_RP_ORIGIN: https://${ACTA_DOMAIN}
+      ACTA_RP_NAME: ${ACTA_RP_NAME:-Acta}
+      # Trust Caddy (this compose's internal network) so the real client IP is
+      # read from X-Forwarded-For — otherwise the login throttle would key on
+      # Caddy's address and lump every client into one bucket. Put Cloudflare's
+      # ranges here too if you enable its proxy.
+      ACTA_TRUSTED_PROXIES: ${ACTA_TRUSTED_PROXIES:-172.28.0.0/16}
+      ACTA_BOOTSTRAP_USERNAME: ${ACTA_BOOTSTRAP_USERNAME:-admin}
+      ACTA_BOOTSTRAP_PASSWORD: ${ACTA_BOOTSTRAP_PASSWORD:?set ACTA_BOOTSTRAP_PASSWORD in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [internal]
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    environment:
+      ACTA_DOMAIN: ${ACTA_DOMAIN:?set ACTA_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [app]
+    networks: [internal]
+    restart: unless-stopped
+
+networks:
+  internal:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  acta-pgdata:
+  caddy-data:
+  caddy-config:
