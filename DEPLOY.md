@@ -7,10 +7,8 @@ printed — don't paste them anywhere.
 
 ## 0. Prerequisites (before touching the box)
 
-- [ ] A Linux host (Ubuntu 24.04 LTS). **1 GB RAM is fine with the swapfile in
-      step 1** (the Go image builds on the box and can briefly spike past 1 GB
-      during linking); skip the swapfile only on a ≥ 2 GB box. Runtime sits well
-      under 1 GB.
+- [ ] A Linux host (Ubuntu 24.04 LTS). **1 GB RAM is plenty** — the box runs a
+      prebuilt image from GHCR and never compiles code.
 - [ ] The deploy SSH key added to the host's `root` (Vultr "SSH Keys" at create
       time, or appended to `/root/.ssh/authorized_keys`):
       `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMb2gZNNhXxhjfSYdKGE72K12q/d1uVQSQocnZPkPiKn claude-code`
@@ -19,29 +17,23 @@ printed — don't paste them anywhere.
       (Let's Encrypt) challenge.
 - [ ] Confirm the host is reachable: `ssh -i ~/.ssh/id_claude root@<HOST_IP> true`
 
-## 1. Swapfile (1 GB hosts) + Docker
+## 1. Install Docker (on the box)
 
 ```sh
 ssh -i ~/.ssh/id_claude root@<HOST_IP>
-
-# Swapfile — skip on a >= 2 GB box. Absorbs the build's memory spike.
-fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
-echo '/swapfile none swap sw 0 0' >> /etc/fstab     # persist across reboots
-free -h                                             # confirm swap is active
-
 curl -fsSL https://get.docker.com | sh              # docker + compose plugin
 docker compose version                              # sanity check
 ```
 
-## 2. Copy the code to the box
+## 2. Get the deploy files (on the box)
 
-From the workstation (not the box):
+The box only needs the deploy bundle — compose file, Caddyfile, and the `.env`
+template. No source, no build.
 
 ```sh
-rsync -az --delete \
-  --exclude .git --exclude tmp --exclude bin \
-  -e "ssh -i ~/.ssh/id_claude" \
-  ./ root@<HOST_IP>:/opt/acta/
+mkdir -p /opt/acta && cd /opt/acta
+curl -fsSL https://github.com/peios/acta/releases/latest/download/acta-deploy.tar.gz \
+  | tar xz --strip-components=1
 ```
 
 ## 3. Create `.env` with generated secrets (on the box)
@@ -66,11 +58,11 @@ real one without ever needing to read it.
 ## 4. Launch
 
 ```sh
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d
 ```
 
-First boot builds the image, runs migrations, creates the admin account, and
-Caddy requests the certificate on the first HTTPS hit.
+This pulls the image, runs migrations, creates the admin account, and Caddy
+requests the certificate on the first HTTPS hit.
 
 ## 5. Verify
 
@@ -123,14 +115,18 @@ Restore check: `gunzip -c <dump> | docker compose -f docker-compose.prod.yml exe
 
 - [ ] Point an uptime check at `https://<your-domain>/healthz`.
 
-## Redeploying later
+## Updating later
+
+Pull the newest image (or pin `ACTA_VERSION` in `.env`) and recreate:
 
 ```sh
-rsync -az --delete --exclude .git --exclude tmp --exclude bin \
-  -e "ssh -i ~/.ssh/id_claude" ./ root@<HOST_IP>:/opt/acta/
 ssh -i ~/.ssh/id_claude root@<HOST_IP> \
-  'cd /opt/acta && docker compose -f docker-compose.prod.yml up -d --build'
+  'cd /opt/acta && docker compose -f docker-compose.prod.yml pull && \
+   docker compose -f docker-compose.prod.yml up -d'
 ```
+
+If the compose file or Caddyfile changed, re-fetch the deploy bundle (step 2)
+first — it won't touch your `.env`.
 
 ## Putting Cloudflare in front
 

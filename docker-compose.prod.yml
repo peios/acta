@@ -22,7 +22,10 @@ services:
       retries: 20
 
   app:
-    build: .
+    # Pull the prebuilt, version-stamped image from GHCR — the box never builds
+    # code. Pin with ACTA_VERSION in .env; defaults to the latest release.
+    image: ghcr.io/peios/acta-server:${ACTA_VERSION:-latest}
+    pull_policy: always
     environment:
       ACTA_ENV: prod
       ACTA_DATABASE_URL: postgres://acta:${POSTGRES_PASSWORD}@db:5432/acta?sslmode=disable

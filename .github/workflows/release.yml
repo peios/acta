@@ -85,11 +85,12 @@ jobs:
         run: |
           mkdir -p acta-deploy
           cp docker-compose.prod.yml Caddyfile .env.example DEPLOY.md README.md acta-deploy/
-          tar -czf "acta-deploy_${GITHUB_REF_NAME}.tar.gz" acta-deploy
+          # Stable name (no version) so /releases/latest/download/ resolves.
+          tar -czf acta-deploy.tar.gz acta-deploy
       - uses: softprops/action-gh-release@v2
         with:
           name: Acta ${{ github.ref_name }}
           generate_release_notes: true
           files: |
             acta_*.tar.gz
-            acta-deploy_*.tar.gz
+            acta-deploy.tar.gz

@@ -122,24 +122,29 @@ Visiting http://localhost:8080 logged-out bounces you to the login page.
 ## Self-hosting
 
 Acta is built to sit behind a TLS-terminating reverse proxy. The included
-`docker-compose.prod.yml` runs the app, Postgres, and **Caddy** (which obtains a
-Let's Encrypt certificate automatically). The origin is built to be safe when
-reached directly — a CDN like Cloudflare in front is a bonus layer, not a
-dependency.
+`docker-compose.prod.yml` runs the app (a prebuilt image pulled from GHCR —
+the box never compiles code), Postgres, and **Caddy** (which obtains a Let's
+Encrypt certificate automatically). The origin is built to be safe when reached
+directly — a CDN like Cloudflare in front is a bonus layer, not a dependency.
+A 1 GB host is plenty. The full tick-through is in [DEPLOY.md](DEPLOY.md).
 
 1. **Provision a host** (any Linux box with Docker + Compose) and point a DNS
    `A`/`AAAA` record for your domain at it. Leave it unproxied (DNS-only) for
    now so Caddy can complete the ACME challenge.
-2. **Configure.** Clone the repo, then `cp .env.example .env` and fill it in:
-   set `ACTA_DOMAIN`, and generate strong secrets — `openssl rand -base64 32`
-   for `POSTGRES_PASSWORD`, and a real `ACTA_BOOTSTRAP_PASSWORD`.
+2. **Configure.** Grab the deploy bundle (no source needed):
+   ```sh
+   curl -fsSL https://github.com/peios/acta/releases/latest/download/acta-deploy.tar.gz | tar xz --strip-components=1
+   ```
+   Then `cp .env.example .env` and fill it in: set `ACTA_DOMAIN`, and generate
+   strong secrets — `openssl rand -base64 32` for `POSTGRES_PASSWORD`, and a real
+   `ACTA_BOOTSTRAP_PASSWORD`.
 3. **Launch.**
    ```sh
-   docker compose -f docker-compose.prod.yml up -d --build
+   docker compose -f docker-compose.prod.yml up -d
    ```
-   Caddy provisions the certificate on first request; visit
-   `https://acta.example.com` and sign in as the bootstrap admin. Migrations run
-   on boot.
+   This pulls the image and starts everything; Caddy provisions the certificate
+   on first request. Visit `https://acta.example.com` and sign in as the
+   bootstrap admin. Migrations run on boot.
 4. **Rotate the admin password** off the bootstrap value (it prompts, so the
    secret never lands in your shell history):
    ```sh
