@@ -81,7 +81,7 @@
     {{range .MilestoneColumns}}
     <section class="lane mcol" data-column data-parent-id="{{.ID}}">
       <header class="lane-head mcol-head">
-        {{if .ID}}<button class="mcol-title" type="button" data-open="{{.ID}}"><span class="mcol-diamond" style="{{.ColorVar}}">◆</span> {{.Title}}</button>
+        {{if .ID}}<span class="lane-grip mcol-grip" title="Drag to reorder">⠿</span><button class="mcol-title" type="button" data-open="{{.ID}}"><span class="mcol-diamond" style="{{.ColorVar}}">◆</span> {{.Title}}</button>
         {{else}}<span class="mcol-title mcol-backlog">{{.Title}}</span>{{end}}
       </header>
       <div class="lane-items">

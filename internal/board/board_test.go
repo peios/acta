@@ -337,6 +337,61 @@ func TestSetMilestone(t *testing.T) {
 	}
 }
 
+func TestMilestoneOrdering(t *testing.T) {
+	svc, wsID, st := setup(t)
+	ctx := context.Background()
+	msPos := func(id string) int {
+		it, err := svc.Item(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return it.MSPosition
+	}
+
+	a, _ := svc.CreateItem(ctx, wsID, st[0].ID, "A")
+	b, _ := svc.CreateItem(ctx, wsID, st[0].ID, "B")
+	c, _ := svc.CreateItem(ctx, wsID, st[0].ID, "C")
+	// Promoting to a milestone appends to the end of the column order.
+	for _, it := range []store.Item{a, b, c} {
+		if err := svc.SetMilestone(ctx, it.ID, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if msPos(a.ID) != 0 || msPos(b.ID) != 1 || msPos(c.ID) != 2 {
+		t.Fatalf("append order wrong: A=%d B=%d C=%d", msPos(a.ID), msPos(b.ID), msPos(c.ID))
+	}
+
+	// An explicit reorder renumbers them.
+	if err := svc.ReorderMilestones(ctx, wsID, []string{c.ID, a.ID, b.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if msPos(c.ID) != 0 || msPos(a.ID) != 1 || msPos(b.ID) != 2 {
+		t.Fatalf("after reorder: C=%d A=%d B=%d", msPos(c.ID), msPos(a.ID), msPos(b.ID))
+	}
+
+	// A newly promoted milestone lands last, after the reordered three.
+	d, _ := svc.CreateItem(ctx, wsID, st[0].ID, "D")
+	if err := svc.SetMilestone(ctx, d.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if msPos(d.ID) != 3 {
+		t.Fatalf("new milestone should append at 3, got %d", msPos(d.ID))
+	}
+
+	// A non-milestone id is ignored: it can't be smuggled into the order, and
+	// the real milestone still takes the requested slot.
+	plain, _ := svc.CreateItem(ctx, wsID, st[0].ID, "plain")
+	if err := svc.ReorderMilestones(ctx, wsID, []string{plain.ID, c.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if got := msPos(plain.ID); got != 0 {
+		t.Fatalf("non-milestone ms_position should be untouched, got %d", got)
+	}
+	if msPos(c.ID) != 1 {
+		t.Fatalf("milestone should sit at index 1, got %d", msPos(c.ID))
+	}
+}
+
 func TestCreateRootItemDefaultsStatus(t *testing.T) {
 	svc, wsID, st := setup(t)
 	ctx := context.Background()

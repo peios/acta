@@ -161,3 +161,54 @@ func TestPGEvents(t *testing.T) {
 		t.Fatalf("EventsByWorkspace: want 2, got %d", len(byWs))
 	}
 }
+
+// Exercises the 0015 migration (the ms_position column + its backfill applies
+// via openTestDB→Migrate) and the is_milestone-guarded ReorderMilestones SQL.
+func TestPGMilestoneReorder(t *testing.T) {
+	pg := openTestDB(t)
+	ctx := context.Background()
+
+	ws, err := pg.CreateWorkspace(ctx, store.Workspace{Slug: "ms-reorder", Name: "MS Reorder"})
+	if err != nil {
+		t.Fatalf("workspace: %v", err)
+	}
+	t.Cleanup(func() { _ = pg.DeleteWorkspace(ctx, ws.ID) })
+	st, err := pg.CreateStatus(ctx, store.Status{WorkspaceID: ws.ID, Name: "To do"})
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+
+	mk := func(title string, milestone bool) store.Item {
+		it, err := pg.CreateItem(ctx, store.Item{WorkspaceID: ws.ID, StatusID: st.ID, Title: title})
+		if err != nil {
+			t.Fatalf("item %s: %v", title, err)
+		}
+		if milestone {
+			if err := pg.SetItemMilestone(ctx, it.ID, true); err != nil {
+				t.Fatalf("flag %s: %v", title, err)
+			}
+		}
+		return it
+	}
+	a := mk("A", true)
+	b := mk("B", true)
+	plain := mk("plain", false) // a non-milestone the reorder must ignore
+
+	if err := pg.ReorderMilestones(ctx, ws.ID, []string{b.ID, a.ID, plain.ID}); err != nil {
+		t.Fatalf("reorder: %v", err)
+	}
+	pos := func(id string) int {
+		it, err := pg.ItemByID(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return it.MSPosition
+	}
+	if pos(b.ID) != 0 || pos(a.ID) != 1 {
+		t.Fatalf("milestones not renumbered: B=%d A=%d", pos(b.ID), pos(a.ID))
+	}
+	// The guard kept the non-milestone at its default despite being passed in.
+	if pos(plain.ID) != 0 {
+		t.Fatalf("non-milestone ms_position should stay 0, got %d", pos(plain.ID))
+	}
+}

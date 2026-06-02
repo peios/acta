@@ -592,6 +592,20 @@
 
   if (board.dataset.mode === 'milestone') {
     board.querySelectorAll('.mcol').forEach(wireColumn);
+
+    // Reorder milestone columns by dragging their headers. The Backlog stays
+    // pinned first (no grip, and nothing may drop ahead of it).
+    const backlog = board.querySelector('.mcol[data-parent-id=""]');
+    new Sortable(board, {
+      draggable: '.mcol',
+      handle: '.mcol-grip',
+      animation: 150,
+      onMove: (evt) => !(evt.related === backlog && !evt.willInsertAfter),
+      onEnd: () => {
+        const ids = [...board.querySelectorAll('.mcol')].map((c) => c.dataset.parentId).filter(Boolean);
+        api('/milestones/reorder', { ids }).catch((e) => { if (boardErr) boardErr.textContent = msg(e); });
+      },
+    });
   } else {
     board.querySelectorAll('.lane').forEach(wireLane);
 

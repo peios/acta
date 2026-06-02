@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"sort"
 
 	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/httpx"
@@ -188,12 +189,24 @@ func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, sta
 		return cardView{Item: it, Subtasks: counts[it.ID], StatusName: st.Name, Color: board.ColorFor(st), Hidden: filter.cardHidden(it)}
 	}
 	backlog := milestoneColumn{Title: "Backlog"}
-	var msCols []milestoneColumn
+	var milestones []store.Item
 	for _, it := range roots {
-		if !it.IsMilestone {
+		if it.IsMilestone {
+			milestones = append(milestones, it)
+		} else {
 			backlog.Cards = append(backlog.Cards, card(it))
-			continue
 		}
+	}
+	// Columns follow ms_position (their own draggable order), with creation
+	// time as a stable tiebreak for any sharing a position before a reorder.
+	sort.SliceStable(milestones, func(i, j int) bool {
+		if milestones[i].MSPosition != milestones[j].MSPosition {
+			return milestones[i].MSPosition < milestones[j].MSPosition
+		}
+		return milestones[i].CreatedAt.Before(milestones[j].CreatedAt)
+	})
+	cols := []milestoneColumn{backlog}
+	for _, it := range milestones {
 		kids, err := h.board.Children(ctx, it.ID)
 		if err != nil {
 			return nil, err
@@ -202,9 +215,9 @@ func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, sta
 		for _, k := range kids {
 			col.Cards = append(col.Cards, card(k))
 		}
-		msCols = append(msCols, col)
+		cols = append(cols, col)
 	}
-	return append([]milestoneColumn{backlog}, msCols...), nil
+	return cols, nil
 }
 
 // groupLanes buckets items under their status, attaching each item's subtask
@@ -320,6 +333,27 @@ func (h *handlers) statusReorder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.board.ReorderStatuses(r.Context(), ws.ID, req.IDs); err != nil {
+		writeBoardErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// milestoneReorder sets the column order of Milestone mode from the dragged
+// sequence of milestone item ids (the Backlog column is fixed, so it's not in
+// the list).
+func (h *handlers) milestoneReorder(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.resolveWorkspace(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if err := h.board.ReorderMilestones(r.Context(), ws.ID, req.IDs); err != nil {
 		writeBoardErr(w, err)
 		return
 	}

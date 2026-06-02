@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sort"
 	"strings"
 
 	"github.com/peios/acta/internal/identity"
@@ -607,12 +608,59 @@ func (s *Service) SetMilestone(ctx context.Context, id string, isMilestone bool)
 	if item.IsMilestone == isMilestone {
 		return nil
 	}
+	// Capture the current milestone order before the flag flips, so a newly
+	// promoted milestone lands at the end of the columns rather than tying at
+	// the default ms_position 0.
+	var existing []string
+	if isMilestone {
+		if existing, err = s.orderedMilestoneIDs(ctx, item.WorkspaceID); err != nil {
+			return err
+		}
+	}
 	if err := s.store.SetItemMilestone(ctx, id, isMilestone); err != nil {
 		return err
+	}
+	if isMilestone {
+		if err := s.store.ReorderMilestones(ctx, item.WorkspaceID, append(existing, id)); err != nil {
+			return err
+		}
 	}
 	item.IsMilestone = isMilestone
 	s.recordEvent(ctx, item, store.EventItemMilestone, map[string]string{"on": boolStr(isMilestone)})
 	return nil
+}
+
+// ReorderMilestones sets the column order of a workspace's milestones to the
+// given id sequence (ids that aren't milestones in the workspace are ignored).
+func (s *Service) ReorderMilestones(ctx context.Context, workspaceID string, orderedIDs []string) error {
+	return s.store.ReorderMilestones(ctx, workspaceID, orderedIDs)
+}
+
+// orderedMilestoneIDs returns the workspace's root milestones in column order:
+// by ms_position, with creation time as a stable tiebreak for any that still
+// share a position (e.g. before the first reorder).
+func (s *Service) orderedMilestoneIDs(ctx context.Context, workspaceID string) ([]string, error) {
+	roots, err := s.store.ItemsByWorkspace(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	var ms []store.Item
+	for _, it := range roots {
+		if it.IsMilestone {
+			ms = append(ms, it)
+		}
+	}
+	sort.Slice(ms, func(i, j int) bool {
+		if ms[i].MSPosition != ms[j].MSPosition {
+			return ms[i].MSPosition < ms[j].MSPosition
+		}
+		return ms[i].CreatedAt.Before(ms[j].CreatedAt)
+	})
+	ids := make([]string, len(ms))
+	for i, it := range ms {
+		ids[i] = it.ID
+	}
+	return ids, nil
 }
 
 // CreateRootItem makes a top-level item; if statusID is "" it lands in the

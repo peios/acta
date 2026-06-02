@@ -727,6 +727,18 @@ func (s *Store) SetItemMilestone(_ context.Context, id string, isMilestone bool)
 	return s.mutateItem(id, func(it *store.Item) { it.IsMilestone = isMilestone })
 }
 
+func (s *Store) ReorderMilestones(_ context.Context, workspaceID string, orderedIDs []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, id := range orderedIDs {
+		if it, ok := s.items[id]; ok && it.WorkspaceID == workspaceID && it.IsMilestone {
+			it.MSPosition = i
+			s.items[id] = it
+		}
+	}
+	return nil
+}
+
 func (s *Store) SetItemPositions(_ context.Context, orderedIDs []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

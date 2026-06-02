@@ -624,12 +624,12 @@ func (p *Postgres) DeleteStatus(ctx context.Context, id string) error {
 
 const itemCols = `id::text, workspace_id::text, status_id::text, COALESCE(parent_id::text, ''),
                   title, description, COALESCE(assignee_id::text, ''), position, is_milestone,
-                  archived_at, created_at, COALESCE(created_by::text, '')`
+                  ms_position, archived_at, created_at, COALESCE(created_by::text, '')`
 
 func scanItem(row pgx.Row) (store.Item, error) {
 	var i store.Item
 	err := row.Scan(&i.ID, &i.WorkspaceID, &i.StatusID, &i.ParentID, &i.Title, &i.Description,
-		&i.AssigneeID, &i.Position, &i.IsMilestone, &i.ArchivedAt, &i.CreatedAt, &i.CreatedBy)
+		&i.AssigneeID, &i.Position, &i.IsMilestone, &i.MSPosition, &i.ArchivedAt, &i.CreatedAt, &i.CreatedBy)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.Item{}, store.ErrItemNotFound
 	}
@@ -811,6 +811,22 @@ func (p *Postgres) SetItemStatus(ctx context.Context, id, statusID string) error
 
 func (p *Postgres) SetItemMilestone(ctx context.Context, id string, isMilestone bool) error {
 	return p.execItem(ctx, `UPDATE items SET is_milestone = $2 WHERE id = $1`, id, isMilestone)
+}
+
+// ReorderMilestones renumbers each id's ms_position to its index in the slice.
+// The is_milestone guard means a non-milestone id (or one from another
+// workspace) is a no-op rather than a way to shuffle ordinary cards.
+func (p *Postgres) ReorderMilestones(ctx context.Context, workspaceID string, orderedIDs []string) error {
+	return p.inTx(ctx, func(tx pgx.Tx) error {
+		for i, id := range orderedIDs {
+			if _, err := tx.Exec(ctx,
+				`UPDATE items SET ms_position = $1 WHERE id = $2 AND workspace_id = $3 AND is_milestone = true`,
+				i, id, workspaceID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (p *Postgres) SetItemParent(ctx context.Context, id, parentID string) error {

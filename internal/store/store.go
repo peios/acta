@@ -208,8 +208,12 @@ type Item struct {
 	AssigneeID  string
 	Position    int
 	IsMilestone bool
-	ArchivedAt  *time.Time
-	CreatedAt   time.Time
+	// MSPosition orders milestone columns in Milestone mode, independent of
+	// Position (the lane index, which is shared with regular cards). Only
+	// meaningful for root milestones.
+	MSPosition int
+	ArchivedAt *time.Time
+	CreatedAt  time.Time
 	// CreatedBy is the principal (human or agent) that created the item, or ""
 	// if unrecorded (items predating authorship, or a since-deleted creator).
 	CreatedBy string
@@ -335,6 +339,10 @@ type Store interface {
 	SetItemStatus(ctx context.Context, id, statusID string) error
 	SetItemParent(ctx context.Context, id, parentID string) error
 	SetItemMilestone(ctx context.Context, id string, isMilestone bool) error
+	// ReorderMilestones sets each id's ms_position to its index in the slice,
+	// scoped to root milestones in the workspace (ids that aren't milestones in
+	// this workspace are ignored, so it can't disturb status-mode ordering).
+	ReorderMilestones(ctx context.Context, workspaceID string, orderedIDs []string) error
 	ArchiveItem(ctx context.Context, id string) error
 	UnarchiveItem(ctx context.Context, id string) error
 	ReorderItems(ctx context.Context, statusID string, orderedIDs []string) error
