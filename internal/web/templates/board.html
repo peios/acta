@@ -1,7 +1,7 @@
 {{define "title"}}{{.Workspace.Name}} · Acta{{end}}
 
 {{define "card"}}
-<article class="item" data-item-id="{{.Item.ID}}" style="{{.ColorVar}}"{{if .StatusName}} title="{{.StatusName}}"{{end}}>
+<article class="item{{if .Hidden}} is-filtered{{end}}" data-item-id="{{.Item.ID}}" data-status-id="{{.Item.StatusID}}" data-assignee-id="{{.Item.AssigneeID}}" style="{{.ColorVar}}"{{if .StatusName}} title="{{.StatusName}}"{{end}}>
   <span class="item-title">{{.Item.Title}}</span>
   {{if .Item.IsMilestone}}<span class="item-ms" title="Milestone">◆</span>{{end}}
   <button class="item-del" type="button" title="Archive" aria-label="Archive item">×</button>
@@ -10,12 +10,66 @@
 {{end}}
 
 {{define "content"}}
-<main class="board-wrap" data-slug="{{.Workspace.Slug}}">
+<main class="board-wrap" data-slug="{{.Workspace.Slug}}" data-me="{{with .Principal}}{{.ID}}{{end}}">
   <div class="board-bar">
     <div class="board-modes">
       <a class="board-mode{{if eq .Mode "status"}} active{{end}}" href="/w/{{.Workspace.Slug}}">Status</a>
       <a class="board-mode{{if eq .Mode "milestone"}} active{{end}}" href="/w/{{.Workspace.Slug}}?mode=milestone">Milestone</a>
     </div>
+
+    <form class="board-filters" method="get" action="/w/{{.Workspace.Slug}}" data-filters>
+      {{if eq .Mode "milestone"}}<input type="hidden" name="mode" value="milestone">{{end}}
+
+      <details class="facet" data-facet="status">
+        <summary class="facet-trigger">Status{{if .StatusSelected}} <span class="facet-count">{{.StatusSelected}}</span>{{end}}</summary>
+        <div class="facet-panel">
+          {{range .StatusFilter}}
+          <label class="facet-row">
+            <input type="checkbox" name="status" value="{{.ID}}"{{if .Selected}} checked{{end}}>
+            <span class="facet-dot" style="{{.ColorVar}}"></span>
+            <span class="facet-label">{{.Name}}</span>
+          </label>
+          {{end}}
+        </div>
+      </details>
+
+      <details class="facet" data-facet="assignee">
+        <summary class="facet-trigger">Assignee{{if .AssigneeSelected}} <span class="facet-count">{{.AssigneeSelected}}</span>{{end}}</summary>
+        <div class="facet-panel facet-panel--wide">
+          <label class="facet-row">
+            <input type="checkbox" name="assignee" value="me"{{if .Assignees.MeSelected}} checked{{end}}>
+            <span class="facet-label">Me</span>
+          </label>
+          <label class="facet-row">
+            <input type="checkbox" name="assignee" value="unassigned"{{if .Assignees.UnassignedSelected}} checked{{end}}>
+            <span class="facet-label">Unassigned</span>
+          </label>
+          {{if .Assignees.People}}<div class="facet-divider"></div>{{end}}
+          {{range .Assignees.People}}
+          <div class="facet-group">
+            <div class="facet-row facet-parent">
+              {{if .Agents}}<button type="button" class="facet-twist" aria-label="Show or hide agents">▾</button>{{else}}<span class="facet-twist-gap"></span>{{end}}
+              <label class="facet-check">
+                <input type="checkbox" name="assignee" value="{{.ID}}"{{if .Selected}} checked{{end}} data-parent>
+                <span class="facet-label">{{.Display}}{{if .IsYou}} <span class="facet-you">you</span>{{end}}</span>
+              </label>
+              {{if .Agents}}<button type="button" class="facet-only" title="Show only this person, not their agents">only</button>{{end}}
+            </div>
+            {{range .Agents}}
+            <label class="facet-row facet-agent">
+              <input type="checkbox" name="assignee" value="{{.ID}}"{{if .Selected}} checked{{end}} data-agent>
+              <span class="facet-label">{{.Display}}</span>
+            </label>
+            {{end}}
+          </div>
+          {{end}}
+        </div>
+      </details>
+
+      <button type="submit" class="facet-apply">Apply</button>
+      <a class="facet-clear" href="/w/{{.Workspace.Slug}}{{if eq .Mode "milestone"}}?mode=milestone{{end}}"{{if not .FilterActive}} hidden{{end}}>Clear</a>
+    </form>
+
     <a class="board-archive-link" href="/w/{{.Workspace.Slug}}/archive">Archived</a>
   </div>
 
@@ -39,7 +93,7 @@
   {{else}}
   <div class="board" id="board" data-mode="status">
     {{range .Lanes}}
-    <section class="lane" data-status-id="{{.Status.ID}}" data-color="{{.Color}}">
+    <section class="lane{{if .Hidden}} is-filtered{{end}}" data-status-id="{{.Status.ID}}" data-color="{{.Color}}">
       <header class="lane-head">
         <span class="lane-grip" title="Drag to reorder">⠿</span>
         <div class="lane-swatch">
@@ -99,6 +153,6 @@
 </template>
 {{end}}
 {{define "scripts"}}
-<script src="/static/sortable.min.js"></script>
-<script src="/static/board.js"></script>
+<script src="{{asset "/static/sortable.min.js"}}"></script>
+<script src="{{asset "/static/board.js"}}"></script>
 {{end}}

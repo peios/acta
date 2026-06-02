@@ -264,3 +264,95 @@ func TestCreateStatusReturnsColor(t *testing.T) {
 		t.Fatal("create status returned no colour (board.js needs it to paint the new lane)")
 	}
 }
+
+func TestBoardStatusFilterHidesLanesAndCards(t *testing.T) {
+	base, client := newTestServer(t)
+	token := csrfToken(t, client, base)
+	login(t, client, base, token)
+
+	todo := statusID(t, client, base, "To do")
+	doing := statusID(t, client, base, "Doing")
+	id := decodeID(t, postJSON(t, client, base+"/w/general/items", token, map[string]any{
+		"status_id": todo, "title": "Hide me",
+	}))
+
+	// Filter to Doing only: the To do lane (and its card) are filtered out.
+	body := getBody(t, client, base+"/w/general?status="+doing, http.StatusOK)
+	if !strings.Contains(body, `class="lane is-filtered" data-status-id="`+todo+`"`) {
+		t.Error("To do lane should be filtered out")
+	}
+	if !strings.Contains(body, `class="lane" data-status-id="`+doing+`"`) {
+		t.Error("Doing lane should remain visible")
+	}
+	if !strings.Contains(body, `class="item is-filtered" data-item-id="`+id+`"`) {
+		t.Error("the To do card should be filtered out")
+	}
+	// The Status trigger shows a selected-count badge.
+	if !strings.Contains(body, `facet-count`) {
+		t.Error("expected a filter count badge")
+	}
+}
+
+func TestBoardAssigneeFilterByUnassignedAndMe(t *testing.T) {
+	base, client := newTestServer(t)
+	token := csrfToken(t, client, base)
+	login(t, client, base, token)
+
+	todo := statusID(t, client, base, "To do")
+	id := decodeID(t, postJSON(t, client, base+"/w/general/items", token, map[string]any{
+		"status_id": todo, "title": "Solo", // freshly created => unassigned
+	}))
+
+	// Unassigned selected: the card shows.
+	shown := getBody(t, client, base+"/w/general?assignee=unassigned", http.StatusOK)
+	if !strings.Contains(shown, `class="item" data-item-id="`+id+`"`) {
+		t.Error("unassigned card should be visible under assignee=unassigned")
+	}
+	// Me selected: an unassigned card is hidden.
+	hidden := getBody(t, client, base+"/w/general?assignee=me", http.StatusOK)
+	if !strings.Contains(hidden, `class="item is-filtered" data-item-id="`+id+`"`) {
+		t.Error("unassigned card should be hidden under assignee=me")
+	}
+}
+
+func TestBoardNoFilterShowsAll(t *testing.T) {
+	base, client := newTestServer(t)
+	token := csrfToken(t, client, base)
+	login(t, client, base, token)
+
+	body := getBody(t, client, base+"/w/general", http.StatusOK)
+	// "is-filtered" also appears in the stylesheet, so assert on the element
+	// classes specifically — nothing should carry the filtered modifier.
+	if strings.Contains(body, `class="lane is-filtered`) || strings.Contains(body, `class="item is-filtered`) {
+		t.Error("an unfiltered board should mark no lane or card as filtered")
+	}
+	// The facet scaffolding is always present (Me / Unassigned tokens).
+	if !strings.Contains(body, `value="me"`) || !strings.Contains(body, `value="unassigned"`) {
+		t.Error("assignee facet should always offer Me and Unassigned")
+	}
+}
+
+func TestStaticAssetsAreVersioned(t *testing.T) {
+	base, client := newTestServer(t)
+	token := csrfToken(t, client, base)
+	login(t, client, base, token)
+
+	// The board page must reference board.js with a cache-busting ?v=, so a CDN
+	// can't keep serving a stale copy across deploys.
+	body := getBody(t, client, base+"/w/general", http.StatusOK)
+	if !strings.Contains(body, "/static/board.js?v=") {
+		t.Error("board.js should be referenced with a ?v= cache-buster")
+	}
+}
+
+func TestStaticHandlerSetsImmutableCache(t *testing.T) {
+	base, client := newTestServer(t)
+	resp, err := client.Get(base + "/static/board.js?v=anything")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if cc := resp.Header.Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+		t.Fatalf("static assets should be cached immutable, got Cache-Control %q", cc)
+	}
+}

@@ -46,6 +46,8 @@
   function newItem(it) {
     const el = document.getElementById('item-tmpl').content.firstElementChild.cloneNode(true);
     el.dataset.itemId = it.id;
+    el.dataset.statusId = it.status_id || '';
+    el.dataset.assigneeId = '';
     el.querySelector('.item-title').textContent = it.title;
     wireItem(el);
     return el;
@@ -272,16 +274,23 @@
         await api('/items/' + id + '/status', { status_id: statusId });
         const c = cardOf(id);
         const laneEl = board.querySelector('.lane[data-status-id="' + CSS.escape(statusId) + '"]');
-        if (c && laneEl) {
-          laneEl.querySelector('.lane-items').append(c);
-          c.style.setProperty('--lane-color', laneEl.dataset.color || '');
+        if (c) {
+          c.dataset.statusId = statusId;
+          if (laneEl) {
+            laneEl.querySelector('.lane-items').append(c);
+            c.style.setProperty('--lane-color', laneEl.dataset.color || '');
+          }
+          reapplyFilters();
         }
       } catch (err2) { fail(err2); }
     });
 
     el.querySelector('.modal-assignee').addEventListener('change', async (e) => {
-      try { await api('/items/' + id + '/assignee', { assignee_id: e.target.value }); }
-      catch (err2) { fail(err2); }
+      try {
+        await api('/items/' + id + '/assignee', { assignee_id: e.target.value });
+        const c = cardOf(id);
+        if (c) { c.dataset.assigneeId = e.target.value; reapplyFilters(); }
+      } catch (err2) { fail(err2); }
     });
 
     // Reparenting (promote to None / demote under an item) restructures the
@@ -390,9 +399,132 @@
     });
   }
 
+  // --- board filters (status + assignee), progressively enhanced ---
+  // The server already rendered the correct filtered state from the URL; this
+  // adds instant toggling, the parent/agent cascade, "only", and URL sync.
+
+  function facetValues(form, name) {
+    return [...form.querySelectorAll('input[name="' + name + '"]:checked')].map((c) => c.value);
+  }
+
+  function filterBoard(statuses, assignees) {
+    const sSet = new Set(statuses), aSet = new Set(assignees);
+    const wrap = document.querySelector('.board-wrap');
+    const me = wrap ? (wrap.dataset.me || '') : '';
+    const statusOK = (id) => sSet.size === 0 || sSet.has(id);
+    const assigneeOK = (aid) => {
+      if (aSet.size === 0) return true;
+      if (!aid) return aSet.has('unassigned');
+      if (aSet.has(aid)) return true;
+      return aSet.has('me') && aid === me;
+    };
+    board.querySelectorAll('.item').forEach((card) => {
+      const hide = !statusOK(card.dataset.statusId) || !assigneeOK(card.dataset.assigneeId || '');
+      card.classList.toggle('is-filtered', hide);
+    });
+    board.querySelectorAll('.lane[data-status-id]').forEach((lane) => {
+      lane.classList.toggle('is-filtered', !statusOK(lane.dataset.statusId));
+    });
+  }
+
+  function setFacetCount(form, facet, n, label) {
+    const summary = form.querySelector('[data-facet="' + facet + '"] .facet-trigger');
+    if (summary) summary.innerHTML = label + (n ? ' <span class="facet-count">' + n + '</span>' : '');
+  }
+
+  function syncFilterURL(statuses, assignees) {
+    const p = new URLSearchParams(location.search);
+    p.delete('status'); p.delete('assignee');
+    statuses.forEach((v) => p.append('status', v));
+    assignees.forEach((v) => p.append('assignee', v));
+    const q = p.toString();
+    history.replaceState(null, '', location.pathname + (q ? '?' + q : ''));
+  }
+
+  function applyFilters(form) {
+    const statuses = facetValues(form, 'status');
+    const assignees = facetValues(form, 'assignee');
+    filterBoard(statuses, assignees);
+    setFacetCount(form, 'status', statuses.length, 'Status');
+    setFacetCount(form, 'assignee', assignees.length, 'Assignee');
+    syncFilterURL(statuses, assignees);
+    const clear = form.querySelector('.facet-clear');
+    if (clear) clear.hidden = statuses.length + assignees.length === 0;
+  }
+
+  // reapplyFilters re-evaluates visibility after a card's status/assignee changes.
+  function reapplyFilters() {
+    const form = document.querySelector('[data-filters]');
+    if (form) applyFilters(form);
+  }
+
+  // refreshParent sets a person row's indeterminate dash when their agents are
+  // partially selected (some but not all of {human, agents}).
+  function refreshParent(group) {
+    const parent = group.querySelector('input[data-parent]');
+    const agents = [...group.querySelectorAll('input[data-agent]')];
+    if (!parent || !agents.length) return;
+    const checked = agents.filter((a) => a.checked).length;
+    const all = parent.checked && checked === agents.length;
+    const none = !parent.checked && checked === 0;
+    parent.indeterminate = !all && !none;
+  }
+
+  function clearAll(form) {
+    form.querySelectorAll('input[type="checkbox"]').forEach((c) => { c.checked = false; c.indeterminate = false; });
+  }
+
+  function wireFilters() {
+    const form = document.querySelector('[data-filters]');
+    if (!form) return;
+    document.documentElement.classList.add('has-js');
+
+    form.addEventListener('submit', (e) => { e.preventDefault(); applyFilters(form); });
+
+    form.querySelectorAll('input[name="status"], input[value="me"], input[value="unassigned"]').forEach((c) => {
+      c.addEventListener('change', () => applyFilters(form));
+    });
+
+    form.querySelectorAll('.facet-group').forEach((group) => {
+      const parent = group.querySelector('input[data-parent]');
+      const agents = [...group.querySelectorAll('input[data-agent]')];
+      const twist = group.querySelector('.facet-twist');
+      if (twist) twist.addEventListener('click', (e) => { e.preventDefault(); group.classList.toggle('collapsed'); });
+      if (parent) {
+        parent.addEventListener('change', () => {
+          agents.forEach((a) => { a.checked = parent.checked; });
+          refreshParent(group);
+          applyFilters(form);
+        });
+      }
+      agents.forEach((a) => a.addEventListener('change', () => { refreshParent(group); applyFilters(form); }));
+      const only = group.querySelector('.facet-only');
+      if (only && parent) {
+        only.addEventListener('click', (e) => {
+          e.preventDefault();
+          clearAll(form);
+          parent.checked = true;
+          applyFilters(form);
+        });
+      }
+      refreshParent(group); // initial dash state from the server-rendered checks
+    });
+
+    const clear = form.querySelector('.facet-clear');
+    if (clear) {
+      clear.addEventListener('click', (e) => { e.preventDefault(); clearAll(form); applyFilters(form); });
+    }
+
+    // Close an open facet popover when clicking outside it.
+    document.addEventListener('click', (e) => {
+      form.querySelectorAll('.facet[open]').forEach((f) => { if (!f.contains(e.target)) f.removeAttribute('open'); });
+    });
+  }
+
   // --- wire the server-rendered board ---
 
   board.querySelectorAll('.item').forEach(wireItem);
+  wireFilters();
 
   if (board.dataset.mode === 'milestone') {
     board.querySelectorAll('.mcol').forEach(wireColumn);
@@ -440,6 +572,7 @@
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     closePalettes();
+    document.querySelectorAll('.facet[open]').forEach((f) => f.removeAttribute('open'));
     if (modalEl) closeModal();
   });
   window.addEventListener('popstate', () => {

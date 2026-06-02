@@ -413,13 +413,74 @@
   .sortable-ghost { opacity: .35; }
   .sortable-chosen { cursor: grabbing; }
   .board-err { margin: 1rem 0 0; max-width: 32rem; }
-  .board-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: .55rem; }
+  .board-bar { display: flex; align-items: center; gap: 1.1rem; margin-bottom: .55rem; }
   .board-modes { display: inline-flex; gap: .9rem; }
   .board-mode { color: var(--faint); text-decoration: none; font-size: .82rem; }
   .board-mode:hover { color: var(--text); }
   .board-mode.active { color: var(--accent-hi); }
-  .board-archive-link { color: var(--faint); text-decoration: none; font-size: .82rem; }
+  .board-archive-link { color: var(--faint); text-decoration: none; font-size: .82rem; margin-left: auto; }
   .board-archive-link:hover { color: var(--text); }
+
+  /* ---- board filters ---- */
+  .board-filters { display: inline-flex; align-items: center; gap: .5rem; margin: 0; }
+  .facet { position: relative; }
+  .facet-trigger {
+    display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; list-style: none;
+    color: var(--faint); font-size: .82rem; padding: .15rem .5rem; border-radius: .4rem;
+    border: 1px solid transparent;
+  }
+  .facet-trigger::-webkit-details-marker { display: none; }
+  .facet-trigger::after { content: "▾"; font-size: .6rem; color: var(--faint); }
+  .facet-trigger:hover { color: var(--text); border-color: var(--border-soft); }
+  .facet[open] > .facet-trigger { color: var(--text); border-color: var(--border); background: var(--field); }
+  .facet-count {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 1.05rem; height: 1.05rem;
+    padding: 0 .2rem; border-radius: .55rem; background: var(--accent); color: var(--on-accent);
+    font-size: .66rem; font-weight: 700; line-height: 1;
+  }
+  .facet-panel {
+    position: absolute; top: 1.8rem; left: 0; z-index: 30; min-width: 11rem; max-height: 20rem; overflow-y: auto;
+    display: flex; flex-direction: column; gap: .05rem; padding: .4rem;
+    background: var(--card-top); border: 1px solid var(--border); border-radius: .6rem;
+    box-shadow: 0 18px 40px -18px rgba(0,0,0,.9);
+  }
+  .facet-panel--wide { min-width: 13rem; }
+  .facet-row {
+    display: flex; align-items: center; gap: .5rem; padding: .3rem .45rem; border-radius: .4rem;
+    color: var(--muted); font-size: .85rem; cursor: pointer; white-space: nowrap;
+  }
+  .facet-row:hover { background: #141210; color: var(--text); }
+  .facet-row input[type="checkbox"] { accent-color: var(--accent); width: .95rem; height: .95rem; flex: none; margin: 0; cursor: pointer; }
+  .facet-dot { width: .7rem; height: .7rem; border-radius: 50%; flex: none; background: var(--lane-color, var(--faint)); box-shadow: inset 0 0 0 1px rgba(0,0,0,.3); }
+  .facet-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .facet-you { color: var(--faint); font-size: .7rem; border: 1px solid var(--border-soft); border-radius: .35rem; padding: 0 .25rem; }
+  .facet-divider { height: 1px; background: var(--border-soft); margin: .3rem .2rem; }
+  .facet-group { display: flex; flex-direction: column; }
+  .facet-parent { gap: .25rem; }
+  .facet-check { display: flex; align-items: center; gap: .5rem; flex: 1; min-width: 0; cursor: pointer; }
+  .facet-twist, .facet-twist-gap { width: 1rem; flex: none; }
+  .facet-twist {
+    background: none; border: 0; color: var(--faint); cursor: pointer; font-size: .6rem; padding: 0; line-height: 1;
+    transition: transform .12s;
+  }
+  .facet-group.collapsed .facet-twist { transform: rotate(-90deg); }
+  .facet-group.collapsed .facet-agent { display: none; }
+  .facet-agent { margin-left: 1.15rem; }
+  .facet-only {
+    background: none; border: 0; color: var(--accent); cursor: pointer; font-size: .72rem; padding: 0 .15rem;
+    opacity: 0; transition: opacity .12s;
+  }
+  .facet-parent:hover .facet-only { opacity: 1; }
+  .facet-apply {
+    background: none; border: 1px solid var(--border); color: var(--muted); cursor: pointer;
+    font: inherit; font-size: .8rem; padding: .15rem .55rem; border-radius: .4rem;
+  }
+  .facet-apply:hover { color: var(--text); border-color: var(--border-soft); }
+  .facet-clear { color: var(--faint); text-decoration: none; font-size: .8rem; }
+  .facet-clear:hover { color: var(--danger-text); }
+  /* JS hides Apply (filters apply live); without JS it stays as the submit. */
+  .has-js .facet-apply { display: none; }
+  .is-filtered { display: none !important; }
 
   /* milestone-mode columns + card chips */
   .mcol-head { padding: .6rem .7rem .5rem; }

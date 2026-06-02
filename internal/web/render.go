@@ -2,7 +2,9 @@ package web
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"html/template"
 	"io/fs"
 	"log/slog"
@@ -15,15 +17,54 @@ var templatesFS embed.FS
 //go:embed static
 var staticFS embed.FS
 
-// staticHandler serves the embedded /static assets (currently just the passkey
-// JS glue). Same-origin, so it's already permitted by our default-src 'self'
-// CSP without any inline script.
+// assetVersion is a short content hash of all embedded static assets, computed
+// once at startup. Templates append it as ?v=<hash> (see the "asset" func) so
+// each build serves assets under a fresh URL — a CDN/browser that cached an old
+// board.js can't keep serving it after a deploy, because the URL changed.
+var assetVersion = hashStatic()
+
+func hashStatic() string {
+	sub, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		return "dev"
+	}
+	h := sha256.New()
+	err = fs.WalkDir(sub, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := fs.ReadFile(sub, p)
+		if err != nil {
+			return err
+		}
+		h.Write([]byte(p))
+		h.Write(b)
+		return nil
+	})
+	if err != nil {
+		return "dev"
+	}
+	return hex.EncodeToString(h.Sum(nil))[:10]
+}
+
+// assetURL fingerprints a static asset path for cache-busting.
+func assetURL(path string) string { return path + "?v=" + assetVersion }
+
+var funcMap = template.FuncMap{"asset": assetURL}
+
+// staticHandler serves the embedded /static assets. They're same-origin (so the
+// default-src 'self' CSP already permits them) and addressed with a content
+// hash in the query, so they're safe to cache hard and long.
 func staticHandler() http.Handler {
 	sub, err := fs.Sub(staticFS, "static")
 	if err != nil {
 		panic(err)
 	}
-	return http.StripPrefix("/static/", http.FileServerFS(sub))
+	fileServer := http.StripPrefix("/static/", http.FileServerFS(sub))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		fileServer.ServeHTTP(w, r)
+	})
 }
 
 // Each page is parsed in its own set together with the base layout (and the
@@ -33,7 +74,7 @@ var pages = func() map[string]*template.Template {
 	m := map[string]*template.Template{}
 	for _, name := range []string{"login.html", "board.html", "account.html", "workspaces.html", "principals.html", "welcome.html", "archive.html", "agents.html", "agent_detail.html", "cli_authorize.html"} {
 		m[name] = template.Must(
-			template.New(name).ParseFS(templatesFS,
+			template.New(name).Funcs(funcMap).ParseFS(templatesFS,
 				"templates/base.html", "templates/item_modal.html", "templates/tokens.html", "templates/"+name),
 		)
 	}
