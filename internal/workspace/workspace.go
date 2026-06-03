@@ -42,7 +42,7 @@ var (
 var reservedSlugs = map[string]bool{
 	"w": true, "api": true, "mcp": true, "static": true, "assets": true,
 	"login": true, "logout": true, "account": true, "settings": true,
-	"notifications": true, "welcome": true, "cli": true,
+	"notifications": true, "welcome": true, "cli": true, "events": true,
 	"favicon.ico": true, "robots.txt": true,
 }
 

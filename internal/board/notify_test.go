@@ -54,7 +54,7 @@ func TestMentionCreatesNotification(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Ada mentions Ben, the agent, herself, and a non-existent handle.
-	if _, err := svc.AddComment(ctx, it.ID, ada, "hey @ben and @ada/bot — @ada @nobody"); err != nil {
+	if _, _, err := svc.AddComment(ctx, it.ID, ada, "hey @ben and @ada/bot — @ada @nobody"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -108,7 +108,7 @@ func TestMentionMarkRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.AddComment(ctx, it.ID, ada, "@ben look"); err != nil {
+	if _, _, err := svc.AddComment(ctx, it.ID, ada, "@ben look"); err != nil {
 		t.Fatal(err)
 	}
 	bn, _ := ms.NotificationsByRecipient(ctx, ben, 50)

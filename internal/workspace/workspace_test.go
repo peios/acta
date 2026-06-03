@@ -198,8 +198,8 @@ func TestUpdateRejectsTakenAndInvalidPrefix(t *testing.T) {
 	svc, _ := newService(t)
 	ctx := context.Background()
 
-	a, _ := svc.Create(ctx, "Acta", "")  // prefix ACT
-	b, _ := svc.Create(ctx, "Beta", "")  // prefix BET
+	a, _ := svc.Create(ctx, "Acta", "") // prefix ACT
+	b, _ := svc.Create(ctx, "Beta", "") // prefix BET
 
 	// Taking another workspace's prefix is refused.
 	if err := svc.Update(ctx, b.ID, "Beta", "", "ACT"); !errors.Is(err, store.ErrWorkspacePrefixTaken) {

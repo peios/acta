@@ -13,6 +13,7 @@ import (
 	"github.com/peios/acta/internal/authn"
 	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/config"
+	"github.com/peios/acta/internal/live"
 	"github.com/peios/acta/internal/mcpcfg"
 	"github.com/peios/acta/internal/passkey"
 	"github.com/peios/acta/internal/session"
@@ -36,6 +37,7 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 		workspaces: workspaces,
 		board:      boards,
 		mcpcfg:     mcpConfig,
+		live:       live.NewHub(),
 		secure:     cfg.CookieSecure(),
 		publicURL:  strings.TrimRight(cfg.RPOrigin, "/"),
 	}
@@ -51,6 +53,11 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 		return requireAuth(sessions)(fn)
 	}
 	mux.Handle("GET /{$}", protected(h.rootRedirect))
+
+	// Live updates: one Server-Sent Events stream per page. A literal first
+	// segment, so it's more specific than /{slug} and never shadows a board (and
+	// "events" is a reserved slug, so no workspace can claim it).
+	mux.Handle("GET /events", protected(h.events))
 
 	// A workspace's board and its JSON mutation API (consumed by board.js). The
 	// board lives at the path root (/{slug}); slugs that would shadow a built-in

@@ -357,6 +357,12 @@ func (s *Service) Users(ctx context.Context) ([]store.User, error) {
 	return s.store.ListUsers(ctx)
 }
 
+// User resolves a single principal by id (used to paint an assignee avatar on a
+// live card update).
+func (s *Service) User(ctx context.Context, id string) (store.User, error) {
+	return s.store.UserByID(ctx, id)
+}
+
 // Assignables returns the principals worth offering when the current actor
 // directs work — every active human plus the actor's *own* agents, ordered
 // (humans by display name, then own agents by handle). This is purely a UI
@@ -842,10 +848,13 @@ func (s *Service) Comments(ctx context.Context, itemID string) ([]store.Comment,
 	return s.store.CommentsByItem(ctx, itemID)
 }
 
-func (s *Service) AddComment(ctx context.Context, itemID, authorID, body string) (store.Comment, error) {
+// AddComment appends a comment and, for each resolvable @mention in it, files a
+// notification. It returns the comment plus the notifications it created, so a
+// caller (the web layer) can push a live bell update to each recipient.
+func (s *Service) AddComment(ctx context.Context, itemID, authorID, body string) (store.Comment, []store.Notification, error) {
 	body = strings.TrimSpace(body)
 	if body == "" || len([]rune(body)) > MaxCommentLen {
-		return store.Comment{}, ErrInvalidComment
+		return store.Comment{}, nil, ErrInvalidComment
 	}
 	c, err := s.store.CreateComment(ctx, store.Comment{
 		ItemID:   itemID,
@@ -853,13 +862,14 @@ func (s *Service) AddComment(ctx context.Context, itemID, authorID, body string)
 		Body:     body,
 	})
 	if err != nil {
-		return store.Comment{}, err
+		return store.Comment{}, nil, err
 	}
+	var notified []store.Notification
 	if item, ierr := s.store.ItemByID(ctx, itemID); ierr == nil {
 		s.recordEvent(ctx, item, store.EventCommentAdded, map[string]string{"excerpt": excerpt(body, 100)})
-		s.notifyMentions(ctx, item, c, body)
+		notified = s.notifyMentions(ctx, item, c, body)
 	}
-	return c, nil
+	return c, notified, nil
 }
 
 // mentionRe matches an @handle. The handle starts alphanumeric and may contain
@@ -893,10 +903,10 @@ func parseMentions(body string) []string {
 // notification must not fail the comment that triggered it. The recipient's
 // inbox is the single source both the bell and (later) the MCP poll read from,
 // so this is the only place mentions become deliveries.
-func (s *Service) notifyMentions(ctx context.Context, item store.Item, c store.Comment, body string) {
+func (s *Service) notifyMentions(ctx context.Context, item store.Item, c store.Comment, body string) []store.Notification {
 	handles := parseMentions(body)
 	if len(handles) == 0 {
-		return
+		return nil
 	}
 	actorID := c.AuthorID
 	actorName := s.userName(ctx, c.AuthorID)
@@ -909,12 +919,13 @@ func (s *Service) notifyMentions(ctx context.Context, item store.Item, c store.C
 		slug = ws.Slug
 	}
 	ex := excerpt(body, 140)
+	var notified []store.Notification
 	for _, h := range handles {
 		u, err := s.store.UserByUsername(ctx, h)
 		if err != nil || u.ID == "" {
 			continue // unknown @handle
 		}
-		if _, err := s.store.CreateNotification(ctx, store.Notification{
+		n, err := s.store.CreateNotification(ctx, store.Notification{
 			RecipientID:   u.ID,
 			Kind:          store.NotificationMention,
 			WorkspaceID:   item.WorkspaceID,
@@ -925,10 +936,14 @@ func (s *Service) notifyMentions(ctx context.Context, item store.Item, c store.C
 			ActorName:     actorName,
 			CommentID:     c.ID,
 			Excerpt:       ex,
-		}); err != nil {
+		})
+		if err != nil {
 			slog.Error("create mention notification", "recipient", u.ID, "item", item.ID, "err", err)
+			continue
 		}
+		notified = append(notified, n)
 	}
+	return notified
 }
 
 // --- notifications (inbox reads, used by the bell) ---

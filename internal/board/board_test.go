@@ -488,13 +488,13 @@ func TestComments(t *testing.T) {
 	ctx := context.Background()
 	it, _ := svc.CreateItem(ctx, wsID, st[0].ID, "A")
 
-	if _, err := svc.AddComment(ctx, it.ID, "author1", "   "); !errors.Is(err, board.ErrInvalidComment) {
+	if _, _, err := svc.AddComment(ctx, it.ID, "author1", "   "); !errors.Is(err, board.ErrInvalidComment) {
 		t.Fatalf("blank comment: want ErrInvalidComment, got %v", err)
 	}
-	if _, err := svc.AddComment(ctx, it.ID, "author1", "first"); err != nil {
+	if _, _, err := svc.AddComment(ctx, it.ID, "author1", "first"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.AddComment(ctx, it.ID, "author2", "second"); err != nil {
+	if _, _, err := svc.AddComment(ctx, it.ID, "author2", "second"); err != nil {
 		t.Fatal(err)
 	}
 	cs, _ := svc.Comments(ctx, it.ID)

@@ -505,6 +505,11 @@ func (h *handlers) mcpCreateItem(ctx context.Context, _ *mcp.CallToolRequest, in
 	if err != nil {
 		return nil, mcpItem{}, mcpErr(err)
 	}
+	if it.ParentID != "" {
+		h.publishSubtaskAdd("", it.WorkspaceID, it)
+	} else {
+		h.publishItemUpsert(ctx, "", it.WorkspaceID, it)
+	}
 	return h.mcpItemResult(ctx, it)
 }
 
@@ -520,6 +525,7 @@ func (h *handlers) mcpSetItemStatus(ctx context.Context, _ *mcp.CallToolRequest,
 	if err := h.board.SetStatus(ctx, item.ID, statusID); err != nil {
 		return nil, mcpItem{}, mcpErr(err)
 	}
+	h.liveUpsertOrigin(ctx, "", item.ID)
 	return h.mcpReloadResult(ctx, item.ID)
 }
 
@@ -539,6 +545,7 @@ func (h *handlers) mcpSetItemAssignee(ctx context.Context, _ *mcp.CallToolReques
 	if err := h.board.SetAssignee(ctx, item.ID, assigneeID); err != nil {
 		return nil, mcpItem{}, mcpErr(err)
 	}
+	h.liveUpsertOrigin(ctx, "", item.ID)
 	return h.mcpReloadResult(ctx, item.ID)
 }
 
@@ -561,6 +568,7 @@ func (h *handlers) mcpSetItemMilestone(ctx context.Context, _ *mcp.CallToolReque
 	if err := h.board.SetMilestone(ctx, item.ID, in.Milestone); err != nil {
 		return nil, mcpItem{}, mcpErr(err)
 	}
+	h.liveUpsertOrigin(ctx, "", item.ID)
 	return h.mcpReloadResult(ctx, item.ID)
 }
 
@@ -580,6 +588,7 @@ func (h *handlers) mcpSetItemParent(ctx context.Context, _ *mcp.CallToolRequest,
 	if err := h.board.Reparent(ctx, item.ID, parent); err != nil {
 		return nil, mcpItem{}, mcpErr(err)
 	}
+	h.liveUpsertOrigin(ctx, "", item.ID)
 	return h.mcpReloadResult(ctx, item.ID)
 }
 
@@ -589,10 +598,17 @@ func (h *handlers) mcpAddComment(ctx context.Context, _ *mcp.CallToolRequest, in
 		return nil, commentAPI{}, err
 	}
 	p := principalFrom(ctx)
-	c, err := h.board.AddComment(ctx, item.ID, p.ID, in.Body)
+	c, notified, err := h.board.AddComment(ctx, item.ID, p.ID, in.Body)
 	if err != nil {
 		return nil, commentAPI{}, mcpErr(err)
 	}
+	h.publishLive(wsTopic(item.WorkspaceID), "comment.add", "", map[string]any{
+		"item":   item.ID,
+		"author": p.Display,
+		"body":   c.Body,
+		"at":     formatWhen(c.CreatedAt),
+	})
+	h.publishNotifications(ctx, notified)
 	return &mcp.CallToolResult{}, commentAPI{
 		Author: p.Username,
 		Body:   c.Body,
@@ -608,6 +624,7 @@ func (h *handlers) mcpArchiveItem(ctx context.Context, _ *mcp.CallToolRequest, i
 	if err := h.board.Archive(ctx, item.ID); err != nil {
 		return nil, mcpItem{}, mcpErr(err)
 	}
+	h.publishItemRemove("", item.WorkspaceID, item.ID)
 	return h.mcpReloadResult(ctx, item.ID)
 }
 
@@ -619,6 +636,7 @@ func (h *handlers) mcpUnarchiveItem(ctx context.Context, _ *mcp.CallToolRequest,
 	if err := h.board.Unarchive(ctx, item.ID); err != nil {
 		return nil, mcpItem{}, mcpErr(err)
 	}
+	h.liveUpsertOrigin(ctx, "", item.ID)
 	return h.mcpReloadResult(ctx, item.ID)
 }
 

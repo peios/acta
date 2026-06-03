@@ -55,7 +55,7 @@ func TestActivityRecordsLifecycle(t *testing.T) {
 	if err := svc.SetAssignee(ctx, it.ID, uid); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.AddComment(ctx, it.ID, uid, "on it"); err != nil {
+	if _, _, err := svc.AddComment(ctx, it.ID, uid, "on it"); err != nil {
 		t.Fatal(err)
 	}
 

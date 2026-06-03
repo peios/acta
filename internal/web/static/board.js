@@ -20,10 +20,12 @@
   };
   const msg = (e) => MESSAGES[e.message] || 'Something went wrong — reload and try again.';
 
+  const myClient = () => (window.actaClientId ? window.actaClientId() : '');
+
   async function api(path, body) {
     const res = await fetch(base + path, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, 'X-Acta-Client': myClient() },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (!res.ok) {
@@ -877,5 +879,123 @@
     const item = new URLSearchParams(location.search).get('item');
     if (item && !modalEl) openModal(item, false);
     else if (!item && modalEl) closeModal(false);
+  });
+
+  // --- live updates (SSE) ---
+  // live.js opens the stream and re-dispatches each event as `acta:live`, having
+  // already dropped this tab's own echoes (origin match). So everything reaching
+  // here is a remote change to apply to the board or the open modal.
+
+  function liveCardRef(card, ref) {
+    let meta = card.querySelector('.item-meta');
+    if (!meta) { meta = document.createElement('div'); meta.className = 'item-meta'; card.appendChild(meta); }
+    let el = meta.querySelector('.item-ref');
+    if (!el) { el = document.createElement('span'); el.className = 'item-ref'; meta.insertBefore(el, meta.firstChild); }
+    el.textContent = ref || '';
+    if (!meta.querySelector('.meta-spacer')) {
+      const sp = document.createElement('span'); sp.className = 'meta-spacer'; meta.appendChild(sp);
+    }
+  }
+
+  function liveCardMilestone(card, on) {
+    const ms = card.querySelector('.item-ms');
+    if (on && !ms) {
+      const m = document.createElement('span');
+      m.className = 'item-ms'; m.title = 'Milestone'; m.textContent = '◆';
+      card.querySelector('.item-title').insertAdjacentElement('afterend', m);
+    } else if (!on && ms) {
+      ms.remove();
+    }
+  }
+
+  function liveCardAvatar(card, a) {
+    const meta = card.querySelector('.item-meta');
+    const existing = card.querySelector('.avatar.sm');
+    if (!a) { if (existing) existing.remove(); return; }
+    if (!meta) return;
+    if (!meta.querySelector('.meta-spacer')) {
+      const sp = document.createElement('span'); sp.className = 'meta-spacer'; meta.appendChild(sp);
+    }
+    const av = existing || meta.appendChild(document.createElement('span'));
+    av.className = 'avatar sm' + (a.agent ? ' bot' : '');
+    av.setAttribute('style', avatarStyle(a.id));
+    av.title = a.name || '';
+    av.textContent = a.initials || avatarInitials(a.name || '');
+  }
+
+  function applyUpsert(msg) {
+    let card = cardOf(msg.id);
+    // A non-root item (e.g. just reparented under another) has no board card; if
+    // it had one, drop it.
+    if (msg.parent_id) { if (card) card.remove(); return; }
+
+    const lane = board.querySelector('.lane[data-status-id="' + CSS.escape(msg.status_id || '') + '"]');
+    const itemsEl = lane ? lane.querySelector('.lane-items') : null;
+
+    if (!card) {
+      if (!itemsEl) return; // its lane isn't on this view (e.g. milestone mode)
+      card = newItem({ id: msg.id, title: msg.title, status_id: msg.status_id, ref: msg.ref });
+    } else {
+      card.querySelector('.item-title').textContent = msg.title || '';
+    }
+    card.dataset.statusId = msg.status_id || '';
+    liveCardRef(card, msg.ref);
+    liveCardMilestone(card, !!msg.milestone);
+    card.dataset.assigneeId = msg.assignee ? msg.assignee.id : '';
+    liveCardAvatar(card, msg.assignee);
+    if (msg.color) card.style.setProperty('--lane-color', msg.color);
+    // Only re-home the card when it isn't already in the target lane, so a field
+    // change never yanks it to the bottom of its column.
+    if (itemsEl && card.parentElement !== itemsEl) itemsEl.appendChild(card);
+    reapplyFilters();
+  }
+
+  function applyRemove(msg) {
+    const card = cardOf(msg.id);
+    if (card) card.remove();
+    if (modalEl && modalEl.dataset.itemId === msg.id) closeModal();
+  }
+
+  function applyComment(msg) {
+    if (!modalEl || modalEl.dataset.itemId !== msg.item) return;
+    const list = modalEl.querySelector('[data-comment-list]');
+    if (!list) return;
+    const div = document.createElement('div');
+    div.className = 'comment';
+    const meta = document.createElement('div');
+    meta.className = 'comment-meta';
+    meta.textContent = (msg.author || '') + ' · ' + (msg.at || '');
+    const text = document.createElement('div');
+    text.className = 'comment-body';
+    text.textContent = msg.body || '';
+    div.append(meta, text);
+    list.append(div);
+  }
+
+  function applySubtaskAdd(msg) {
+    if (!modalEl || modalEl.dataset.itemId !== msg.parent) return;
+    const list = modalEl.querySelector('[data-subtask-list]');
+    if (!list || list.querySelector('.subtask[data-item-id="' + CSS.escape(msg.id) + '"]')) return;
+    const row = document.createElement('div');
+    row.className = 'subtask';
+    row.dataset.itemId = msg.id;
+    const grip = document.createElement('span'); grip.className = 'subtask-grip'; grip.title = 'Drag to reorder'; grip.textContent = '⠿';
+    const open = document.createElement('button'); open.type = 'button'; open.className = 'subtask-open'; open.textContent = msg.title || '';
+    const status = document.createElement('span'); status.className = 'subtask-status';
+    row.append(grip, open, status);
+    open.addEventListener('click', () => openModal(msg.id));
+    list.append(row);
+  }
+
+  document.addEventListener('acta:live', (e) => {
+    const msg = e.detail || {};
+    try {
+      switch (msg.kind) {
+        case 'item.upsert': applyUpsert(msg); break;
+        case 'item.remove': applyRemove(msg); break;
+        case 'comment.add': applyComment(msg); break;
+        case 'subtask.add': applySubtaskAdd(msg); break;
+      }
+    } catch (_) { /* a live update must never break the page */ }
   });
 })();

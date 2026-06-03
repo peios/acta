@@ -18,7 +18,7 @@ type modalView struct {
 	Slug           string
 	CSRFToken      string
 	Item           store.Item
-	RefID          string // human id, e.g. "ACTA-12"
+	RefID          string   // human id, e.g. "ACTA-12"
 	Desc           descView // the rendered, collapsible description
 	Statuses       []store.Status
 	Assignables    []store.User // assignee-picker options: humans + your agents (+ current assignee)
@@ -299,6 +299,7 @@ func (h *handlers) itemAssignee(w http.ResponseWriter, r *http.Request) {
 		writeBoardErr(w, err)
 		return
 	}
+	h.liveUpsert(r, r.PathValue("id"))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -316,11 +317,13 @@ func (h *handlers) itemSetStatus(w http.ResponseWriter, r *http.Request) {
 		writeBoardErr(w, err)
 		return
 	}
+	h.liveUpsert(r, r.PathValue("id"))
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *handlers) itemComment(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.resolveWorkspace(w, r); !ok {
+	ws, ok := h.resolveWorkspace(w, r)
+	if !ok {
 		return
 	}
 	var req struct {
@@ -330,16 +333,27 @@ func (h *handlers) itemComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := principalFrom(r.Context())
-	c, err := h.board.AddComment(r.Context(), r.PathValue("id"), p.ID, req.Body)
+	itemID := r.PathValue("id")
+	c, notified, err := h.board.AddComment(r.Context(), itemID, p.ID, req.Body)
 	if err != nil {
 		writeBoardErr(w, err)
 		return
 	}
+	at := formatWhen(c.CreatedAt)
+	// Stream the comment to everyone with this item's modal open, and bump each
+	// mentioned principal's bell.
+	h.publishLive(wsTopic(ws.ID), "comment.add", clientID(r), map[string]any{
+		"item":   itemID,
+		"author": p.Display,
+		"body":   c.Body,
+		"at":     at,
+	})
+	h.publishNotifications(r.Context(), notified)
 	writeJSON(w, http.StatusOK, struct {
 		Author string `json:"author"`
 		Body   string `json:"body"`
 		At     string `json:"at"`
-	}{p.Display, c.Body, formatWhen(c.CreatedAt)})
+	}{p.Display, c.Body, at})
 }
 
 // --- subtasks ---
@@ -359,6 +373,7 @@ func (h *handlers) subtaskCreate(w http.ResponseWriter, r *http.Request) {
 		writeBoardErr(w, err)
 		return
 	}
+	h.publishSubtaskAdd(clientID(r), it.WorkspaceID, it)
 	writeJSON(w, http.StatusOK, h.itemDTOFor(r.Context(), it))
 }
 
@@ -376,6 +391,7 @@ func (h *handlers) itemMilestone(w http.ResponseWriter, r *http.Request) {
 		writeBoardErr(w, err)
 		return
 	}
+	h.liveUpsert(r, r.PathValue("id"))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -393,6 +409,9 @@ func (h *handlers) itemParent(w http.ResponseWriter, r *http.Request) {
 		writeBoardErr(w, err)
 		return
 	}
+	// The client applies item.upsert by parent_id: a now-subtask is pulled off
+	// the board, a now-root is (re)placed.
+	h.liveUpsert(r, r.PathValue("id"))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -424,6 +443,7 @@ func (h *handlers) itemArchive(w http.ResponseWriter, r *http.Request) {
 		writeBoardErr(w, err)
 		return
 	}
+	h.publishItemRemove(clientID(r), ws.ID, r.PathValue("id"))
 	respond204OrRedirect(w, r, "/"+ws.Slug)
 }
 
@@ -436,6 +456,7 @@ func (h *handlers) itemUnarchive(w http.ResponseWriter, r *http.Request) {
 		writeBoardErr(w, err)
 		return
 	}
+	h.liveUpsert(r, r.PathValue("id"))
 	respond204OrRedirect(w, r, "/"+ws.Slug+"/archive")
 }
 

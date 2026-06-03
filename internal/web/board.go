@@ -461,6 +461,7 @@ func (h *handlers) itemCreate(w http.ResponseWriter, r *http.Request) {
 		writeBoardErr(w, err)
 		return
 	}
+	h.publishItemUpsert(r.Context(), clientID(r), ws.ID, it)
 	writeJSON(w, http.StatusOK, h.itemDTOFor(r.Context(), it))
 }
 
@@ -478,6 +479,7 @@ func (h *handlers) itemRename(w http.ResponseWriter, r *http.Request) {
 		writeBoardErr(w, err)
 		return
 	}
+	h.liveUpsert(r, r.PathValue("id"))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -496,6 +498,7 @@ func (h *handlers) itemMove(w http.ResponseWriter, r *http.Request) {
 		writeBoardErr(w, err)
 		return
 	}
+	h.liveUpsert(r, r.PathValue("id"))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -508,6 +511,7 @@ func (h *handlers) itemDelete(w http.ResponseWriter, r *http.Request) {
 		writeBoardErr(w, err)
 		return
 	}
+	h.publishItemRemove(clientID(r), ws.ID, r.PathValue("id"))
 	respond204OrRedirect(w, r, "/"+ws.Slug+"/archive")
 }
 

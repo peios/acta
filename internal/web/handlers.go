@@ -14,6 +14,7 @@ import (
 	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/httpx"
 	"github.com/peios/acta/internal/identity"
+	"github.com/peios/acta/internal/live"
 	"github.com/peios/acta/internal/mcpcfg"
 	"github.com/peios/acta/internal/passkey"
 	"github.com/peios/acta/internal/session"
@@ -31,6 +32,7 @@ type handlers struct {
 	workspaces *workspace.Service
 	board      *board.Service
 	mcpcfg     *mcpcfg.Service
+	live       live.Broker // fans mutations to browsers over SSE; nil disables live updates
 	secure     bool
 	publicURL  string // browser-facing origin, for building item permalinks
 }
