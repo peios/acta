@@ -755,7 +755,7 @@
         Home
       </a>
       {{if .Workspace}}
-      <a class="nav-item" href="/{{.Workspace.Slug}}/activity">
+      <a class="nav-item{{if eq .Section "activity"}} active{{end}}" href="/{{.Workspace.Slug}}/activity">
         <svg class="ico" viewBox="0 0 16 16"><path d="M1.5 8h3l1.5-4 3 8 1.5-4h4"/></svg>
         Activity
       </a>

@@ -57,7 +57,7 @@ type tokensView struct {
 type chrome struct {
 	CSRFToken  string
 	Nav        bool
-	Section    string // "home" | "settings" | "account" — drives the nav highlight
+	Section    string // "home" | "activity" | "settings" | "account" — drives the nav highlight
 	Display    string // the signed-in user's display name, shown in the account menu
 	Workspaces []store.Workspace
 	Workspace  *store.Workspace // the currently-selected workspace

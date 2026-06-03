@@ -106,7 +106,7 @@ func (h *handlers) activityPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	ch, err := h.chromeFor(r, "home", &ws)
+	ch, err := h.chromeFor(r, "activity", &ws)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
