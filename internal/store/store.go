@@ -391,13 +391,16 @@ type Store interface {
 	// Notifications: a per-recipient inbox with read state. CreateNotification
 	// appends an entry (assigning its id). NotificationsByRecipient returns a
 	// recipient's rows newest-first, capped at limit (non-positive clamps to a
-	// default). UnreadNotificationCount counts the recipient's unread rows.
+	// default); UnreadNotificationsByRecipient is the same but filtered to unread
+	// rows, so an agent can drain its inbox without read rows crowding the window.
+	// UnreadNotificationCount counts the recipient's unread rows.
 	// MarkNotificationRead marks one read, scoped to the recipient so a caller
 	// can't touch another principal's inbox; it is idempotent (a missing or
 	// already-read row is not an error). MarkAllNotificationsRead clears the
 	// recipient's whole unread set.
 	CreateNotification(ctx context.Context, n Notification) (Notification, error)
 	NotificationsByRecipient(ctx context.Context, recipientID string, limit int) ([]Notification, error)
+	UnreadNotificationsByRecipient(ctx context.Context, recipientID string, limit int) ([]Notification, error)
 	UnreadNotificationCount(ctx context.Context, recipientID string) (int, error)
 	MarkNotificationRead(ctx context.Context, id, recipientID string) error
 	MarkAllNotificationsRead(ctx context.Context, recipientID string) error

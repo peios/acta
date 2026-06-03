@@ -932,6 +932,12 @@ func (s *Service) Notifications(ctx context.Context, recipientID string, limit i
 	return s.store.NotificationsByRecipient(ctx, recipientID, limit)
 }
 
+// UnreadNotifications returns the recipient's unread inbox entries, newest
+// first — the set an agent drains by polling and marking each read.
+func (s *Service) UnreadNotifications(ctx context.Context, recipientID string, limit int) ([]store.Notification, error) {
+	return s.store.UnreadNotificationsByRecipient(ctx, recipientID, limit)
+}
+
 // UnreadCount is the recipient's unread notification count (the bell badge).
 func (s *Service) UnreadCount(ctx context.Context, recipientID string) (int, error) {
 	return s.store.UnreadNotificationCount(ctx, recipientID)

@@ -1033,6 +1033,26 @@ func (p *Postgres) NotificationsByRecipient(ctx context.Context, recipientID str
 	return out, rows.Err()
 }
 
+func (p *Postgres) UnreadNotificationsByRecipient(ctx context.Context, recipientID string, limit int) ([]store.Notification, error) {
+	const q = `SELECT ` + notifCols + `
+	           FROM notifications WHERE recipient_id = $1 AND read_at IS NULL
+	           ORDER BY created_at DESC, id DESC LIMIT $2`
+	rows, err := p.pool.Query(ctx, q, recipientID, clampEventLimit(limit))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Notification
+	for rows.Next() {
+		n, err := scanNotification(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
 func (p *Postgres) UnreadNotificationCount(ctx context.Context, recipientID string) (int, error) {
 	const q = `SELECT count(*) FROM notifications WHERE recipient_id = $1 AND read_at IS NULL`
 	var n int

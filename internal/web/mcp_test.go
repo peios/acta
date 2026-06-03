@@ -65,6 +65,28 @@ type mcpActivityT struct {
 	Events []mcpEventT `json:"events"`
 }
 
+type mcpNotificationT struct {
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	Unread    bool   `json:"unread"`
+	Actor     string `json:"actor"`
+	Workspace string `json:"workspace"`
+	ItemID    string `json:"item_id"`
+	ItemTitle string `json:"item_title"`
+	Excerpt   string `json:"excerpt"`
+	URL       string `json:"url"`
+	At        string `json:"at"`
+}
+
+type mcpNotificationsT struct {
+	Notifications []mcpNotificationT `json:"notifications"`
+	Unread        int                `json:"unread"`
+}
+
+type mcpMarkReadT struct {
+	Unread int `json:"unread"`
+}
+
 type bearerRT struct{ token string }
 
 func (b bearerRT) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -166,6 +188,7 @@ func TestMCPToolsLifecycle(t *testing.T) {
 	for _, want := range []string{
 		"whoami", "list_workspaces", "list_items", "get_item", "create_item",
 		"set_item_status", "set_item_assignee", "add_comment", "archive_item", "unarchive_item",
+		"list_notifications", "mark_notification_read",
 	} {
 		if !got[want] {
 			t.Errorf("tool %q not advertised", want)
@@ -360,4 +383,60 @@ func hasItem(l mcpItemsT, id string) bool {
 		}
 	}
 	return false
+}
+
+func TestMCPNotifications(t *testing.T) {
+	base, client := newTestServer(t)
+	csrf := signIn(t, client, base)
+	token := mintToken(t, client, base, csrf)
+	sess := mcpConnect(t, base, token)
+
+	// A fresh inbox is empty.
+	if got := callTool[mcpNotificationsT](t, sess, "list_notifications", struct{}{}); got.Unread != 0 || len(got.Notifications) != 0 {
+		t.Fatalf("fresh inbox = %+v, want empty", got)
+	}
+
+	// jack @-mentions himself in a comment. A self-mention is a valid bookmark,
+	// and the cleanest way to seed the caller's own inbox within one session.
+	item := callTool[mcpItemT](t, sess, "create_item", map[string]any{
+		"workspace": "general", "title": "Watch this",
+	})
+	callTool[mcpCommentT](t, sess, "add_comment", map[string]any{
+		"id": item.ID, "body": "@jack don't forget",
+	})
+
+	// The inbox now holds one unread, pointing at the item with an excerpt + url.
+	got := callTool[mcpNotificationsT](t, sess, "list_notifications", struct{}{})
+	if got.Unread != 1 || len(got.Notifications) != 1 {
+		t.Fatalf("after mention = %+v, want 1 unread", got)
+	}
+	n := got.Notifications[0]
+	if !n.Unread || n.Kind != "mention" || n.ItemID != item.ID || n.ItemTitle != "Watch this" {
+		t.Fatalf("notification = %+v", n)
+	}
+	if n.Actor != "Jack" || n.Workspace != "general" || !strings.Contains(n.Excerpt, "don't forget") {
+		t.Fatalf("notification meta = %+v", n)
+	}
+	if !strings.Contains(n.URL, "/w/general?item="+item.ID) {
+		t.Errorf("notification url = %q, want a board permalink", n.URL)
+	}
+
+	// Marking it read drains the unread inbox and reports 0 remaining.
+	if mk := callTool[mcpMarkReadT](t, sess, "mark_notification_read", map[string]any{"id": n.ID}); mk.Unread != 0 {
+		t.Fatalf("mark_notification_read unread = %d, want 0", mk.Unread)
+	}
+	if got := callTool[mcpNotificationsT](t, sess, "list_notifications", struct{}{}); got.Unread != 0 || len(got.Notifications) != 0 {
+		t.Fatalf("unread inbox after mark = %+v, want empty", got)
+	}
+
+	// include_read still surfaces the now-read row (it was marked read, not deleted).
+	all := callTool[mcpNotificationsT](t, sess, "list_notifications", map[string]any{"include_read": true})
+	if len(all.Notifications) != 1 || all.Notifications[0].Unread {
+		t.Fatalf("include_read = %+v, want one read row", all.Notifications)
+	}
+
+	// Marking an unknown id is a no-op, not an error.
+	if mk := callTool[mcpMarkReadT](t, sess, "mark_notification_read", map[string]any{"id": "zzzzzzzz"}); mk.Unread != 0 {
+		t.Fatalf("mark unknown id unread = %d, want 0", mk.Unread)
+	}
 }

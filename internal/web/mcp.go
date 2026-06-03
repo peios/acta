@@ -115,6 +115,16 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 		Name:        "list_activity",
 		Description: "Read the activity log, newest first: who changed what and when (creations, status moves, assignments, comments, archives, …). Pass item to get one item's history, or omit it for the whole workspace feed. Use this to answer \"what changed since yesterday\" for a standup instead of diffing the board. Each entry has a human-readable summary plus the raw verb and data for precise parsing.",
 	}, h.mcpListActivity)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "list_notifications",
+		Description: "Poll your notification inbox, newest first. Returns unread notifications by default — the set to drain — so an idle agent can long-poll this to learn when a human @mentions it in a comment. Set include_read to also list ones already marked read. Each entry names the actor, the item it points at (id, workspace slug, permalink url), and an excerpt of the comment. Act on one, then call mark_notification_read with its id.",
+	}, h.mcpListNotifications)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "mark_notification_read",
+		Description: "Mark one of your notifications read by id (ids come from list_notifications), clearing it from the unread inbox. Idempotent: an already-read, unknown, or someone else's id is a no-op. Returns your remaining unread count.",
+	}, h.mcpMarkNotificationRead)
 }
 
 // --- tool input/output types ---
@@ -274,6 +284,40 @@ type mcpEvent struct {
 
 type activityOutput struct {
 	Events []mcpEvent `json:"events"`
+}
+
+type listNotificationsInput struct {
+	IncludeRead bool `json:"include_read,omitempty" jsonschema:"also include notifications already marked read; default false (unread only)"`
+	Limit       int  `json:"limit,omitempty" jsonschema:"max notifications to return, newest first (default 50)"`
+}
+
+type markNotificationReadInput struct {
+	ID string `json:"id" jsonschema:"the notification id to mark read (from list_notifications)"`
+}
+
+// mcpNotification is one inbox entry for agents: who triggered it, the item it
+// points at (with a permalink), an excerpt, and whether it is still unread.
+type mcpNotification struct {
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	Unread    bool   `json:"unread"`
+	Actor     string `json:"actor,omitempty"`
+	Workspace string `json:"workspace,omitempty"` // slug of the item's board
+	ItemID    string `json:"item_id,omitempty"`
+	ItemTitle string `json:"item_title,omitempty"`
+	Excerpt   string `json:"excerpt,omitempty"`
+	URL       string `json:"url,omitempty"` // permalink to open the item on the board
+	At        string `json:"at"`
+}
+
+type notificationsOutput struct {
+	Notifications []mcpNotification `json:"notifications"`
+	Unread        int               `json:"unread"` // the caller's total unread count
+}
+
+// markReadOutput reports the caller's remaining unread count after a mark.
+type markReadOutput struct {
+	Unread int `json:"unread"`
 }
 
 // --- tool handlers ---
@@ -601,6 +645,65 @@ func (h *handlers) mcpListActivity(ctx context.Context, _ *mcp.CallToolRequest, 
 		}
 	}
 	return &mcp.CallToolResult{}, out, nil
+}
+
+func (h *handlers) mcpListNotifications(ctx context.Context, _ *mcp.CallToolRequest, in listNotificationsInput) (*mcp.CallToolResult, notificationsOutput, error) {
+	p := principalFrom(ctx)
+	if p == nil {
+		return nil, notificationsOutput{}, errors.New("not authenticated")
+	}
+	limit := in.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	var notes []store.Notification
+	var err error
+	if in.IncludeRead {
+		notes, err = h.board.Notifications(ctx, p.ID, limit)
+	} else {
+		notes, err = h.board.UnreadNotifications(ctx, p.ID, limit)
+	}
+	if err != nil {
+		return nil, notificationsOutput{}, mcpErr(err)
+	}
+	unread, err := h.board.UnreadCount(ctx, p.ID)
+	if err != nil {
+		return nil, notificationsOutput{}, mcpErr(err)
+	}
+	out := notificationsOutput{Notifications: make([]mcpNotification, 0, len(notes)), Unread: unread}
+	for _, n := range notes {
+		out.Notifications = append(out.Notifications, mcpNotification{
+			ID:        n.ID,
+			Kind:      n.Kind,
+			Unread:    n.ReadAt == nil,
+			Actor:     n.ActorName,
+			Workspace: n.WorkspaceSlug,
+			ItemID:    n.ItemID,
+			ItemTitle: n.ItemTitle,
+			Excerpt:   n.Excerpt,
+			URL:       h.itemURL(n.WorkspaceSlug, n.ItemID),
+			At:        n.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	return &mcp.CallToolResult{}, out, nil
+}
+
+func (h *handlers) mcpMarkNotificationRead(ctx context.Context, _ *mcp.CallToolRequest, in markNotificationReadInput) (*mcp.CallToolResult, markReadOutput, error) {
+	p := principalFrom(ctx)
+	if p == nil {
+		return nil, markReadOutput{}, errors.New("not authenticated")
+	}
+	// Scoped to the caller, so one principal can't clear another's inbox. The
+	// mark is idempotent — an unknown or already-read id is a silent no-op — so
+	// the only useful signal back is the remaining unread count.
+	if err := h.board.MarkNotificationRead(ctx, strings.TrimSpace(in.ID), p.ID); err != nil {
+		return nil, markReadOutput{}, mcpErr(err)
+	}
+	unread, err := h.board.UnreadCount(ctx, p.ID)
+	if err != nil {
+		return nil, markReadOutput{}, mcpErr(err)
+	}
+	return &mcp.CallToolResult{}, markReadOutput{Unread: unread}, nil
 }
 
 // --- shared helpers ---

@@ -917,6 +917,27 @@ func (s *Store) NotificationsByRecipient(_ context.Context, recipientID string, 
 	return out, nil
 }
 
+func (s *Store) UnreadNotificationsByRecipient(_ context.Context, recipientID string, limit int) ([]store.Notification, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.Notification
+	for _, n := range s.notifs {
+		if n.RecipientID == recipientID && n.ReadAt == nil {
+			out = append(out, n)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].ID > out[j].ID
+		}
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	if limit = clampLimit(limit); len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
 func (s *Store) UnreadNotificationCount(_ context.Context, recipientID string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

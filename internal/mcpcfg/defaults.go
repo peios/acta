@@ -59,6 +59,20 @@ yourself when that's the honest answer.
 - **Archive, don't delete.** Finished or abandoned work gets ` + "`archive_item`" + `
   (reversible via ` + "`unarchive_item`" + `), so history is preserved.
 
+## Staying in the loop
+
+People talk to you through Acta by **@mentioning** you in a comment — that drops
+an entry in your notification inbox. This is the channel humans use to ask you to
+pick something up or weigh in on a thread.
+
+- Call ` + "`list_notifications`" + ` to poll your inbox. It returns your unread
+  notifications, newest first, each pointing at the item and comment that
+  mentioned you. An idle agent can poll this to learn when it's been pinged.
+- Read the item with ` + "`get_item`" + ` for full context, then respond in the thread
+  with ` + "`add_comment`" + ` (mention someone back with ` + "`@username`" + ` to notify them).
+- Once you've handled one, call ` + "`mark_notification_read`" + ` with its id to clear
+  it from the unread set, so your inbox reflects only what still needs attention.
+
 ## Tool map
 
 | Goal | Tool |
@@ -75,6 +89,8 @@ yourself when that's the honest answer.
 | Nest under a parent | ` + "`set_item_parent`" + ` |
 | Add a progress note | ` + "`add_comment`" + ` |
 | Retire / restore | ` + "`archive_item`" + ` / ` + "`unarchive_item`" + ` |
+| Poll for @mentions | ` + "`list_notifications`" + ` |
+| Clear one once handled | ` + "`mark_notification_read`" + ` |
 `
 
 // DefaultPrompts are the starter prompts seeded on first run. They are ordinary
