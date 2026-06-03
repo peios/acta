@@ -909,6 +909,38 @@ func (s *Store) EventsByWorkspace(_ context.Context, workspaceID string, limit i
 	return s.recentEvents(func(e store.Event) bool { return e.WorkspaceID == workspaceID }, limit), nil
 }
 
+func (s *Store) LatestEventForActor(_ context.Context, itemID, actorID, verb string, since time.Time) (store.Event, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var latest store.Event
+	found := false
+	for _, e := range s.events {
+		if e.ItemID != itemID || e.ActorID != actorID || e.Verb != verb || e.CreatedAt.Before(since) {
+			continue
+		}
+		if !found || e.CreatedAt.After(latest.CreatedAt) {
+			latest, found = e, true
+		}
+	}
+	return latest, found, nil
+}
+
+func (s *Store) TouchEvent(_ context.Context, id string, at time.Time, data map[string]string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.events[id]
+	if !ok {
+		return store.ErrItemNotFound
+	}
+	if data == nil {
+		data = map[string]string{}
+	}
+	e.CreatedAt = at
+	e.Data = data
+	s.events[id] = e
+	return nil
+}
+
 // recentEvents returns the events matching pred newest-first, capped at limit.
 func (s *Store) recentEvents(pred func(store.Event) bool, limit int) []store.Event {
 	s.mu.Lock()

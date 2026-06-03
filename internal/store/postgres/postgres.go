@@ -973,6 +973,32 @@ func (p *Postgres) EventsByWorkspace(ctx context.Context, workspaceID string, li
 	return p.queryEvents(ctx, q, workspaceID, clampEventLimit(limit))
 }
 
+func (p *Postgres) LatestEventForActor(ctx context.Context, itemID, actorID, verb string, since time.Time) (store.Event, bool, error) {
+	const q = `SELECT id::text, workspace_id::text, item_id, item_title,
+	                  actor_id, actor_name, verb, data, created_at
+	           FROM events
+	           WHERE item_id = $1 AND actor_id = $2 AND verb = $3 AND created_at >= $4
+	           ORDER BY created_at DESC, id DESC LIMIT 1`
+	e, err := scanEvent(p.pool.QueryRow(ctx, q, itemID, actorID, verb, since))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.Event{}, false, nil
+	}
+	if err != nil {
+		return store.Event{}, false, err
+	}
+	return e, true, nil
+}
+
+func (p *Postgres) TouchEvent(ctx context.Context, id string, at time.Time, data map[string]string) error {
+	raw, err := json.Marshal(normalizeEventData(data))
+	if err != nil {
+		return err
+	}
+	const q = `UPDATE events SET created_at = $2, data = $3::jsonb WHERE id = $1`
+	_, err = p.pool.Exec(ctx, q, id, at, raw)
+	return err
+}
+
 func (p *Postgres) queryEvents(ctx context.Context, q string, args ...any) ([]store.Event, error) {
 	rows, err := p.pool.Query(ctx, q, args...)
 	if err != nil {

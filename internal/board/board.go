@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/peios/acta/internal/identity"
 	"github.com/peios/acta/internal/store"
@@ -74,11 +75,53 @@ func ColorFor(s store.Status) string {
 	return Palette[((s.Position%len(Palette))+len(Palette))%len(Palette)]
 }
 
-type Service struct {
-	store store.Store
+// eventCoalesceWindow is how long an autosave-driven verb (e.g. a description
+// edit, saved every few hundred ms while typing) stays quiet in the activity
+// log after its first entry. One editing session logs once, per item per actor,
+// rather than once per keystroke-debounced save.
+const eventCoalesceWindow = 5 * time.Minute
+
+// coalescingVerbs are the verbs subject to the window above: those a client
+// emits repeatedly during a single edit (the autosaved text fields). Discrete
+// actions (status moves, assignments, comments, archives) are never coalesced —
+// each is its own entry.
+var coalescingVerbs = map[string]bool{
+	store.EventItemDescribed: true,
+	store.EventItemRenamed:   true,
 }
 
-func New(st store.Store) *Service { return &Service{store: st} }
+// mergeCoalesced folds a later edit's data into the entry that opened the burst.
+// A rename keeps the burst's original "from" and adopts the latest "to", so the
+// single entry reads original → final rather than freezing mid-keystroke; other
+// verbs just carry the latest data forward.
+func mergeCoalesced(verb string, prev, next map[string]string) map[string]string {
+	if verb == store.EventItemRenamed {
+		return map[string]string{"from": prev["from"], "to": next["to"]}
+	}
+	return next
+}
+
+type Service struct {
+	store store.Store
+	now   func() time.Time
+}
+
+// Option configures a Service.
+type Option func(*Service)
+
+// WithClock overrides the time source used to stamp and coalesce activity
+// events. Tests inject a controllable clock; production uses time.Now.
+func WithClock(now func() time.Time) Option {
+	return func(s *Service) { s.now = now }
+}
+
+func New(st store.Store, opts ...Option) *Service {
+	s := &Service{store: st, now: time.Now}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
+}
 
 // recordEvent appends an entry to the activity log, attributing it to the
 // principal carried by ctx (recorded as a system action when none is present).
@@ -92,10 +135,31 @@ func (s *Service) recordEvent(ctx context.Context, item store.Item, verb string,
 		ItemTitle:   item.Title,
 		Verb:        verb,
 		Data:        data,
+		CreatedAt:   s.now(),
 	}
 	if p, ok := identity.FromContext(ctx); ok && p != nil {
 		ev.ActorID = p.ID
 		ev.ActorName = principalName(p)
+	}
+	// Coalesce autosave-driven verbs: the first edit of a burst opens an entry,
+	// and later edits within the window fold into it (advancing its time and
+	// carrying the latest data) rather than each adding a row. Scoped per item
+	// per actor, so a different item or person opens its own entry. Any store
+	// error falls through to a plain record — better a duplicate than a lost one.
+	if coalescingVerbs[verb] {
+		since := ev.CreatedAt.Add(-eventCoalesceWindow)
+		prev, ok, err := s.store.LatestEventForActor(ctx, item.ID, ev.ActorID, verb, since)
+		switch {
+		case err != nil:
+			slog.Error("coalesce lookup", "verb", verb, "item", item.ID, "err", err)
+		case ok:
+			merged := mergeCoalesced(verb, prev.Data, ev.Data)
+			if err := s.store.TouchEvent(ctx, prev.ID, ev.CreatedAt, merged); err != nil {
+				slog.Error("coalesce touch", "verb", verb, "item", item.ID, "err", err)
+				break // fall through to record a fresh entry
+			}
+			return
+		}
 	}
 	if _, err := s.store.RecordEvent(ctx, ev); err != nil {
 		slog.Error("record activity event", "verb", verb, "item", item.ID, "err", err)

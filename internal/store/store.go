@@ -10,20 +10,20 @@ import (
 )
 
 var (
-	ErrUserNotFound       = errors.New("store: user not found")
-	ErrSessionNotFound    = errors.New("store: session not found")
-	ErrUsernameTaken      = errors.New("store: username already taken")
-	ErrCredentialNotFound = errors.New("store: credential not found")
-	ErrAPITokenNotFound   = errors.New("store: api token not found")
-	ErrChallengeNotFound  = errors.New("store: challenge not found")
-	ErrWorkspaceNotFound  = errors.New("store: workspace not found")
+	ErrUserNotFound         = errors.New("store: user not found")
+	ErrSessionNotFound      = errors.New("store: session not found")
+	ErrUsernameTaken        = errors.New("store: username already taken")
+	ErrCredentialNotFound   = errors.New("store: credential not found")
+	ErrAPITokenNotFound     = errors.New("store: api token not found")
+	ErrChallengeNotFound    = errors.New("store: challenge not found")
+	ErrWorkspaceNotFound    = errors.New("store: workspace not found")
 	ErrWorkspaceNameTaken   = errors.New("store: workspace name already taken")
 	ErrWorkspaceSlugTaken   = errors.New("store: workspace slug already taken")
 	ErrWorkspacePrefixTaken = errors.New("store: workspace item prefix already taken")
-	ErrStatusNotFound     = errors.New("store: status not found")
-	ErrItemNotFound       = errors.New("store: item not found")
-	ErrMCPPromptNotFound  = errors.New("store: mcp prompt not found")
-	ErrMCPPromptNameTaken = errors.New("store: mcp prompt name already taken")
+	ErrStatusNotFound       = errors.New("store: status not found")
+	ErrItemNotFound         = errors.New("store: item not found")
+	ErrMCPPromptNotFound    = errors.New("store: mcp prompt not found")
+	ErrMCPPromptNameTaken   = errors.New("store: mcp prompt name already taken")
 )
 
 // MCPPrompt is a user-defined Model Context Protocol prompt: a named, optionally
@@ -175,9 +175,9 @@ type Challenge struct {
 // the id of the creating user and may be empty (e.g. the seeded default, or
 // after the creator is deleted).
 type Workspace struct {
-	ID        string
-	Slug      string
-	Name      string
+	ID   string
+	Slug string
+	Name string
 	// ItemPrefix is the editable, globally-unique label for this workspace's
 	// human-readable item ids (prefix-N, e.g. ACTA-12). Empty means items show
 	// as bare numbers until a prefix is set.
@@ -405,6 +405,14 @@ type Store interface {
 	RecordEvent(ctx context.Context, e Event) (Event, error)
 	EventsByItem(ctx context.Context, itemID string, limit int) ([]Event, error)
 	EventsByWorkspace(ctx context.Context, workspaceID string, limit int) ([]Event, error)
+	// LatestEventForActor returns the most recent event of verb by actorID on
+	// itemID recorded at or after since, and whether one exists. It backs the
+	// activity log's coalescing: a burst of autosave-driven edits folds into a
+	// single entry within a window rather than logging once per save.
+	LatestEventForActor(ctx context.Context, itemID, actorID, verb string, since time.Time) (Event, bool, error)
+	// TouchEvent advances an existing event's timestamp to at and replaces its
+	// data, folding a later edit of a burst into the entry that opened it.
+	TouchEvent(ctx context.Context, id string, at time.Time, data map[string]string) error
 
 	// Notifications: a per-recipient inbox with read state. CreateNotification
 	// appends an entry (assigning its id). NotificationsByRecipient returns a
