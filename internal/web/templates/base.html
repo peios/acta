@@ -575,6 +575,9 @@
   .modal-close:hover { color: var(--text); }
   .modal-grid { display: grid; grid-template-columns: minmax(0, 1fr) 13.5rem; }
   .modal-main { padding: 1.1rem 1.2rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.3rem; min-width: 0; overflow: hidden; align-content: start; }
+  /* Each modal section is its own grid; let the section gap be the single
+     title->content spacer instead of stacking with .section-title's margin. */
+  .modal-main .section-title { margin-bottom: 0; }
   .modal-desc-view, [data-desc-rendered], [data-desc-preview], [data-desc-full] { min-width: 0; }
   .modal-side { padding: 1.1rem 1.2rem; display: grid; gap: .9rem; align-content: start; border-left: 1px solid var(--border-soft); }
   .side-field { display: grid; gap: .35rem; }
@@ -625,18 +628,18 @@
   .md th { background: var(--field); font-weight: 650; }
   .md img { max-width: 100%; border-radius: 6px; }
 
-  .modal-comments { display: grid; gap: .6rem; }
+  .modal-comments { display: grid; gap: .5rem; }
   .comment-list { display: grid; }
   .comment-list:empty { display: none; }
   .comment { padding: .5rem .1rem; border-bottom: 1px solid var(--border-soft); }
   .comment-meta { color: var(--faint); font-size: .76rem; margin-bottom: .25rem; }
   .comment-body { font-size: .9rem; white-space: pre-wrap; word-break: break-word; }
-  .comment-input { resize: vertical; margin-top: .5rem; }
+  .comment-input { resize: vertical; }
   .modal-ms { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .85rem; cursor: pointer; }
   .modal-ms input { accent-color: var(--accent); }
 
   /* item activity (modal) */
-  .modal-history { margin-top: 1.4rem; }
+  .modal-history { margin-top: 1.4rem; display: grid; gap: .5rem; }
   .history-list { list-style: none; margin: 0; padding: 0; display: grid; }
   .history-row { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: .32rem .1rem; font-size: .8rem; color: var(--muted); border-bottom: 1px solid var(--border-soft); }
   .history-row:last-child { border-bottom: 0; }
