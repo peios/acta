@@ -429,16 +429,16 @@ func (p *Postgres) ConsumeChallenge(ctx context.Context, id string) (store.Chall
 
 func (p *Postgres) CreateWorkspace(ctx context.Context, w store.Workspace) (store.Workspace, error) {
 	out, err := createWithRetry(func() (store.Workspace, error) {
-		const q = `INSERT INTO workspaces (slug, name, created_by)
-		           VALUES ($1, $2, $3)
-		           RETURNING id::text, slug, name, COALESCE(created_by::text, ''), created_at`
+		const q = `INSERT INTO workspaces (slug, name, created_by, item_prefix)
+		           VALUES ($1, $2, $3, $4)
+		           RETURNING id::text, slug, name, COALESCE(created_by::text, ''), created_at, item_prefix`
 		var createdBy any
 		if w.CreatedBy != "" {
 			createdBy = w.CreatedBy
 		}
 		var out store.Workspace
-		err := p.pool.QueryRow(ctx, q, w.Slug, w.Name, createdBy).
-			Scan(&out.ID, &out.Slug, &out.Name, &out.CreatedBy, &out.CreatedAt)
+		err := p.pool.QueryRow(ctx, q, w.Slug, w.Name, createdBy, w.ItemPrefix).
+			Scan(&out.ID, &out.Slug, &out.Name, &out.CreatedBy, &out.CreatedAt, &out.ItemPrefix)
 		return out, err
 	})
 	if err != nil {
@@ -448,7 +448,7 @@ func (p *Postgres) CreateWorkspace(ctx context.Context, w store.Workspace) (stor
 }
 
 func (p *Postgres) ListWorkspaces(ctx context.Context) ([]store.Workspace, error) {
-	const q = `SELECT id::text, slug, name, COALESCE(created_by::text, ''), created_at
+	const q = `SELECT id::text, slug, name, COALESCE(created_by::text, ''), created_at, item_prefix
 	           FROM workspaces ORDER BY created_at`
 	rows, err := p.pool.Query(ctx, q)
 	if err != nil {
@@ -467,24 +467,30 @@ func (p *Postgres) ListWorkspaces(ctx context.Context) ([]store.Workspace, error
 }
 
 func (p *Postgres) WorkspaceByID(ctx context.Context, id string) (store.Workspace, error) {
-	const q = `SELECT id::text, slug, name, COALESCE(created_by::text, ''), created_at
+	const q = `SELECT id::text, slug, name, COALESCE(created_by::text, ''), created_at, item_prefix
 	           FROM workspaces WHERE id = $1`
 	return scanWorkspace(p.pool.QueryRow(ctx, q, id))
 }
 
 func (p *Postgres) WorkspaceBySlug(ctx context.Context, slug string) (store.Workspace, error) {
-	const q = `SELECT id::text, slug, name, COALESCE(created_by::text, ''), created_at
+	const q = `SELECT id::text, slug, name, COALESCE(created_by::text, ''), created_at, item_prefix
 	           FROM workspaces WHERE slug = $1`
 	return scanWorkspace(p.pool.QueryRow(ctx, q, slug))
 }
 
 func scanWorkspace(row pgx.Row) (store.Workspace, error) {
 	var w store.Workspace
-	err := row.Scan(&w.ID, &w.Slug, &w.Name, &w.CreatedBy, &w.CreatedAt)
+	err := row.Scan(&w.ID, &w.Slug, &w.Name, &w.CreatedBy, &w.CreatedAt, &w.ItemPrefix)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.Workspace{}, store.ErrWorkspaceNotFound
 	}
 	return w, err
+}
+
+func (p *Postgres) WorkspaceByPrefix(ctx context.Context, prefix string) (store.Workspace, error) {
+	const q = `SELECT id::text, slug, name, COALESCE(created_by::text, ''), created_at, item_prefix
+	           FROM workspaces WHERE item_prefix <> '' AND lower(item_prefix) = lower($1)`
+	return scanWorkspace(p.pool.QueryRow(ctx, q, prefix))
 }
 
 func (p *Postgres) RenameWorkspace(ctx context.Context, id, name string) error {
@@ -499,9 +505,9 @@ func (p *Postgres) RenameWorkspace(ctx context.Context, id, name string) error {
 	return nil
 }
 
-func (p *Postgres) UpdateWorkspace(ctx context.Context, id, name, slug string) error {
-	const q = `UPDATE workspaces SET name = $2, slug = $3 WHERE id = $1`
-	ct, err := p.pool.Exec(ctx, q, id, name, slug)
+func (p *Postgres) UpdateWorkspace(ctx context.Context, id, name, slug, prefix string) error {
+	const q = `UPDATE workspaces SET name = $2, slug = $3, item_prefix = $4 WHERE id = $1`
+	ct, err := p.pool.Exec(ctx, q, id, name, slug, prefix)
 	if err != nil {
 		return mapWorkspaceConflict(err)
 	}
@@ -534,10 +540,14 @@ func (p *Postgres) CountWorkspaces(ctx context.Context) (int, error) {
 func mapWorkspaceConflict(err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		if strings.Contains(pgErr.ConstraintName, "slug") {
+		switch {
+		case strings.Contains(pgErr.ConstraintName, "slug"):
 			return store.ErrWorkspaceSlugTaken
+		case strings.Contains(pgErr.ConstraintName, "prefix"):
+			return store.ErrWorkspacePrefixTaken
+		default:
+			return store.ErrWorkspaceNameTaken
 		}
-		return store.ErrWorkspaceNameTaken
 	}
 	return err
 }
@@ -634,13 +644,13 @@ func (p *Postgres) DeleteStatus(ctx context.Context, id string) error {
 
 // --- board: items ---
 
-const itemCols = `id::text, workspace_id::text, status_id::text, COALESCE(parent_id::text, ''),
+const itemCols = `id::text, ref_num, workspace_id::text, status_id::text, COALESCE(parent_id::text, ''),
                   title, description, COALESCE(assignee_id::text, ''), position, is_milestone,
                   ms_position, archived_at, created_at, COALESCE(created_by::text, '')`
 
 func scanItem(row pgx.Row) (store.Item, error) {
 	var i store.Item
-	err := row.Scan(&i.ID, &i.WorkspaceID, &i.StatusID, &i.ParentID, &i.Title, &i.Description,
+	err := row.Scan(&i.ID, &i.RefNum, &i.WorkspaceID, &i.StatusID, &i.ParentID, &i.Title, &i.Description,
 		&i.AssigneeID, &i.Position, &i.IsMilestone, &i.MSPosition, &i.ArchivedAt, &i.CreatedAt, &i.CreatedBy)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.Item{}, store.ErrItemNotFound
@@ -650,8 +660,13 @@ func scanItem(row pgx.Row) (store.Item, error) {
 
 func (p *Postgres) CreateItem(ctx context.Context, i store.Item) (store.Item, error) {
 	return createWithRetry(func() (store.Item, error) {
-		const q = `INSERT INTO items (workspace_id, status_id, title, position, parent_id, created_by)
-		           VALUES ($1, $2, $3, $4, $5, $6)
+		// Bump the workspace's monotonic counter and stamp the new item with it,
+		// atomically, so ref numbers are unique per workspace and never reused.
+		const q = `WITH seq AS (
+		               UPDATE workspaces SET item_seq = item_seq + 1 WHERE id = $1 RETURNING item_seq
+		           )
+		           INSERT INTO items (workspace_id, status_id, title, position, parent_id, created_by, ref_num)
+		           VALUES ($1, $2, $3, $4, $5, $6, (SELECT item_seq FROM seq))
 		           RETURNING ` + itemCols
 		var parent, creator any
 		if i.ParentID != "" {
@@ -662,6 +677,11 @@ func (p *Postgres) CreateItem(ctx context.Context, i store.Item) (store.Item, er
 		}
 		return scanItem(p.pool.QueryRow(ctx, q, i.WorkspaceID, i.StatusID, i.Title, i.Position, parent, creator))
 	})
+}
+
+func (p *Postgres) ItemByRef(ctx context.Context, workspaceID string, refNum int) (store.Item, error) {
+	q := `SELECT ` + itemCols + ` FROM items WHERE workspace_id = $1 AND ref_num = $2`
+	return scanItem(p.pool.QueryRow(ctx, q, workspaceID, refNum))
 }
 
 func (p *Postgres) ItemsByWorkspace(ctx context.Context, workspaceID string) ([]store.Item, error) {

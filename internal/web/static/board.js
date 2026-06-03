@@ -56,7 +56,7 @@
     const existing = card.querySelector('.avatar.sm');
     if (!assigneeId) {
       if (existing) existing.remove();
-      if (meta && !meta.querySelector('.item-sub')) meta.remove();
+      // The meta row always carries the item's ref id now, so keep it.
       return;
     }
     const raw = (optText || '').trim();
@@ -196,6 +196,17 @@
     el.dataset.statusId = it.status_id || '';
     el.dataset.assigneeId = '';
     el.querySelector('.item-title').textContent = it.title;
+    if (it.ref) {
+      const meta = document.createElement('div');
+      meta.className = 'item-meta';
+      const ref = document.createElement('span');
+      ref.className = 'item-ref';
+      ref.textContent = it.ref;
+      const sp = document.createElement('span');
+      sp.className = 'meta-spacer';
+      meta.append(ref, sp);
+      el.appendChild(meta);
+    }
     wireItem(el);
     return el;
   }

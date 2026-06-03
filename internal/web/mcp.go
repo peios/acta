@@ -144,6 +144,7 @@ type principalView struct {
 // Name<->id translation is still shared (toMCPItem rides the same name maps).
 type mcpItem struct {
 	ID            string `json:"id"`
+	Ref           string `json:"ref,omitempty"` // human id, e.g. "ACTA-12" (also accepted wherever an id is)
 	Title         string `json:"title"`
 	Status        string `json:"status"`
 	Assignee      string `json:"assignee,omitempty"`
@@ -182,9 +183,10 @@ type itemListOutput struct {
 	Items []mcpItem `json:"items"`
 }
 
-func toMCPItem(it store.Item, statusName, userName map[string]string) mcpItem {
+func toMCPItem(it store.Item, statusName, userName map[string]string, prefix string) mcpItem {
 	return mcpItem{
 		ID:        it.ID,
+		Ref:       refID(prefix, it.RefNum),
 		Title:     it.Title,
 		Status:    statusName[it.StatusID],
 		Assignee:  userName[it.AssigneeID],
@@ -213,6 +215,16 @@ func (h *handlers) slugFor(ctx context.Context, workspaceID string) string {
 		return ""
 	}
 	return ws.Slug
+}
+
+// prefixFor resolves a workspace id to its item-id prefix, for building human
+// ids. Errors are swallowed — the prefix is presentational, not load-bearing.
+func (h *handlers) prefixFor(ctx context.Context, workspaceID string) string {
+	ws, err := h.workspaces.ByID(ctx, workspaceID)
+	if err != nil {
+		return ""
+	}
+	return ws.ItemPrefix
 }
 
 type listItemsInput struct {
@@ -413,7 +425,7 @@ func (h *handlers) mcpListItems(ctx context.Context, _ *mcp.CallToolRequest, in 
 		if filterAssignee && it.AssigneeID != assigneeID {
 			continue
 		}
-		v := toMCPItem(it, statusName, userName)
+		v := toMCPItem(it, statusName, userName, ws.ItemPrefix)
 		v.URL = h.itemURL(ws.Slug, it.ID)
 		if c, ok := counts[it.ID]; ok && c.Total > 0 {
 			v.SubtasksDone, v.SubtasksTotal = c.Done, c.Total
@@ -433,7 +445,8 @@ func (h *handlers) mcpGetItem(ctx context.Context, _ *mcp.CallToolRequest, in it
 		return nil, mcpItemDetail{}, mcpErr(err)
 	}
 	slug := h.slugFor(ctx, item.WorkspaceID)
-	root := toMCPItem(item, statusName, userName)
+	prefix := h.prefixFor(ctx, item.WorkspaceID)
+	root := toMCPItem(item, statusName, userName, prefix)
 	root.URL = h.itemURL(slug, item.ID)
 	detail := mcpItemDetail{
 		mcpItem:     root,
@@ -447,7 +460,7 @@ func (h *handlers) mcpGetItem(ctx context.Context, _ *mcp.CallToolRequest, in it
 		return nil, mcpItemDetail{}, mcpErr(err)
 	}
 	for _, c := range children {
-		cv := toMCPItem(c, statusName, userName)
+		cv := toMCPItem(c, statusName, userName, prefix)
 		cv.URL = h.itemURL(slug, c.ID)
 		detail.Subtasks = append(detail.Subtasks, cv)
 	}
@@ -720,7 +733,18 @@ func (h *handlers) mcpWorkspace(ctx context.Context, slug string) (store.Workspa
 // mcpItem resolves an item id. When workspaceID is non-empty the item must
 // belong to it, otherwise it reads as not-found (no cross-workspace leakage).
 func (h *handlers) mcpItem(ctx context.Context, id, workspaceID string) (store.Item, error) {
-	it, err := h.board.Item(ctx, strings.ToLower(strings.TrimSpace(id)))
+	id = strings.TrimSpace(id)
+	it, err := h.board.Item(ctx, strings.ToLower(id))
+	// Fall back to a human reference (PREFIX-N): the prefix names the workspace,
+	// the number the item within it. Bare numbers aren't accepted here — without
+	// a prefix there's no workspace to scope them to.
+	if errors.Is(err, store.ErrItemNotFound) {
+		if prefix, num, ok := parseItemRef(id); ok && prefix != "" {
+			if ws, werr := h.workspaces.ByPrefix(ctx, prefix); werr == nil {
+				it, err = h.board.ItemByRef(ctx, ws.ID, num)
+			}
+		}
+	}
 	if err != nil {
 		return store.Item{}, mcpErr(err)
 	}
@@ -753,7 +777,7 @@ func (h *handlers) mcpItemResult(ctx context.Context, it store.Item) (*mcp.CallT
 	if err != nil {
 		return nil, mcpItem{}, mcpErr(err)
 	}
-	v := toMCPItem(it, statusName, userName)
+	v := toMCPItem(it, statusName, userName, h.prefixFor(ctx, it.WorkspaceID))
 	v.URL = h.itemURL(h.slugFor(ctx, it.WorkspaceID), it.ID)
 	return &mcp.CallToolResult{}, v, nil
 }

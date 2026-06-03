@@ -17,8 +17,9 @@ var (
 	ErrAPITokenNotFound   = errors.New("store: api token not found")
 	ErrChallengeNotFound  = errors.New("store: challenge not found")
 	ErrWorkspaceNotFound  = errors.New("store: workspace not found")
-	ErrWorkspaceNameTaken = errors.New("store: workspace name already taken")
-	ErrWorkspaceSlugTaken = errors.New("store: workspace slug already taken")
+	ErrWorkspaceNameTaken   = errors.New("store: workspace name already taken")
+	ErrWorkspaceSlugTaken   = errors.New("store: workspace slug already taken")
+	ErrWorkspacePrefixTaken = errors.New("store: workspace item prefix already taken")
 	ErrStatusNotFound     = errors.New("store: status not found")
 	ErrItemNotFound       = errors.New("store: item not found")
 	ErrMCPPromptNotFound  = errors.New("store: mcp prompt not found")
@@ -177,8 +178,12 @@ type Workspace struct {
 	ID        string
 	Slug      string
 	Name      string
-	CreatedBy string
-	CreatedAt time.Time
+	// ItemPrefix is the editable, globally-unique label for this workspace's
+	// human-readable item ids (prefix-N, e.g. ACTA-12). Empty means items show
+	// as bare numbers until a prefix is set.
+	ItemPrefix string
+	CreatedBy  string
+	CreatedAt  time.Time
 }
 
 // Status is a board lane: a named, ordered position within a workspace that
@@ -200,7 +205,10 @@ type Status struct {
 // optional owner ("" = unassigned); ArchivedAt is nil for active items and set
 // when an item is archived (soft-deleted — hidden from the board, restorable).
 type Item struct {
-	ID          string
+	ID string
+	// RefNum is the per-workspace sequence number behind the human-readable id
+	// (prefix-RefNum, e.g. ACTA-12). Immutable once assigned at item creation.
+	RefNum      int
 	WorkspaceID string
 	StatusID    string
 	ParentID    string // "" for a top-level (board) item; otherwise its parent
@@ -320,17 +328,20 @@ type Store interface {
 	CreateChallenge(ctx context.Context, c Challenge) error
 	ConsumeChallenge(ctx context.Context, id string) (Challenge, error)
 
-	// CreateWorkspace persists w (caller supplies a unique slug and name);
-	// it returns ErrWorkspaceNameTaken / ErrWorkspaceSlugTaken on collision.
-	// RenameWorkspace changes only the name. UpdateWorkspace sets both the name
-	// and the slug (the settings editor can re-slug a workspace); it returns the
-	// same collision sentinels.
+	// CreateWorkspace persists w (caller supplies a unique slug, name, and item
+	// prefix); it returns ErrWorkspaceNameTaken / ErrWorkspaceSlugTaken /
+	// ErrWorkspacePrefixTaken on collision. RenameWorkspace changes only the
+	// name. UpdateWorkspace sets the name, slug, and item prefix (the settings
+	// editor); it returns the same collision sentinels. WorkspaceByPrefix
+	// resolves a workspace by its (case-insensitive) item prefix, for turning a
+	// human id like ACTA-12 back into a workspace.
 	CreateWorkspace(ctx context.Context, w Workspace) (Workspace, error)
 	ListWorkspaces(ctx context.Context) ([]Workspace, error)
 	WorkspaceByID(ctx context.Context, id string) (Workspace, error)
 	WorkspaceBySlug(ctx context.Context, slug string) (Workspace, error)
+	WorkspaceByPrefix(ctx context.Context, prefix string) (Workspace, error)
 	RenameWorkspace(ctx context.Context, id, name string) error
-	UpdateWorkspace(ctx context.Context, id, name, slug string) error
+	UpdateWorkspace(ctx context.Context, id, name, slug, prefix string) error
 	DeleteWorkspace(ctx context.Context, id string) error
 	CountWorkspaces(ctx context.Context) (int, error)
 
@@ -358,6 +369,9 @@ type Store interface {
 	ItemsByStatus(ctx context.Context, statusID string) ([]Item, error)
 	ArchivedItemsByWorkspace(ctx context.Context, workspaceID string) ([]Item, error)
 	ItemByID(ctx context.Context, id string) (Item, error)
+	// ItemByRef resolves an item by its per-workspace ref number (the N in a
+	// human id like ACTA-12); returns ErrItemNotFound if none matches.
+	ItemByRef(ctx context.Context, workspaceID string, refNum int) (Item, error)
 	// ChildrenByParent returns an item's direct children ordered by position;
 	// includeArchived false omits archived ones (the modal list), true keeps
 	// them (cascade walks).

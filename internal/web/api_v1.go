@@ -18,6 +18,7 @@ import (
 // and "jack/deploy-bot", not uuids). Items themselves stay id-addressed.
 type itemAPI struct {
 	ID        string    `json:"id"`
+	Ref       string    `json:"ref,omitempty"` // human id, e.g. "ACTA-12" (also accepted in the path)
 	Title     string    `json:"title"`
 	Status    string    `json:"status"`
 	Assignee  string    `json:"assignee,omitempty"`
@@ -89,7 +90,7 @@ func (h *handlers) apiListItems(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]itemAPI, len(items))
 	for i, it := range items {
-		v := toItemAPI(it, statusName, userName)
+		v := toItemAPI(it, statusName, userName, ws.ItemPrefix)
 		if c, ok := counts[it.ID]; ok && c.Total > 0 {
 			v.SubtasksDone, v.SubtasksTotal = c.Done, c.Total
 		}
@@ -128,7 +129,7 @@ func (h *handlers) apiItem(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item, err := h.board.Item(r.Context(), strings.ToLower(r.PathValue("id")))
+	item, err := h.resolveItem(r.Context(), ws, r.PathValue("id"))
 	if errors.Is(err, store.ErrItemNotFound) || (err == nil && item.WorkspaceID != ws.ID) {
 		apiError(w, http.StatusNotFound, "item not found")
 		return
@@ -147,9 +148,9 @@ func (h *handlers) apiItem(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	view := toItemAPI(item, statusName, userName)
+	view := toItemAPI(item, statusName, userName, ws.ItemPrefix)
 	for _, c := range children {
-		view.Subtasks = append(view.Subtasks, toItemAPI(c, statusName, userName))
+		view.Subtasks = append(view.Subtasks, toItemAPI(c, statusName, userName, ws.ItemPrefix))
 	}
 	writeJSON(w, http.StatusOK, view)
 }
@@ -159,7 +160,7 @@ func (h *handlers) apiCreateSubtask(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	parent, err := h.board.Item(r.Context(), strings.ToLower(r.PathValue("id")))
+	parent, err := h.resolveItem(r.Context(), ws, r.PathValue("id"))
 	if errors.Is(err, store.ErrItemNotFound) || (err == nil && parent.WorkspaceID != ws.ID) {
 		apiError(w, http.StatusNotFound, "item not found")
 		return
@@ -198,7 +199,7 @@ func (h *handlers) apiTransition(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusBadRequest, "status required")
 		return
 	}
-	item, err := h.board.Item(r.Context(), strings.ToLower(r.PathValue("id")))
+	item, err := h.resolveItem(r.Context(), ws, r.PathValue("id"))
 	if errors.Is(err, store.ErrItemNotFound) || (err == nil && item.WorkspaceID != ws.ID) {
 		apiError(w, http.StatusNotFound, "item not found")
 		return
@@ -324,12 +325,13 @@ func (h *handlers) writeItem(w http.ResponseWriter, ctx context.Context, ws stor
 		apiError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	writeJSON(w, status, toItemAPI(it, statusName, userName))
+	writeJSON(w, status, toItemAPI(it, statusName, userName, ws.ItemPrefix))
 }
 
-func toItemAPI(it store.Item, statusName, userName map[string]string) itemAPI {
+func toItemAPI(it store.Item, statusName, userName map[string]string, prefix string) itemAPI {
 	return itemAPI{
 		ID:        it.ID,
+		Ref:       refID(prefix, it.RefNum),
 		Title:     it.Title,
 		Status:    statusName[it.StatusID],
 		Assignee:  userName[it.AssigneeID],

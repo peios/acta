@@ -78,6 +78,7 @@ func (m milestoneColumn) ColorVar() template.CSS { return colorVar(m.Color) }
 
 type cardView struct {
 	Item       store.Item
+	RefID      string // human id, e.g. "ACTA-12"
 	Subtasks   store.SubtaskCount
 	StatusName string // the card's status name (hover tooltip / accessible label)
 	Color      string // the card's lane colour, for the left bar
@@ -94,9 +95,9 @@ type cardView struct {
 
 // buildCard assembles a card's view model, resolving its assignee (if any) to an
 // avatar. users maps principal id -> user for the avatar's name/initials/colour.
-func buildCard(it store.Item, counts map[string]store.SubtaskCount, st store.Status, f boardFilter, users map[string]store.User) cardView {
+func buildCard(it store.Item, counts map[string]store.SubtaskCount, st store.Status, f boardFilter, users map[string]store.User, prefix string) cardView {
 	cv := cardView{
-		Item: it, Subtasks: counts[it.ID], StatusName: st.Name,
+		Item: it, RefID: refID(prefix, it.RefNum), Subtasks: counts[it.ID], StatusName: st.Name,
 		Color: board.ColorFor(st), Hidden: f.cardHidden(it),
 	}
 	if it.AssigneeID != "" {
@@ -225,14 +226,14 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 		ViewMine:         filter.assignees["me"] && len(filter.assignees) == 1 && len(filter.statuses) == 0,
 	}
 	if mode == "milestone" {
-		cols, err := h.milestoneColumns(r.Context(), items, statuses, counts, filter, userByID)
+		cols, err := h.milestoneColumns(r.Context(), items, statuses, counts, filter, userByID, ws.ItemPrefix)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 		data.MilestoneColumns = cols
 	} else {
-		data.Lanes = groupLanes(statuses, items, counts, filter, userByID)
+		data.Lanes = groupLanes(statuses, items, counts, filter, userByID, ws.ItemPrefix)
 	}
 	// A ?item=<id> deep link opens that item's modal (server-rendered, so it
 	// works on refresh and with JS off).
@@ -251,13 +252,13 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 
 // milestoneColumns builds Milestone mode: a Backlog column of root
 // non-milestones, then one column per root milestone holding its children.
-func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, statuses []store.Status, counts map[string]store.SubtaskCount, filter boardFilter, users map[string]store.User) ([]milestoneColumn, error) {
+func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, statuses []store.Status, counts map[string]store.SubtaskCount, filter boardFilter, users map[string]store.User, prefix string) ([]milestoneColumn, error) {
 	statusByID := make(map[string]store.Status, len(statuses))
 	for _, s := range statuses {
 		statusByID[s.ID] = s
 	}
 	card := func(it store.Item) cardView {
-		return buildCard(it, counts, statusByID[it.StatusID], filter, users)
+		return buildCard(it, counts, statusByID[it.StatusID], filter, users, prefix)
 	}
 	backlog := milestoneColumn{Title: "Backlog"}
 	var milestones []store.Item
@@ -293,14 +294,14 @@ func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, sta
 
 // groupLanes buckets items under their status, attaching each item's subtask
 // progress. items arrives ordered by position, so each lane stays in order.
-func groupLanes(statuses []store.Status, items []store.Item, counts map[string]store.SubtaskCount, filter boardFilter, users map[string]store.User) []lane {
+func groupLanes(statuses []store.Status, items []store.Item, counts map[string]store.SubtaskCount, filter boardFilter, users map[string]store.User, prefix string) []lane {
 	byID := make(map[string]store.Status, len(statuses))
 	for _, st := range statuses {
 		byID[st.ID] = st
 	}
 	byStatus := map[string][]cardView{}
 	for _, it := range items {
-		byStatus[it.StatusID] = append(byStatus[it.StatusID], buildCard(it, counts, byID[it.StatusID], filter, users))
+		byStatus[it.StatusID] = append(byStatus[it.StatusID], buildCard(it, counts, byID[it.StatusID], filter, users, prefix))
 	}
 	lanes := make([]lane, len(statuses))
 	for i, st := range statuses {
@@ -320,6 +321,7 @@ type statusDTO struct {
 
 type itemDTO struct {
 	ID       string `json:"id"`
+	Ref      string `json:"ref"` // human id, e.g. "ACTA-12", so the client can paint it
 	StatusID string `json:"status_id"`
 	Title    string `json:"title"`
 	Position int    `json:"position"`
@@ -329,7 +331,10 @@ type itemDTO struct {
 // itemDTOFor builds the response for a freshly created item, resolving its lane
 // colour so board.js can render the card's left bar without a reload.
 func (h *handlers) itemDTOFor(ctx context.Context, it store.Item) itemDTO {
-	dto := itemDTO{ID: it.ID, StatusID: it.StatusID, Title: it.Title, Position: it.Position}
+	dto := itemDTO{
+		ID: it.ID, Ref: refID(h.prefixFor(ctx, it.WorkspaceID), it.RefNum),
+		StatusID: it.StatusID, Title: it.Title, Position: it.Position,
+	}
 	if st, err := h.board.StatusByID(ctx, it.StatusID); err == nil {
 		dto.Color = board.ColorFor(st)
 	}

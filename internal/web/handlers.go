@@ -420,9 +420,11 @@ func (h *handlers) workspaceRename(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	// One form drives the settings modal: "name" is the display label and the
-	// optional "slug" re-slugs the workspace (blank or unchanged keeps the URL).
-	err := h.workspaces.Update(r.Context(), r.PathValue("id"), r.PostFormValue("name"), r.PostFormValue("slug"))
+	// One form drives the settings modal: "name" is the display label, the
+	// optional "slug" re-slugs the workspace (blank/unchanged keeps the URL), and
+	// "item_prefix" relabels its human ids (blank/unchanged keeps the prefix).
+	err := h.workspaces.Update(r.Context(), r.PathValue("id"),
+		r.PostFormValue("name"), r.PostFormValue("slug"), r.PostFormValue("item_prefix"))
 	if err != nil && !errors.Is(err, store.ErrWorkspaceNotFound) {
 		redirectWorkspaceErr(w, r, err)
 		return
@@ -457,6 +459,10 @@ func redirectWorkspaceErr(w http.ResponseWriter, r *http.Request, err error) {
 		code = "slug_reserved"
 	case errors.Is(err, store.ErrWorkspaceSlugTaken):
 		code = "slug_taken"
+	case errors.Is(err, workspace.ErrInvalidPrefix):
+		code = "invalid_prefix"
+	case errors.Is(err, store.ErrWorkspacePrefixTaken):
+		code = "prefix_taken"
 	default:
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -476,6 +482,10 @@ func workspaceError(code string) string {
 		return "That URL is reserved — pick another slug."
 	case "slug_taken":
 		return "A workspace already uses that URL slug."
+	case "invalid_prefix":
+		return "Enter an ID prefix with at least one letter or number."
+	case "prefix_taken":
+		return "Another workspace already uses that ID prefix."
 	case "last":
 		return "You can't delete your only workspace."
 	default:

@@ -1,14 +1,15 @@
 {{define "item-modal"}}
 <div class="modal-backdrop" data-modal data-item-id="{{.Item.ID}}">
   <div class="modal" role="dialog" aria-modal="true" aria-label="Item detail">
+    {{if .ParentID}}<a class="modal-parent" href="?item={{.ParentID}}" data-parent-link="{{.ParentID}}">&lsaquo; {{.ParentTitle}}</a>{{end}}
     <header class="modal-head">
+      <span class="modal-ref" title="Item id">{{.RefID}}</span>
       <input class="modal-title" value="{{.Item.Title}}" maxlength="200" aria-label="Title">
       <a class="modal-close" href="/{{.Slug}}" data-modal-close aria-label="Close">×</a>
     </header>
 
     <div class="modal-grid">
       <div class="modal-main">
-        {{if .ParentID}}<a class="modal-parent" href="?item={{.ParentID}}" data-parent-link="{{.ParentID}}">&lsaquo; {{.ParentTitle}}</a>{{end}}
         {{if .Archived}}<p class="modal-archived-note">This item is archived.</p>{{end}}
 
         <div class="modal-field" data-desc-field>

@@ -1,8 +1,11 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/peios/acta/internal/identity"
@@ -15,6 +18,7 @@ type modalView struct {
 	Slug           string
 	CSRFToken      string
 	Item           store.Item
+	RefID          string // human id, e.g. "ACTA-12"
 	Desc           descView // the rendered, collapsible description
 	Statuses       []store.Status
 	Assignables    []store.User // assignee-picker options: humans + your agents (+ current assignee)
@@ -59,13 +63,64 @@ type childView struct {
 	StatusName string
 }
 
+// parseItemRef parses a human item reference: "PREFIX-N" (prefix + number, e.g.
+// ACTA-12) or a bare "N". It returns the prefix ("" for a bare number), the
+// number, and ok=false when the string isn't a reference at all.
+func parseItemRef(s string) (prefix string, num int, ok bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", 0, false
+	}
+	if i := strings.LastIndexByte(s, '-'); i > 0 {
+		p, rest := s[:i], s[i+1:]
+		if n, err := strconv.Atoi(rest); err == nil && n > 0 && isAlnum(p) {
+			return p, n, true
+		}
+		return "", 0, false
+	}
+	if n, err := strconv.Atoi(s); err == nil && n > 0 {
+		return "", n, true
+	}
+	return "", 0, false
+}
+
+func isAlnum(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')) {
+			return false
+		}
+	}
+	return true
+}
+
+// resolveItem turns a ?item= / path value into an item within ws. It tries the
+// opaque id first, then a human reference (PREFIX-N or bare N) scoped to the
+// workspace — a present prefix must match this workspace's. Returns
+// ErrItemNotFound when nothing matches.
+func (h *handlers) resolveItem(ctx context.Context, ws store.Workspace, ref string) (store.Item, error) {
+	ref = strings.TrimSpace(ref)
+	switch it, err := h.board.Item(ctx, strings.ToLower(ref)); {
+	case err == nil:
+		return it, nil
+	case !errors.Is(err, store.ErrItemNotFound):
+		return store.Item{}, err
+	}
+	if prefix, num, ok := parseItemRef(ref); ok && (prefix == "" || strings.EqualFold(prefix, ws.ItemPrefix)) {
+		return h.board.ItemByRef(ctx, ws.ID, num)
+	}
+	return store.Item{}, store.ErrItemNotFound
+}
+
 // buildModal assembles the modal view for an item, resolving the assignee and
 // comment authors to display names. found is false (no error) when the item
 // doesn't exist or belongs to another workspace — ?item= is scoped to the
 // workspace whose page you're on.
 func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string) (modalView, bool, error) {
 	ctx := r.Context()
-	item, err := h.board.Item(ctx, itemID)
+	item, err := h.resolveItem(ctx, ws, itemID)
 	if errors.Is(err, store.ErrItemNotFound) {
 		return modalView{}, false, nil
 	}
@@ -75,6 +130,7 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 	if item.WorkspaceID != ws.ID {
 		return modalView{}, false, nil
 	}
+	itemID = item.ID // the input may have been a human ref; use the opaque id below
 	statuses, err := h.board.Statuses(ctx, ws.ID)
 	if err != nil {
 		return modalView{}, false, err
@@ -170,6 +226,7 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		Slug:           ws.Slug,
 		CSRFToken:      csrfTokenFrom(ctx),
 		Item:           item,
+		RefID:          refID(ws.ItemPrefix, item.RefNum),
 		Desc:           renderDescription(item.Description),
 		Statuses:       statuses,
 		Assignables:    assignables,

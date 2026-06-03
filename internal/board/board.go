@@ -345,6 +345,12 @@ func (s *Service) Item(ctx context.Context, id string) (store.Item, error) {
 	return s.store.ItemByID(ctx, id)
 }
 
+// ItemByRef resolves an item by its per-workspace ref number (the N in a human
+// id like ACTA-12).
+func (s *Service) ItemByRef(ctx context.Context, workspaceID string, refNum int) (store.Item, error) {
+	return s.store.ItemByRef(ctx, workspaceID, refNum)
+}
+
 // Users lists every account, for the assignee picker (there's no membership
 // model yet, so any user can be assigned).
 func (s *Service) Users(ctx context.Context) ([]store.User, error) {

@@ -14,9 +14,12 @@ func TestBuildCardAssigneeAvatar(t *testing.T) {
 	}
 
 	// assigned to a human -> avatar with initials + a colour, not an agent
-	cv := buildCard(store.Item{ID: "i1", StatusID: "s1", AssigneeID: "u1"}, nil, st, boardFilter{}, users)
+	cv := buildCard(store.Item{ID: "i1", RefNum: 7, StatusID: "s1", AssigneeID: "u1"}, nil, st, boardFilter{}, users, "ACME")
 	if !cv.HasAssignee {
 		t.Fatal("want HasAssignee for an assigned item")
+	}
+	if cv.RefID != "ACME-7" {
+		t.Errorf("RefID: want ACME-7, got %q", cv.RefID)
 	}
 	if cv.AvatarText != "JP" {
 		t.Errorf("initials: want JP, got %q", cv.AvatarText)
@@ -29,17 +32,17 @@ func TestBuildCardAssigneeAvatar(t *testing.T) {
 	}
 
 	// assigned to an agent -> IsAgent true (square avatar)
-	if cvA := buildCard(store.Item{ID: "i2", StatusID: "s1", AssigneeID: "a1"}, nil, st, boardFilter{}, users); !cvA.IsAgent {
+	if cvA := buildCard(store.Item{ID: "i2", StatusID: "s1", AssigneeID: "a1"}, nil, st, boardFilter{}, users, "ACME"); !cvA.IsAgent {
 		t.Error("want IsAgent for an agent assignee")
 	}
 
 	// unassigned -> no avatar
-	if cv0 := buildCard(store.Item{ID: "i3", StatusID: "s1"}, nil, st, boardFilter{}, users); cv0.HasAssignee {
+	if cv0 := buildCard(store.Item{ID: "i3", StatusID: "s1"}, nil, st, boardFilter{}, users, "ACME"); cv0.HasAssignee {
 		t.Error("unassigned item must not have an avatar")
 	}
 
 	// assignee not in the users map -> no avatar (don't render a broken chip)
-	if cvX := buildCard(store.Item{ID: "i4", StatusID: "s1", AssigneeID: "ghost"}, nil, st, boardFilter{}, users); cvX.HasAssignee {
+	if cvX := buildCard(store.Item{ID: "i4", StatusID: "s1", AssigneeID: "ghost"}, nil, st, boardFilter{}, users, "ACME"); cvX.HasAssignee {
 		t.Error("unresolvable assignee must not have an avatar")
 	}
 }

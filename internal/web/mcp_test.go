@@ -14,6 +14,7 @@ import (
 // Test-local mirrors of the (unexported) MCP output shapes.
 type mcpItemT struct {
 	ID          string        `json:"id"`
+	Ref         string        `json:"ref"`
 	Title       string        `json:"title"`
 	Status      string        `json:"status"`
 	Assignee    string        `json:"assignee"`
@@ -438,5 +439,29 @@ func TestMCPNotifications(t *testing.T) {
 	// Marking an unknown id is a no-op, not an error.
 	if mk := callTool[mcpMarkReadT](t, sess, "mark_notification_read", map[string]any{"id": "zzzzzzzz"}); mk.Unread != 0 {
 		t.Fatalf("mark unknown id unread = %d, want 0", mk.Unread)
+	}
+}
+
+// TestMCPItemHumanID checks human ids over MCP: create_item returns the ref,
+// and get_item resolves an item by "PREFIX-N" (case-insensitive) and by the
+// opaque id. The seeded "general" workspace's prefix is GEN.
+func TestMCPItemHumanID(t *testing.T) {
+	base, client := newTestServer(t)
+	csrf := signIn(t, client, base)
+	token := mintToken(t, client, base, csrf)
+	sess := mcpConnect(t, base, token)
+
+	created := callTool[mcpItemT](t, sess, "create_item", map[string]any{
+		"workspace": "general", "title": "Ship it",
+	})
+	if created.Ref != "GEN-1" {
+		t.Fatalf("create_item ref = %q, want GEN-1", created.Ref)
+	}
+
+	for _, ref := range []string{"GEN-1", "gen-1", created.ID} {
+		got := callTool[mcpItemT](t, sess, "get_item", map[string]any{"id": ref})
+		if got.ID != created.ID || got.Ref != "GEN-1" {
+			t.Errorf("get_item(%q) = id %q ref %q, want the GEN-1 item", ref, got.ID, got.Ref)
+		}
 	}
 }

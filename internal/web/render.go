@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strconv"
 )
 
 //go:embed templates/*.html
@@ -50,7 +51,17 @@ func hashStatic() string {
 // assetURL fingerprints a static asset path for cache-busting.
 func assetURL(path string) string { return path + "?v=" + assetVersion }
 
-var funcMap = template.FuncMap{"asset": assetURL}
+// refID formats a human-readable item id from a workspace prefix and the item's
+// per-workspace number, e.g. ("ACTA", 12) -> "ACTA-12". A workspace with no
+// prefix shows a bare "#12".
+func refID(prefix string, num int) string {
+	if prefix == "" {
+		return "#" + strconv.Itoa(num)
+	}
+	return prefix + "-" + strconv.Itoa(num)
+}
+
+var funcMap = template.FuncMap{"asset": assetURL, "ref": refID}
 
 // staticHandler serves the embedded /static assets. They're same-origin (so the
 // default-src 'self' CSP already permits them) and addressed with a content

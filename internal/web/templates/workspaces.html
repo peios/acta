@@ -68,6 +68,13 @@
           </div>
           <p class="ws-field-hint">The workspace's web address. Changing it moves the board and breaks existing links to the old slug.</p>
         </div>
+        <div class="ws-field">
+          <label class="ws-field-label" for="ws-prefix-{{.ID}}">Item ID prefix</label>
+          <div class="input-wrap" style="max-width: 11rem;">
+            <input class="input" id="ws-prefix-{{.ID}}" name="item_prefix" value="{{.ItemPrefix}}" maxlength="10" autocomplete="off" spellcheck="false">
+          </div>
+          <p class="ws-field-hint">Leads every item id here, e.g. <code>{{ref .ItemPrefix 12}}</code>. Letters and digits only, unique across workspaces.</p>
+        </div>
         <div class="ws-modal-actions">
           <a class="btn-secondary" href="#" style="width: auto;">Cancel</a>
           <button class="btn-primary" type="submit" style="width: auto;">Save changes</button>

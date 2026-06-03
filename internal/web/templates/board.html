@@ -7,13 +7,12 @@
   <span class="item-title">{{.Item.Title}}</span>
   {{if .Item.IsMilestone}}<span class="item-ms" title="Milestone">◆</span>{{end}}
   <button class="item-del" type="button" title="Archive" aria-label="Archive item">×</button>
-  {{if or .Subtasks.Total .HasAssignee}}
   <div class="item-meta">
+    <span class="item-ref">{{.RefID}}</span>
     {{if .Subtasks.Total}}<span class="item-sub" title="Subtasks done">{{.Subtasks.Done}}/{{.Subtasks.Total}}</span>{{end}}
     <span class="meta-spacer"></span>
     {{if .HasAssignee}}<span class="avatar sm{{if .IsAgent}} bot{{end}}" style="{{.AvatarStyle}}" title="{{.AssigneeName}}">{{.AvatarText}}</span>{{end}}
   </div>
-  {{end}}
 </article>
 {{end}}
 

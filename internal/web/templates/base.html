@@ -431,6 +431,7 @@
   .item-ms { position: absolute; top: .5rem; right: .5rem; color: var(--lane-color, var(--accent)); font-size: .72rem; line-height: 1; transition: opacity .12s; }
   .item-meta { display: flex; align-items: center; gap: 8px; margin-top: 9px; }
   .meta-spacer { flex: 1; }
+  .item-ref { font-family: var(--mono); font-size: 10.5px; letter-spacing: .02em; color: var(--faint); }
   .item-sub { font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
 
   .item-add { padding: 0; margin: 0; }
@@ -566,6 +567,7 @@
   .modal-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-start; justify-content: center; padding: 4rem 1rem; overflow-y: auto; background: rgba(4,5,8,.66); backdrop-filter: blur(2px); }
   .modal { width: min(52rem, 100%); background: var(--card-top); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 40px 80px -30px rgba(0,0,0,.9); display: flex; flex-direction: column; }
   .modal-head { display: flex; align-items: center; gap: .8rem; padding: 1rem 1.1rem; border-bottom: 1px solid var(--border-soft); }
+  .modal-ref { flex: none; font-family: var(--mono); font-size: .8rem; color: var(--faint); letter-spacing: .02em; }
   .modal-title { flex: 1; min-width: 0; background: transparent; border: 1px solid transparent; border-radius: 6px; color: var(--text); font: inherit; font-size: 1.1rem; font-weight: 650; letter-spacing: -.01em; padding: .25rem .4rem; }
   .modal-title:hover { border-color: var(--border-soft); }
   .modal-title:focus { outline: none; border-color: var(--accent); background: var(--field); }
@@ -642,7 +644,7 @@
   .history-when { flex: none; color: var(--faint); font-size: .72rem; font-variant-numeric: tabular-nums; }
 
   /* subtasks */
-  .modal-parent { justify-self: start; color: var(--muted); text-decoration: none; font-size: .85rem; }
+  .modal-parent { align-self: start; padding: .7rem 1.1rem .1rem; color: var(--muted); text-decoration: none; font-size: .82rem; }
   .modal-parent:hover { color: var(--accent-hi); }
   .modal-subtasks { display: grid; gap: .5rem; }
   .subtask-list { display: grid; }
@@ -750,10 +752,6 @@
         Home
       </a>
       {{if .Workspace}}
-      <a class="nav-item" href="/{{.Workspace.Slug}}?assignee=me">
-        <svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"/><path d="M3.5 13a4.5 4.5 0 0 1 9 0"/></svg>
-        My items
-      </a>
       <a class="nav-item" href="/{{.Workspace.Slug}}/activity">
         <svg class="ico" viewBox="0 0 16 16"><path d="M1.5 8h3l1.5-4 3 8 1.5-4h4"/></svg>
         Activity

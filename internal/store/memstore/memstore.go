@@ -22,6 +22,7 @@ type Store struct {
 	credentials map[string]store.Credential
 	challenges  map[string]store.Challenge
 	workspaces  map[string]store.Workspace
+	itemSeq     map[string]int // per-workspace monotonic counter for item ref numbers
 	statuses    map[string]store.Status
 	items       map[string]store.Item
 	comments    map[string]store.Comment
@@ -39,6 +40,7 @@ func New() *Store {
 		credentials: map[string]store.Credential{},
 		challenges:  map[string]store.Challenge{},
 		workspaces:  map[string]store.Workspace{},
+		itemSeq:     map[string]int{},
 		statuses:    map[string]store.Status{},
 		items:       map[string]store.Item{},
 		comments:    map[string]store.Comment{},
@@ -431,6 +433,9 @@ func (s *Store) CreateWorkspace(_ context.Context, w store.Workspace) (store.Wor
 		if ex.Slug == w.Slug {
 			return store.Workspace{}, store.ErrWorkspaceSlugTaken
 		}
+		if w.ItemPrefix != "" && strings.EqualFold(ex.ItemPrefix, w.ItemPrefix) {
+			return store.Workspace{}, store.ErrWorkspacePrefixTaken
+		}
 	}
 	if w.ID == "" {
 		w.ID = newID()
@@ -491,7 +496,7 @@ func (s *Store) RenameWorkspace(_ context.Context, id, name string) error {
 	return nil
 }
 
-func (s *Store) UpdateWorkspace(_ context.Context, id, name, slug string) error {
+func (s *Store) UpdateWorkspace(_ context.Context, id, name, slug, prefix string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	w, ok := s.workspaces[id]
@@ -508,11 +513,26 @@ func (s *Store) UpdateWorkspace(_ context.Context, id, name, slug string) error 
 		if ex.Slug == slug {
 			return store.ErrWorkspaceSlugTaken
 		}
+		if prefix != "" && strings.EqualFold(ex.ItemPrefix, prefix) {
+			return store.ErrWorkspacePrefixTaken
+		}
 	}
 	w.Name = name
 	w.Slug = slug
+	w.ItemPrefix = prefix
 	s.workspaces[id] = w
 	return nil
+}
+
+func (s *Store) WorkspaceByPrefix(_ context.Context, prefix string) (store.Workspace, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, w := range s.workspaces {
+		if w.ItemPrefix != "" && strings.EqualFold(w.ItemPrefix, prefix) {
+			return w, nil
+		}
+	}
+	return store.Workspace{}, store.ErrWorkspaceNotFound
 }
 
 func (s *Store) DeleteWorkspace(_ context.Context, id string) error {
@@ -626,8 +646,21 @@ func (s *Store) CreateItem(_ context.Context, it store.Item) (store.Item, error)
 	if it.CreatedAt.IsZero() {
 		it.CreatedAt = time.Now()
 	}
+	s.itemSeq[it.WorkspaceID]++
+	it.RefNum = s.itemSeq[it.WorkspaceID]
 	s.items[it.ID] = it
 	return it, nil
+}
+
+func (s *Store) ItemByRef(_ context.Context, workspaceID string, refNum int) (store.Item, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, it := range s.items {
+		if it.WorkspaceID == workspaceID && it.RefNum == refNum {
+			return it, nil
+		}
+	}
+	return store.Item{}, store.ErrItemNotFound
 }
 
 func (s *Store) ItemsByWorkspace(_ context.Context, workspaceID string) ([]store.Item, error) {
