@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"hash/fnv"
 	"html/template"
 	"io"
 	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/httpx"
@@ -28,7 +30,9 @@ type boardData struct {
 	StatusSelected   int           // count badge on the Status trigger
 	Assignees        assigneeFacet // the assignee facet (hierarchical)
 	AssigneeSelected int           // count badge on the Assignee trigger
+	FilterCount      int           // status + assignee selections, for the Filter button badge
 	FilterActive     bool          // any facet currently narrowing the board
+	ViewMine         bool          // the active view is "assigned to me" (My items tab)
 	Modal            *modalView    // set when ?item=<id> resolves within this workspace
 }
 
@@ -78,6 +82,68 @@ type cardView struct {
 	StatusName string // the card's status name (hover tooltip / accessible label)
 	Color      string // the card's lane colour, for the left bar
 	Hidden     bool   // filtered out by status/assignee — kept in the DOM, CSS-hidden
+
+	// Assignee avatar (resolved from the item's AssigneeID). HasAssignee gates
+	// the meta row; AvatarText is the initials, AvatarStyle the colour.
+	HasAssignee  bool
+	IsAgent      bool
+	AssigneeName string
+	AvatarText   string
+	AvatarStyle  template.CSS
+}
+
+// buildCard assembles a card's view model, resolving its assignee (if any) to an
+// avatar. users maps principal id -> user for the avatar's name/initials/colour.
+func buildCard(it store.Item, counts map[string]store.SubtaskCount, st store.Status, f boardFilter, users map[string]store.User) cardView {
+	cv := cardView{
+		Item: it, Subtasks: counts[it.ID], StatusName: st.Name,
+		Color: board.ColorFor(st), Hidden: f.cardHidden(it),
+	}
+	if it.AssigneeID != "" {
+		if u, ok := users[it.AssigneeID]; ok {
+			name := displayName(u)
+			cv.HasAssignee = true
+			cv.IsAgent = u.AgentOfID != ""
+			cv.AssigneeName = name
+			cv.AvatarText = initials(name)
+			cv.AvatarStyle = avatarStyle(u.ID)
+		}
+	}
+	return cv
+}
+
+// initials takes the first letters of the first and last words (or the first two
+// letters of a single word) for an avatar label.
+func initials(name string) string {
+	fields := strings.Fields(name)
+	if len(fields) == 0 {
+		return "?"
+	}
+	if len(fields) == 1 {
+		r := []rune(fields[0])
+		if len(r) >= 2 {
+			return strings.ToUpper(string(r[:2]))
+		}
+		return strings.ToUpper(string(r))
+	}
+	first := []rune(fields[0])
+	last := []rune(fields[len(fields)-1])
+	return strings.ToUpper(string(first[0]) + string(last[0]))
+}
+
+// avatarPalette is a small set of pleasant avatar gradients; a principal id
+// hashes to a stable one so the same person is always the same colour.
+var avatarPalette = [][2]string{
+	{"#5b6cf0", "#4d7cfe"}, {"#23c3b3", "#16b8a6"}, {"#a78bff", "#8b6cf0"},
+	{"#f2628c", "#e0517b"}, {"#e6a04b", "#d98a2b"}, {"#3ecf8e", "#2bb673"},
+	{"#3fc7d4", "#2ba8b8"}, {"#ff8a5b", "#f26d3d"},
+}
+
+func avatarStyle(seed string) template.CSS {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(seed))
+	p := avatarPalette[int(h.Sum32())%len(avatarPalette)]
+	return template.CSS("background:linear-gradient(145deg," + p[0] + "," + p[1] + ")")
 }
 
 // ColorVar is the card's lane colour as a template-safe `--lane-color`
@@ -140,6 +206,10 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	userByID := make(map[string]store.User, len(users))
+	for _, u := range users {
+		userByID[u.ID] = u
+	}
 
 	data := boardData{
 		chrome:           ch,
@@ -150,17 +220,19 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 		StatusSelected:   len(filter.statuses),
 		Assignees:        assigneeFacetFrom(users, filter),
 		AssigneeSelected: len(filter.assignees),
+		FilterCount:      len(filter.statuses) + len(filter.assignees),
 		FilterActive:     filter.active(),
+		ViewMine:         filter.assignees["me"] && len(filter.assignees) == 1 && len(filter.statuses) == 0,
 	}
 	if mode == "milestone" {
-		cols, err := h.milestoneColumns(r.Context(), items, statuses, counts, filter)
+		cols, err := h.milestoneColumns(r.Context(), items, statuses, counts, filter, userByID)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 		data.MilestoneColumns = cols
 	} else {
-		data.Lanes = groupLanes(statuses, items, counts, filter)
+		data.Lanes = groupLanes(statuses, items, counts, filter, userByID)
 	}
 	// A ?item=<id> deep link opens that item's modal (server-rendered, so it
 	// works on refresh and with JS off).
@@ -179,14 +251,13 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 
 // milestoneColumns builds Milestone mode: a Backlog column of root
 // non-milestones, then one column per root milestone holding its children.
-func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, statuses []store.Status, counts map[string]store.SubtaskCount, filter boardFilter) ([]milestoneColumn, error) {
+func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, statuses []store.Status, counts map[string]store.SubtaskCount, filter boardFilter, users map[string]store.User) ([]milestoneColumn, error) {
 	statusByID := make(map[string]store.Status, len(statuses))
 	for _, s := range statuses {
 		statusByID[s.ID] = s
 	}
 	card := func(it store.Item) cardView {
-		st := statusByID[it.StatusID]
-		return cardView{Item: it, Subtasks: counts[it.ID], StatusName: st.Name, Color: board.ColorFor(st), Hidden: filter.cardHidden(it)}
+		return buildCard(it, counts, statusByID[it.StatusID], filter, users)
 	}
 	backlog := milestoneColumn{Title: "Backlog"}
 	var milestones []store.Item
@@ -222,17 +293,14 @@ func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, sta
 
 // groupLanes buckets items under their status, attaching each item's subtask
 // progress. items arrives ordered by position, so each lane stays in order.
-func groupLanes(statuses []store.Status, items []store.Item, counts map[string]store.SubtaskCount, filter boardFilter) []lane {
+func groupLanes(statuses []store.Status, items []store.Item, counts map[string]store.SubtaskCount, filter boardFilter, users map[string]store.User) []lane {
 	byID := make(map[string]store.Status, len(statuses))
 	for _, st := range statuses {
 		byID[st.ID] = st
 	}
 	byStatus := map[string][]cardView{}
 	for _, it := range items {
-		st := byID[it.StatusID]
-		byStatus[it.StatusID] = append(byStatus[it.StatusID], cardView{
-			Item: it, Subtasks: counts[it.ID], StatusName: st.Name, Color: board.ColorFor(st), Hidden: filter.cardHidden(it),
-		})
+		byStatus[it.StatusID] = append(byStatus[it.StatusID], buildCard(it, counts, byID[it.StatusID], filter, users))
 	}
 	lanes := make([]lane, len(statuses))
 	for i, st := range statuses {
