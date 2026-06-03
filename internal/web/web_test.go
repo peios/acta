@@ -31,6 +31,27 @@ const testPassword = "s3cret-passw0rd"
 
 func newTestServer(t *testing.T) (string, *http.Client) {
 	t.Helper()
+	srv := httptest.NewServer(buildTestHandler(t))
+	t.Cleanup(srv.Close)
+	return srv.URL, newTestClient()
+}
+
+// newTestServerWriteTimeout is newTestServer with the production-style write
+// timeout the real server runs (cmd/acta-server sets 15s). httptest's default
+// is no timeout, which hides whether long-poll endpoints survive that ceiling.
+func newTestServerWriteTimeout(t *testing.T, d time.Duration) (string, *http.Client) {
+	t.Helper()
+	srv := httptest.NewUnstartedServer(buildTestHandler(t))
+	srv.Config.WriteTimeout = d
+	srv.Start()
+	t.Cleanup(srv.Close)
+	return srv.URL, newTestClient()
+}
+
+// buildTestHandler wires the full web handler over a fresh in-memory store with
+// one user (jack) and a seeded "General" workspace.
+func buildTestHandler(t *testing.T) http.Handler {
+	t.Helper()
 	ms := memstore.New()
 	hash, err := local.HashPassword(testPassword)
 	if err != nil {
@@ -70,19 +91,17 @@ func newTestServer(t *testing.T) (string, *http.Client) {
 		t.Fatal(err)
 	}
 	provider := local.NewProvider(ms, sessions, passkeys, false)
-	handler := web.NewHandler(config.Config{Env: "dev", RPOrigin: "http://localhost:8080"}, sessions, provider, passkeys, tokens, agents, accounts, workspaces, boards, mcpConfig)
+	return web.NewHandler(config.Config{Env: "dev", RPOrigin: "http://localhost:8080"}, sessions, provider, passkeys, tokens, agents, accounts, workspaces, boards, mcpConfig)
+}
 
-	srv := httptest.NewServer(handler)
-	t.Cleanup(srv.Close)
-
+func newTestClient() *http.Client {
 	jar, _ := cookiejar.New(nil)
-	client := &http.Client{
+	return &http.Client{
 		Jar: jar,
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse // don't follow; assert on 3xx directly
 		},
 	}
-	return srv.URL, client
 }
 
 var csrfRe = regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)

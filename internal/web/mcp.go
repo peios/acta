@@ -34,7 +34,7 @@ func (h *handlers) mcpHandler() http.Handler {
 	// live on the very next request, with no restart. The request context here
 	// already carries the authenticated principal (the /mcp route is wrapped in
 	// requireToken), so the registration reads use it directly.
-	return mcp.NewStreamableHTTPHandler(
+	streamable := mcp.NewStreamableHTTPHandler(
 		func(r *http.Request) *mcp.Server {
 			srv := mcp.NewServer(&mcp.Implementation{Name: "acta", Version: "v1"}, nil)
 			h.registerMCPTools(srv)
@@ -44,7 +44,22 @@ func (h *handlers) mcpHandler() http.Handler {
 		},
 		&mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true},
 	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// MCP tools can block: watch_comments long-polls until a comment lands or
+		// its window lapses. The server's short global WriteTimeout would sever
+		// such a held request mid-call — the client sees a 502, not the clean
+		// empty response it should loop on. Extend this request's write deadline
+		// to cover the longest tool block plus margin, the same deadline
+		// management the SSE endpoint does on each heartbeat.
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(mcpWriteHeadroom))
+		streamable.ServeHTTP(w, r)
+	})
 }
+
+// mcpWriteHeadroom is the per-request write deadline for the /mcp endpoint:
+// comfortably above watch_comments' max block (30s) and below the upstream
+// proxy/CDN limits (nginx 60s, Cloudflare 100s).
+const mcpWriteHeadroom = 45 * time.Second
 
 func (h *handlers) registerMCPTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{

@@ -421,6 +421,30 @@ func TestMCPWatchComments(t *testing.T) {
 	}
 }
 
+// TestMCPWatchSurvivesWriteTimeout guards the prod failure the live dogfood
+// found: a watch that blocks past the server's WriteTimeout was severed
+// mid-hold (a 502) instead of returning a clean empty result to loop on. The
+// /mcp handler extends each request's write deadline to cover the block.
+func TestMCPWatchSurvivesWriteTimeout(t *testing.T) {
+	// A 1s write timeout stands in for production's 15s; the watch blocks past it.
+	base, client := newTestServerWriteTimeout(t, 1*time.Second)
+	csrf := signIn(t, client, base)
+	token := mintToken(t, client, base, csrf)
+	sess := mcpConnect(t, base, token)
+
+	item := callTool[mcpItemT](t, sess, "create_item", map[string]any{"workspace": "general", "title": "Long poll"})
+
+	// Block ~3s with nothing to deliver — three times the write timeout. Without
+	// the deadline extension the connection is cut and callTool fails on the
+	// transport error; with it, the watch returns a clean empty result.
+	got := callTool[mcpWatchT](t, sess, "watch_comments", map[string]any{
+		"item": item.ID, "timeout_seconds": 3,
+	})
+	if len(got.Comments) != 0 {
+		t.Fatalf("watch past the write timeout: want a clean empty result, got %+v", got.Comments)
+	}
+}
+
 func TestMCPItemEdits(t *testing.T) {
 	base, client := newTestServer(t)
 	csrf := signIn(t, client, base)

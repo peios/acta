@@ -198,6 +198,15 @@ func (s *statusWriter) Flush() {
 	}
 }
 
+// Unwrap exposes the wrapped writer so http.ResponseController can reach the
+// connection's optional methods through this middleware — notably
+// SetWriteDeadline, which the SSE and /mcp long-poll handlers use to push the
+// server's WriteTimeout out. Without it those calls silently no-op and a held
+// response is severed at WriteTimeout.
+func (s *statusWriter) Unwrap() http.ResponseWriter {
+	return s.ResponseWriter
+}
+
 func randToken() string {
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)
