@@ -26,8 +26,8 @@ create or change anything.
   optional markdown **description**, a **status**, an optional **assignee**, and
   an optional **parent**.
 - **Status** — which column an item sits in (e.g. To do / In progress / Done).
-  Statuses are defined per workspace; read them from the board — don't guess the
-  names.
+  Statuses are defined per workspace, so the names differ per board; read them
+  with ` + "`list_statuses`" + ` — don't guess the names.
 - **Milestone** — an item flagged as a milestone: an anchor point the project is
   steering toward, with ordinary tasks hanging off it. Toggle with
   ` + "`set_item_milestone`" + `.
@@ -79,6 +79,7 @@ pick something up or weigh in on a thread.
 | --- | --- |
 | Who am I? | ` + "`whoami`" + ` |
 | What projects exist? | ` + "`list_workspaces`" + ` |
+| What columns exist? | ` + "`list_statuses`" + ` |
 | Read the board | ` + "`list_items`" + ` |
 | Read one item in full | ` + "`get_item`" + ` |
 | Create an item | ` + "`create_item`" + ` |

@@ -57,6 +57,11 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 	}, h.mcpListWorkspaces)
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "list_statuses",
+		Description: "List a workspace's status lanes, in board order. Statuses are addressed by name (in create_item, set_item_status, and the list_items status filter), and the names differ per board — call this to learn the exact lanes instead of guessing. The first lane is the default for new items.",
+	}, h.mcpListStatuses)
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_items",
 		Description: "List items on a workspace board. Returns top-level items by default; pass parent to list the direct subtasks of an item instead. Optional filters narrow by status (lane name), assignee (username, or \"me\"), or mine. Statuses and principals are named, not id-addressed; items are addressed by id.",
 	}, h.mcpListItems)
@@ -179,6 +184,18 @@ type workspaceListOutput struct {
 	Workspaces []workspaceAPI `json:"workspaces"`
 }
 
+type statusListOutput struct {
+	Statuses []statusAPI `json:"statuses"`
+}
+
+// statusAPI is a board lane as the MCP surface presents it: the name agents
+// address it by, and its zero-based board position (position 0 is the first
+// lane, the default for new items). Colour is omitted as UI-only.
+type statusAPI struct {
+	Name     string `json:"name"`
+	Position int    `json:"position"`
+}
+
 type itemListOutput struct {
 	Items []mcpItem `json:"items"`
 }
@@ -225,6 +242,10 @@ func (h *handlers) prefixFor(ctx context.Context, workspaceID string) string {
 		return ""
 	}
 	return ws.ItemPrefix
+}
+
+type listStatusesInput struct {
+	Workspace string `json:"workspace" jsonschema:"slug of the workspace whose status lanes to list"`
 }
 
 type listItemsInput struct {
@@ -355,6 +376,22 @@ func (h *handlers) mcpListWorkspaces(ctx context.Context, _ *mcp.CallToolRequest
 	out := workspaceListOutput{Workspaces: make([]workspaceAPI, len(list))}
 	for i, ws := range list {
 		out.Workspaces[i] = workspaceAPI{Slug: ws.Slug, Name: ws.Name}
+	}
+	return &mcp.CallToolResult{}, out, nil
+}
+
+func (h *handlers) mcpListStatuses(ctx context.Context, _ *mcp.CallToolRequest, in listStatusesInput) (*mcp.CallToolResult, statusListOutput, error) {
+	ws, err := h.mcpWorkspace(ctx, in.Workspace)
+	if err != nil {
+		return nil, statusListOutput{}, err
+	}
+	list, err := h.board.Statuses(ctx, ws.ID)
+	if err != nil {
+		return nil, statusListOutput{}, mcpErr(err)
+	}
+	out := statusListOutput{Statuses: make([]statusAPI, len(list))}
+	for i, s := range list {
+		out.Statuses[i] = statusAPI{Name: s.Name, Position: s.Position}
 	}
 	return &mcp.CallToolResult{}, out, nil
 }

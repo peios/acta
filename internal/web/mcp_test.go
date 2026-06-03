@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -50,6 +51,13 @@ type mcpWorkspacesT struct {
 
 type mcpItemsT struct {
 	Items []mcpItemT `json:"items"`
+}
+
+type mcpStatusesT struct {
+	Statuses []struct {
+		Name     string `json:"name"`
+		Position int    `json:"position"`
+	} `json:"statuses"`
 }
 
 type mcpEventT struct {
@@ -187,7 +195,7 @@ func TestMCPToolsLifecycle(t *testing.T) {
 		got[tl.Name] = true
 	}
 	for _, want := range []string{
-		"whoami", "list_workspaces", "list_items", "get_item", "create_item",
+		"whoami", "list_workspaces", "list_statuses", "list_items", "get_item", "create_item",
 		"set_item_status", "set_item_assignee", "add_comment", "archive_item", "unarchive_item",
 		"list_notifications", "mark_notification_read",
 	} {
@@ -296,6 +304,38 @@ func TestMCPToolsLifecycle(t *testing.T) {
 	// A bogus id reads as not-found.
 	if msg := toolErr(t, sess, "get_item", map[string]any{"id": "zzzzzzzz"}); !strings.Contains(msg, "not found") {
 		t.Fatalf("missing-item error = %q", msg)
+	}
+}
+
+func TestMCPListStatuses(t *testing.T) {
+	base, client := newTestServer(t)
+	csrf := signIn(t, client, base)
+	token := mintToken(t, client, base, csrf)
+	sess := mcpConnect(t, base, token)
+
+	// The seeded 'general' board carries the default lanes, in board order.
+	got := callTool[mcpStatusesT](t, sess, "list_statuses", map[string]any{"workspace": "general"})
+	var names []string
+	for i, s := range got.Statuses {
+		if s.Position != i {
+			t.Errorf("status %q position = %d, want %d", s.Name, s.Position, i)
+		}
+		names = append(names, s.Name)
+	}
+	want := []string{"To do", "Doing", "Done"}
+	if !reflect.DeepEqual(names, want) {
+		t.Fatalf("list_statuses = %v, want %v", names, want)
+	}
+
+	// An unknown workspace is a tool error, not an empty list.
+	res, err := sess.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "list_statuses", Arguments: map[string]any{"workspace": "nope"},
+	})
+	if err != nil {
+		t.Fatalf("call list_statuses: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("list_statuses on unknown workspace: want tool error, got %s", toolText(res))
 	}
 }
 
