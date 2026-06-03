@@ -7,82 +7,145 @@
   <span class="item-title">{{.Item.Title}}</span>
   {{if .Item.IsMilestone}}<span class="item-ms" title="Milestone">◆</span>{{end}}
   <button class="item-del" type="button" title="Archive" aria-label="Archive item">×</button>
-  {{if .Subtasks.Total}}<span class="item-sub" title="Subtasks done">{{.Subtasks.Done}}/{{.Subtasks.Total}}</span>{{end}}
+  {{if or .Subtasks.Total .HasAssignee}}
+  <div class="item-meta">
+    {{if .Subtasks.Total}}<span class="item-sub" title="Subtasks done">{{.Subtasks.Done}}/{{.Subtasks.Total}}</span>{{end}}
+    <span class="meta-spacer"></span>
+    {{if .HasAssignee}}<span class="avatar sm{{if .IsAgent}} bot{{end}}" style="{{.AvatarStyle}}" title="{{.AssigneeName}}">{{.AvatarText}}</span>{{end}}
+  </div>
+  {{end}}
 </article>
 {{end}}
 
 {{define "content"}}
 <main class="board-wrap" data-slug="{{.Workspace.Slug}}" data-me="{{with .Principal}}{{.ID}}{{end}}">
   <div class="board-bar">
-    <div class="board-modes">
-      <a class="board-mode{{if eq .Mode "status"}} active{{end}}" href="/w/{{.Workspace.Slug}}?mode=status">Status</a>
-      <a class="board-mode{{if eq .Mode "milestone"}} active{{end}}" href="/w/{{.Workspace.Slug}}?mode=milestone">Milestone</a>
+    <div class="views">
+      <a class="view-tab{{if and (eq .Mode "status") (not .ViewMine)}} active{{end}}" href="/w/{{.Workspace.Slug}}?mode=status">
+        <svg class="ico" viewBox="0 0 16 16"><rect x="2.5" y="3" width="4" height="10" rx="1"/><rect x="9.5" y="3" width="4" height="6.5" rx="1"/></svg>All items
+      </a>
+      <a class="view-tab{{if .ViewMine}} active{{end}}" href="/w/{{.Workspace.Slug}}?mode=status&amp;assignee=me">
+        <svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"/><path d="M3.5 13a4.5 4.5 0 0 1 9 0"/></svg>My items
+      </a>
+      <a class="view-tab{{if eq .Mode "milestone"}} active{{end}}" href="/w/{{.Workspace.Slug}}?mode=milestone">
+        <svg class="ico" viewBox="0 0 16 16"><path d="M8 2.4 13.6 8 8 13.6 2.4 8z"/></svg>Milestones
+      </a>
     </div>
 
-    <form class="board-filters" method="get" action="/w/{{.Workspace.Slug}}" data-filters>
-      {{if eq .Mode "milestone"}}<input type="hidden" name="mode" value="milestone">{{end}}
+    <div class="bar-right">
+      <a class="board-archive-link" href="/w/{{.Workspace.Slug}}/activity">Activity</a>
+      <a class="board-archive-link" href="/w/{{.Workspace.Slug}}/archive">Archived</a>
+      <span class="bar-sep"></span>
 
-      <details class="facet" data-facet="status">
-        <summary class="facet-trigger">Status{{if .StatusSelected}} <span class="facet-count">{{.StatusSelected}}</span>{{end}}</summary>
-        <div class="facet-panel">
-          {{range .StatusFilter}}
-          <label class="facet-row">
-            <input type="checkbox" name="status" value="{{.ID}}"{{if .Selected}} checked{{end}}>
-            <span class="facet-dot" style="{{.ColorVar}}"></span>
-            <span class="facet-label">{{.Name}}</span>
-          </label>
-          {{end}}
-        </div>
-      </details>
+      <div class="pop-anchor" data-pop>
+        <button class="ph-btn" type="button" data-pop-btn aria-label="Filter">
+          <svg class="ico" viewBox="0 0 16 16"><path d="M2.5 3.5h11l-4.2 5v4l-2.6-1.3v-2.7z"/></svg>Filter <span class="facet-count" data-filter-badge{{if not .FilterActive}} hidden{{end}}>{{.FilterCount}}</span>
+        </button>
+        <div class="popover pop-filter" data-pop-menu hidden>
+          <form class="board-filters" method="get" action="/w/{{.Workspace.Slug}}" data-filters>
+            {{if eq .Mode "milestone"}}<input type="hidden" name="mode" value="milestone">{{end}}
 
-      <details class="facet" data-facet="assignee">
-        <summary class="facet-trigger">Assignee{{if .AssigneeSelected}} <span class="facet-count">{{.AssigneeSelected}}</span>{{end}}</summary>
-        <div class="facet-panel facet-panel--wide">
-          <label class="facet-row">
-            <input type="checkbox" name="assignee" value="me"{{if .Assignees.MeSelected}} checked{{end}}>
-            <span class="facet-label">Me</span>
-          </label>
-          <label class="facet-row">
-            <input type="checkbox" name="assignee" value="unassigned"{{if .Assignees.UnassignedSelected}} checked{{end}}>
-            <span class="facet-label">Unassigned</span>
-          </label>
-          {{if .Assignees.People}}<div class="facet-divider"></div>{{end}}
-          {{range .Assignees.People}}
-          <div class="facet-group">
-            <div class="facet-row facet-parent">
-              {{if .Agents}}<button type="button" class="facet-twist" aria-label="Show or hide agents">▾</button>{{else}}<span class="facet-twist-gap"></span>{{end}}
-              <label class="facet-check">
-                <input type="checkbox" name="assignee" value="{{.ID}}"{{if .Selected}} checked{{end}} data-parent>
-                <span class="facet-label">{{.Display}}{{if .IsYou}} <span class="facet-you">you</span>{{end}}</span>
-              </label>
-              {{if .Agents}}<button type="button" class="facet-only" title="Show only this person, not their agents">only</button>{{end}}
+            <details class="facet" data-facet="status" open>
+              <summary class="facet-trigger">Status{{if .StatusSelected}} <span class="facet-count">{{.StatusSelected}}</span>{{end}}</summary>
+              <div class="facet-panel">
+                {{range .StatusFilter}}
+                <label class="facet-row">
+                  <input type="checkbox" name="status" value="{{.ID}}"{{if .Selected}} checked{{end}}>
+                  <span class="facet-dot" style="{{.ColorVar}}"></span>
+                  <span class="facet-label">{{.Name}}</span>
+                </label>
+                {{end}}
+              </div>
+            </details>
+
+            <details class="facet" data-facet="assignee" open>
+              <summary class="facet-trigger">Assignee{{if .AssigneeSelected}} <span class="facet-count">{{.AssigneeSelected}}</span>{{end}}</summary>
+              <div class="facet-panel facet-panel--wide">
+                <label class="facet-row">
+                  <input type="checkbox" name="assignee" value="me"{{if .Assignees.MeSelected}} checked{{end}}>
+                  <span class="facet-label">Me</span>
+                </label>
+                <label class="facet-row">
+                  <input type="checkbox" name="assignee" value="unassigned"{{if .Assignees.UnassignedSelected}} checked{{end}}>
+                  <span class="facet-label">Unassigned</span>
+                </label>
+                {{if .Assignees.People}}<div class="facet-divider"></div>{{end}}
+                {{range .Assignees.People}}
+                <div class="facet-group">
+                  <div class="facet-row facet-parent">
+                    <label class="facet-check">
+                      <input type="checkbox" name="assignee" value="{{.ID}}"{{if .Selected}} checked{{end}} data-parent>
+                      <span class="facet-label">{{.Display}}{{if .IsYou}} <span class="facet-you">you</span>{{end}}</span>
+                    </label>
+                    {{if .Agents}}<button type="button" class="facet-only" title="Show only this person, not their agents">only</button><button type="button" class="facet-twist" aria-label="Show or hide agents">▾</button>{{end}}
+                  </div>
+                  {{range .Agents}}
+                  <label class="facet-row facet-agent">
+                    <input type="checkbox" name="assignee" value="{{.ID}}"{{if .Selected}} checked{{end}} data-agent>
+                    <span class="facet-label">{{.Display}}</span>
+                    <svg class="agent-ico" viewBox="0 0 16 16" aria-label="agent"><rect x="3" y="6" width="10" height="6.5" rx="2"/><path d="M8 6V4"/><circle cx="8" cy="3.3" r=".75"/><circle cx="6.3" cy="9.3" r=".95" fill="currentColor" stroke="none"/><circle cx="9.7" cy="9.3" r=".95" fill="currentColor" stroke="none"/></svg>
+                  </label>
+                  {{end}}
+                </div>
+                {{end}}
+              </div>
+            </details>
+
+            <div class="filter-foot">
+              <button type="submit" class="facet-apply">Apply</button>
+              <a class="facet-clear" href="/w/{{.Workspace.Slug}}?mode={{.Mode}}"{{if not .FilterActive}} hidden{{end}}>Clear</a>
             </div>
-            {{range .Agents}}
-            <label class="facet-row facet-agent">
-              <input type="checkbox" name="assignee" value="{{.ID}}"{{if .Selected}} checked{{end}} data-agent>
-              <span class="facet-label">{{.Display}}</span>
-            </label>
-            {{end}}
-          </div>
-          {{end}}
+          </form>
         </div>
-      </details>
+      </div>
 
-      <button type="submit" class="facet-apply">Apply</button>
-      <a class="facet-clear" href="/w/{{.Workspace.Slug}}?mode={{.Mode}}"{{if not .FilterActive}} hidden{{end}}>Clear</a>
-    </form>
-
-    <a class="board-archive-link" href="/w/{{.Workspace.Slug}}/activity">Activity</a>
-    <a class="board-archive-link" href="/w/{{.Workspace.Slug}}/archive">Archived</a>
+      <div class="pop-anchor" data-pop>
+        <button class="ph-btn" type="button" data-pop-btn aria-label="Display options">
+          <svg class="ico" viewBox="0 0 16 16"><path d="M2.5 5h5"/><circle cx="9.5" cy="5" r="1.6"/><path d="M11.5 5h2"/><path d="M2.5 11h2"/><circle cx="6" cy="11" r="1.6"/><path d="M8 11h5.5"/></svg>Display
+        </button>
+        <div class="popover pop-display" data-pop-menu hidden>
+          <div class="pop-seg">
+            <button type="button" disabled title="List view — coming soon">
+              <svg class="ico" viewBox="0 0 16 16"><path d="M5 4.5h8M5 8h8M5 11.5h8"/><path d="M2.6 4.5h.01M2.6 8h.01M2.6 11.5h.01"/></svg>List
+            </button>
+            <button type="button" class="active">
+              <svg class="ico" viewBox="0 0 16 16"><rect x="2.5" y="3" width="4" height="10" rx="1"/><rect x="9.5" y="3" width="4" height="6.5" rx="1"/></svg>Board
+            </button>
+          </div>
+          <div class="pop-rows">
+            <div class="pop-row"><span class="lbl">Grouping</span><span class="spacer"></span>
+              <div class="grp">
+                <a class="grp-opt{{if eq .Mode "status"}} active{{end}}" href="/w/{{.Workspace.Slug}}?mode=status">Status</a>
+                <a class="grp-opt{{if eq .Mode "milestone"}} active{{end}}" href="/w/{{.Workspace.Slug}}?mode=milestone">Milestone</a>
+              </div>
+            </div>
+            <div class="pop-row"><span class="lbl">Ordering</span><span class="spacer"></span><button class="dd" type="button" disabled title="Sorting — coming soon"><span>Manual</span><span class="chev">&#9662;</span></button></div>
+          </div>
+          <div class="pop-div"></div>
+          <div class="pop-toggle-row"><span class="lbl muted">Show sub-tasks</span><span class="spacer"></span><button class="toggle" type="button" aria-checked="true" disabled title="Coming soon"></button></div>
+          <div class="pop-div"></div>
+          <div class="pop-sec">Board options</div>
+          <div class="pop-toggle-row"><span class="lbl">Show empty columns</span><span class="spacer"></span><button class="toggle" type="button" aria-checked="true" data-display="empty" aria-label="Show empty columns"></button></div>
+          <div class="pop-sub">Display properties</div>
+          <div class="dp-chips">
+            <button class="dp" type="button" aria-pressed="true" data-display="assignee">Assignee</button>
+            <button class="dp" type="button" aria-pressed="true" data-display="sub">Sub-tasks</button>
+            <button class="dp" type="button" aria-pressed="true" data-display="milestone">Milestone</button>
+          </div>
+          <div class="pop-foot"><button class="pop-reset" type="button" data-display-reset>Reset</button></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   {{if eq .Mode "milestone"}}
   <div class="board" id="board" data-mode="milestone">
     {{range .MilestoneColumns}}
-    <section class="lane mcol" data-column data-parent-id="{{.ID}}">
+    <section class="lane mcol" data-column data-parent-id="{{.ID}}"{{if not .Cards}} data-empty{{end}}>
       <header class="lane-head mcol-head">
-        {{if .ID}}<span class="lane-grip mcol-grip" title="Drag to reorder">⠿</span><button class="mcol-title" type="button" data-open="{{.ID}}"><span class="mcol-diamond" style="{{.ColorVar}}">◆</span> {{.Title}}</button>
+        {{if .ID}}<span class="lane-grip mcol-grip" title="Drag to reorder">⠿</span><span class="mcol-diamond" style="{{.ColorVar}}"></span><button class="mcol-title" type="button" data-open="{{.ID}}">{{.Title}}</button>
         {{else}}<span class="mcol-title mcol-backlog">{{.Title}}</span>{{end}}
+        <span class="lane-count">{{len .Cards}}</span>
       </header>
       <div class="lane-items">
         {{range .Cards}}{{template "card" .}}{{end}}
@@ -96,7 +159,7 @@
   {{else}}
   <div class="board" id="board" data-mode="status">
     {{range .Lanes}}
-    <section class="lane{{if .Hidden}} is-filtered{{end}}" data-status-id="{{.Status.ID}}" data-color="{{.Color}}">
+    <section class="lane{{if .Hidden}} is-filtered{{end}}" data-status-id="{{.Status.ID}}" data-color="{{.Color}}"{{if not .Cards}} data-empty{{end}}>
       <header class="lane-head">
         <span class="lane-grip" title="Drag to reorder">⠿</span>
         <div class="lane-swatch">
@@ -106,6 +169,7 @@
           </div>
         </div>
         <input class="lane-name" value="{{.Status.Name}}" maxlength="40" aria-label="Status name">
+        <span class="lane-count">{{len .Cards}}</span>
         <button class="lane-del" type="button" title="Delete lane" aria-label="Delete lane">×</button>
       </header>
       <div class="lane-items">

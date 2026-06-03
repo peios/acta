@@ -41,6 +41,43 @@
     return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
   }
 
+  // --- assignee avatars ---
+  // Mirrors the server's initials + colour hash (see initials()/avatarStyle() in
+  // board.go) so a card repaints on assign to match a full render. Keep in sync.
+  const AVATAR_PALETTE = [['#5b6cf0', '#4d7cfe'], ['#23c3b3', '#16b8a6'], ['#a78bff', '#8b6cf0'], ['#f2628c', '#e0517b'], ['#e6a04b', '#d98a2b'], ['#3ecf8e', '#2bb673'], ['#3fc7d4', '#2ba8b8'], ['#ff8a5b', '#f26d3d']];
+  function avatarHash(s) { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return h >>> 0; }
+  function avatarStyle(id) { const p = AVATAR_PALETTE[avatarHash(id) % AVATAR_PALETTE.length]; return 'background:linear-gradient(145deg,' + p[0] + ',' + p[1] + ')'; }
+  function avatarInitials(name) { const f = name.trim().split(/\s+/).filter(Boolean); if (!f.length) return '?'; if (f.length === 1) return f[0].slice(0, 2).toUpperCase(); return (f[0][0] + f[f.length - 1][0]).toUpperCase(); }
+
+  // setCardAvatar repaints a card's assignee avatar from the modal's selected
+  // option (text "Name" or "Name · agent"). An empty id clears it.
+  function setCardAvatar(card, assigneeId, optText) {
+    let meta = card.querySelector('.item-meta');
+    const existing = card.querySelector('.avatar.sm');
+    if (!assigneeId) {
+      if (existing) existing.remove();
+      if (meta && !meta.querySelector('.item-sub')) meta.remove();
+      return;
+    }
+    const raw = (optText || '').trim();
+    const dot = raw.indexOf('·');
+    const agent = dot >= 0 && raw.slice(dot).includes('agent');
+    const name = (dot >= 0 ? raw.slice(0, dot) : raw).trim();
+    if (!meta) {
+      meta = document.createElement('div');
+      meta.className = 'item-meta';
+      const sp = document.createElement('span'); sp.className = 'meta-spacer'; meta.appendChild(sp);
+      card.appendChild(meta);
+    } else if (!meta.querySelector('.meta-spacer')) {
+      const sp = document.createElement('span'); sp.className = 'meta-spacer'; meta.appendChild(sp);
+    }
+    const av = existing || meta.appendChild(document.createElement('span'));
+    av.className = 'avatar sm' + (agent ? ' bot' : '');
+    av.setAttribute('style', avatarStyle(assigneeId));
+    av.title = name;
+    av.textContent = avatarInitials(name);
+  }
+
   // --- board items ---
 
   function newItem(it) {
@@ -357,10 +394,16 @@
     });
 
     el.querySelector('.modal-assignee').addEventListener('change', async (e) => {
+      const assigneeId = e.target.value;
       try {
-        await api('/items/' + id + '/assignee', { assignee_id: e.target.value });
+        await api('/items/' + id + '/assignee', { assignee_id: assigneeId });
         const c = cardOf(id);
-        if (c) { c.dataset.assigneeId = e.target.value; reapplyFilters(); }
+        if (c) {
+          c.dataset.assigneeId = assigneeId;
+          const opt = e.target.options[e.target.selectedIndex];
+          setCardAvatar(c, assigneeId, opt ? opt.textContent : '');
+          reapplyFilters();
+        }
       } catch (err2) { fail(err2); }
     });
 
@@ -514,6 +557,8 @@
     if (window.__actaBoardPrefs) window.__actaBoardPrefs.save(); // remember filters per workspace
     const clear = form.querySelector('.facet-clear');
     if (clear) clear.hidden = statuses.length + assignees.length === 0;
+    const badge = document.querySelector('[data-filter-badge]');
+    if (badge) { const n = statuses.length + assignees.length; badge.textContent = n; badge.hidden = n === 0; }
   }
 
   // reapplyFilters re-evaluates visibility after a card's status/assignee changes.
@@ -578,17 +623,68 @@
     if (clear) {
       clear.addEventListener('click', (e) => { e.preventDefault(); clearAll(form); applyFilters(form); });
     }
+  }
 
-    // Close an open facet popover when clicking outside it.
-    document.addEventListener('click', (e) => {
-      form.querySelectorAll('.facet[open]').forEach((f) => { if (!f.contains(e.target)) f.removeAttribute('open'); });
+  // --- header popovers (Filter / Display) ---
+  // closePops is module-scoped so Escape can reach it.
+  let closePops = () => {};
+  function wirePopovers() {
+    const anchors = [...document.querySelectorAll('[data-pop]')];
+    if (!anchors.length) return;
+    closePops = () => anchors.forEach((a) => {
+      a.querySelector('[data-pop-menu]').hidden = true;
+      a.querySelector('[data-pop-btn]').classList.remove('active');
     });
+    anchors.forEach((a) => {
+      const btn = a.querySelector('[data-pop-btn]');
+      const menu = a.querySelector('[data-pop-menu]');
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const willOpen = menu.hidden;
+        closePops();
+        if (willOpen) { menu.hidden = false; btn.classList.add('active'); }
+      });
+      // Clicks inside a menu must not bubble out and close it.
+      menu.addEventListener('click', (e) => e.stopPropagation());
+    });
+    document.addEventListener('click', () => closePops());
+  }
+
+  // --- display properties (which fields/empty lanes show; per-workspace pref) ---
+  const DISP_KEY = 'acta:disp:' + wrap.dataset.slug;
+  const DISP_KEYS = ['empty', 'assignee', 'sub', 'milestone'];
+  const loadDisp = () => { try { return JSON.parse(localStorage.getItem(DISP_KEY)) || {}; } catch (_) { return {}; } };
+  const saveDisp = (d) => { try { localStorage.setItem(DISP_KEY, JSON.stringify(d)); } catch (_) {} };
+  function applyDisp() {
+    const d = loadDisp();
+    DISP_KEYS.forEach((k) => {
+      const on = d[k] !== false; // shown unless explicitly turned off
+      wrap.classList.toggle('hide-' + k, !on);
+      const ctrl = document.querySelector('[data-display="' + k + '"]');
+      if (!ctrl) return;
+      ctrl.setAttribute(ctrl.classList.contains('toggle') ? 'aria-checked' : 'aria-pressed', on ? 'true' : 'false');
+    });
+  }
+  function wireDisplay() {
+    document.querySelectorAll('[data-display]').forEach((ctrl) => {
+      ctrl.addEventListener('click', () => {
+        const d = loadDisp();
+        d[ctrl.dataset.display] = d[ctrl.dataset.display] === false; // flip, default-on
+        saveDisp(d);
+        applyDisp();
+      });
+    });
+    const reset = document.querySelector('[data-display-reset]');
+    if (reset) reset.addEventListener('click', () => { saveDisp({}); applyDisp(); });
+    applyDisp();
   }
 
   // --- wire the server-rendered board ---
 
   board.querySelectorAll('.item').forEach(wireItem);
   wireFilters();
+  wirePopovers();
+  wireDisplay();
 
   if (board.dataset.mode === 'milestone') {
     board.querySelectorAll('.mcol').forEach(wireColumn);
@@ -650,7 +746,7 @@
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     closePalettes();
-    document.querySelectorAll('.facet[open]').forEach((f) => f.removeAttribute('open'));
+    closePops();
     if (modalEl) closeModal();
   });
   window.addEventListener('popstate', () => {
