@@ -29,6 +29,7 @@ type Store struct {
 	settings    map[string]string
 	mcpPrompts  map[string]store.MCPPrompt
 	events      map[string]store.Event
+	notifs      map[string]store.Notification
 }
 
 func New() *Store {
@@ -45,6 +46,7 @@ func New() *Store {
 		settings:    map[string]string{},
 		mcpPrompts:  map[string]store.MCPPrompt{},
 		events:      map[string]store.Event{},
+		notifs:      map[string]store.Notification{},
 	}
 }
 
@@ -877,6 +879,80 @@ func clampLimit(limit int) int {
 		return 200
 	}
 	return limit
+}
+
+// --- notifications ---
+
+func (s *Store) CreateNotification(_ context.Context, n store.Notification) (store.Notification, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if n.ID == "" {
+		n.ID = newID()
+	}
+	if n.CreatedAt.IsZero() {
+		n.CreatedAt = time.Now()
+	}
+	s.notifs[n.ID] = n
+	return n, nil
+}
+
+func (s *Store) NotificationsByRecipient(_ context.Context, recipientID string, limit int) ([]store.Notification, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.Notification
+	for _, n := range s.notifs {
+		if n.RecipientID == recipientID {
+			out = append(out, n)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].ID > out[j].ID
+		}
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	if limit = clampLimit(limit); len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (s *Store) UnreadNotificationCount(_ context.Context, recipientID string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, x := range s.notifs {
+		if x.RecipientID == recipientID && x.ReadAt == nil {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (s *Store) MarkNotificationRead(_ context.Context, id, recipientID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n, ok := s.notifs[id]
+	if !ok || n.RecipientID != recipientID || n.ReadAt != nil {
+		return nil
+	}
+	now := time.Now()
+	n.ReadAt = &now
+	s.notifs[id] = n
+	return nil
+}
+
+func (s *Store) MarkAllNotificationsRead(_ context.Context, recipientID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	for id, n := range s.notifs {
+		if n.RecipientID == recipientID && n.ReadAt == nil {
+			n.ReadAt = &now
+			s.notifs[id] = n
+		}
+	}
+	return nil
 }
 
 // --- app settings ---

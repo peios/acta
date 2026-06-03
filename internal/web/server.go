@@ -81,6 +81,12 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("POST /w/{slug}/items/{id}/unarchive", protected(h.itemUnarchive))
 	mux.Handle("POST /w/{slug}/items/{id}/delete", protected(h.itemDelete))
 
+	// Notification bell. Open marks one read then redirects to the item;
+	// read-all clears the inbox. Both are workspace-agnostic (a notification
+	// can point anywhere), so they live outside the /w/{slug} tree.
+	mux.Handle("GET /notifications/{id}/open", protected(h.notificationOpen))
+	mux.Handle("POST /notifications/read-all", protected(h.notificationsReadAll))
+
 	// Account (user-specific) settings, reached from the top-bar account menu:
 	// the things that belong to *you* — sign-in security and your agents.
 	mux.Handle("GET /account", protected(h.accountIndex))

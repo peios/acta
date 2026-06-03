@@ -236,6 +236,34 @@ type Comment struct {
 	CreatedAt time.Time
 }
 
+// Notification kinds. Each names why a principal was notified; the row's
+// snapshot fields carry the already-resolved context to render it.
+const (
+	NotificationMention = "mention" // someone @mentioned the recipient in a comment
+)
+
+// Notification is one entry in a principal's inbox: a per-recipient delivery
+// record with read state, distinct from an Event (the global activity log).
+// ActorName, ItemTitle, WorkspaceSlug and Excerpt are snapshots taken at write
+// time so the bell renders without joins and survives the referenced rows being
+// renamed or deleted — the same history-not-state stance as the activity log.
+// ReadAt is nil while unread.
+type Notification struct {
+	ID            string
+	RecipientID   string
+	Kind          string
+	WorkspaceID   string
+	WorkspaceSlug string
+	ItemID        string
+	ItemTitle     string
+	ActorID       string
+	ActorName     string
+	CommentID     string
+	Excerpt       string
+	CreatedAt     time.Time
+	ReadAt        *time.Time
+}
+
 // Store is the persistence interface for Acta.
 type Store interface {
 	CreateUser(ctx context.Context, u NewUser) (User, error)
@@ -359,6 +387,20 @@ type Store interface {
 	RecordEvent(ctx context.Context, e Event) (Event, error)
 	EventsByItem(ctx context.Context, itemID string, limit int) ([]Event, error)
 	EventsByWorkspace(ctx context.Context, workspaceID string, limit int) ([]Event, error)
+
+	// Notifications: a per-recipient inbox with read state. CreateNotification
+	// appends an entry (assigning its id). NotificationsByRecipient returns a
+	// recipient's rows newest-first, capped at limit (non-positive clamps to a
+	// default). UnreadNotificationCount counts the recipient's unread rows.
+	// MarkNotificationRead marks one read, scoped to the recipient so a caller
+	// can't touch another principal's inbox; it is idempotent (a missing or
+	// already-read row is not an error). MarkAllNotificationsRead clears the
+	// recipient's whole unread set.
+	CreateNotification(ctx context.Context, n Notification) (Notification, error)
+	NotificationsByRecipient(ctx context.Context, recipientID string, limit int) ([]Notification, error)
+	UnreadNotificationCount(ctx context.Context, recipientID string) (int, error)
+	MarkNotificationRead(ctx context.Context, id, recipientID string) error
+	MarkAllNotificationsRead(ctx context.Context, recipientID string) error
 
 	// AppSetting reads an instance-global key/value setting, returning "" (no
 	// error) when the key is absent. SetAppSetting upserts it. The MCP guide

@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -809,8 +810,101 @@ func (s *Service) AddComment(ctx context.Context, itemID, authorID, body string)
 	}
 	if item, ierr := s.store.ItemByID(ctx, itemID); ierr == nil {
 		s.recordEvent(ctx, item, store.EventCommentAdded, map[string]string{"excerpt": excerpt(body, 100)})
+		s.notifyMentions(ctx, item, c, body)
 	}
 	return c, nil
+}
+
+// mentionRe matches an @handle. The handle starts alphanumeric and may contain
+// dot, underscore, hyphen and slash, so it spans both human usernames and the
+// owner/name form of an agent (e.g. @jack/deploy-bot). Match is
+// case-insensitive; resolution lowercases since stored usernames are lowercase.
+var mentionRe = regexp.MustCompile(`@([A-Za-z0-9][A-Za-z0-9._/-]*)`)
+
+// parseMentions returns the distinct @handles in body, lowercased and with
+// trailing punctuation trimmed (so "@jack." yields "jack"), in first-seen
+// order. It is purely lexical — resolving a handle to a principal is the
+// caller's job.
+func parseMentions(body string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, m := range mentionRe.FindAllStringSubmatch(body, -1) {
+		h := strings.ToLower(strings.TrimRight(m[1], "._-/"))
+		if h == "" || seen[h] {
+			continue
+		}
+		seen[h] = true
+		out = append(out, h)
+	}
+	return out
+}
+
+// notifyMentions writes a mention notification for each distinct, resolvable
+// @handle in a freshly-added comment. Self-mentions are intentionally allowed —
+// @-ing yourself is a valid way to bookmark a thread. Best-effort like the
+// activity log: a failed write is logged, never surfaced — a missed
+// notification must not fail the comment that triggered it. The recipient's
+// inbox is the single source both the bell and (later) the MCP poll read from,
+// so this is the only place mentions become deliveries.
+func (s *Service) notifyMentions(ctx context.Context, item store.Item, c store.Comment, body string) {
+	handles := parseMentions(body)
+	if len(handles) == 0 {
+		return
+	}
+	actorID := c.AuthorID
+	actorName := s.userName(ctx, c.AuthorID)
+	if p, ok := identity.FromContext(ctx); ok && p != nil {
+		actorID = p.ID
+		actorName = principalName(p)
+	}
+	slug := ""
+	if ws, err := s.store.WorkspaceByID(ctx, item.WorkspaceID); err == nil {
+		slug = ws.Slug
+	}
+	ex := excerpt(body, 140)
+	for _, h := range handles {
+		u, err := s.store.UserByUsername(ctx, h)
+		if err != nil || u.ID == "" {
+			continue // unknown @handle
+		}
+		if _, err := s.store.CreateNotification(ctx, store.Notification{
+			RecipientID:   u.ID,
+			Kind:          store.NotificationMention,
+			WorkspaceID:   item.WorkspaceID,
+			WorkspaceSlug: slug,
+			ItemID:        item.ID,
+			ItemTitle:     item.Title,
+			ActorID:       actorID,
+			ActorName:     actorName,
+			CommentID:     c.ID,
+			Excerpt:       ex,
+		}); err != nil {
+			slog.Error("create mention notification", "recipient", u.ID, "item", item.ID, "err", err)
+		}
+	}
+}
+
+// --- notifications (inbox reads, used by the bell) ---
+
+// Notifications returns a recipient's most recent inbox entries, newest first.
+func (s *Service) Notifications(ctx context.Context, recipientID string, limit int) ([]store.Notification, error) {
+	return s.store.NotificationsByRecipient(ctx, recipientID, limit)
+}
+
+// UnreadCount is the recipient's unread notification count (the bell badge).
+func (s *Service) UnreadCount(ctx context.Context, recipientID string) (int, error) {
+	return s.store.UnreadNotificationCount(ctx, recipientID)
+}
+
+// MarkNotificationRead marks one of the recipient's notifications read; scoping
+// to recipientID stops one principal clearing another's. Idempotent.
+func (s *Service) MarkNotificationRead(ctx context.Context, id, recipientID string) error {
+	return s.store.MarkNotificationRead(ctx, id, recipientID)
+}
+
+// MarkAllNotificationsRead clears the recipient's whole unread set.
+func (s *Service) MarkAllNotificationsRead(ctx context.Context, recipientID string) error {
+	return s.store.MarkAllNotificationsRead(ctx, recipientID)
 }
 
 // --- activity ---

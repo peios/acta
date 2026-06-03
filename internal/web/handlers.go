@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -58,6 +59,46 @@ type chrome struct {
 	Display    string // the signed-in user's display name, shown in the account menu
 	Workspaces []store.Workspace
 	Workspace  *store.Workspace // the currently-selected workspace
+	// Notification bell. Unread drives the badge; Notifications is the recent
+	// slice the dropdown lists. Path is the current request URI, threaded into
+	// the "mark all read" form so it can redirect back to this page.
+	Unread        int
+	Notifications []notifView
+	Path          string
+}
+
+// notifView is one row in the notification bell dropdown. URL points at the
+// open-and-redirect endpoint, which marks the row read on click-through.
+type notifView struct {
+	ID      string
+	Unread  bool
+	Actor   string
+	Title   string
+	Excerpt string
+	When    string
+	URL     string
+}
+
+// buildNotifViews turns stored notifications into bell rows, building each
+// row's open URL with the item deep-link as a validated redirect target.
+func buildNotifViews(notes []store.Notification) []notifView {
+	out := make([]notifView, 0, len(notes))
+	for _, n := range notes {
+		to := "/"
+		if n.WorkspaceSlug != "" && n.ItemID != "" {
+			to = "/w/" + n.WorkspaceSlug + "?item=" + n.ItemID
+		}
+		out = append(out, notifView{
+			ID:      n.ID,
+			Unread:  n.ReadAt == nil,
+			Actor:   n.ActorName,
+			Title:   n.ItemTitle,
+			Excerpt: n.Excerpt,
+			When:    formatWhen(n.CreatedAt),
+			URL:     "/notifications/" + n.ID + "/open?to=" + url.QueryEscape(to),
+		})
+	}
+	return out
 }
 
 // chromeFor builds the top-bar context. current is the workspace the page is
@@ -73,16 +114,27 @@ func (h *handlers) chromeFor(r *http.Request, section string, current *store.Wor
 		current = pickWorkspace(list, httpx.WorkspaceCookieValue(r))
 	}
 	who := ""
+	var unread int
+	var notes []notifView
 	if p := principalFrom(r.Context()); p != nil {
 		who = p.Display
+		if ns, err := h.board.Notifications(r.Context(), p.ID, 15); err == nil {
+			notes = buildNotifViews(ns)
+		}
+		if n, err := h.board.UnreadCount(r.Context(), p.ID); err == nil {
+			unread = n
+		}
 	}
 	return chrome{
-		CSRFToken:  csrfTokenFrom(r.Context()),
-		Nav:        true,
-		Section:    section,
-		Display:    who,
-		Workspaces: list,
-		Workspace:  current,
+		CSRFToken:     csrfTokenFrom(r.Context()),
+		Nav:           true,
+		Section:       section,
+		Display:       who,
+		Workspaces:    list,
+		Workspace:     current,
+		Unread:        unread,
+		Notifications: notes,
+		Path:          r.URL.RequestURI(),
 	}, nil
 }
 

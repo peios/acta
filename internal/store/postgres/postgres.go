@@ -993,6 +993,77 @@ func clampEventLimit(limit int) int {
 	return limit
 }
 
+// --- notifications ---
+
+const notifCols = `id::text, recipient_id::text, kind, workspace_id, workspace_slug,
+                   item_id, item_title, actor_id, actor_name, comment_id, excerpt,
+                   created_at, read_at`
+
+func (p *Postgres) CreateNotification(ctx context.Context, n store.Notification) (store.Notification, error) {
+	return createWithRetry(func() (store.Notification, error) {
+		const q = `INSERT INTO notifications
+		             (recipient_id, kind, workspace_id, workspace_slug, item_id,
+		              item_title, actor_id, actor_name, comment_id, excerpt)
+		           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		           RETURNING ` + notifCols
+		row := p.pool.QueryRow(ctx, q,
+			n.RecipientID, n.Kind, n.WorkspaceID, n.WorkspaceSlug, n.ItemID,
+			n.ItemTitle, n.ActorID, n.ActorName, n.CommentID, n.Excerpt)
+		return scanNotification(row)
+	})
+}
+
+func (p *Postgres) NotificationsByRecipient(ctx context.Context, recipientID string, limit int) ([]store.Notification, error) {
+	const q = `SELECT ` + notifCols + `
+	           FROM notifications WHERE recipient_id = $1
+	           ORDER BY created_at DESC, id DESC LIMIT $2`
+	rows, err := p.pool.Query(ctx, q, recipientID, clampEventLimit(limit))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Notification
+	for rows.Next() {
+		n, err := scanNotification(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) UnreadNotificationCount(ctx context.Context, recipientID string) (int, error) {
+	const q = `SELECT count(*) FROM notifications WHERE recipient_id = $1 AND read_at IS NULL`
+	var n int
+	err := p.pool.QueryRow(ctx, q, recipientID).Scan(&n)
+	return n, err
+}
+
+func (p *Postgres) MarkNotificationRead(ctx context.Context, id, recipientID string) error {
+	const q = `UPDATE notifications SET read_at = now()
+	           WHERE id = $1 AND recipient_id = $2 AND read_at IS NULL`
+	_, err := p.pool.Exec(ctx, q, id, recipientID)
+	return err
+}
+
+func (p *Postgres) MarkAllNotificationsRead(ctx context.Context, recipientID string) error {
+	const q = `UPDATE notifications SET read_at = now()
+	           WHERE recipient_id = $1 AND read_at IS NULL`
+	_, err := p.pool.Exec(ctx, q, recipientID)
+	return err
+}
+
+func scanNotification(row pgx.Row) (store.Notification, error) {
+	var n store.Notification
+	if err := row.Scan(&n.ID, &n.RecipientID, &n.Kind, &n.WorkspaceID, &n.WorkspaceSlug,
+		&n.ItemID, &n.ItemTitle, &n.ActorID, &n.ActorName, &n.CommentID, &n.Excerpt,
+		&n.CreatedAt, &n.ReadAt); err != nil {
+		return store.Notification{}, err
+	}
+	return n, nil
+}
+
 // --- app settings ---
 
 func (p *Postgres) AppSetting(ctx context.Context, key string) (string, error) {

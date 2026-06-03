@@ -153,6 +153,58 @@
   .acct .more { margin-left: auto; color: var(--faint); }
   .acctmenu .wspanel { top: auto; bottom: calc(100% + 6px); left: 4px; right: 4px; }
 
+  /* notification bell — sits at the right of the workspace switcher row */
+  .bell { margin-left: auto; }
+  .bell > summary { list-style: none; cursor: pointer; }
+  .bell > summary::-webkit-details-marker { display: none; }
+  .bell-btn {
+    position: relative; display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 7px; color: var(--muted);
+  }
+  .bell-btn .ico { width: 16px; height: 16px; }
+  .bell > summary:hover .bell-btn { background: var(--surface-h); color: var(--text); }
+  .bell[open] > summary .bell-btn { background: var(--surface-h); color: var(--text); }
+  .bell-dot {
+    position: absolute; top: -3px; right: -3px; min-width: 15px; height: 15px; padding: 0 3px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 9.5px; font-weight: 700; line-height: 1; color: #fff;
+    background: var(--accent); border: 1.5px solid var(--bg); border-radius: 999px;
+    font-variant-numeric: tabular-nums;
+  }
+  /* open rightward (over the board) like the workspace switcher — a right-
+     anchored panel would overflow the left screen edge from a far-right bell. */
+  .bell .notifs { left: 0; right: auto; width: 320px; max-width: calc(100vw - 24px); padding: 0; }
+  .notifs-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 12px; border-bottom: 1px solid var(--border-soft);
+  }
+  .notifs-title { font-size: 12px; font-weight: 600; color: var(--text); }
+  .notifs-head form { margin: 0; }
+  .notifs-clear {
+    background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit;
+    font-size: 11.5px; color: var(--faint);
+  }
+  .notifs-clear:hover { color: var(--accent); }
+  .notifs-list { max-height: 380px; overflow-y: auto; padding: 4px; }
+  .notif {
+    display: flex; gap: 8px; padding: 8px 9px; border-radius: 8px;
+    text-decoration: none; color: var(--muted);
+  }
+  .notif:hover { background: var(--surface-h); }
+  .notif-dot { flex: none; width: 6px; height: 6px; margin-top: 5px; border-radius: 999px; background: transparent; }
+  .notif.unread .notif-dot { background: var(--accent); }
+  .notif-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .notif-line { font-size: 12.5px; line-height: 1.35; color: var(--muted); }
+  .notif.unread .notif-line { color: var(--text); }
+  .notif-line b { font-weight: 600; color: var(--text); }
+  .notif-ex {
+    font-size: 12px; color: var(--faint); line-height: 1.3;
+    overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
+    -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .notif-when { font-size: 10.5px; color: var(--dim); }
+  .notif-empty { padding: 22px 12px; text-align: center; font-size: 12.5px; color: var(--faint); }
+
   .avatar {
     width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; flex: none;
     font-size: 10px; font-weight: 600; color: var(--on-accent); letter-spacing: 0; text-transform: uppercase;
@@ -620,6 +672,41 @@
       {{else}}
       <a class="wsname manage" href="/settings/workspaces">Create a workspace&hellip;</a>
       {{end}}
+
+      <details class="wsmenu bell">
+        <summary title="Notifications">
+          <span class="bell-btn">
+            <svg class="ico" viewBox="0 0 16 16"><path d="M8 1.8a3.4 3.4 0 0 0-3.4 3.4c0 2.7-1.1 3.7-1.1 3.7h9a5.6 5.6 0 0 1-1.1-3.7A3.4 3.4 0 0 0 8 1.8Z"/><path d="M6.7 11.6a1.4 1.4 0 0 0 2.6 0"/></svg>
+            {{if .Unread}}<span class="bell-dot">{{if lt .Unread 10}}{{.Unread}}{{else}}9+{{end}}</span>{{end}}
+          </span>
+        </summary>
+        <div class="wspanel notifs">
+          <div class="notifs-head">
+            <span class="notifs-title">Notifications</span>
+            {{if .Notifications}}
+            <form method="post" action="/notifications/read-all">
+              <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+              <input type="hidden" name="return_to" value="{{.Path}}">
+              <button class="notifs-clear" type="submit">Mark all read</button>
+            </form>
+            {{end}}
+          </div>
+          <div class="notifs-list">
+            {{range .Notifications}}
+            <a class="notif{{if .Unread}} unread{{end}}" href="{{.URL}}">
+              <span class="notif-dot"></span>
+              <span class="notif-main">
+                <span class="notif-line"><b>{{.Actor}}</b> mentioned you on <b>{{.Title}}</b></span>
+                {{if .Excerpt}}<span class="notif-ex">{{.Excerpt}}</span>{{end}}
+                <span class="notif-when">{{.When}}</span>
+              </span>
+            </a>
+            {{else}}
+            <div class="notif-empty">You&rsquo;re all caught up.</div>
+            {{end}}
+          </div>
+        </div>
+      </details>
     </div>
 
     <nav class="nav">
