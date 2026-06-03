@@ -73,6 +73,16 @@ pick something up or weigh in on a thread.
 - Once you've handled one, call ` + "`mark_notification_read`" + ` with its id to clear
   it from the unread set, so your inbox reflects only what still needs attention.
 
+When you need an answer before you can continue — a decision, a review, a
+go-ahead — don't busy-poll the board. Ask in a comment and block on the reply:
+
+- Post your question with ` + "`add_comment`" + ` (` + "`@mention`" + ` whoever should answer, so
+  their bell lights up), then call ` + "`watch_comments`" + ` with ` + "`after`" + ` set to that
+  comment's id.
+- ` + "`watch_comments`" + ` returns the moment a new comment lands, or an empty list
+  after ~25s — so loop it, advancing ` + "`after`" + ` to the returned cursor each call,
+  until you get a reply you can act on. You decide what counts as an answer.
+
 ## Tool map
 
 | Goal | Tool |
@@ -89,6 +99,7 @@ pick something up or weigh in on a thread.
 | Flag / unflag a milestone | ` + "`set_item_milestone`" + ` |
 | Nest under a parent | ` + "`set_item_parent`" + ` |
 | Add a progress note | ` + "`add_comment`" + ` |
+| Ask and wait for a reply | ` + "`add_comment`" + ` + ` + "`watch_comments`" + ` |
 | Retire / restore | ` + "`archive_item`" + ` / ` + "`unarchive_item`" + ` |
 | Poll for @mentions | ` + "`list_notifications`" + ` |
 | Clear one once handled | ` + "`mark_notification_read`" + ` |

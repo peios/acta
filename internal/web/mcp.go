@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -103,8 +104,13 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "add_comment",
-		Description: "Append a comment to an item, authored by the calling principal. Comments are how agents record progress and coordinate.",
+		Description: "Append a comment to an item, authored by the calling principal. Comments are how agents record progress and coordinate. Returns the new comment, including its id (use it as the `after` cursor for watch_comments).",
 	}, h.mcpAddComment)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "watch_comments",
+		Description: "Block until new comments are posted on an item, then return them — the way to wait on a human (or another agent) replying in a thread. Returns every comment after the `after` cursor (a comment id from add_comment or a prior watch; omit to watch for comments posted from now on). Waits up to ~25s for at least one and returns the moment they arrive, or an empty list on timeout so you can call again. To ask and wait for an answer: add_comment(your question), then loop watch_comments with `after` set to that comment's id, advancing `after` to the returned cursor each call until you get a reply you can act on.",
+	}, h.mcpWatchComments)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "archive_item",
@@ -172,9 +178,10 @@ type mcpItemDetail struct {
 	Comments    []commentAPI `json:"comments"`
 }
 
-// commentAPI is a comment as the MCP surface presents it: author by username,
-// body, and an RFC3339 timestamp.
+// commentAPI is a comment as the MCP surface presents it: its id (a cursor for
+// watch_comments), author by username, body, and an RFC3339 timestamp.
 type commentAPI struct {
+	ID     string `json:"id,omitempty"`
 	Author string `json:"author,omitempty"`
 	Body   string `json:"body"`
 	At     string `json:"at"`
@@ -280,6 +287,19 @@ type setItemAssigneeInput struct {
 type addCommentInput struct {
 	ID   string `json:"id" jsonschema:"the item id to comment on"`
 	Body string `json:"body" jsonschema:"the comment text"`
+}
+
+type watchCommentsInput struct {
+	Item           string `json:"item" jsonschema:"the item id whose comments to watch"`
+	After          string `json:"after,omitempty" jsonschema:"return comments after this comment id (from add_comment or a prior watch's cursor); omit to watch for comments posted from now on"`
+	TimeoutSeconds int    `json:"timeout_seconds,omitempty" jsonschema:"max seconds to block waiting for a comment (default 25, max 30); on timeout the comments list is empty so you can call again"`
+}
+
+type watchCommentsOutput struct {
+	Comments []commentAPI `json:"comments"`
+	// Cursor is the id to pass as `after` on the next call: the newest returned
+	// comment, or the unchanged cursor when the wait timed out with none.
+	Cursor string `json:"cursor"`
 }
 
 type setItemDescriptionInput struct {
@@ -508,6 +528,7 @@ func (h *handlers) mcpGetItem(ctx context.Context, _ *mcp.CallToolRequest, in it
 	}
 	for _, c := range comments {
 		detail.Comments = append(detail.Comments, commentAPI{
+			ID:     c.ID,
 			Author: userName[c.AuthorID],
 			Body:   c.Body,
 			At:     c.CreatedAt.Format(time.RFC3339),
@@ -647,10 +668,136 @@ func (h *handlers) mcpAddComment(ctx context.Context, _ *mcp.CallToolRequest, in
 	})
 	h.publishNotifications(ctx, notified)
 	return &mcp.CallToolResult{}, commentAPI{
+		ID:     c.ID,
 		Author: p.Username,
 		Body:   c.Body,
 		At:     c.CreatedAt.Format(time.RFC3339),
 	}, nil
+}
+
+// mcpWatchComments is the "listen to a task for comments" primitive: a bounded,
+// cursor-based blocking read of an item's comment stream. It returns the
+// comments after the cursor as soon as any exist, otherwise it parks on the live
+// broker until one is posted or the (CF-safe) window lapses, returning empty.
+func (h *handlers) mcpWatchComments(ctx context.Context, _ *mcp.CallToolRequest, in watchCommentsInput) (*mcp.CallToolResult, watchCommentsOutput, error) {
+	item, err := h.mcpItem(ctx, in.Item, "")
+	if err != nil {
+		return nil, watchCommentsOutput{}, err
+	}
+	_, userName, err := h.nameMaps(ctx, item.WorkspaceID)
+	if err != nil {
+		return nil, watchCommentsOutput{}, mcpErr(err)
+	}
+
+	// An omitted cursor anchors to the item's current latest comment, so the
+	// watch yields only comments posted from this call onward.
+	cursorID := strings.TrimSpace(in.After)
+	if cursorID == "" {
+		cs, err := h.board.Comments(ctx, item.ID)
+		if err != nil {
+			return nil, watchCommentsOutput{}, mcpErr(err)
+		}
+		if n := len(cs); n > 0 {
+			cursorID = cs[n-1].ID
+		}
+	}
+
+	wctx, cancel := context.WithTimeout(ctx, clampWatchTimeout(in.TimeoutSeconds))
+	defer cancel()
+
+	// Subscribe before the first read so a comment landing in the gap still wakes
+	// us (the lost-wakeup guard, same as the SSE handler).
+	var ch <-chan []byte
+	if h.live != nil {
+		ch = h.live.Subscribe(wctx, wsTopic(item.WorkspaceID))
+	}
+
+	for {
+		out, newCursor, err := h.commentsAfterCursor(ctx, item.ID, cursorID, userName)
+		if err != nil {
+			return nil, watchCommentsOutput{}, mcpErr(err)
+		}
+		// Deliver as soon as there's anything; with no broker there's nothing to
+		// block on, so a single read is the whole answer.
+		if len(out) > 0 || ch == nil {
+			return &mcp.CallToolResult{}, watchCommentsOutput{Comments: out, Cursor: newCursor}, nil
+		}
+		if !waitForItemComment(wctx, ch, item.ID) {
+			return &mcp.CallToolResult{}, watchCommentsOutput{Comments: []commentAPI{}, Cursor: cursorID}, nil
+		}
+	}
+}
+
+// commentsAfterCursor returns the item's comments after the comment with id
+// cursorID (all of them when cursorID is empty), plus the new cursor (the newest
+// returned id, or the unchanged cursorID when none follow). An unknown cursor is
+// an error rather than a silent full replay.
+func (h *handlers) commentsAfterCursor(ctx context.Context, itemID, cursorID string, userName map[string]string) ([]commentAPI, string, error) {
+	cs, err := h.board.Comments(ctx, itemID)
+	if err != nil {
+		return nil, cursorID, err
+	}
+	start := 0
+	if cursorID != "" {
+		idx := -1
+		for i, c := range cs {
+			if c.ID == cursorID {
+				idx = i + 1
+				break
+			}
+		}
+		if idx < 0 {
+			return nil, cursorID, errors.New("watch_comments: unknown after cursor")
+		}
+		start = idx
+	}
+	out := make([]commentAPI, 0, len(cs)-start)
+	for _, c := range cs[start:] {
+		out = append(out, commentAPI{
+			ID:     c.ID,
+			Author: userName[c.AuthorID],
+			Body:   c.Body,
+			At:     c.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	cursor := cursorID
+	if n := len(out); n > 0 {
+		cursor = out[n-1].ID
+	}
+	return out, cursor, nil
+}
+
+// waitForItemComment blocks until a comment.add event for itemID arrives on ch,
+// returning true, or the context is done (timeout), returning false. Events for
+// other items or of other kinds are ignored.
+func waitForItemComment(ctx context.Context, ch <-chan []byte, itemID string) bool {
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case data := <-ch:
+			var ev struct {
+				Kind string `json:"kind"`
+				Item string `json:"item"`
+			}
+			if json.Unmarshal(data, &ev) == nil && ev.Kind == "comment.add" && ev.Item == itemID {
+				return true
+			}
+		}
+	}
+}
+
+// clampWatchTimeout bounds the blocking window: default 25s, hard cap 30s, so a
+// single request always returns well under Cloudflare's ~100s idle limit.
+func clampWatchTimeout(sec int) time.Duration {
+	switch {
+	case sec <= 0:
+		return 25 * time.Second
+	case sec > 30:
+		return 30 * time.Second
+	default:
+		return time.Duration(sec) * time.Second
+	}
 }
 
 func (h *handlers) mcpArchiveItem(ctx context.Context, _ *mcp.CallToolRequest, in itemIDInput) (*mcp.CallToolResult, mcpItem, error) {

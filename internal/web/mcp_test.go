@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -31,9 +32,15 @@ type mcpItemT struct {
 }
 
 type mcpCommentT struct {
+	ID     string `json:"id"`
 	Author string `json:"author"`
 	Body   string `json:"body"`
 	At     string `json:"at"`
+}
+
+type mcpWatchT struct {
+	Comments []mcpCommentT `json:"comments"`
+	Cursor   string        `json:"cursor"`
 }
 
 type mcpPrincipalT struct {
@@ -196,7 +203,7 @@ func TestMCPToolsLifecycle(t *testing.T) {
 	}
 	for _, want := range []string{
 		"whoami", "list_workspaces", "list_statuses", "list_items", "get_item", "create_item",
-		"set_item_status", "set_item_assignee", "add_comment", "archive_item", "unarchive_item",
+		"set_item_status", "set_item_assignee", "add_comment", "watch_comments", "archive_item", "unarchive_item",
 		"list_notifications", "mark_notification_read",
 	} {
 		if !got[want] {
@@ -336,6 +343,81 @@ func TestMCPListStatuses(t *testing.T) {
 	}
 	if !res.IsError {
 		t.Fatalf("list_statuses on unknown workspace: want tool error, got %s", toolText(res))
+	}
+}
+
+func TestMCPWatchComments(t *testing.T) {
+	base, client := newTestServer(t)
+	csrf := signIn(t, client, base)
+	token := mintToken(t, client, base, csrf)
+	sess := mcpConnect(t, base, token)
+
+	item := callTool[mcpItemT](t, sess, "create_item", map[string]any{"workspace": "general", "title": "Thread"})
+	q := callTool[mcpCommentT](t, sess, "add_comment", map[string]any{"id": item.ID, "body": "question?"})
+	if q.ID == "" {
+		t.Fatal("add_comment returned no comment id")
+	}
+
+	// Already-present: a comment after the cursor comes back at once, cursor advanced.
+	a1 := callTool[mcpCommentT](t, sess, "add_comment", map[string]any{"id": item.ID, "body": "answer 1"})
+	got := callTool[mcpWatchT](t, sess, "watch_comments", map[string]any{"item": item.ID, "after": q.ID})
+	if len(got.Comments) != 1 || got.Comments[0].ID != a1.ID || got.Comments[0].Body != "answer 1" {
+		t.Fatalf("watch after the question: want [answer 1], got %+v", got.Comments)
+	}
+	if got.Cursor != a1.ID {
+		t.Fatalf("cursor = %q, want %q", got.Cursor, a1.ID)
+	}
+
+	// Nothing newer than the cursor: blocks the window, then returns empty with the
+	// cursor unchanged so the caller can loop.
+	empty := callTool[mcpWatchT](t, sess, "watch_comments", map[string]any{"item": item.ID, "after": a1.ID, "timeout_seconds": 1})
+	if len(empty.Comments) != 0 || empty.Cursor != a1.ID {
+		t.Fatalf("watch with nothing new: want empty list + cursor %s, got %+v", a1.ID, empty)
+	}
+
+	// Unknown cursor is an error, not a silent full replay.
+	if msg := toolErr(t, sess, "watch_comments", map[string]any{"item": item.ID, "after": "nope"}); msg == "" {
+		t.Fatal("watch with an unknown cursor: want an error")
+	}
+
+	// Blocking: a parked watch wakes the moment a comment is posted elsewhere.
+	sess2 := mcpConnect(t, base, token)
+	type result struct {
+		w   mcpWatchT
+		err string
+	}
+	done := make(chan result, 1)
+	go func() {
+		r, err := sess.CallTool(context.Background(), &mcp.CallToolParams{
+			Name:      "watch_comments",
+			Arguments: map[string]any{"item": item.ID, "after": a1.ID, "timeout_seconds": 10},
+		})
+		switch {
+		case err != nil:
+			done <- result{err: err.Error()}
+		case r.IsError:
+			done <- result{err: toolText(r)}
+		default:
+			var w mcpWatchT
+			_ = json.Unmarshal([]byte(toolText(r)), &w)
+			done <- result{w: w}
+		}
+	}()
+
+	// Let the watch subscribe and park, then post the reply from the other session.
+	time.Sleep(250 * time.Millisecond)
+	reply := callTool[mcpCommentT](t, sess2, "add_comment", map[string]any{"id": item.ID, "body": "answer 2"})
+
+	select {
+	case r := <-done:
+		if r.err != "" {
+			t.Fatalf("blocking watch errored: %s", r.err)
+		}
+		if len(r.w.Comments) != 1 || r.w.Comments[0].ID != reply.ID || r.w.Comments[0].Body != "answer 2" {
+			t.Fatalf("blocking watch: want [answer 2 = %s], got %+v", reply.ID, r.w.Comments)
+		}
+	case <-time.After(8 * time.Second):
+		t.Fatal("blocking watch did not return after a comment was posted")
 	}
 }
 
