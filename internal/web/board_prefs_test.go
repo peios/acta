@@ -15,20 +15,20 @@ func TestBoardPrefsWiring(t *testing.T) {
 	token := csrfToken(t, client, base)
 	login(t, client, base, token)
 
-	body := getBody(t, client, base+"/w/general", http.StatusOK)
+	body := getBody(t, client, base+"/general", http.StatusOK)
 
 	if !strings.Contains(body, "/static/board-prefs.js") {
 		t.Fatalf("board page doesn't load board-prefs.js:\n%s", body)
 	}
-	// Status toggle is explicit, not a bare /w/general link.
-	if !strings.Contains(body, `href="/w/general?mode=status"`) {
+	// Status toggle is explicit, not a bare /general link.
+	if !strings.Contains(body, `href="/general?mode=status"`) {
 		t.Fatalf("Status mode link isn't explicit (?mode=status):\n%s", body)
 	}
-	if !strings.Contains(body, `href="/w/general?mode=milestone"`) {
+	if !strings.Contains(body, `href="/general?mode=milestone"`) {
 		t.Fatalf("Milestone mode link missing:\n%s", body)
 	}
 	// Clear carries the current mode so the no-JS reset isn't a bare visit.
-	if !strings.Contains(body, `class="facet-clear" href="/w/general?mode=status"`) {
+	if !strings.Contains(body, `class="facet-clear" href="/general?mode=status"`) {
 		t.Fatalf("Clear link doesn't carry the mode:\n%s", body)
 	}
 }

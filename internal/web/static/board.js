@@ -6,7 +6,7 @@
   const board = document.getElementById('board');
   if (!board) return;
   const wrap = document.querySelector('.board-wrap');
-  const base = '/w/' + wrap.dataset.slug;
+  const base = '/' + wrap.dataset.slug;
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
   const boardErr = document.querySelector('[data-board-error]');
 

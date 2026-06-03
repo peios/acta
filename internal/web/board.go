@@ -503,7 +503,7 @@ func (h *handlers) itemDelete(w http.ResponseWriter, r *http.Request) {
 		writeBoardErr(w, err)
 		return
 	}
-	respond204OrRedirect(w, r, "/w/"+ws.Slug+"/archive")
+	respond204OrRedirect(w, r, "/"+ws.Slug+"/archive")
 }
 
 // --- helpers ---

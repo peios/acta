@@ -202,7 +202,7 @@ func (h *handlers) itemURL(slug, id string) string {
 	if h.publicURL == "" || slug == "" {
 		return ""
 	}
-	return h.publicURL + "/w/" + slug + "?item=" + id
+	return h.publicURL + "/" + slug + "?item=" + id
 }
 
 // slugFor resolves a workspace id to its slug for permalink building. Errors are

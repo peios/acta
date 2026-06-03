@@ -217,7 +217,7 @@ func TestMCPToolsLifecycle(t *testing.T) {
 	if created.CreatedAt == "" {
 		t.Errorf("create_item: created_at is empty")
 	}
-	if !strings.Contains(created.URL, "/w/general?item="+created.ID) {
+	if !strings.Contains(created.URL, "/general?item="+created.ID) {
 		t.Errorf("create_item url = %q, want a board permalink", created.URL)
 	}
 
@@ -417,7 +417,7 @@ func TestMCPNotifications(t *testing.T) {
 	if n.Actor != "Jack" || n.Workspace != "general" || !strings.Contains(n.Excerpt, "don't forget") {
 		t.Fatalf("notification meta = %+v", n)
 	}
-	if !strings.Contains(n.URL, "/w/general?item="+item.ID) {
+	if !strings.Contains(n.URL, "/general?item="+item.ID) {
 		t.Errorf("notification url = %q, want a board permalink", n.URL)
 	}
 

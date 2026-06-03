@@ -333,14 +333,32 @@
 
   /* workspaces (settings) */
   .ws-list { display: grid; gap: .6rem; }
-  .ws-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .55rem .7rem; background: var(--field); border: 1px solid var(--border-soft); border-radius: 8px; }
-  .ws-rename { display: flex; gap: .5rem; align-items: stretch; flex: 1; min-width: 0; margin: 0; }
-  .ws-rename .input-wrap { flex: 1; }
-  .ws-side { display: flex; align-items: center; gap: 1rem; white-space: nowrap; }
-  .ws-side form { margin: 0; }
-  .ws-meta { color: var(--faint); font-size: .78rem; }
+  .ws-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .6rem .8rem; background: var(--field); border: 1px solid var(--border-soft); border-radius: 8px; }
+  .ws-row-main { display: flex; flex-direction: column; gap: .12rem; min-width: 0; }
+  .ws-name { font-size: .92rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ws-url { color: var(--faint); font-size: .78rem; font-family: var(--mono); text-decoration: none; }
+  .ws-url:hover { color: var(--accent-hi); }
+  .ws-settings-btn { width: auto; flex: none; min-width: 6rem; text-align: center; }
   .ws-create { display: flex; gap: .6rem; align-items: stretch; margin-top: 1rem; }
   .ws-create .input-wrap { flex: 1; }
+
+  /* per-workspace settings modal — CSS-only, toggled by the :target fragment */
+  .ws-modal { position: fixed; inset: 0; z-index: 60; display: none; align-items: flex-start; justify-content: center; padding: 5rem 1rem; overflow-y: auto; background: rgba(4,5,8,.66); backdrop-filter: blur(2px); }
+  .ws-modal:target { display: flex; }
+  .ws-modal-dismiss { position: absolute; inset: 0; cursor: default; }
+  .ws-modal .modal { width: min(32rem, 100%); position: relative; z-index: 1; }
+  .ws-modal-title { flex: 1; min-width: 0; margin: 0; font-size: 1.05rem; font-weight: 650; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ws-modal-body { padding: 1.1rem 1.2rem; display: grid; gap: 1.1rem; }
+  .ws-modal-form { display: grid; gap: .85rem; margin: 0; }
+  .ws-field { display: grid; gap: .35rem; }
+  .ws-field-label { font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
+  .ws-slug-input { display: flex; align-items: stretch; min-width: 0; }
+  .ws-slug-prefix { display: inline-flex; align-items: center; padding: 0 .55rem; background: var(--surface-h); border: 1px solid var(--border-soft); border-right: 0; border-radius: 8px 0 0 8px; color: var(--faint); font-family: var(--mono); font-size: .85rem; }
+  .ws-slug-input .input-wrap { flex: 1; min-width: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+  .ws-field-hint { color: var(--faint); font-size: .76rem; line-height: 1.45; margin: 0; }
+  .ws-modal-actions { display: flex; justify-content: flex-end; align-items: center; gap: .6rem; }
+  .ws-modal-danger { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 0; padding-top: .95rem; border-top: 1px solid var(--border-soft); }
+  .ws-modal-danger-text { color: var(--faint); font-size: .8rem; }
 
   /* mcp guide + prompts (settings) */
   .help { color: var(--faint); font-size: .82rem; line-height: 1.5; margin: 0 0 1rem; }
@@ -681,7 +699,7 @@
         <summary><span class="wsname">{{.Workspace.Name}} <span class="caret">&#9662;</span></span></summary>
         <div class="wspanel">
           {{range .Workspaces}}
-          <a class="wsitem{{if and $.Workspace (eq .ID $.Workspace.ID)}} active{{end}}" href="/w/{{.Slug}}">{{.Name}}</a>
+          <a class="wsitem{{if and $.Workspace (eq .ID $.Workspace.ID)}} active{{end}}" href="/{{.Slug}}">{{.Name}}</a>
           {{end}}
           <a class="wsitem manage" href="/settings/workspaces">Manage workspaces&hellip;</a>
         </div>
@@ -732,11 +750,11 @@
         Home
       </a>
       {{if .Workspace}}
-      <a class="nav-item" href="/w/{{.Workspace.Slug}}?assignee=me">
+      <a class="nav-item" href="/{{.Workspace.Slug}}?assignee=me">
         <svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"/><path d="M3.5 13a4.5 4.5 0 0 1 9 0"/></svg>
         My items
       </a>
-      <a class="nav-item" href="/w/{{.Workspace.Slug}}/activity">
+      <a class="nav-item" href="/{{.Workspace.Slug}}/activity">
         <svg class="ico" viewBox="0 0 16 16"><path d="M1.5 8h3l1.5-4 3 8 1.5-4h4"/></svg>
         Activity
       </a>

@@ -173,7 +173,8 @@ func TestSessionRevokeOthers(t *testing.T) {
 	assertLoggedIn(t, clientA, base)
 }
 
-// assertLoggedIn expects GET / to redirect into a workspace (303 to /w/…).
+// assertLoggedIn expects GET / to redirect into the seeded workspace (303 to
+// /general).
 func assertLoggedIn(t *testing.T, client *http.Client, base string) {
 	t.Helper()
 	resp, err := client.Get(base + "/")
@@ -181,8 +182,8 @@ func assertLoggedIn(t *testing.T, client *http.Client, base string) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusSeeOther || !strings.HasPrefix(resp.Header.Get("Location"), "/w/") {
-		t.Fatalf("expected logged-in redirect to /w/, got %d %q", resp.StatusCode, resp.Header.Get("Location"))
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/general" {
+		t.Fatalf("expected logged-in redirect to /general, got %d %q", resp.StatusCode, resp.Header.Get("Location"))
 	}
 }
 

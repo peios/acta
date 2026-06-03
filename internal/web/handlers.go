@@ -86,7 +86,7 @@ func buildNotifViews(notes []store.Notification) []notifView {
 	for _, n := range notes {
 		to := "/"
 		if n.WorkspaceSlug != "" && n.ItemID != "" {
-			to = "/w/" + n.WorkspaceSlug + "?item=" + n.ItemID
+			to = "/" + n.WorkspaceSlug + "?item=" + n.ItemID
 		}
 		out = append(out, notifView{
 			ID:      n.ID,
@@ -204,7 +204,7 @@ func (h *handlers) logout(w http.ResponseWriter, r *http.Request) {
 // --- workspace landing ---
 
 // rootRedirect sends "/" to the user's current workspace. The canonical URL for
-// a workspace is /w/{slug}; "/" is just a convenience entry point.
+// a workspace is /{slug}; "/" is just a convenience entry point.
 func (h *handlers) rootRedirect(w http.ResponseWriter, r *http.Request) {
 	list, err := h.workspaces.List(r.Context())
 	if err != nil {
@@ -218,10 +218,22 @@ func (h *handlers) rootRedirect(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/settings/workspaces", http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, "/w/"+current.Slug, http.StatusSeeOther)
+	http.Redirect(w, r, "/"+current.Slug, http.StatusSeeOther)
 }
 
-// (The workspace landing at /w/{slug} is the board — see board.go.)
+// legacyWorkspaceRedirect 301s the retired /w/{path...} URLs to their new
+// /{path...} home, preserving the path tail and query string so old bookmarks,
+// notification deep-links, and shared permalinks keep resolving. The {path...}
+// wildcard captures the whole tail after /w/ (slug plus any sub-path) in one go.
+func (h *handlers) legacyWorkspaceRedirect(w http.ResponseWriter, r *http.Request) {
+	target := "/" + r.PathValue("path")
+	if r.URL.RawQuery != "" {
+		target += "?" + r.URL.RawQuery
+	}
+	http.Redirect(w, r, target, http.StatusMovedPermanently)
+}
+
+// (The workspace landing at /{slug} is the board — see board.go.)
 
 // --- account: security ---
 
@@ -408,7 +420,9 @@ func (h *handlers) workspaceRename(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	err := h.workspaces.Rename(r.Context(), r.PathValue("id"), r.PostFormValue("name"))
+	// One form drives the settings modal: "name" is the display label and the
+	// optional "slug" re-slugs the workspace (blank or unchanged keeps the URL).
+	err := h.workspaces.Update(r.Context(), r.PathValue("id"), r.PostFormValue("name"), r.PostFormValue("slug"))
 	if err != nil && !errors.Is(err, store.ErrWorkspaceNotFound) {
 		redirectWorkspaceErr(w, r, err)
 		return
@@ -437,6 +451,12 @@ func redirectWorkspaceErr(w http.ResponseWriter, r *http.Request, err error) {
 		code = "invalid_name"
 	case errors.Is(err, store.ErrWorkspaceNameTaken):
 		code = "name_taken"
+	case errors.Is(err, workspace.ErrInvalidSlug):
+		code = "invalid_slug"
+	case errors.Is(err, workspace.ErrSlugReserved):
+		code = "slug_reserved"
+	case errors.Is(err, store.ErrWorkspaceSlugTaken):
+		code = "slug_taken"
 	default:
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -450,6 +470,12 @@ func workspaceError(code string) string {
 		return "Enter a name (1–60 characters)."
 	case "name_taken":
 		return "A workspace with that name already exists."
+	case "invalid_slug":
+		return "Enter a URL slug with at least one letter or number."
+	case "slug_reserved":
+		return "That URL is reserved — pick another slug."
+	case "slug_taken":
+		return "A workspace already uses that URL slug."
 	case "last":
 		return "You can't delete your only workspace."
 	default:

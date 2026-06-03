@@ -499,6 +499,18 @@ func (p *Postgres) RenameWorkspace(ctx context.Context, id, name string) error {
 	return nil
 }
 
+func (p *Postgres) UpdateWorkspace(ctx context.Context, id, name, slug string) error {
+	const q = `UPDATE workspaces SET name = $2, slug = $3 WHERE id = $1`
+	ct, err := p.pool.Exec(ctx, q, id, name, slug)
+	if err != nil {
+		return mapWorkspaceConflict(err)
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrWorkspaceNotFound
+	}
+	return nil
+}
+
 func (p *Postgres) DeleteWorkspace(ctx context.Context, id string) error {
 	const q = `DELETE FROM workspaces WHERE id = $1`
 	ct, err := p.pool.Exec(ctx, q, id)

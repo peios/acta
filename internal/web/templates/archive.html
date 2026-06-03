@@ -3,7 +3,7 @@
 <main class="stage stage--wide">
   <div class="archive-head reveal d1">
     <h1 class="title" style="font-size: 1.45rem; margin: 0;">Archived items</h1>
-    <a class="toplink" href="/w/{{.Workspace.Slug}}">&lsaquo; Back to board</a>
+    <a class="toplink" href="/{{.Workspace.Slug}}">&lsaquo; Back to board</a>
   </div>
 
   {{if .Items}}
@@ -15,11 +15,11 @@
         <div class="arch-meta">{{.StatusName}} · archived {{.Archived}}</div>
       </div>
       <div class="arch-actions">
-        <form method="post" action="/w/{{$.Workspace.Slug}}/items/{{.ID}}/unarchive">
+        <form method="post" action="/{{$.Workspace.Slug}}/items/{{.ID}}/unarchive">
           <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
           <button class="btn-secondary" type="submit">Restore</button>
         </form>
-        <form method="post" action="/w/{{$.Workspace.Slug}}/items/{{.ID}}/delete">
+        <form method="post" action="/{{$.Workspace.Slug}}/items/{{.ID}}/delete">
           <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
           <button class="link-danger" type="submit">Delete</button>
         </form>

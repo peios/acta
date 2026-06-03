@@ -18,22 +18,11 @@
       <div class="ws-list">
         {{range .Workspaces}}
         <div class="ws-row">
-          <form class="ws-rename" method="post" action="/settings/workspaces/{{.ID}}/rename">
-            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-            <div class="input-wrap">
-              <input class="input" name="name" value="{{.Name}}" maxlength="60" autocomplete="off" aria-label="Workspace name">
-            </div>
-            <button class="btn-secondary" type="submit">Rename</button>
-          </form>
-          <div class="ws-side">
-            <span class="ws-meta">/w/{{.Slug}}</span>
-            {{if gt (len $.Workspaces) 1}}
-            <form method="post" action="/settings/workspaces/{{.ID}}/delete">
-              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-              <button class="link-danger" type="submit">Remove</button>
-            </form>
-            {{end}}
+          <div class="ws-row-main">
+            <span class="ws-name">{{.Name}}</span>
+            <a class="ws-url" href="/{{.Slug}}">/{{.Slug}}</a>
           </div>
+          <a class="btn-secondary ws-settings-btn" href="#ws-{{.ID}}">Settings</a>
         </div>
         {{end}}
       </div>
@@ -48,4 +37,51 @@
     </section>
   </div>
 </main>
+
+{{/* Modals live outside <main> so their position:fixed resolves against the
+     viewport — an animated .reveal ancestor (transform) would otherwise become
+     their containing block and clip them. Same placement as the item modal. */}}
+{{range .Workspaces}}
+<div id="ws-{{.ID}}" class="ws-modal" role="dialog" aria-modal="true" aria-label="Workspace settings">
+  <a class="ws-modal-dismiss" href="#" aria-label="Close" tabindex="-1"></a>
+  <div class="modal">
+    <header class="modal-head">
+      <h3 class="ws-modal-title">{{.Name}}</h3>
+      <a class="modal-close" href="#" aria-label="Close">&times;</a>
+    </header>
+    <div class="ws-modal-body">
+      <form class="ws-modal-form" method="post" action="/settings/workspaces/{{.ID}}/rename">
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <div class="ws-field">
+          <label class="ws-field-label" for="ws-name-{{.ID}}">Name</label>
+          <div class="input-wrap">
+            <input class="input" id="ws-name-{{.ID}}" name="name" value="{{.Name}}" maxlength="60" autocomplete="off">
+          </div>
+        </div>
+        <div class="ws-field">
+          <label class="ws-field-label" for="ws-slug-{{.ID}}">URL slug</label>
+          <div class="ws-slug-input">
+            <span class="ws-slug-prefix">/</span>
+            <div class="input-wrap">
+              <input class="input" id="ws-slug-{{.ID}}" name="slug" value="{{.Slug}}" maxlength="48" autocomplete="off" spellcheck="false">
+            </div>
+          </div>
+          <p class="ws-field-hint">The workspace's web address. Changing it moves the board and breaks existing links to the old slug.</p>
+        </div>
+        <div class="ws-modal-actions">
+          <a class="btn-secondary" href="#" style="width: auto;">Cancel</a>
+          <button class="btn-primary" type="submit" style="width: auto;">Save changes</button>
+        </div>
+      </form>
+      {{if gt (len $.Workspaces) 1}}
+      <form class="ws-modal-danger" method="post" action="/settings/workspaces/{{.ID}}/delete">
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <span class="ws-modal-danger-text">Remove this workspace and everything in it.</span>
+        <button class="link-danger" type="submit">Remove</button>
+      </form>
+      {{end}}
+    </div>
+  </div>
+</div>
+{{end}}
 {{end}}

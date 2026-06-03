@@ -41,9 +41,6 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	}
 	mux := http.NewServeMux()
 
-	// Static assets (passkey JS).
-	mux.Handle("GET /static/", staticHandler())
-
 	// Public routes.
 	mux.HandleFunc("GET /login", h.loginPage)
 	provider.Mount(mux) // POST /login/password, /login/passkey/{begin,finish}
@@ -55,36 +52,38 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	}
 	mux.Handle("GET /{$}", protected(h.rootRedirect))
 
-	// A workspace's board and its JSON mutation API (consumed by board.js).
-	mux.Handle("GET /w/{slug}", protected(h.boardPage))
-	mux.Handle("GET /w/{slug}/archive", protected(h.archivePage))
-	mux.Handle("GET /w/{slug}/activity", protected(h.activityPage))
-	mux.Handle("POST /w/{slug}/statuses", protected(h.statusCreate))
-	mux.Handle("POST /w/{slug}/statuses/reorder", protected(h.statusReorder))
-	mux.Handle("POST /w/{slug}/statuses/{id}/rename", protected(h.statusRename))
-	mux.Handle("POST /w/{slug}/statuses/{id}/color", protected(h.statusColor))
-	mux.Handle("POST /w/{slug}/statuses/{id}/delete", protected(h.statusDelete))
-	mux.Handle("POST /w/{slug}/milestones/reorder", protected(h.milestoneReorder))
-	mux.Handle("POST /w/{slug}/items", protected(h.itemCreate))
-	mux.Handle("GET /w/{slug}/items/{id}/modal", protected(h.itemModal))
-	mux.Handle("GET /w/{slug}/mentionables", protected(h.mentionables))
-	mux.Handle("POST /w/{slug}/items/{id}/rename", protected(h.itemRename))
-	mux.Handle("POST /w/{slug}/items/{id}/move", protected(h.itemMove))
-	mux.Handle("POST /w/{slug}/items/{id}/description", protected(h.itemDescription))
-	mux.Handle("POST /w/{slug}/items/{id}/assignee", protected(h.itemAssignee))
-	mux.Handle("POST /w/{slug}/items/{id}/status", protected(h.itemSetStatus))
-	mux.Handle("POST /w/{slug}/items/{id}/comment", protected(h.itemComment))
-	mux.Handle("POST /w/{slug}/items/{id}/parent", protected(h.itemParent))
-	mux.Handle("POST /w/{slug}/items/{id}/milestone", protected(h.itemMilestone))
-	mux.Handle("POST /w/{slug}/items/{id}/subtasks", protected(h.subtaskCreate))
-	mux.Handle("POST /w/{slug}/items/{id}/subtasks/reorder", protected(h.subtaskReorder))
-	mux.Handle("POST /w/{slug}/items/{id}/archive", protected(h.itemArchive))
-	mux.Handle("POST /w/{slug}/items/{id}/unarchive", protected(h.itemUnarchive))
-	mux.Handle("POST /w/{slug}/items/{id}/delete", protected(h.itemDelete))
+	// A workspace's board and its JSON mutation API (consumed by board.js). The
+	// board lives at the path root (/{slug}); slugs that would shadow a built-in
+	// route are reserved (see workspace.reservedSlugs).
+	mux.Handle("GET /{slug}", protected(h.boardPage))
+	mux.Handle("GET /{slug}/archive", protected(h.archivePage))
+	mux.Handle("GET /{slug}/activity", protected(h.activityPage))
+	mux.Handle("POST /{slug}/statuses", protected(h.statusCreate))
+	mux.Handle("POST /{slug}/statuses/reorder", protected(h.statusReorder))
+	mux.Handle("POST /{slug}/statuses/{id}/rename", protected(h.statusRename))
+	mux.Handle("POST /{slug}/statuses/{id}/color", protected(h.statusColor))
+	mux.Handle("POST /{slug}/statuses/{id}/delete", protected(h.statusDelete))
+	mux.Handle("POST /{slug}/milestones/reorder", protected(h.milestoneReorder))
+	mux.Handle("POST /{slug}/items", protected(h.itemCreate))
+	mux.Handle("GET /{slug}/items/{id}/modal", protected(h.itemModal))
+	mux.Handle("GET /{slug}/mentionables", protected(h.mentionables))
+	mux.Handle("POST /{slug}/items/{id}/rename", protected(h.itemRename))
+	mux.Handle("POST /{slug}/items/{id}/move", protected(h.itemMove))
+	mux.Handle("POST /{slug}/items/{id}/description", protected(h.itemDescription))
+	mux.Handle("POST /{slug}/items/{id}/assignee", protected(h.itemAssignee))
+	mux.Handle("POST /{slug}/items/{id}/status", protected(h.itemSetStatus))
+	mux.Handle("POST /{slug}/items/{id}/comment", protected(h.itemComment))
+	mux.Handle("POST /{slug}/items/{id}/parent", protected(h.itemParent))
+	mux.Handle("POST /{slug}/items/{id}/milestone", protected(h.itemMilestone))
+	mux.Handle("POST /{slug}/items/{id}/subtasks", protected(h.subtaskCreate))
+	mux.Handle("POST /{slug}/items/{id}/subtasks/reorder", protected(h.subtaskReorder))
+	mux.Handle("POST /{slug}/items/{id}/archive", protected(h.itemArchive))
+	mux.Handle("POST /{slug}/items/{id}/unarchive", protected(h.itemUnarchive))
+	mux.Handle("POST /{slug}/items/{id}/delete", protected(h.itemDelete))
 
 	// Notification bell. Open marks one read then redirects to the item;
 	// read-all clears the inbox. Both are workspace-agnostic (a notification
-	// can point anywhere), so they live outside the /w/{slug} tree.
+	// can point anywhere), so they live outside the /{slug} tree.
 	mux.Handle("GET /notifications/{id}/open", protected(h.notificationOpen))
 	mux.Handle("POST /notifications/read-all", protected(h.notificationsReadAll))
 
@@ -155,9 +154,20 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 
 	// Top-level dispatch: token-auth (no CSRF) for the API and MCP, cookie + CSRF
 	// for the browser UI. All share request logging and the security headers.
+	// Static assets live here, not on the UI mux: a `/static/` subtree pattern
+	// would conflict with the flat /{slug}/… board routes (both match e.g.
+	// /static/archive) and make ServeMux panic at registration.
 	root := http.NewServeMux()
+	root.Handle("GET /static/", staticHandler())
 	root.Handle("/api/v1/", requireToken(tokens)(api))
 	root.Handle("/mcp", mcpEndpoint)
+	// Retired /w/{slug}/… URLs — boards used to live under /w. 301 them to the
+	// new /{slug}/… home (path tail + query preserved) so old bookmarks and
+	// shared permalinks keep resolving. It lives on the root mux, not the UI mux:
+	// a /w/{…} pattern there would conflict with the flat /{slug}/… board routes
+	// (both match e.g. /w/archive). GET-only and auth-free — a pure path rewrite
+	// whose destination still enforces auth.
+	root.HandleFunc("GET /w/{path...}", h.legacyWorkspaceRedirect)
 	root.Handle("/", csrf(cfg.CookieSecure())(mux))
 
 	// Outer chain (outermost first): log + tag the request, recover panics into

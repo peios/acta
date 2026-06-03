@@ -168,10 +168,11 @@ type Challenge struct {
 
 // Workspace is a top-level container for work. Everything the user creates
 // (boards, items — future slices) will belong to one. Slug is the URL-safe
-// identifier used in /w/{slug}/… paths and is immutable once assigned, so
-// links never break when a workspace is renamed. Name is the human label and
-// is unique case-insensitively. CreatedBy is the id of the creating user and
-// may be empty (e.g. the seeded default, or after the creator is deleted).
+// identifier used in /{slug}/… paths. It is stable across name changes but can
+// be changed deliberately from workspace settings (which moves the workspace's
+// URL). Name is the human label and is unique case-insensitively. CreatedBy is
+// the id of the creating user and may be empty (e.g. the seeded default, or
+// after the creator is deleted).
 type Workspace struct {
 	ID        string
 	Slug      string
@@ -321,12 +322,15 @@ type Store interface {
 
 	// CreateWorkspace persists w (caller supplies a unique slug and name);
 	// it returns ErrWorkspaceNameTaken / ErrWorkspaceSlugTaken on collision.
-	// RenameWorkspace changes only the name (the slug is immutable).
+	// RenameWorkspace changes only the name. UpdateWorkspace sets both the name
+	// and the slug (the settings editor can re-slug a workspace); it returns the
+	// same collision sentinels.
 	CreateWorkspace(ctx context.Context, w Workspace) (Workspace, error)
 	ListWorkspaces(ctx context.Context) ([]Workspace, error)
 	WorkspaceByID(ctx context.Context, id string) (Workspace, error)
 	WorkspaceBySlug(ctx context.Context, slug string) (Workspace, error)
 	RenameWorkspace(ctx context.Context, id, name string) error
+	UpdateWorkspace(ctx context.Context, id, name, slug string) error
 	DeleteWorkspace(ctx context.Context, id string) error
 	CountWorkspaces(ctx context.Context) (int, error)
 

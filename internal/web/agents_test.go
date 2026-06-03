@@ -65,9 +65,9 @@ func TestItemRecordsCreator(t *testing.T) {
 	csrf := signIn(t, client, base)
 
 	// Creating an item over the JSON API (status_id omitted -> first lane).
-	id := decodeID(t, postJSON(t, client, base+"/w/general/items", csrf, map[string]any{"title": "Ship it"}))
+	id := decodeID(t, postJSON(t, client, base+"/general/items", csrf, map[string]any{"title": "Ship it"}))
 
-	modal := getBody(t, client, base+"/w/general/items/"+id+"/modal", http.StatusOK)
+	modal := getBody(t, client, base+"/general/items/"+id+"/modal", http.StatusOK)
 	if !strings.Contains(modal, "Created by") || !strings.Contains(modal, "Jack") {
 		t.Fatalf("modal missing creator attribution:\n%s", modal)
 	}

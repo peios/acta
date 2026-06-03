@@ -58,7 +58,7 @@ func TestNotificationBellEndToEnd(t *testing.T) {
 	// Jack opens an item and @-mentions Robin in a comment.
 	todo := statusID(t, jack, base, "To do")
 	item := makeItem(t, jack, base, jackTok, todo, "Ship the bell")
-	cr := postJSON(t, jack, base+"/w/general/items/"+item+"/comment", jackTok,
+	cr := postJSON(t, jack, base+"/general/items/"+item+"/comment", jackTok,
 		map[string]any{"body": "hey @robin take a look"})
 	if cr.StatusCode != http.StatusOK {
 		t.Fatalf("comment: want 200, got %d", cr.StatusCode)
@@ -68,7 +68,7 @@ func TestNotificationBellEndToEnd(t *testing.T) {
 	// Robin signs in on a fresh client and sees the bell light up.
 	robin := newClient(t)
 	robinTok := loginAs(t, robin, base, "robin")
-	board := getBody(t, robin, base+"/w/general", http.StatusOK)
+	board := getBody(t, robin, base+"/general", http.StatusOK)
 	if !strings.Contains(board, badgeMarker) {
 		t.Fatal("robin's bell shows no unread badge")
 	}
@@ -89,33 +89,33 @@ func TestNotificationBellEndToEnd(t *testing.T) {
 	if open.StatusCode != http.StatusSeeOther {
 		t.Fatalf("open: want 303, got %d", open.StatusCode)
 	}
-	if loc := open.Header.Get("Location"); loc != "/w/general?item="+item {
-		t.Fatalf("open redirect = %q, want /w/general?item=%s", loc, item)
+	if loc := open.Header.Get("Location"); loc != "/general?item="+item {
+		t.Fatalf("open redirect = %q, want /general?item=%s", loc, item)
 	}
 
 	// The badge is gone once the notification is read.
-	board = getBody(t, robin, base+"/w/general", http.StatusOK)
+	board = getBody(t, robin, base+"/general", http.StatusOK)
 	if strings.Contains(board, badgeMarker) {
 		t.Fatal("badge still present after opening the notification")
 	}
 
 	// A fresh mention re-lights it; mark-all-read clears the batch and returns
 	// to the page it was submitted from.
-	cr = postJSON(t, jack, base+"/w/general/items/"+item+"/comment", jackTok,
+	cr = postJSON(t, jack, base+"/general/items/"+item+"/comment", jackTok,
 		map[string]any{"body": "@robin one more"})
 	cr.Body.Close()
-	board = getBody(t, robin, base+"/w/general", http.StatusOK)
+	board = getBody(t, robin, base+"/general", http.StatusOK)
 	if !strings.Contains(board, badgeMarker) {
 		t.Fatal("second mention did not light the bell")
 	}
 	ra := postForm(t, robin, base+"/notifications/read-all", url.Values{
-		"csrf_token": {robinTok}, "return_to": {"/w/general"},
+		"csrf_token": {robinTok}, "return_to": {"/general"},
 	})
 	ra.Body.Close()
-	if ra.StatusCode != http.StatusSeeOther || ra.Header.Get("Location") != "/w/general" {
-		t.Fatalf("read-all: want 303 to /w/general, got %d %q", ra.StatusCode, ra.Header.Get("Location"))
+	if ra.StatusCode != http.StatusSeeOther || ra.Header.Get("Location") != "/general" {
+		t.Fatalf("read-all: want 303 to /general, got %d %q", ra.StatusCode, ra.Header.Get("Location"))
 	}
-	board = getBody(t, robin, base+"/w/general", http.StatusOK)
+	board = getBody(t, robin, base+"/general", http.StatusOK)
 	if strings.Contains(board, badgeMarker) {
 		t.Fatal("badge still present after mark-all-read")
 	}
@@ -124,7 +124,7 @@ func TestNotificationBellEndToEnd(t *testing.T) {
 func TestMentionablesEndpoint(t *testing.T) {
 	base, jack := newTestServer(t)
 	signIn(t, jack, base)
-	body := getBody(t, jack, base+"/w/general/mentionables", http.StatusOK)
+	body := getBody(t, jack, base+"/general/mentionables", http.StatusOK)
 	if !strings.Contains(body, `"username":"jack"`) {
 		t.Fatalf("mentionables should list the signed-in human: %s", body)
 	}

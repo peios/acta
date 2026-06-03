@@ -367,7 +367,7 @@ func (h *handlers) itemArchive(w http.ResponseWriter, r *http.Request) {
 		writeBoardErr(w, err)
 		return
 	}
-	respond204OrRedirect(w, r, "/w/"+ws.Slug)
+	respond204OrRedirect(w, r, "/"+ws.Slug)
 }
 
 func (h *handlers) itemUnarchive(w http.ResponseWriter, r *http.Request) {
@@ -379,7 +379,7 @@ func (h *handlers) itemUnarchive(w http.ResponseWriter, r *http.Request) {
 		writeBoardErr(w, err)
 		return
 	}
-	respond204OrRedirect(w, r, "/w/"+ws.Slug+"/archive")
+	respond204OrRedirect(w, r, "/"+ws.Slug+"/archive")
 }
 
 // --- archive view ---

@@ -12,7 +12,7 @@ import (
 // makeItem creates an item in the named lane and returns its id.
 func makeItem(t *testing.T, client *http.Client, base, token, statusID, title string) string {
 	t.Helper()
-	return decodeID(t, postJSON(t, client, base+"/w/general/items", token, map[string]any{
+	return decodeID(t, postJSON(t, client, base+"/general/items", token, map[string]any{
 		"status_id": statusID, "title": title,
 	}))
 }
@@ -24,7 +24,7 @@ func TestDeepLinkRendersModal(t *testing.T) {
 	id := makeItem(t, client, base, token, statusID(t, client, base, "To do"), "Deep linked")
 
 	// ?item= server-renders the modal into the board page.
-	page := getBody(t, client, base+"/w/general?item="+id, http.StatusOK)
+	page := getBody(t, client, base+"/general?item="+id, http.StatusOK)
 	if !strings.Contains(page, "data-modal") || !strings.Contains(page, `value="Deep linked"`) {
 		t.Fatalf("deep-link did not render the modal:\n%s", page)
 	}
@@ -33,7 +33,7 @@ func TestDeepLinkRendersModal(t *testing.T) {
 	}
 
 	// The fragment endpoint returns just the modal.
-	frag := getBody(t, client, base+"/w/general/items/"+id+"/modal", http.StatusOK)
+	frag := getBody(t, client, base+"/general/items/"+id+"/modal", http.StatusOK)
 	if !strings.Contains(frag, "data-modal") || !strings.Contains(frag, `value="Deep linked"`) {
 		t.Fatalf("modal fragment wrong:\n%s", frag)
 	}
@@ -44,7 +44,7 @@ func TestUnknownItemModalIs404(t *testing.T) {
 	token := csrfToken(t, client, base)
 	login(t, client, base, token)
 
-	resp, err := client.Get(base + "/w/general/items/deadbeef/modal")
+	resp, err := client.Get(base + "/general/items/deadbeef/modal")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestUnknownItemModalIs404(t *testing.T) {
 	}
 
 	// A bogus ?item= just renders the board with no modal.
-	page := getBody(t, client, base+"/w/general?item=deadbeef", http.StatusOK)
+	page := getBody(t, client, base+"/general?item=deadbeef", http.StatusOK)
 	if strings.Contains(page, "data-modal") {
 		t.Error("bogus ?item should not render a modal")
 	}
@@ -66,7 +66,7 @@ func TestDescriptionAndComment(t *testing.T) {
 	login(t, client, base, token)
 	id := makeItem(t, client, base, token, statusID(t, client, base, "To do"), "Task")
 
-	desc := postJSON(t, client, base+"/w/general/items/"+id+"/description", token, map[string]any{
+	desc := postJSON(t, client, base+"/general/items/"+id+"/description", token, map[string]any{
 		"description": "the full story",
 	})
 	descBody := readBody(t, desc)
@@ -78,7 +78,7 @@ func TestDescriptionAndComment(t *testing.T) {
 		t.Errorf("description response missing rendered text:\n%s", descBody)
 	}
 
-	cm := postJSON(t, client, base+"/w/general/items/"+id+"/comment", token, map[string]any{
+	cm := postJSON(t, client, base+"/general/items/"+id+"/comment", token, map[string]any{
 		"body": "first thoughts",
 	})
 	defer cm.Body.Close()
@@ -91,7 +91,7 @@ func TestDescriptionAndComment(t *testing.T) {
 		t.Fatalf("comment echo wrong: %+v", c)
 	}
 
-	modal := getBody(t, client, base+"/w/general/items/"+id+"/modal", http.StatusOK)
+	modal := getBody(t, client, base+"/general/items/"+id+"/modal", http.StatusOK)
 	if !strings.Contains(modal, "the full story") {
 		t.Error("modal missing saved description")
 	}
@@ -108,21 +108,21 @@ func TestAssignFromModal(t *testing.T) {
 	login(t, client, base, token)
 	id := makeItem(t, client, base, token, statusID(t, client, base, "To do"), "Assign me")
 
-	modal := getBody(t, client, base+"/w/general/items/"+id+"/modal", http.StatusOK)
+	modal := getBody(t, client, base+"/general/items/"+id+"/modal", http.StatusOK)
 	m := assigneeOptRe.FindStringSubmatch(modal)
 	if m == nil {
 		t.Fatalf("no Jack option in assignee picker:\n%s", modal)
 	}
 	jackID := m[1]
 
-	resp := postJSON(t, client, base+"/w/general/items/"+id+"/assignee", token, map[string]any{
+	resp := postJSON(t, client, base+"/general/items/"+id+"/assignee", token, map[string]any{
 		"assignee_id": jackID,
 	})
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("assign: want 204, got %d", resp.StatusCode)
 	}
-	after := getBody(t, client, base+"/w/general/items/"+id+"/modal", http.StatusOK)
+	after := getBody(t, client, base+"/general/items/"+id+"/modal", http.StatusOK)
 	if !regexp.MustCompile(`value="` + jackID + `"[^>]*selected`).MatchString(after) {
 		t.Errorf("assignee not selected after assigning:\n%s", after)
 	}
@@ -135,32 +135,32 @@ func TestArchiveRestoreFlow(t *testing.T) {
 	id := makeItem(t, client, base, token, statusID(t, client, base, "To do"), "Archive me")
 
 	// Archive (JSON, from the board) -> off the board, on the archive page.
-	arc := postJSON(t, client, base+"/w/general/items/"+id+"/archive", token, nil)
+	arc := postJSON(t, client, base+"/general/items/"+id+"/archive", token, nil)
 	arc.Body.Close()
 	if arc.StatusCode != http.StatusNoContent {
 		t.Fatalf("archive: want 204, got %d", arc.StatusCode)
 	}
-	if strings.Contains(getBody(t, client, base+"/w/general", http.StatusOK), "Archive me") {
+	if strings.Contains(getBody(t, client, base+"/general", http.StatusOK), "Archive me") {
 		t.Error("archived item still on the board")
 	}
-	if !strings.Contains(getBody(t, client, base+"/w/general/archive", http.StatusOK), "Archive me") {
+	if !strings.Contains(getBody(t, client, base+"/general/archive", http.StatusOK), "Archive me") {
 		t.Error("archived item missing from the archive view")
 	}
 
 	// Restore (form, from the archive view) redirects and the item returns.
-	un := postForm(t, client, base+"/w/general/items/"+id+"/unarchive", url.Values{"csrf_token": {token}})
+	un := postForm(t, client, base+"/general/items/"+id+"/unarchive", url.Values{"csrf_token": {token}})
 	un.Body.Close()
 	if un.StatusCode != http.StatusSeeOther {
 		t.Fatalf("unarchive form: want 303, got %d", un.StatusCode)
 	}
-	if !strings.Contains(getBody(t, client, base+"/w/general", http.StatusOK), "Archive me") {
+	if !strings.Contains(getBody(t, client, base+"/general", http.StatusOK), "Archive me") {
 		t.Error("restored item not back on the board")
 	}
 }
 
 func subtaskOf(t *testing.T, client *http.Client, base, token, parentID, title string) string {
 	t.Helper()
-	return decodeID(t, postJSON(t, client, base+"/w/general/items/"+parentID+"/subtasks", token, map[string]any{"title": title}))
+	return decodeID(t, postJSON(t, client, base+"/general/items/"+parentID+"/subtasks", token, map[string]any{"title": title}))
 }
 
 func TestSubtaskBadgeAndModal(t *testing.T) {
@@ -170,7 +170,7 @@ func TestSubtaskBadgeAndModal(t *testing.T) {
 	parent := makeItem(t, client, base, token, statusID(t, client, base, "To do"), "Parent task")
 	sub := subtaskOf(t, client, base, token, parent, "Subtask one")
 
-	board := getBody(t, client, base+"/w/general", http.StatusOK)
+	board := getBody(t, client, base+"/general", http.StatusOK)
 	if !strings.Contains(board, "0/1") {
 		t.Errorf("parent card missing 0/1 subtask badge:\n%s", board)
 	}
@@ -178,12 +178,12 @@ func TestSubtaskBadgeAndModal(t *testing.T) {
 		t.Error("subtask should not appear as a board card")
 	}
 
-	pm := getBody(t, client, base+"/w/general/items/"+parent+"/modal", http.StatusOK)
+	pm := getBody(t, client, base+"/general/items/"+parent+"/modal", http.StatusOK)
 	if !strings.Contains(pm, "Subtask one") || !strings.Contains(pm, "Subtasks") {
 		t.Error("parent modal missing the subtasks section")
 	}
 
-	cm := getBody(t, client, base+"/w/general/items/"+sub+"/modal", http.StatusOK)
+	cm := getBody(t, client, base+"/general/items/"+sub+"/modal", http.StatusOK)
 	if !strings.Contains(cm, `data-parent-link="`+parent+`"`) || !strings.Contains(cm, "Parent task") {
 		t.Errorf("child modal missing the parent link:\n%s", cm)
 	}
@@ -197,12 +197,12 @@ func TestSubtaskDoneBadge(t *testing.T) {
 	sub := subtaskOf(t, client, base, token, parent, "s")
 
 	done := statusID(t, client, base, "Done")
-	resp := postJSON(t, client, base+"/w/general/items/"+sub+"/status", token, map[string]any{"status_id": done})
+	resp := postJSON(t, client, base+"/general/items/"+sub+"/status", token, map[string]any{"status_id": done})
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("set subtask status: want 204, got %d", resp.StatusCode)
 	}
-	if !strings.Contains(getBody(t, client, base+"/w/general", http.StatusOK), "1/1") {
+	if !strings.Contains(getBody(t, client, base+"/general", http.StatusOK), "1/1") {
 		t.Error("badge should read 1/1 after the subtask reaches the last status")
 	}
 }
@@ -214,12 +214,12 @@ func TestArchiveParentCascadesWeb(t *testing.T) {
 	parent := makeItem(t, client, base, token, statusID(t, client, base, "To do"), "Parent")
 	subtaskOf(t, client, base, token, parent, "the child")
 
-	postJSON(t, client, base+"/w/general/items/"+parent+"/archive", token, nil).Body.Close()
+	postJSON(t, client, base+"/general/items/"+parent+"/archive", token, nil).Body.Close()
 
-	if strings.Contains(getBody(t, client, base+"/w/general", http.StatusOK), "Parent") {
+	if strings.Contains(getBody(t, client, base+"/general", http.StatusOK), "Parent") {
 		t.Error("archived parent still on the board")
 	}
-	arch := getBody(t, client, base+"/w/general/archive", http.StatusOK)
+	arch := getBody(t, client, base+"/general/archive", http.StatusOK)
 	if !strings.Contains(arch, "Parent") {
 		t.Error("archived parent missing from the archive view")
 	}
@@ -236,27 +236,27 @@ func TestPromoteAndDemoteViaModal(t *testing.T) {
 	parent := makeItem(t, client, base, token, todo, "Parent")
 	sub := subtaskOf(t, client, base, token, parent, "Floater")
 
-	if strings.Contains(getBody(t, client, base+"/w/general", http.StatusOK), "Floater") {
+	if strings.Contains(getBody(t, client, base+"/general", http.StatusOK), "Floater") {
 		t.Fatal("subtask should not start on the board")
 	}
 
 	// Promote: parent_id "" lifts it to the board.
-	resp := postJSON(t, client, base+"/w/general/items/"+sub+"/parent", token, map[string]any{"parent_id": ""})
+	resp := postJSON(t, client, base+"/general/items/"+sub+"/parent", token, map[string]any{"parent_id": ""})
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("promote: want 204, got %d", resp.StatusCode)
 	}
-	if !strings.Contains(getBody(t, client, base+"/w/general", http.StatusOK), "Floater") {
+	if !strings.Contains(getBody(t, client, base+"/general", http.StatusOK), "Floater") {
 		t.Error("promoted item not on the board")
 	}
 
 	// Demote it back under the parent.
-	resp2 := postJSON(t, client, base+"/w/general/items/"+sub+"/parent", token, map[string]any{"parent_id": parent})
+	resp2 := postJSON(t, client, base+"/general/items/"+sub+"/parent", token, map[string]any{"parent_id": parent})
 	resp2.Body.Close()
 	if resp2.StatusCode != http.StatusNoContent {
 		t.Fatalf("demote: want 204, got %d", resp2.StatusCode)
 	}
-	if strings.Contains(getBody(t, client, base+"/w/general", http.StatusOK), "Floater") {
+	if strings.Contains(getBody(t, client, base+"/general", http.StatusOK), "Floater") {
 		t.Error("demoted item should be off the board again")
 	}
 }
@@ -269,7 +269,7 @@ func TestReparentCycleRejectedWeb(t *testing.T) {
 	child := subtaskOf(t, client, base, token, parent, "Child")
 
 	// Parenting the parent under its own child is a cycle -> 409.
-	resp := postJSON(t, client, base+"/w/general/items/"+parent+"/parent", token, map[string]any{"parent_id": child})
+	resp := postJSON(t, client, base+"/general/items/"+parent+"/parent", token, map[string]any{"parent_id": child})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("cycle: want 409, got %d", resp.StatusCode)
@@ -287,13 +287,13 @@ func TestMilestoneModeColumns(t *testing.T) {
 	makeItem(t, client, base, token, todo, "Loose task")
 
 	// Mark "Phase One" as a milestone.
-	mk := postJSON(t, client, base+"/w/general/items/"+ms+"/milestone", token, map[string]any{"is_milestone": true})
+	mk := postJSON(t, client, base+"/general/items/"+ms+"/milestone", token, map[string]any{"is_milestone": true})
 	mk.Body.Close()
 	if mk.StatusCode != http.StatusNoContent {
 		t.Fatalf("set milestone: want 204, got %d", mk.StatusCode)
 	}
 
-	page := getBody(t, client, base+"/w/general?mode=milestone", http.StatusOK)
+	page := getBody(t, client, base+"/general?mode=milestone", http.StatusOK)
 	if !strings.Contains(page, "Backlog") {
 		t.Error("milestone mode missing the Backlog column")
 	}
@@ -311,7 +311,7 @@ func TestMilestoneModeColumns(t *testing.T) {
 
 	// Status mode is unaffected: the milestone is still a normal card there, and
 	// its child stays off-board.
-	status := getBody(t, client, base+"/w/general", http.StatusOK)
+	status := getBody(t, client, base+"/general", http.StatusOK)
 	if !strings.Contains(status, "Phase One") {
 		t.Error("milestone should still be a card in status mode")
 	}
@@ -326,13 +326,13 @@ func TestDeletePermanentFromArchive(t *testing.T) {
 	login(t, client, base, token)
 	id := makeItem(t, client, base, token, statusID(t, client, base, "To do"), "Gone soon")
 
-	postJSON(t, client, base+"/w/general/items/"+id+"/archive", token, nil).Body.Close()
-	del := postForm(t, client, base+"/w/general/items/"+id+"/delete", url.Values{"csrf_token": {token}})
+	postJSON(t, client, base+"/general/items/"+id+"/archive", token, nil).Body.Close()
+	del := postForm(t, client, base+"/general/items/"+id+"/delete", url.Values{"csrf_token": {token}})
 	del.Body.Close()
 	if del.StatusCode != http.StatusSeeOther {
 		t.Fatalf("delete form: want 303, got %d", del.StatusCode)
 	}
-	if strings.Contains(getBody(t, client, base+"/w/general/archive", http.StatusOK), "Gone soon") {
+	if strings.Contains(getBody(t, client, base+"/general/archive", http.StatusOK), "Gone soon") {
 		t.Error("permanently deleted item still in the archive")
 	}
 }

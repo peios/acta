@@ -9,8 +9,10 @@
 // paints (no flash). board.js calls window.__actaBoardPrefs.save() after the
 // filters change so client-side filter toggles get remembered too.
 (() => {
-  // Only the board page itself (/w/<slug>), not its sub-pages (/archive, …).
-  const m = location.pathname.match(/^\/w\/([^/]+)\/?$/);
+  // Only the board page itself (/<slug>), not its sub-pages (/archive, …).
+  // This script is loaded solely from the board template, so a single-segment
+  // path here is always a workspace slug.
+  const m = location.pathname.match(/^\/([^/]+)\/?$/);
   if (!m) return;
   const key = 'acta:board:' + decodeURIComponent(m[1]);
 

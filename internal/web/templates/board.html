@@ -21,20 +21,20 @@
 <main class="board-wrap" data-slug="{{.Workspace.Slug}}" data-me="{{with .Principal}}{{.ID}}{{end}}">
   <div class="board-bar">
     <div class="views">
-      <a class="view-tab{{if and (eq .Mode "status") (not .ViewMine)}} active{{end}}" href="/w/{{.Workspace.Slug}}?mode=status">
+      <a class="view-tab{{if and (eq .Mode "status") (not .ViewMine)}} active{{end}}" href="/{{.Workspace.Slug}}?mode=status">
         <svg class="ico" viewBox="0 0 16 16"><rect x="2.5" y="3" width="4" height="10" rx="1"/><rect x="9.5" y="3" width="4" height="6.5" rx="1"/></svg>All items
       </a>
-      <a class="view-tab{{if .ViewMine}} active{{end}}" href="/w/{{.Workspace.Slug}}?mode=status&amp;assignee=me">
+      <a class="view-tab{{if .ViewMine}} active{{end}}" href="/{{.Workspace.Slug}}?mode=status&amp;assignee=me">
         <svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"/><path d="M3.5 13a4.5 4.5 0 0 1 9 0"/></svg>My items
       </a>
-      <a class="view-tab{{if eq .Mode "milestone"}} active{{end}}" href="/w/{{.Workspace.Slug}}?mode=milestone">
+      <a class="view-tab{{if eq .Mode "milestone"}} active{{end}}" href="/{{.Workspace.Slug}}?mode=milestone">
         <svg class="ico" viewBox="0 0 16 16"><path d="M8 2.4 13.6 8 8 13.6 2.4 8z"/></svg>Milestones
       </a>
     </div>
 
     <div class="bar-right">
-      <a class="board-archive-link" href="/w/{{.Workspace.Slug}}/activity">Activity</a>
-      <a class="board-archive-link" href="/w/{{.Workspace.Slug}}/archive">Archived</a>
+      <a class="board-archive-link" href="/{{.Workspace.Slug}}/activity">Activity</a>
+      <a class="board-archive-link" href="/{{.Workspace.Slug}}/archive">Archived</a>
       <span class="bar-sep"></span>
 
       <div class="pop-anchor" data-pop>
@@ -42,7 +42,7 @@
           <svg class="ico" viewBox="0 0 16 16"><path d="M2.5 3.5h11l-4.2 5v4l-2.6-1.3v-2.7z"/></svg>Filter <span class="facet-count" data-filter-badge{{if not .FilterActive}} hidden{{end}}>{{.FilterCount}}</span>
         </button>
         <div class="popover pop-filter" data-pop-menu hidden>
-          <form class="board-filters" method="get" action="/w/{{.Workspace.Slug}}" data-filters>
+          <form class="board-filters" method="get" action="/{{.Workspace.Slug}}" data-filters>
             {{if eq .Mode "milestone"}}<input type="hidden" name="mode" value="milestone">{{end}}
 
             <details class="facet" data-facet="status" open>
@@ -93,7 +93,7 @@
 
             <div class="filter-foot">
               <button type="submit" class="facet-apply">Apply</button>
-              <a class="facet-clear" href="/w/{{.Workspace.Slug}}?mode={{.Mode}}"{{if not .FilterActive}} hidden{{end}}>Clear</a>
+              <a class="facet-clear" href="/{{.Workspace.Slug}}?mode={{.Mode}}"{{if not .FilterActive}} hidden{{end}}>Clear</a>
             </div>
           </form>
         </div>
@@ -115,8 +115,8 @@
           <div class="pop-rows">
             <div class="pop-row"><span class="lbl">Grouping</span><span class="spacer"></span>
               <div class="grp">
-                <a class="grp-opt{{if eq .Mode "status"}} active{{end}}" href="/w/{{.Workspace.Slug}}?mode=status">Status</a>
-                <a class="grp-opt{{if eq .Mode "milestone"}} active{{end}}" href="/w/{{.Workspace.Slug}}?mode=milestone">Milestone</a>
+                <a class="grp-opt{{if eq .Mode "status"}} active{{end}}" href="/{{.Workspace.Slug}}?mode=status">Status</a>
+                <a class="grp-opt{{if eq .Mode "milestone"}} active{{end}}" href="/{{.Workspace.Slug}}?mode=milestone">Milestone</a>
               </div>
             </div>
             <div class="pop-row"><span class="lbl">Ordering</span><span class="spacer"></span><button class="dd" type="button" disabled title="Sorting — coming soon"><span>Manual</span><span class="chev">&#9662;</span></button></div>

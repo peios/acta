@@ -491,6 +491,30 @@ func (s *Store) RenameWorkspace(_ context.Context, id, name string) error {
 	return nil
 }
 
+func (s *Store) UpdateWorkspace(_ context.Context, id, name, slug string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	w, ok := s.workspaces[id]
+	if !ok {
+		return store.ErrWorkspaceNotFound
+	}
+	for oid, ex := range s.workspaces {
+		if oid == id {
+			continue
+		}
+		if strings.EqualFold(ex.Name, name) {
+			return store.ErrWorkspaceNameTaken
+		}
+		if ex.Slug == slug {
+			return store.ErrWorkspaceSlugTaken
+		}
+	}
+	w.Name = name
+	w.Slug = slug
+	s.workspaces[id] = w
+	return nil
+}
+
 func (s *Store) DeleteWorkspace(_ context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -15,10 +15,10 @@ func TestMilestoneColumnReorder(t *testing.T) {
 	todo := statusID(t, client, base, "To do")
 
 	mk := func(title string) string {
-		id := decodeID(t, postJSON(t, client, base+"/w/general/items", token, map[string]any{
+		id := decodeID(t, postJSON(t, client, base+"/general/items", token, map[string]any{
 			"status_id": todo, "title": title,
 		}))
-		resp := postJSON(t, client, base+"/w/general/items/"+id+"/milestone", token, map[string]any{
+		resp := postJSON(t, client, base+"/general/items/"+id+"/milestone", token, map[string]any{
 			"is_milestone": true,
 		})
 		resp.Body.Close()
@@ -29,7 +29,7 @@ func TestMilestoneColumnReorder(t *testing.T) {
 	// Column headers carry data-open="<id>"; their order in the HTML is the
 	// column order. Promotion appends, so it's creation order to start.
 	order := func() []int {
-		body := getBody(t, client, base+"/w/general?mode=milestone", http.StatusOK)
+		body := getBody(t, client, base+"/general?mode=milestone", http.StatusOK)
 		return []int{
 			strings.Index(body, `data-open="`+a+`"`),
 			strings.Index(body, `data-open="`+b+`"`),
@@ -42,7 +42,7 @@ func TestMilestoneColumnReorder(t *testing.T) {
 	}
 
 	// Reorder to Gamma, Alpha, Beta.
-	resp := postJSON(t, client, base+"/w/general/milestones/reorder", token, map[string]any{
+	resp := postJSON(t, client, base+"/general/milestones/reorder", token, map[string]any{
 		"ids": []string{c, a, b},
 	})
 	resp.Body.Close()
@@ -63,12 +63,12 @@ func TestMilestoneGripPresent(t *testing.T) {
 	token := csrfToken(t, client, base)
 	login(t, client, base, token)
 	todo := statusID(t, client, base, "To do")
-	id := decodeID(t, postJSON(t, client, base+"/w/general/items", token, map[string]any{
+	id := decodeID(t, postJSON(t, client, base+"/general/items", token, map[string]any{
 		"status_id": todo, "title": "Anchor",
 	}))
-	postJSON(t, client, base+"/w/general/items/"+id+"/milestone", token, map[string]any{"is_milestone": true}).Body.Close()
+	postJSON(t, client, base+"/general/items/"+id+"/milestone", token, map[string]any{"is_milestone": true}).Body.Close()
 
-	body := getBody(t, client, base+"/w/general?mode=milestone", http.StatusOK)
+	body := getBody(t, client, base+"/general?mode=milestone", http.StatusOK)
 	if !strings.Contains(body, "mcol-grip") {
 		t.Fatalf("milestone column missing a drag grip:\n%s", body)
 	}
