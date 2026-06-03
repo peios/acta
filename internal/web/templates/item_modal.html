@@ -84,7 +84,7 @@
           <span class="modal-label">Assignee</span>
           <select class="modal-assignee">
             <option value="">Unassigned</option>
-            {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Item.AssigneeID}}selected{{end}}>{{.Display}}{{if .AgentOfID}} · agent{{end}}</option>{{end}}
+            {{range .Assignables}}<option value="{{.ID}}" {{if eq .ID $.Item.AssigneeID}}selected{{end}}>{{.Display}}{{if .AgentOfID}} · agent{{end}}</option>{{end}}
           </select>
         </div>
         <div class="side-field">

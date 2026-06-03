@@ -351,6 +351,47 @@ func (s *Service) Users(ctx context.Context) ([]store.User, error) {
 	return s.store.ListUsers(ctx)
 }
 
+// Assignables returns the principals worth offering when the current actor
+// directs work — every active human plus the actor's *own* agents, ordered
+// (humans by display name, then own agents by handle). This is purely a UI
+// declutter, not an authority boundary: the assign API and MCP stay permissive
+// (an agent may still be pointed at another's agent), and you can still mention
+// anyone by typing their full @handle. Both the assignee picker and the @-
+// mention autocomplete draw from this one set.
+func (s *Service) Assignables(ctx context.Context) ([]store.User, error) {
+	all, err := s.store.ListUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	me := ""
+	if p, ok := identity.FromContext(ctx); ok && p != nil {
+		me = p.ID
+	}
+	var humans, mine []store.User
+	for _, u := range all {
+		if u.DisabledAt != nil {
+			continue
+		}
+		switch u.AgentOfID {
+		case "":
+			humans = append(humans, u)
+		case me:
+			mine = append(mine, u)
+		}
+	}
+	sort.Slice(humans, func(i, j int) bool { return displayKey(humans[i]) < displayKey(humans[j]) })
+	sort.Slice(mine, func(i, j int) bool { return mine[i].Username < mine[j].Username })
+	return append(humans, mine...), nil
+}
+
+// displayKey is a case-insensitive sort key: display name when set, else handle.
+func displayKey(u store.User) string {
+	if u.Display != "" {
+		return strings.ToLower(u.Display)
+	}
+	return strings.ToLower(u.Username)
+}
+
 func (s *Service) UpdateDescription(ctx context.Context, id, description string) error {
 	if len([]rune(description)) > MaxDescriptionLen {
 		return ErrInvalidDescription

@@ -78,6 +78,116 @@
     av.textContent = avatarInitials(name);
   }
 
+  // --- @-mention autocomplete (comment box) ---
+  // Suggests directable principals (humans + your own agents) from
+  // /mentionables and inserts the canonical @handle. The panel is fixed-
+  // positioned on <body> below the textarea so the modal's overflow:hidden
+  // can't clip it. Other agents stay mentionable by typing a full @owner/name.
+  let mentionablesP = null;
+  function loadMentionables() {
+    if (!mentionablesP) {
+      mentionablesP = fetch(base + '/mentionables', { headers: { 'X-CSRF-Token': csrf } })
+        .then((r) => (r.ok ? r.json() : []))
+        .catch(() => []);
+    }
+    return mentionablesP;
+  }
+  function filterMentions(all, q) {
+    q = q.toLowerCase();
+    if (!q) return all.slice(0, 8);
+    const starts = [], has = [];
+    for (const c of all) {
+      const u = c.username.toLowerCase(), d = c.display.toLowerCase();
+      if (u.startsWith(q) || d.startsWith(q)) starts.push(c);
+      else if (u.includes(q) || d.includes(q)) has.push(c);
+    }
+    return starts.concat(has).slice(0, 8);
+  }
+  let mPop = null;
+  function mentionPop() {
+    if (!mPop) {
+      mPop = document.createElement('div');
+      mPop.className = 'mention-pop';
+      mPop.hidden = true;
+      document.body.appendChild(mPop);
+    }
+    return mPop;
+  }
+  const hideMentions = () => { if (mPop) mPop.hidden = true; };
+
+  function wireMention(input) {
+    const pop = mentionPop();
+    let cands = [], sel = 0;
+    const isOpen = () => !pop.hidden;
+    const place = () => {
+      const r = input.getBoundingClientRect();
+      pop.style.left = r.left + 'px';
+      pop.style.top = (r.bottom + 4) + 'px';
+      pop.style.width = Math.max(r.width, 220) + 'px';
+    };
+    // The @token under the caret: its '@' index, the caret, and the query text.
+    const context = () => {
+      const pos = input.selectionStart;
+      const m = /(^|\s)@([A-Za-z0-9._/-]*)$/.exec(input.value.slice(0, pos));
+      return m ? { at: pos - m[2].length - 1, end: pos, query: m[2] } : null;
+    };
+    const choose = (c) => {
+      const ctx = context();
+      if (ctx) {
+        const before = input.value.slice(0, ctx.at);
+        const after = input.value.slice(ctx.end);
+        const ins = '@' + c.username + ' ';
+        input.value = before + ins + after;
+        const caret = before.length + ins.length;
+        input.setSelectionRange(caret, caret);
+      }
+      hideMentions();
+      input.focus();
+    };
+    const render = () => {
+      pop.textContent = '';
+      cands.forEach((c, i) => {
+        const row = document.createElement('div');
+        row.className = 'mention-row' + (i === sel ? ' active' : '');
+        const av = document.createElement('span');
+        av.className = 'avatar sm' + (c.agent ? ' bot' : '');
+        av.setAttribute('style', avatarStyle(c.username));
+        av.textContent = avatarInitials(c.display);
+        const name = document.createElement('span');
+        name.className = 'mention-name';
+        name.textContent = c.display;
+        const handle = document.createElement('span');
+        handle.className = 'mention-handle';
+        handle.textContent = '@' + c.username;
+        row.append(av, name, handle);
+        row.addEventListener('mousedown', (e) => { e.preventDefault(); choose(c); });
+        pop.appendChild(row);
+      });
+    };
+    const refresh = async () => {
+      const ctx = context();
+      if (!ctx) return hideMentions();
+      cands = filterMentions(await loadMentionables(), ctx.query);
+      sel = 0;
+      if (!cands.length) return hideMentions();
+      pop.hidden = false;
+      render();
+      place();
+    };
+    input.addEventListener('input', refresh);
+    input.addEventListener('keydown', (e) => {
+      if (!isOpen()) return;
+      switch (e.key) {
+        case 'ArrowDown': e.preventDefault(); e.stopPropagation(); sel = (sel + 1) % cands.length; render(); break;
+        case 'ArrowUp': e.preventDefault(); e.stopPropagation(); sel = (sel - 1 + cands.length) % cands.length; render(); break;
+        case 'Enter': if (e.metaKey || e.ctrlKey) return; e.preventDefault(); e.stopPropagation(); choose(cands[sel]); break;
+        case 'Tab': e.preventDefault(); e.stopPropagation(); choose(cands[sel]); break;
+        case 'Escape': e.preventDefault(); e.stopPropagation(); hideMentions(); break;
+      }
+    });
+    input.addEventListener('blur', () => setTimeout(hideMentions, 120));
+  }
+
   // --- board items ---
 
   function newItem(it) {
@@ -282,6 +392,7 @@
   }
 
   function closeModal(push = true) {
+    hideMentions();
     if (modalEl) { modalEl.remove(); modalEl = null; }
     if (push) history.pushState({}, '', urlWithoutItem());
     if (opener) { opener.focus(); opener = null; }
@@ -436,8 +547,10 @@
         div.append(meta, text);
         el.querySelector('[data-comment-list]').append(div);
         commentInput.value = '';
+        hideMentions();
       } catch (err2) { fail(err2); }
     });
+    wireMention(commentInput);
 
     const parentLink = el.querySelector('[data-parent-link]');
     if (parentLink) parentLink.addEventListener('click', (e) => { e.preventDefault(); openModal(parentLink.dataset.parentLink); });

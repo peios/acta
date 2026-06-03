@@ -120,3 +120,12 @@ func TestNotificationBellEndToEnd(t *testing.T) {
 		t.Fatal("badge still present after mark-all-read")
 	}
 }
+
+func TestMentionablesEndpoint(t *testing.T) {
+	base, jack := newTestServer(t)
+	signIn(t, jack, base)
+	body := getBody(t, jack, base+"/w/general/mentionables", http.StatusOK)
+	if !strings.Contains(body, `"username":"jack"`) {
+		t.Fatalf("mentionables should list the signed-in human: %s", body)
+	}
+}

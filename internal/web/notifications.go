@@ -30,3 +30,26 @@ func (h *handlers) notificationsReadAll(w http.ResponseWriter, r *http.Request) 
 	}
 	http.Redirect(w, r, httpx.SafeReturnTo(r.FormValue("return_to")), http.StatusSeeOther)
 }
+
+// mentionables feeds the comment box's @-autocomplete: the directable set
+// (active humans + the caller's own agents) by handle. The set is global — the
+// {slug} only scopes the route under the protected board tree — so other
+// people's agents are simply absent from suggestions, not unmentionable (you
+// can still type a full @owner/name).
+func (h *handlers) mentionables(w http.ResponseWriter, r *http.Request) {
+	us, err := h.board.Assignables(r.Context())
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	type row struct {
+		Username string `json:"username"`
+		Display  string `json:"display"`
+		Agent    bool   `json:"agent"`
+	}
+	out := make([]row, 0, len(us))
+	for _, u := range us {
+		out = append(out, row{Username: u.Username, Display: u.Display, Agent: u.AgentOfID != ""})
+	}
+	writeJSON(w, http.StatusOK, out)
+}

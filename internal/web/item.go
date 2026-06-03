@@ -17,8 +17,8 @@ type modalView struct {
 	Item           store.Item
 	Desc           descView // the rendered, collapsible description
 	Statuses       []store.Status
-	Users          []store.User
-	Assignee       string // display name of the assignee, "" if unassigned
+	Assignables    []store.User // assignee-picker options: humans + your agents (+ current assignee)
+	Assignee       string       // display name of the assignee, "" if unassigned
 	Comments       []commentView
 	Archived       bool
 	ParentID       string // "" if this is a top-level item
@@ -35,6 +35,16 @@ type modalView struct {
 type parentOption struct {
 	ID    string
 	Title string
+}
+
+// containsUser reports whether a user with the given id is in us.
+func containsUser(us []store.User, id string) bool {
+	for _, u := range us {
+		if u.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 type commentView struct {
@@ -140,13 +150,29 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		return modalView{}, false, err
 	}
 
+	assignables, err := h.board.Assignables(ctx)
+	if err != nil {
+		return modalView{}, false, err
+	}
+	// Keep the current assignee selectable even when they're outside the
+	// directable set (a legacy or cross-owner agent), so saving the modal can't
+	// silently re-assign the item.
+	if item.AssigneeID != "" && !containsUser(assignables, item.AssigneeID) {
+		for _, u := range users {
+			if u.ID == item.AssigneeID {
+				assignables = append(assignables, u)
+				break
+			}
+		}
+	}
+
 	return modalView{
 		Slug:           ws.Slug,
 		CSRFToken:      csrfTokenFrom(ctx),
 		Item:           item,
 		Desc:           renderDescription(item.Description),
 		Statuses:       statuses,
-		Users:          users,
+		Assignables:    assignables,
 		Assignee:       nameByID[item.AssigneeID],
 		Comments:       cvs,
 		Archived:       item.ArchivedAt != nil,
