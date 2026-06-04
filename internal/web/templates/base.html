@@ -836,6 +836,21 @@
     .item-del { opacity: 1; padding: .25rem .45rem; font-size: 1.05rem; }
   }
 
+  /* Pull-to-refresh indicator (installed PWA only; the element is created by
+     ptr.js). It sits at the top-bar edge and follows the pull down. */
+  .ptr-ind {
+    position: fixed; left: 50%; top: var(--topbar-h, 56px); z-index: 90;
+    width: 30px; height: 30px; display: grid; place-items: center;
+    border-radius: 50%; background: var(--card-top);
+    border: 1px solid var(--border); color: var(--muted);
+    box-shadow: 0 8px 22px -10px rgba(0,0,0,.8);
+    opacity: 0; pointer-events: none; transform: translateX(-50%);
+    will-change: transform, opacity;
+  }
+  .ptr-ind.ptr-armed { color: var(--accent-hi); border-color: var(--accent-line); }
+  .ptr-ind.ptr-refreshing svg { animation: ptr-spin .7s linear infinite; }
+  @keyframes ptr-spin { to { transform: rotate(360deg); } }
+
   /* tombstone for a soft-deleted comment */
   .cmt-deleted { display: flex; align-items: center; min-height: 2.2rem; padding: .5rem .75rem; background: none; border: 1px dashed var(--border-soft); }
   .cmt-deleted-text { color: var(--faint); font-size: .82rem; font-style: italic; }
@@ -1105,7 +1120,7 @@
     html.nav-open .nav-toggle .ico-close { display: block; }
   }
 </style>
-{{if .Nav}}<script src="{{asset "/static/nav.js"}}"></script>{{end}}
+{{if .Nav}}<script src="{{asset "/static/nav.js"}}"></script><script src="{{asset "/static/ptr.js"}}"></script>{{end}}
 </head>
 <body>
 {{if .Nav}}
