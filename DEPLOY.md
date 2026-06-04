@@ -240,18 +240,27 @@ curl -fsS https://www.cloudflare.com/ips-v6 -o /etc/acta/cf-ips-v6
 cat > /usr/local/sbin/acta-cf-fw.sh <<'EOF'
 #!/usr/bin/env bash
 # Gate the Docker-published :443 to a CDN's ranges via DOCKER-USER. Idempotent.
+#
+# The rules are scoped to the external interface ($ext). DOCKER-USER sees ALL
+# forwarded container traffic in both directions, so an unscoped `--dport 443`
+# rule also matches the app container reaching *out* to someone else's :443
+# (e.g. a Web Push POST to a push service) and silently drops it. `-i $ext`
+# limits the gate to genuine inbound traffic to the published port; container
+# egress arrives on the docker bridge, not $ext, so it's left alone.
 ensure() {
-  local ipt=$1 chain=$2 file=$3
+  local ipt=$1 chain=$2 file=$3 ext=$4
   $ipt -N DOCKER-USER 2>/dev/null
   $ipt -N "$chain" 2>/dev/null || $ipt -F "$chain"
   $ipt -C DOCKER-USER -j "$chain" 2>/dev/null || $ipt -I DOCKER-USER -j "$chain"
   while read -r r || [ -n "$r" ]; do
-    [ -n "$r" ] && $ipt -A "$chain" -p tcp --dport 443 -s "$r" -j RETURN
+    [ -n "$r" ] && $ipt -A "$chain" -i "$ext" -p tcp --dport 443 -s "$r" -j RETURN
   done < "$file"
-  $ipt -A "$chain" -p tcp --dport 443 -j DROP
+  $ipt -A "$chain" -i "$ext" -p tcp --dport 443 -j DROP
 }
-ensure iptables  ACTA-CF  /etc/acta/cf-ips-v4
-ensure ip6tables ACTA-CF6 /etc/acta/cf-ips-v6 2>/dev/null || true
+ext=$(ip route show default | awk '{for (i=1; i<NF; i++) if ($i=="dev") {print $(i+1); exit}}')
+[ -n "$ext" ] || { echo "acta-cf-fw: cannot determine external interface" >&2; exit 1; }
+ensure iptables  ACTA-CF  /etc/acta/cf-ips-v4  "$ext"
+ensure ip6tables ACTA-CF6 /etc/acta/cf-ips-v6 "$ext" 2>/dev/null || true
 EOF
 chmod +x /usr/local/sbin/acta-cf-fw.sh
 ```
@@ -483,6 +492,35 @@ Healthchecks.io, Cloudflare Health Checks) at:
 
 - `https://acta.example.com/healthz` — liveness (expect `200` + body `ok`)
 - optionally `…/readyz` — also verifies the database
+
+## Enabling Web Push (optional)
+
+Acta can deliver `@mention` notifications to a user's devices as Web Push. It's
+off until you set a VAPID key pair.
+
+```sh
+cd /opt/acta
+
+# 1. Mint a pair using the running image — the private key stays on the box.
+docker compose -f docker-compose.prod.yml run --rm app acta-server genvapid
+
+# 2. Append both printed lines to .env:
+#      ACTA_VAPID_PUBLIC_KEY=...
+#      ACTA_VAPID_PRIVATE_KEY=...
+
+# 3. Recreate the app and confirm.
+docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml logs app | grep "web push"   # -> "web push enabled"
+```
+
+Users then opt in per-device under **Account → Security → Notifications**. On
+iOS this only works from the home-screen-installed app (Add to Home Screen
+first); desktop Chrome/Firefox and Android work in-browser.
+
+> Behind a CDN (path B), the §8 firewall must be the **interface-scoped**
+> version above. The earlier unscoped `--dport 443` rule silently dropped the
+> container's *outbound* connection to the push service, so sends failed with
+> `context deadline exceeded`.
 
 ## Updating
 
