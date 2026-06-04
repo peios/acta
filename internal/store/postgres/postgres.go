@@ -1248,6 +1248,45 @@ func (p *Postgres) MarkAllNotificationsRead(ctx context.Context, recipientID str
 	return err
 }
 
+// --- web push subscriptions ---
+
+func (p *Postgres) CreatePushSubscription(ctx context.Context, sub store.PushSubscription) error {
+	// Upsert on the endpoint: re-subscribing a browser refreshes its keys and
+	// owner (a shared machine can change hands) rather than erroring.
+	const q = `INSERT INTO push_subscriptions (endpoint, user_id, p256dh, auth)
+	           VALUES ($1, $2, $3, $4)
+	           ON CONFLICT (endpoint) DO UPDATE
+	             SET user_id = EXCLUDED.user_id,
+	                 p256dh  = EXCLUDED.p256dh,
+	                 auth    = EXCLUDED.auth`
+	_, err := p.pool.Exec(ctx, q, sub.Endpoint, sub.UserID, sub.P256dh, sub.Auth)
+	return err
+}
+
+func (p *Postgres) PushSubscriptionsByUser(ctx context.Context, userID string) ([]store.PushSubscription, error) {
+	const q = `SELECT endpoint, user_id, p256dh, auth, created_at
+	           FROM push_subscriptions WHERE user_id = $1 ORDER BY created_at`
+	rows, err := p.pool.Query(ctx, q, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.PushSubscription
+	for rows.Next() {
+		var s store.PushSubscription
+		if err := rows.Scan(&s.Endpoint, &s.UserID, &s.P256dh, &s.Auth, &s.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) DeletePushSubscription(ctx context.Context, endpoint string) error {
+	_, err := p.pool.Exec(ctx, `DELETE FROM push_subscriptions WHERE endpoint = $1`, endpoint)
+	return err
+}
+
 func scanNotification(row pgx.Row) (store.Notification, error) {
 	var n store.Notification
 	if err := row.Scan(&n.ID, &n.RecipientID, &n.Kind, &n.WorkspaceID, &n.WorkspaceSlug,

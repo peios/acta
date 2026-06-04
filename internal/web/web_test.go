@@ -20,6 +20,7 @@ import (
 	"github.com/peios/acta/internal/config"
 	"github.com/peios/acta/internal/mcpcfg"
 	"github.com/peios/acta/internal/passkey"
+	"github.com/peios/acta/internal/push"
 	"github.com/peios/acta/internal/session"
 	"github.com/peios/acta/internal/store"
 	"github.com/peios/acta/internal/store/memstore"
@@ -28,6 +29,15 @@ import (
 )
 
 const testPassword = "s3cret-passw0rd"
+
+// A real (throwaway) VAPID pair so the test handler runs with push enabled —
+// enough to exercise the routes and the settings toggle. No payload is ever
+// sent in tests (the in-memory store holds no subscriptions unless a test adds
+// one), so these keys never reach a push service.
+const (
+	testVAPIDPublic  = "BFbdFE85plfk-WNX-NuwNFS65a83oB898guAMIfAtbajVFHhUWMdZ5HZtM-Rk63zVELCpwBIcdkXNQU_3nJ-imI"
+	testVAPIDPrivate = "Z8MS_QrbTkj8J93i8LWxx1v--sBoPjbLUCws54x_Vdg"
+)
 
 func newTestServer(t *testing.T) (string, *http.Client) {
 	t.Helper()
@@ -64,7 +74,11 @@ func buildTestHandler(t *testing.T) http.Handler {
 	}
 
 	workspaces := workspace.New(ms)
-	boards := board.New(ms)
+	pushSender := push.New(ms, push.Config{
+		PublicKey: testVAPIDPublic, PrivateKey: testVAPIDPrivate, Subject: "mailto:test@acta.test",
+	})
+	t.Cleanup(pushSender.Close)
+	boards := board.New(ms, board.WithNotifier(pushSender))
 	gen, err := workspaces.Create(context.Background(), "General", "")
 	if err != nil {
 		t.Fatal(err)
@@ -91,7 +105,7 @@ func buildTestHandler(t *testing.T) http.Handler {
 		t.Fatal(err)
 	}
 	provider := local.NewProvider(ms, sessions, passkeys, false)
-	return web.NewHandler(config.Config{Env: "dev", RPOrigin: "http://localhost:8080"}, sessions, provider, passkeys, tokens, agents, accounts, workspaces, boards, mcpConfig)
+	return web.NewHandler(config.Config{Env: "dev", RPOrigin: "http://localhost:8080"}, sessions, provider, passkeys, tokens, agents, accounts, workspaces, boards, mcpConfig, pushSender)
 }
 
 func newTestClient() *http.Client {

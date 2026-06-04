@@ -28,6 +28,7 @@ import (
 	"github.com/peios/acta/internal/config"
 	"github.com/peios/acta/internal/mcpcfg"
 	"github.com/peios/acta/internal/passkey"
+	"github.com/peios/acta/internal/push"
 	"github.com/peios/acta/internal/session"
 	"github.com/peios/acta/internal/store"
 	"github.com/peios/acta/internal/store/postgres"
@@ -100,7 +101,28 @@ func runServe(args []string) error {
 		return fmt.Errorf("passkey: %w", err)
 	}
 	workspaces := workspace.New(pg)
-	boards := board.New(pg)
+
+	// Web Push: only stand up the sender when VAPID keys are configured. When
+	// they aren't, pushSender stays nil — the board files notifications in-app
+	// only and the settings toggle hides. The board option is added
+	// conditionally so a nil sender never becomes a non-nil Notifier interface
+	// (which would panic on use).
+	var boardOpts []board.Option
+	var pushSender *push.Sender
+	if cfg.PushEnabled() {
+		pushSender = push.New(pg, push.Config{
+			PublicKey:  cfg.VAPIDPublicKey,
+			PrivateKey: cfg.VAPIDPrivateKey,
+			Subject:    cfg.PushSubject(),
+		})
+		defer pushSender.Close()
+		boardOpts = append(boardOpts, board.WithNotifier(pushSender))
+		slog.Info("web push enabled")
+	} else {
+		slog.Info("web push disabled (no VAPID keys)")
+	}
+
+	boards := board.New(pg, boardOpts...)
 	tokens := apitoken.New(pg)
 	agents := agent.New(pg)
 	accounts := account.New(pg)
@@ -116,7 +138,7 @@ func runServe(args []string) error {
 		BackoffMax:  cfg.LoginBackoffMax,
 	})
 	provider := local.NewProvider(pg, sessions, passkeys, cfg.CookieSecure(), local.WithThrottle(guard))
-	app := web.NewHandler(cfg, sessions, provider, passkeys, tokens, agents, accounts, workspaces, boards, mcpConfig)
+	app := web.NewHandler(cfg, sessions, provider, passkeys, tokens, agents, accounts, workspaces, boards, mcpConfig, pushSender)
 
 	// Health probes mount ahead of the app handler, so they skip auth, CSRF, and
 	// the access log. /readyz pings the database.

@@ -17,6 +17,7 @@ import (
 	"github.com/peios/acta/internal/live"
 	"github.com/peios/acta/internal/mcpcfg"
 	"github.com/peios/acta/internal/passkey"
+	"github.com/peios/acta/internal/push"
 	"github.com/peios/acta/internal/session"
 	"github.com/peios/acta/internal/store"
 	"github.com/peios/acta/internal/workspace"
@@ -32,7 +33,8 @@ type handlers struct {
 	workspaces *workspace.Service
 	board      *board.Service
 	mcpcfg     *mcpcfg.Service
-	live       live.Broker // fans mutations to browsers over SSE; nil disables live updates
+	live       live.Broker  // fans mutations to browsers over SSE; nil disables live updates
+	push       *push.Sender // Web Push delivery; nil disables push (no VAPID keys)
 	secure     bool
 	publicURL  string // browser-facing origin, for building item permalinks
 }
@@ -276,6 +278,15 @@ type securityData struct {
 	Credentials  []store.Credential
 	TokenSection tokensView
 	Sessions     []sessionView
+	Push         pushSettings
+}
+
+// pushSettings drives the account page's notification toggle. Enabled is false
+// when the server has no VAPID keys, in which case the section hides. VAPIDKey
+// is the public key the browser needs to subscribe.
+type pushSettings struct {
+	Enabled  bool
+	VAPIDKey string
 }
 
 // sessionView is a session as shown in the account UI. The secret token is
@@ -352,7 +363,17 @@ func (h *handlers) buildSecurityData(r *http.Request, newToken string) (security
 			Placeholder:  "Token name (e.g. laptop CLI)",
 		},
 		Sessions: views,
+		Push:     h.pushSettings(),
 	}, nil
+}
+
+// pushSettings reports whether Web Push is available and, if so, the public key
+// the browser subscribes with. A nil sender means push is disabled.
+func (h *handlers) pushSettings() pushSettings {
+	if h.push == nil {
+		return pushSettings{}
+	}
+	return pushSettings{Enabled: true, VAPIDKey: h.push.PublicKey()}
 }
 
 // --- account: api tokens ---

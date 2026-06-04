@@ -107,8 +107,18 @@ func mergeCoalesced(verb string, prev, next map[string]string) map[string]string
 }
 
 type Service struct {
-	store store.Store
-	now   func() time.Time
+	store    store.Store
+	now      func() time.Time
+	notifier Notifier
+}
+
+// Notifier is an out-of-band delivery channel for notifications (e.g. Web
+// Push). The board calls it as a best-effort side-effect when it files a
+// notification — the inbox row is the durable record, so a nil Notifier (the
+// default) simply means no push. Implementations must not block: NotifyUser is
+// invoked on the request path.
+type Notifier interface {
+	NotifyUser(ctx context.Context, userID string, n store.Notification)
 }
 
 // Option configures a Service.
@@ -118,6 +128,12 @@ type Option func(*Service)
 // events. Tests inject a controllable clock; production uses time.Now.
 func WithClock(now func() time.Time) Option {
 	return func(s *Service) { s.now = now }
+}
+
+// WithNotifier attaches an out-of-band notification channel (Web Push). Omit it
+// and notifications are only delivered in-app.
+func WithNotifier(n Notifier) Option {
+	return func(s *Service) { s.notifier = n }
 }
 
 func New(st store.Store, opts ...Option) *Service {
@@ -1181,6 +1197,9 @@ func (s *Service) notifyHandles(ctx context.Context, item store.Item, c store.Co
 			continue
 		}
 		notified = append(notified, n)
+		if s.notifier != nil {
+			s.notifier.NotifyUser(ctx, u.ID, n) // best-effort push; must not block
+		}
 	}
 	return notified
 }

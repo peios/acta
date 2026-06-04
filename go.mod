@@ -4,6 +4,7 @@ go 1.26.3
 
 require (
 	charm.land/huh/v2 v2.0.3
+	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/descope/virtualwebauthn v1.0.5
 	github.com/go-webauthn/webauthn v0.17.4
 	github.com/jackc/pgx/v5 v5.9.2

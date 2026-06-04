@@ -42,11 +42,36 @@ type Config struct {
 	LoginIPMax       int
 	LoginBackoffStep time.Duration
 	LoginBackoffMax  time.Duration
+
+	// Web Push (VAPID). The public key reaches the browser to authenticate the
+	// subscription; the private key signs the JWT we send to the push service.
+	// Generate a pair with `go run ./cmd/acta-vapid`. Both empty (the default)
+	// disables push entirely — the settings toggle hides and the sender no-ops —
+	// so dev and an offline Peios box need no keys. VAPIDSubject is the contact
+	// the push service can reach about our traffic; it defaults to RPOrigin.
+	VAPIDPublicKey  string
+	VAPIDPrivateKey string
+	VAPIDSubject    string
 }
 
 // CookieSecure reports whether session/CSRF cookies should carry the Secure
 // attribute. On in prod (HTTPS assumed), off in dev so localhost http works.
 func (c Config) CookieSecure() bool { return c.Env == "prod" }
+
+// PushEnabled reports whether Web Push is configured (a VAPID key pair is set).
+// When false the push subsystem is inert.
+func (c Config) PushEnabled() bool {
+	return c.VAPIDPublicKey != "" && c.VAPIDPrivateKey != ""
+}
+
+// PushSubject is the VAPID "sub" contact, falling back to the public origin so
+// a deployment that sets only the key pair still sends a valid subscriber.
+func (c Config) PushSubject() string {
+	if c.VAPIDSubject != "" {
+		return c.VAPIDSubject
+	}
+	return c.RPOrigin
+}
 
 func Load() Config {
 	return Config{
@@ -64,6 +89,10 @@ func Load() Config {
 		LoginIPMax:       envInt("ACTA_LOGIN_IP_MAX", 20),
 		LoginBackoffStep: envDuration("ACTA_LOGIN_BACKOFF_STEP", time.Second),
 		LoginBackoffMax:  envDuration("ACTA_LOGIN_BACKOFF_MAX", 10*time.Second),
+
+		VAPIDPublicKey:  os.Getenv("ACTA_VAPID_PUBLIC_KEY"),
+		VAPIDPrivateKey: os.Getenv("ACTA_VAPID_PRIVATE_KEY"),
+		VAPIDSubject:    os.Getenv("ACTA_VAPID_SUBJECT"),
 	}
 }
 

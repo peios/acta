@@ -32,6 +32,7 @@ type Store struct {
 	mcpPrompts  map[string]store.MCPPrompt
 	events      map[string]store.Event
 	notifs      map[string]store.Notification
+	pushSubs    map[string]store.PushSubscription // keyed by endpoint
 }
 
 func New() *Store {
@@ -51,6 +52,7 @@ func New() *Store {
 		mcpPrompts:  map[string]store.MCPPrompt{},
 		events:      map[string]store.Event{},
 		notifs:      map[string]store.Notification{},
+		pushSubs:    map[string]store.PushSubscription{},
 	}
 }
 
@@ -1177,6 +1179,38 @@ func (s *Store) MarkAllNotificationsRead(_ context.Context, recipientID string) 
 			s.notifs[id] = n
 		}
 	}
+	return nil
+}
+
+// --- web push subscriptions ---
+
+func (s *Store) CreatePushSubscription(_ context.Context, sub store.PushSubscription) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if sub.CreatedAt.IsZero() {
+		sub.CreatedAt = time.Now()
+	}
+	s.pushSubs[sub.Endpoint] = sub // upsert on endpoint
+	return nil
+}
+
+func (s *Store) PushSubscriptionsByUser(_ context.Context, userID string) ([]store.PushSubscription, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.PushSubscription
+	for _, sub := range s.pushSubs {
+		if sub.UserID == userID {
+			out = append(out, sub)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out, nil
+}
+
+func (s *Store) DeletePushSubscription(_ context.Context, endpoint string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.pushSubs, endpoint)
 	return nil
 }
 

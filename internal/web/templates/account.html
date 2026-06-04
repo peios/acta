@@ -81,8 +81,21 @@
       </form>
       {{end}}
       {{end}}
+
+      {{if .Push.Enabled}}
+      <p class="section-title" style="margin-top: 2.4rem;">Notifications</p>
+      <p class="subtitle" style="margin-bottom: 1rem;">
+        Get a push notification on this device when you're @mentioned. On iOS this works once
+        Acta is added to your home screen.
+      </p>
+      <div class="passkey-add" data-push data-vapid-key="{{.Push.VAPIDKey}}" style="margin-top: 0; align-items: center;">
+        <button id="push-toggle" class="btn-primary" type="button" hidden>Enable on this device</button>
+        <span class="subtitle" data-push-status>Checking&hellip;</span>
+      </div>
+      <p class="alert" role="alert" data-push-error hidden></p>
+      {{end}}
     </section>
   </div>
 </main>
 {{end}}
-{{define "scripts"}}<script src="{{asset "/static/acta.js"}}"></script>{{end}}
+{{define "scripts"}}<script src="{{asset "/static/acta.js"}}"></script><script src="{{asset "/static/push.js"}}"></script>{{end}}

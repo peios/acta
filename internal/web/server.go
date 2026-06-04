@@ -16,6 +16,7 @@ import (
 	"github.com/peios/acta/internal/live"
 	"github.com/peios/acta/internal/mcpcfg"
 	"github.com/peios/acta/internal/passkey"
+	"github.com/peios/acta/internal/push"
 	"github.com/peios/acta/internal/session"
 	"github.com/peios/acta/internal/workspace"
 )
@@ -26,7 +27,7 @@ import (
 const maxBodyBytes = 1 << 20
 
 // NewHandler builds the application handler.
-func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Provider, passkeys *passkey.Service, tokens *apitoken.Service, agents *agent.Service, accounts *account.Service, workspaces *workspace.Service, boards *board.Service, mcpConfig *mcpcfg.Service) http.Handler {
+func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Provider, passkeys *passkey.Service, tokens *apitoken.Service, agents *agent.Service, accounts *account.Service, workspaces *workspace.Service, boards *board.Service, mcpConfig *mcpcfg.Service, pushSender *push.Sender) http.Handler {
 	h := &handlers{
 		sessions:   sessions,
 		provider:   provider,
@@ -38,6 +39,7 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 		board:      boards,
 		mcpcfg:     mcpConfig,
 		live:       live.NewHub(),
+		push:       pushSender,
 		secure:     cfg.CookieSecure(),
 		publicURL:  strings.TrimRight(cfg.RPOrigin, "/"),
 	}
@@ -116,6 +118,9 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("POST /account/tokens/{id}/delete", protected(h.tokenDelete))
 	mux.Handle("POST /account/sessions/revoke-others", protected(h.sessionRevokeOthers))
 	mux.Handle("POST /account/sessions/{id}/revoke", protected(h.sessionRevoke))
+	// Web Push: register/forget this browser's subscription (fetch + CSRF).
+	mux.Handle("POST /account/push/subscribe", protected(h.pushSubscribe))
+	mux.Handle("POST /account/push/unsubscribe", protected(h.pushUnsubscribe))
 	mux.Handle("GET /account/agents", protected(h.accountAgents))
 	mux.Handle("POST /account/agents", protected(h.agentCreate))
 	mux.Handle("GET /account/agents/{id}", protected(h.agentDetail))
@@ -177,6 +182,9 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	// /static/archive) and make ServeMux panic at registration.
 	root := http.NewServeMux()
 	root.Handle("GET /static/", staticHandler())
+	// The service worker is served from the root so it can control the whole
+	// origin (a worker's scope can't exceed its own path). Public, like /static.
+	root.HandleFunc("GET /sw.js", h.serviceWorker)
 	root.Handle("/api/v1/", requireToken(tokens)(api))
 	root.Handle("/mcp", mcpEndpoint)
 	// Retired /w/{slug}/… URLs — boards used to live under /w. 301 them to the

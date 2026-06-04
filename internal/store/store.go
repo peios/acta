@@ -303,6 +303,19 @@ type Notification struct {
 	ReadAt        *time.Time
 }
 
+// PushSubscription is one browser's Web Push registration for a user: the push
+// service Endpoint plus the keys (P256dh, Auth) used to encrypt payloads to it.
+// Endpoint is the natural key — it identifies the device/browser uniquely — so
+// re-subscribing the same browser upserts rather than duplicates. A user may
+// hold several (laptop, phone, …).
+type PushSubscription struct {
+	Endpoint  string
+	UserID    string
+	P256dh    string
+	Auth      string
+	CreatedAt time.Time
+}
+
 // Store is the persistence interface for Acta.
 type Store interface {
 	CreateUser(ctx context.Context, u NewUser) (User, error)
@@ -477,6 +490,16 @@ type Store interface {
 	UnreadNotificationCount(ctx context.Context, recipientID string) (int, error)
 	MarkNotificationRead(ctx context.Context, id, recipientID string) error
 	MarkAllNotificationsRead(ctx context.Context, recipientID string) error
+
+	// Web Push subscriptions, keyed by endpoint. CreatePushSubscription upserts
+	// (re-subscribing a browser refreshes its keys and owner rather than
+	// duplicating). PushSubscriptionsByUser lists a user's registrations.
+	// DeletePushSubscription removes one by endpoint — used both when a user
+	// turns notifications off and when the push service reports the endpoint
+	// gone (410); a missing row is not an error.
+	CreatePushSubscription(ctx context.Context, sub PushSubscription) error
+	PushSubscriptionsByUser(ctx context.Context, userID string) ([]PushSubscription, error)
+	DeletePushSubscription(ctx context.Context, endpoint string) error
 
 	// AppSetting reads an instance-global key/value setting, returning "" (no
 	// error) when the key is absent. SetAppSetting upserts it. The MCP guide
