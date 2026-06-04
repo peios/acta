@@ -7,6 +7,7 @@
   if (!board) return;
   const wrap = document.querySelector('.board-wrap');
   const base = '/' + wrap.dataset.slug;
+  const boardId = wrap.dataset.boardId || ''; // which board new lanes join
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
   const boardErr = document.querySelector('[data-board-error]');
 
@@ -420,6 +421,7 @@
       onChange: onDragChange,
       onEnd: (evt) => {
         endCardDrag();
+        if (handleBoardDrop(evt)) return;
         const id = evt.item.dataset.itemId;
         const destLane = evt.to.closest('.lane');
         evt.item.style.setProperty('--lane-color', destLane.dataset.color || '');
@@ -479,6 +481,7 @@
       onChange: onDragChange,
       onEnd: (evt) => {
         endCardDrag();
+        if (handleBoardDrop(evt)) return;
         const itemId = evt.item.dataset.itemId;
         const toCol = evt.to.closest('.mcol').dataset.parentId;
         const fromCol = evt.from.closest('.mcol').dataset.parentId;
@@ -642,8 +645,12 @@
           if (laneEl) {
             laneEl.querySelector('.lane-items').append(c);
             c.style.setProperty('--lane-color', laneEl.dataset.color || '');
+            reapplyFilters();
+          } else if (board.querySelector('.lane')) {
+            // Status mode, but no lane here for the new status — the item took a
+            // status on another board, so it leaves this one.
+            c.remove();
           }
-          reapplyFilters();
         }
       } catch (err2) { fail(err2); }
     });
@@ -680,13 +687,14 @@
       const nameEl = statusPill.querySelector('[data-status-pill-name]');
       const opts = {};
       statusPill.querySelectorAll('[data-status-opt]').forEach((o) => {
-        opts[o.dataset.statusOpt] = { color: o.dataset.color || '', name: o.querySelector('.status-opt-name').textContent };
+        opts[o.dataset.statusOpt] = { color: o.dataset.color || '', name: o.querySelector('.status-opt-name').textContent, dashed: o.dataset.dashed === '1' };
       });
       const syncStatus = () => {
         const d = opts[statusSelect.value];
         if (!d) return;
         nameEl.textContent = d.name;
         dot.style.setProperty('--lane-color', d.color);
+        dot.classList.toggle('dashed', d.dashed); // Backlog statuses render dashed
       };
       statusPill.querySelectorAll('[data-status-opt]').forEach((o) => {
         o.addEventListener('click', () => {
@@ -1071,8 +1079,22 @@
   function onDragChange(evt) {
     if (touchPaging) centerLane(evt.to.closest('.lane'));
   }
-  function startCardDrag() { board.classList.add('dragging'); }
-  function endCardDrag() { board.classList.remove('dragging'); }
+  function startCardDrag() { board.classList.add('dragging'); document.body.classList.add('card-dragging'); }
+  function endCardDrag() { board.classList.remove('dragging'); document.body.classList.remove('card-dragging'); }
+
+  // handleBoardDrop fires when a card is dropped on a board in the sidebar: the
+  // card leaves this board and takes the target board's entry lane (promote /
+  // demote). Returns true when it handled the drop, so the lane/column onEnd can
+  // skip its own move logic. The server resolves the entry lane from the board id.
+  function handleBoardDrop(evt) {
+    const drop = evt.to.closest('[data-board-drop]');
+    if (!drop) return false;
+    const id = evt.item.dataset.itemId;
+    evt.item.remove(); // it's no longer on this board's view
+    api('/items/' + id + '/board', { board_id: drop.dataset.boardId })
+      .catch((e) => { if (boardErr) boardErr.textContent = msg(e); location.reload(); });
+    return true;
+  }
 
   // --- wire the server-rendered board ---
 
@@ -1118,12 +1140,14 @@
       const name = input.value.trim();
       if (!name) return;
       try {
-        const st = await api('/statuses', { name });
+        const st = await api('/statuses', { name, board_id: boardId });
         const lane = document.getElementById('lane-tmpl').content.firstElementChild.cloneNode(true);
         lane.dataset.statusId = st.id;
         lane.dataset.color = st.color;
         lane.querySelector('.lane-name').value = st.name;
-        lane.querySelector('.lane-dot').style.setProperty('--lane-color', st.color);
+        const newDot = lane.querySelector('.lane-dot');
+        newDot.style.setProperty('--lane-color', st.color);
+        if (wrap.dataset.lanesDashed === '1') newDot.classList.add('dashed'); // Backlog lanes render dashed
         board.insertBefore(lane, document.querySelector('.lane-add'));
         wireLane(lane);
         input.value = '';
@@ -1131,6 +1155,18 @@
       } catch (err) { if (boardErr) boardErr.textContent = msg(err); }
     });
   }
+
+  // Sidebar boards are drop targets: dragging a card onto another board promotes
+  // /demotes it there (handled in handleBoardDrop). Skip the current board — a
+  // card can't leave for the board it's already on. Works in both view modes.
+  document.querySelectorAll('.sidebar [data-board-drop]').forEach((target) => {
+    if (target.dataset.boardId === wrap.dataset.boardId) return;
+    new Sortable(target, {
+      group: { name: 'items', pull: false, put: true },
+      sort: false,
+      draggable: '.item',
+    });
+  });
 
   // The server may have rendered a modal already (a ?item= deep link); wire it.
   const existing = document.querySelector('[data-modal]');
@@ -1201,6 +1237,10 @@
 
     const lane = board.querySelector('.lane[data-status-id="' + CSS.escape(msg.status_id || '') + '"]');
     const itemsEl = lane ? lane.querySelector('.lane-items') : null;
+
+    // In status mode, a card whose status has no lane here has moved to another
+    // board — drop it. Milestone mode has no status lanes, so leave it be.
+    if (card && !itemsEl && board.querySelector('.lane')) { card.remove(); return; }
 
     if (!card) {
       if (!itemsEl) return; // its lane isn't on this view (e.g. milestone mode)

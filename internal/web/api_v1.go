@@ -256,6 +256,12 @@ func (h *handlers) statusIDByName(ctx context.Context, workspaceID, name string)
 	if err != nil {
 		return "", err
 	}
+	return statusIDInList(statuses, name)
+}
+
+// statusIDInList resolves a status name within a specific set of lanes (e.g. one
+// board's), case-insensitively. Unknown names wrap errUnknownStatus.
+func statusIDInList(statuses []store.Status, name string) (string, error) {
 	for _, s := range statuses {
 		if strings.EqualFold(s.Name, name) {
 			return s.ID, nil

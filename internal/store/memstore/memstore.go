@@ -23,6 +23,7 @@ type Store struct {
 	challenges  map[string]store.Challenge
 	workspaces  map[string]store.Workspace
 	itemSeq     map[string]int // per-workspace monotonic counter for item ref numbers
+	boards      map[string]store.Board
 	statuses    map[string]store.Status
 	items       map[string]store.Item
 	comments    map[string]store.Comment
@@ -41,6 +42,7 @@ func New() *Store {
 		challenges:  map[string]store.Challenge{},
 		workspaces:  map[string]store.Workspace{},
 		itemSeq:     map[string]int{},
+		boards:      map[string]store.Board{},
 		statuses:    map[string]store.Status{},
 		items:       map[string]store.Item{},
 		comments:    map[string]store.Comment{},
@@ -551,6 +553,60 @@ func (s *Store) CountWorkspaces(_ context.Context) (int, error) {
 	return len(s.workspaces), nil
 }
 
+// --- boards ---
+
+func (s *Store) CreateBoard(_ context.Context, b store.Board) (store.Board, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if b.ID == "" {
+		b.ID = newID()
+	}
+	if b.CreatedAt.IsZero() {
+		b.CreatedAt = time.Now()
+	}
+	for _, ex := range s.boards {
+		if ex.WorkspaceID == b.WorkspaceID && ex.Slug == b.Slug {
+			return store.Board{}, store.ErrWorkspaceSlugTaken
+		}
+	}
+	s.boards[b.ID] = b
+	return b, nil
+}
+
+func (s *Store) BoardsByWorkspace(_ context.Context, workspaceID string) ([]store.Board, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.Board
+	for _, b := range s.boards {
+		if b.WorkspaceID == workspaceID {
+			out = append(out, b)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Position < out[j].Position })
+	return out, nil
+}
+
+func (s *Store) BoardByID(_ context.Context, id string) (store.Board, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b, ok := s.boards[id]
+	if !ok {
+		return store.Board{}, store.ErrBoardNotFound
+	}
+	return b, nil
+}
+
+func (s *Store) BoardBySlug(_ context.Context, workspaceID, slug string) (store.Board, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, b := range s.boards {
+		if b.WorkspaceID == workspaceID && b.Slug == slug {
+			return b, nil
+		}
+	}
+	return store.Board{}, store.ErrBoardNotFound
+}
+
 // --- board: statuses ---
 
 func (s *Store) CreateStatus(_ context.Context, st store.Status) (store.Status, error) {
@@ -572,6 +628,26 @@ func (s *Store) StatusesByWorkspace(_ context.Context, workspaceID string) ([]st
 	var out []store.Status
 	for _, st := range s.statuses {
 		if st.WorkspaceID == workspaceID {
+			out = append(out, st)
+		}
+	}
+	// Board first (default board leads), then lane position within it — lanes
+	// share a 0-based sequence per board, so position alone would interleave.
+	sort.Slice(out, func(i, j int) bool {
+		if bi, bj := s.boards[out[i].BoardID].Position, s.boards[out[j].BoardID].Position; bi != bj {
+			return bi < bj
+		}
+		return out[i].Position < out[j].Position
+	})
+	return out, nil
+}
+
+func (s *Store) StatusesByBoard(_ context.Context, boardID string) ([]store.Status, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.Status
+	for _, st := range s.statuses {
+		if st.BoardID == boardID {
 			out = append(out, st)
 		}
 	}
@@ -942,6 +1018,10 @@ func (s *Store) EventsByItem(_ context.Context, itemID string, limit int) ([]sto
 
 func (s *Store) EventsByWorkspace(_ context.Context, workspaceID string, limit int) ([]store.Event, error) {
 	return s.recentEvents(func(e store.Event) bool { return e.WorkspaceID == workspaceID }, limit), nil
+}
+
+func (s *Store) EventsByBoard(_ context.Context, boardID string, limit int) ([]store.Event, error) {
+	return s.recentEvents(func(e store.Event) bool { return e.BoardID == boardID }, limit), nil
 }
 
 func (s *Store) LatestEventForActor(_ context.Context, itemID, actorID, verb string, since time.Time) (store.Event, bool, error) {

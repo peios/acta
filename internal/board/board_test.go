@@ -25,7 +25,13 @@ func setup(t *testing.T) (*board.Service, string, []store.Status) {
 	if err := svc.SeedDefaults(ctx, ws.ID); err != nil {
 		t.Fatal(err)
 	}
-	statuses, err := svc.Statuses(ctx, ws.ID)
+	// These tests exercise the Tasks board; seeding now also creates Backlog, so
+	// scope to the default board's lanes rather than the whole workspace.
+	tasks, err := svc.DefaultBoard(ctx, ws.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statuses, err := svc.BoardStatuses(ctx, tasks.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

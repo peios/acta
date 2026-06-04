@@ -17,31 +17,31 @@
 {{end}}
 
 {{define "content"}}
-<main class="board-wrap" data-slug="{{.Workspace.Slug}}" data-me="{{with .Principal}}{{.ID}}{{end}}">
+<main class="board-wrap" data-slug="{{.Workspace.Slug}}" data-board-id="{{.BoardID}}" data-lanes-dashed="{{if .LanesDashed}}1{{end}}" data-me="{{with .Principal}}{{.ID}}{{end}}">
   <div class="board-bar">
     <div class="views">
-      <a class="view-tab{{if and (eq .Mode "status") (not .ViewMine)}} active{{end}}" href="/{{.Workspace.Slug}}?mode=status">
+      <a class="view-tab{{if and (eq .Mode "status") (not .ViewMine)}} active{{end}}" href="{{.BoardBase}}?mode=status">
         <svg class="ico" viewBox="0 0 16 16"><rect x="2.5" y="3" width="4" height="10" rx="1"/><rect x="9.5" y="3" width="4" height="6.5" rx="1"/></svg>All items
       </a>
-      <a class="view-tab{{if .ViewMine}} active{{end}}" href="/{{.Workspace.Slug}}?mode=status&amp;assignee=me">
+      <a class="view-tab{{if .ViewMine}} active{{end}}" href="{{.BoardBase}}?mode=status&amp;assignee=me">
         <svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"/><path d="M3.5 13a4.5 4.5 0 0 1 9 0"/></svg>My items
       </a>
-      <a class="view-tab{{if eq .Mode "milestone"}} active{{end}}" href="/{{.Workspace.Slug}}?mode=milestone">
+      <a class="view-tab{{if eq .Mode "milestone"}} active{{end}}" href="{{.BoardBase}}?mode=milestone">
         <svg class="ico" viewBox="0 0 16 16"><path d="M8 2.4 13.6 8 8 13.6 2.4 8z"/></svg>Milestones
       </a>
     </div>
 
     <div class="bar-right">
-      <a class="board-archive-link" href="/{{.Workspace.Slug}}/activity">Activity</a>
-      <a class="board-archive-link" href="/{{.Workspace.Slug}}/archive">Archived</a>
+      <a class="board-archive-link" href="{{.ActivityHref}}">Activity</a>
+      <a class="board-archive-link" href="{{.ArchiveHref}}">Archived</a>
 
       <div class="pop-anchor board-overflow" data-pop>
         <button class="ph-btn" type="button" data-pop-btn aria-label="More">
           <svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="3.4" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="8" cy="12.6" r="1.3"/></svg>
         </button>
         <div class="popover pop-overflow" data-pop-menu hidden>
-          <a class="pop-link" href="/{{.Workspace.Slug}}/activity">Activity</a>
-          <a class="pop-link" href="/{{.Workspace.Slug}}/archive">Archived</a>
+          <a class="pop-link" href="{{.ActivityHref}}">Activity</a>
+          <a class="pop-link" href="{{.ArchiveHref}}">Archived</a>
         </div>
       </div>
 
@@ -52,7 +52,7 @@
           <svg class="ico" viewBox="0 0 16 16"><path d="M2.5 3.5h11l-4.2 5v4l-2.6-1.3v-2.7z"/></svg><span class="ph-label">Filter</span> <span class="facet-count" data-filter-badge{{if not .FilterActive}} hidden{{end}}>{{.FilterCount}}</span>
         </button>
         <div class="popover pop-filter" data-pop-menu hidden>
-          <form class="board-filters" method="get" action="/{{.Workspace.Slug}}" data-filters>
+          <form class="board-filters" method="get" action="{{.BoardBase}}" data-filters>
             {{if eq .Mode "milestone"}}<input type="hidden" name="mode" value="milestone">{{end}}
 
             <details class="facet" data-facet="status" open>
@@ -61,7 +61,7 @@
                 {{range .StatusFilter}}
                 <label class="facet-row">
                   <input type="checkbox" name="status" value="{{.ID}}"{{if .Selected}} checked{{end}}>
-                  <span class="facet-dot" style="{{.ColorVar}}"></span>
+                  <span class="facet-dot{{if $.LanesDashed}} dashed{{end}}" style="{{.ColorVar}}"></span>
                   <span class="facet-label">{{.Name}}</span>
                 </label>
                 {{end}}
@@ -103,7 +103,7 @@
 
             <div class="filter-foot">
               <button type="submit" class="facet-apply">Apply</button>
-              <a class="facet-clear" href="/{{.Workspace.Slug}}?mode={{.Mode}}"{{if not .FilterActive}} hidden{{end}}>Clear</a>
+              <a class="facet-clear" href="{{.BoardBase}}?mode={{.Mode}}"{{if not .FilterActive}} hidden{{end}}>Clear</a>
             </div>
           </form>
         </div>
@@ -125,8 +125,8 @@
           <div class="pop-rows">
             <div class="pop-row"><span class="lbl">Grouping</span><span class="spacer"></span>
               <div class="grp">
-                <a class="grp-opt{{if eq .Mode "status"}} active{{end}}" href="/{{.Workspace.Slug}}?mode=status">Status</a>
-                <a class="grp-opt{{if eq .Mode "milestone"}} active{{end}}" href="/{{.Workspace.Slug}}?mode=milestone">Milestone</a>
+                <a class="grp-opt{{if eq .Mode "status"}} active{{end}}" href="{{.BoardBase}}?mode=status">Status</a>
+                <a class="grp-opt{{if eq .Mode "milestone"}} active{{end}}" href="{{.BoardBase}}?mode=milestone">Milestone</a>
               </div>
             </div>
             <div class="pop-row"><span class="lbl">Ordering</span><span class="spacer"></span><button class="dd" type="button" disabled title="Sorting — coming soon"><span>Manual</span><span class="chev">&#9662;</span></button></div>
@@ -173,7 +173,7 @@
       <header class="lane-head">
         <span class="lane-grip" title="Drag to reorder">⠿</span>
         <div class="lane-swatch">
-          <button class="lane-dot" type="button" style="{{.ColorVar}}" title="Lane colour" aria-label="Lane colour"></button>
+          <button class="lane-dot{{if $.LanesDashed}} dashed{{end}}" type="button" style="{{.ColorVar}}" title="Lane colour" aria-label="Lane colour"></button>
           <div class="lane-palette" hidden>
             {{range $.Palette}}<button class="swatch" type="button" data-color="{{.Hex}}" style="{{.Style}}" aria-label="Set lane colour"></button>{{end}}
           </div>

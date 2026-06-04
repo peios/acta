@@ -25,8 +25,13 @@ type modalView struct {
 	Item           store.Item
 	RefID          string   // human id, e.g. "ACTA-12"
 	Desc           descView // the rendered, collapsible description
-	Statuses       []statusChoice
+	// StatusGroups are the picker's options, grouped by board. Picking a status
+	// on another board *is* how an item moves boards (promote/demote), so the
+	// picker spans every board, not just the item's current one.
+	StatusGroups   []statusGroup
 	StatusName     string       // current status's display name (for the pill)
+	StatusBoard    string       // current status's board name (shown beside the pill)
+	StatusDashed   bool         // current status is a Backlog lane (dashed pill dot)
 	StatusColorVar template.CSS // current status's --lane-color (for the pill dot)
 	Assignables    []store.User // assignee-picker options: humans + your agents (+ current assignee)
 	Assignee       string       // display name of the assignee, "" if unassigned
@@ -46,12 +51,20 @@ type modalView struct {
 // and the mobile pill); Color is the resolved lane hex so the pill's dot is
 // coloured server-side, working regardless of the board's current view mode.
 type statusChoice struct {
-	ID    string
-	Name  string
-	Color string
+	ID     string
+	Name   string
+	Color  string
+	Dashed bool // a Backlog-board lane — rendered as a dashed (unstarted) dot
 }
 
 func (s statusChoice) ColorVar() template.CSS { return colorVar(s.Color) }
+
+// statusGroup is one board's lanes in the modal status picker, labelled by the
+// board's name so the picker reads as two sections (Tasks / Backlog).
+type statusGroup struct {
+	Board   string
+	Choices []statusChoice
+}
 
 type parentOption struct {
 	ID    string
@@ -123,7 +136,7 @@ func commentToView(c store.Comment, nameByID map[string]string, viewerID string)
 // comment card stands in for them — and consecutive system events are folded
 // into one group so the template can draw a single rail through them. events
 // arrives newest-first (as the store returns it); comments oldest-first.
-func buildTimeline(comments []store.Comment, events []store.Event, nameByID, colorByStatus map[string]string, viewerID string) []timelineGroup {
+func buildTimeline(comments []store.Comment, events []store.Event, nameByID, colorByStatus map[string]string, viewerID, backlogBoardID string) []timelineGroup {
 	type entry struct {
 		when    time.Time
 		comment *store.Comment
@@ -149,7 +162,7 @@ func buildTimeline(comments []store.Comment, events []store.Event, nameByID, col
 			continue
 		}
 		ev := eventToView(*e.event)
-		setEventDot(&ev, e.event.Data, colorByStatus)
+		setEventDot(&ev, e.event.Data, colorByStatus, e.event.BoardID, backlogBoardID)
 		if n := len(feed); n > 0 && feed[n-1].Comment == nil {
 			feed[n-1].Events = append(feed[n-1].Events, ev)
 		} else {
@@ -233,10 +246,26 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		return modalView{}, false, nil
 	}
 	itemID = item.ID // the input may have been a human ref; use the opaque id below
-	statuses, err := h.board.Statuses(ctx, ws.ID)
+	// The status picker spans every board, grouped by board: picking a status on
+	// another board is how an item moves boards. The item's own board is resolved
+	// separately for the done-lane (subtask progress counts its board's last lane).
+	itemStatus, err := h.board.StatusByID(ctx, item.StatusID)
 	if err != nil {
 		return modalView{}, false, err
 	}
+	boardStatuses, err := h.board.BoardStatuses(ctx, itemStatus.BoardID)
+	if err != nil {
+		return modalView{}, false, err
+	}
+	boards, err := h.board.Boards(ctx, ws.ID)
+	if err != nil {
+		return modalView{}, false, err
+	}
+	// Lead the picker with the item's own board — that's where most status
+	// changes stay — keeping the other boards in their normal order beneath.
+	sort.SliceStable(boards, func(i, j int) bool {
+		return boards[i].ID == itemStatus.BoardID && boards[j].ID != itemStatus.BoardID
+	})
 	users, err := h.board.Users(ctx)
 	if err != nil {
 		return modalView{}, false, err
@@ -263,13 +292,36 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 			createdBy = "Unknown"
 		}
 	}
-	statusName := make(map[string]string, len(statuses))
-	for _, st := range statuses {
-		statusName[st.ID] = st.Name
+	// Build the status picker across every board (grouped), and alongside it the
+	// flat lookups the rest of the modal needs: a name+colour by status id, and
+	// the current status's name/colour/board for the pill.
+	var statusGroups []statusGroup
+	statusName := map[string]string{}
+	colorByStatus := map[string]string{}
+	var curStatusName, curStatusColor, curStatusBoard string
+	var curStatusDashed bool
+	for _, b := range boards {
+		sts, serr := h.board.BoardStatuses(ctx, b.ID)
+		if serr != nil {
+			return modalView{}, false, serr
+		}
+		dashed := isBacklogBoard(b) // Backlog lanes render as dashed (unstarted) dots
+		choices := make([]statusChoice, len(sts))
+		for i, st := range sts {
+			c := board.ColorFor(st)
+			choices[i] = statusChoice{ID: st.ID, Name: st.Name, Color: c, Dashed: dashed}
+			statusName[st.ID] = st.Name
+			colorByStatus[st.Name] = c
+			if st.ID == item.StatusID {
+				curStatusName, curStatusColor, curStatusBoard, curStatusDashed = st.Name, c, b.Name, dashed
+			}
+		}
+		statusGroups = append(statusGroups, statusGroup{Board: b.Name, Choices: choices})
 	}
+	// The done lane for subtask progress is the item's *own* board's last lane.
 	lastStatusID := ""
-	if len(statuses) > 0 {
-		lastStatusID = statuses[len(statuses)-1].ID
+	if n := len(boardStatuses); n > 0 {
+		lastStatusID = boardStatuses[n-1].ID
 	}
 	kids := make([]childView, len(children))
 	done := 0
@@ -315,26 +367,18 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		}
 	}
 
-	// Resolve each status's lane colour once (explicit or palette-derived), so
-	// the modal's pill dots — and the feed's status-change glyphs — are coloured
-	// without depending on the board DOM.
-	statusChoices := make([]statusChoice, len(statuses))
-	colorByStatus := make(map[string]string, len(statuses))
-	var curStatusName, curStatusColor string
-	for i, st := range statuses {
-		c := board.ColorFor(st)
-		statusChoices[i] = statusChoice{ID: st.ID, Name: st.Name, Color: c}
-		colorByStatus[st.Name] = c
-		if st.ID == item.StatusID {
-			curStatusName, curStatusColor = st.Name, c
-		}
-	}
-
 	viewerID := ""
 	if p := principalFrom(ctx); p != nil {
 		viewerID = p.ID
 	}
-	timeline := buildTimeline(comments, history, nameByID, colorByStatus, viewerID)
+	backlogID := ""
+	for _, b := range boards {
+		if isBacklogBoard(b) {
+			backlogID = b.ID
+			break
+		}
+	}
+	timeline := buildTimeline(comments, history, nameByID, colorByStatus, viewerID, backlogID)
 
 	return modalView{
 		Slug:           ws.Slug,
@@ -342,8 +386,10 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		Item:           item,
 		RefID:          refID(ws.ItemPrefix, item.RefNum),
 		Desc:           renderDescription(item.Description),
-		Statuses:       statusChoices,
+		StatusGroups:   statusGroups,
 		StatusName:     curStatusName,
+		StatusBoard:    curStatusBoard,
+		StatusDashed:   curStatusDashed,
 		StatusColorVar: colorVar(curStatusColor),
 		Assignables:    assignables,
 		Assignee:       nameByID[item.AssigneeID],
@@ -638,6 +684,8 @@ func (h *handlers) itemUnarchive(w http.ResponseWriter, r *http.Request) {
 type archiveData struct {
 	chrome
 	Principal *identity.Principal
+	Title     string // "Archived items" (workspace) or "Tasks archive" (board)
+	BackHref  string // where the ‹ Back link points
 	Items     []archivedItemView
 }
 
@@ -653,6 +701,11 @@ func (h *handlers) archivePage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	ch, err := h.chromeFor(r, "home", &ws)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	items, err := h.board.ArchivedItems(r.Context(), ws.ID)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -662,6 +715,22 @@ func (h *handlers) archivePage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
+	}
+	// A {board} segment scopes the archive (and its lane names) to one board;
+	// without one it's the whole workspace's archived items.
+	title, backHref := "Archived items", "/"+ws.Slug
+	if boardSlugParam(r) != "" {
+		bd, ok := h.resolveBoard(w, r, ws)
+		if !ok {
+			return
+		}
+		if statuses, err = h.board.BoardStatuses(r.Context(), bd.ID); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		items = itemsOnBoard(items, statuses)
+		ch.ActiveBoard = bd.Slug
+		title, backHref = bd.Name+" archive", boardViewPath(ws.Slug, bd)
 	}
 	nameByID := make(map[string]string, len(statuses))
 	for _, s := range statuses {
@@ -675,14 +744,11 @@ func (h *handlers) archivePage(w http.ResponseWriter, r *http.Request) {
 		}
 		views[i] = archivedItemView{ID: it.ID, Title: it.Title, StatusName: nameByID[it.StatusID], Archived: at}
 	}
-	ch, err := h.chromeFor(r, "home", &ws)
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
 	render(w, http.StatusOK, "archive.html", archiveData{
 		chrome:    ch,
 		Principal: principalFrom(r.Context()),
+		Title:     title,
+		BackHref:  backHref,
 		Items:     views,
 	})
 }

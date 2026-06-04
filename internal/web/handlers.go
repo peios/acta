@@ -61,12 +61,28 @@ type chrome struct {
 	Display    string // the signed-in user's display name, shown in the account menu
 	Workspaces []store.Workspace
 	Workspace  *store.Workspace // the currently-selected workspace
+	// Boards is the current workspace's boards, rendered as the sidebar nav
+	// (Tasks, Backlog). ActiveBoard is the slug of the board the page is showing,
+	// "" on pages not scoped to one — the sidebar highlights the match.
+	Boards      []boardNav
+	ActiveBoard string
 	// Notification bell. Unread drives the badge; Notifications is the recent
 	// slice the dropdown lists. Path is the current request URI, threaded into
 	// the "mark all read" form so it can redirect back to this page.
 	Unread        int
 	Notifications []notifView
 	Path          string
+}
+
+// boardNav is one sidebar board link. Href is the board's canonical view URL —
+// the bare /{workspace} for the default board, /{workspace}/{board} for the
+// rest — and Slug drives the active-state match against chrome.ActiveBoard. ID
+// is the drop target for promoting/demoting a card onto this board.
+type boardNav struct {
+	ID   string
+	Name string
+	Slug string
+	Href string
 }
 
 // notifView is one row in the notification bell dropdown. URL points at the
@@ -115,6 +131,20 @@ func (h *handlers) chromeFor(r *http.Request, section string, current *store.Wor
 	if current == nil {
 		current = pickWorkspace(list, httpx.WorkspaceCookieValue(r))
 	}
+	var boards []boardNav
+	if current != nil {
+		bs, err := h.board.Boards(r.Context(), current.ID)
+		if err != nil {
+			return chrome{}, err
+		}
+		for i, b := range bs {
+			href := "/" + current.Slug // default board lives at the bare workspace URL
+			if i > 0 {
+				href = "/" + current.Slug + "/" + b.Slug
+			}
+			boards = append(boards, boardNav{ID: b.ID, Name: b.Name, Slug: b.Slug, Href: href})
+		}
+	}
 	who := ""
 	var unread int
 	var notes []notifView
@@ -134,6 +164,7 @@ func (h *handlers) chromeFor(r *http.Request, section string, current *store.Wor
 		Display:       who,
 		Workspaces:    list,
 		Workspace:     current,
+		Boards:        boards,
 		Unread:        unread,
 		Notifications: notes,
 		Path:          r.URL.RequestURI(),

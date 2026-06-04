@@ -21,8 +21,16 @@ import (
 
 type boardData struct {
 	chrome
-	Principal        *identity.Principal
-	Mode             string   // "status" or "milestone"
+	Principal *identity.Principal
+	// Board context. BoardID drives the add-lane target (data-board-id); BoardBase
+	// is the current board-view path (filters/mode links hang off it); Activity
+	// and Archive hrefs are this board's scoped feeds (the header toolbar).
+	BoardID      string
+	BoardBase    string
+	ActivityHref string
+	ArchiveHref  string
+	LanesDashed  bool // this is the Backlog board — its lane/facet dots render dashed
+	Mode         string // "status" or "milestone"
 	Lanes            []lane   // status mode
 	Palette          []swatch // lane-colour options for the header picker
 	MilestoneColumns []milestoneColumn
@@ -161,26 +169,122 @@ func colorVar(hex string) template.CSS {
 	return template.CSS("--lane-color:" + hex)
 }
 
-// boardPage renders a workspace's board: its statuses (lanes) and the items in
-// each. The initial state is server-rendered so it works without JavaScript;
-// board.js then layers on drag-and-drop and inline create/edit.
+// boardSlugParam is the board a request names: the {board} path segment (the
+// board view) or, failing that, a ?board= query (the activity/archive feeds,
+// which keep board off the path to avoid mux ambiguity). "" means unscoped.
+func boardSlugParam(r *http.Request) string {
+	if s := r.PathValue("board"); s != "" {
+		return s
+	}
+	return r.URL.Query().Get("board")
+}
+
+// resolveBoard resolves the board a board-scoped page targets: the named board
+// (path or query), or the workspace's default board when there's none. It
+// writes a 404 for an unknown board slug and returns ok=false.
+func (h *handlers) resolveBoard(w http.ResponseWriter, r *http.Request, ws store.Workspace) (store.Board, bool) {
+	if slug := boardSlugParam(r); slug != "" {
+		b, err := h.board.BoardBySlug(r.Context(), ws.ID, slug)
+		if err != nil {
+			http.NotFound(w, r)
+			return store.Board{}, false
+		}
+		return b, true
+	}
+	b, err := h.board.DefaultBoard(r.Context(), ws.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return store.Board{}, false
+	}
+	return b, true
+}
+
+// boardIDFor resolves the board a board-scoped mutation targets from a request
+// body's board_id, defaulting to the workspace's default board when blank. It
+// confirms the board belongs to ws (a 404 otherwise) so a request can't reach
+// across workspaces. Writes the error response and returns ok=false on failure.
+func (h *handlers) boardIDFor(w http.ResponseWriter, r *http.Request, ws store.Workspace, boardID string) (string, bool) {
+	if boardID == "" {
+		bd, err := h.board.DefaultBoard(r.Context(), ws.ID)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return "", false
+		}
+		return bd.ID, true
+	}
+	bd, err := h.board.BoardByID(r.Context(), boardID)
+	if err != nil || bd.WorkspaceID != ws.ID {
+		http.NotFound(w, r)
+		return "", false
+	}
+	return bd.ID, true
+}
+
+// isBacklogBoard reports whether a board is the Backlog board — the v1 rule for
+// the "unstarted"/dashed status treatment. Boards are dynamic internally, so
+// this is the one place the special-case lives.
+func isBacklogBoard(b store.Board) bool { return b.Slug == "backlog" }
+
+// backlogBoardID is the workspace's Backlog board id, or "" if it has none. Used
+// to mark activity-feed dots whose status lives on that board as dashed.
+func (h *handlers) backlogBoardID(ctx context.Context, workspaceID string) string {
+	if bd, err := h.board.BoardBySlug(ctx, workspaceID, "backlog"); err == nil {
+		return bd.ID
+	}
+	return ""
+}
+
+// boardViewPath is a board's canonical view URL: the bare /{workspace} for the
+// default board (position 0), /{workspace}/{board} for the rest.
+func boardViewPath(wsSlug string, b store.Board) string {
+	if b.Position == 0 {
+		return "/" + wsSlug
+	}
+	return "/" + wsSlug + "/" + b.Slug
+}
+
+// itemsOnBoard keeps the items whose status belongs to the given board — an
+// item's board is read off its status, never stored, so this is how a
+// workspace-wide item slice is narrowed to one board.
+func itemsOnBoard(items []store.Item, boardStatuses []store.Status) []store.Item {
+	onBoard := make(map[string]bool, len(boardStatuses))
+	for _, s := range boardStatuses {
+		onBoard[s.ID] = true
+	}
+	out := items[:0]
+	for _, it := range items {
+		if onBoard[it.StatusID] {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+// boardPage renders one of a workspace's boards: its statuses (lanes) and the
+// items in each. The initial state is server-rendered so it works without
+// JavaScript; board.js then layers on drag-and-drop and inline create/edit.
 func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 	ws, ok := h.resolveWorkspace(w, r)
 	if !ok {
 		return
 	}
+	bd, ok := h.resolveBoard(w, r, ws)
+	if !ok {
+		return
+	}
 	httpx.SetWorkspaceCookie(w, ws.Slug, h.secure)
 
-	statuses, err := h.board.Statuses(r.Context(), ws.ID)
+	statuses, err := h.board.BoardStatuses(r.Context(), bd.ID)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	items, err := h.board.Items(r.Context(), ws.ID)
+	allItems, err := h.board.Items(r.Context(), ws.ID)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	items := itemsOnBoard(allItems, statuses)
 	ch, err := h.chromeFor(r, "home", &ws)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -212,9 +316,15 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 		userByID[u.ID] = u
 	}
 
+	ch.ActiveBoard = bd.Slug
 	data := boardData{
 		chrome:           ch,
 		Principal:        me,
+		BoardID:          bd.ID,
+		BoardBase:        r.URL.Path,
+		ActivityHref:     "/" + ws.Slug + "/activity?board=" + bd.Slug,
+		ArchiveHref:      "/" + ws.Slug + "/archive?board=" + bd.Slug,
+		LanesDashed:      isBacklogBoard(bd),
 		Mode:             mode,
 		Palette:          palette(),
 		StatusFilter:     statusFacet(statuses, filter),
@@ -260,13 +370,15 @@ func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, sta
 	card := func(it store.Item) cardView {
 		return buildCard(it, counts, statusByID[it.StatusID], filter, users, prefix)
 	}
-	backlog := milestoneColumn{Title: "Backlog"}
+	// Root non-milestones gather in a leading column. It's titled "No milestone"
+	// (not "Backlog") so it doesn't read as the Backlog board, which is unrelated.
+	noMilestone := milestoneColumn{Title: "No milestone"}
 	var milestones []store.Item
 	for _, it := range roots {
 		if it.IsMilestone {
 			milestones = append(milestones, it)
 		} else {
-			backlog.Cards = append(backlog.Cards, card(it))
+			noMilestone.Cards = append(noMilestone.Cards, card(it))
 		}
 	}
 	// Columns follow ms_position (their own draggable order), with creation
@@ -277,7 +389,7 @@ func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, sta
 		}
 		return milestones[i].CreatedAt.Before(milestones[j].CreatedAt)
 	})
-	cols := []milestoneColumn{backlog}
+	cols := []milestoneColumn{noMilestone}
 	for _, it := range milestones {
 		kids, err := h.board.Children(ctx, it.ID)
 		if err != nil {
@@ -347,12 +459,17 @@ func (h *handlers) statusCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Name string `json:"name"`
+		Name    string `json:"name"`
+		BoardID string `json:"board_id"`
 	}
 	if !readJSON(w, r, &req) {
 		return
 	}
-	st, err := h.board.CreateStatus(r.Context(), ws.ID, req.Name)
+	boardID, ok := h.boardIDFor(w, r, ws, req.BoardID)
+	if !ok {
+		return
+	}
+	st, err := h.board.CreateStatus(r.Context(), boardID, req.Name)
 	if err != nil {
 		writeBoardErr(w, err)
 		return
@@ -495,6 +612,39 @@ func (h *handlers) itemMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.board.MoveItem(r.Context(), r.PathValue("id"), req.StatusID, req.Index); err != nil {
+		writeBoardErr(w, err)
+		return
+	}
+	h.liveUpsert(r, r.PathValue("id"))
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// itemSetBoard moves an item onto a board (dropping a card on a board in the
+// sidebar) by giving it that board's entry lane — promote/demote. Board
+// membership is derived from status, so this is a SetStatus to the entry lane;
+// SetStatus handles the cross-board reposition and activity line.
+func (h *handlers) itemSetBoard(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.resolveWorkspace(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		BoardID string `json:"board_id"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	bd, err := h.board.BoardByID(r.Context(), req.BoardID)
+	if err != nil || bd.WorkspaceID != ws.ID {
+		http.NotFound(w, r)
+		return
+	}
+	entry, err := h.board.EntryStatus(r.Context(), bd.ID)
+	if err != nil {
+		writeBoardErr(w, err)
+		return
+	}
+	if err := h.board.SetStatus(r.Context(), r.PathValue("id"), entry.ID); err != nil {
 		writeBoardErr(w, err)
 		return
 	}

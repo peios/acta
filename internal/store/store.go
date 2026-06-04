@@ -20,6 +20,7 @@ var (
 	ErrWorkspaceNameTaken   = errors.New("store: workspace name already taken")
 	ErrWorkspaceSlugTaken   = errors.New("store: workspace slug already taken")
 	ErrWorkspacePrefixTaken = errors.New("store: workspace item prefix already taken")
+	ErrBoardNotFound        = errors.New("store: board not found")
 	ErrStatusNotFound       = errors.New("store: status not found")
 	ErrItemNotFound         = errors.New("store: item not found")
 	ErrMCPPromptNotFound    = errors.New("store: mcp prompt not found")
@@ -75,6 +76,11 @@ const (
 type Event struct {
 	ID          string
 	WorkspaceID string
+	// BoardID is the board the event happened on — snapshotted at write time
+	// (like the rest of this row) so each board has its own activity feed. An
+	// item's board is derived from its status, so this is resolved when the
+	// event is recorded. Empty only for events that predate boards.
+	BoardID     string
 	ItemID      string
 	ItemTitle   string
 	ActorID     string
@@ -187,16 +193,35 @@ type Workspace struct {
 	CreatedAt  time.Time
 }
 
-// Status is a board lane: a named, ordered position within a workspace that
-// items sit in. Statuses are user-defined per workspace.
-type Status struct {
+// Board is one of a workspace's boards (v1: Tasks and Backlog). It groups
+// statuses (lanes); an item belongs to whichever board its status does, so a
+// board is never stored on the item. Slug is the URL segment, unique within the
+// workspace; Position orders the boards (and the sidebar).
+type Board struct {
 	ID          string
 	WorkspaceID string
 	Name        string
+	Slug        string
 	Position    int
+	CreatedAt   time.Time
+}
+
+// Status is a board lane: a named, ordered position within one board that items
+// sit in. Statuses are user-defined per board.
+type Status struct {
+	ID          string
+	WorkspaceID string
+	// BoardID is the board this lane belongs to. An item's board is read off its
+	// status's BoardID — board membership lives here, never on the item.
+	BoardID string
+	Name    string
+	Position int
 	// Color is an explicit lane colour (a hex string from the board palette),
 	// or "" to fall back to a palette colour derived from Position.
-	Color     string
+	Color string
+	// IsEntry marks this lane as its board's entry lane: where new (and
+	// cross-board) items land. Exactly one lane per board carries it.
+	IsEntry   bool
 	CreatedAt time.Time
 }
 
@@ -350,11 +375,21 @@ type Store interface {
 	DeleteWorkspace(ctx context.Context, id string) error
 	CountWorkspaces(ctx context.Context) (int, error)
 
-	// Statuses (board lanes). StatusesByWorkspace returns them ordered by
-	// position. ReorderStatuses sets each id's position to its index in the
-	// given slice, atomically.
+	// Boards. A workspace has one or more boards (v1: Tasks, then Backlog).
+	// BoardsByWorkspace returns them ordered by position; BoardBySlug resolves
+	// one within a workspace and returns ErrBoardNotFound on no match.
+	CreateBoard(ctx context.Context, b Board) (Board, error)
+	BoardsByWorkspace(ctx context.Context, workspaceID string) ([]Board, error)
+	BoardByID(ctx context.Context, id string) (Board, error)
+	BoardBySlug(ctx context.Context, workspaceID, slug string) (Board, error)
+
+	// Statuses (board lanes). StatusesByWorkspace returns every lane in the
+	// workspace (across all its boards); StatusesByBoard scopes to one board.
+	// Both are ordered by position. ReorderStatuses sets each id's position to
+	// its index in the given slice, atomically.
 	CreateStatus(ctx context.Context, s Status) (Status, error)
 	StatusesByWorkspace(ctx context.Context, workspaceID string) ([]Status, error)
+	StatusesByBoard(ctx context.Context, boardID string) ([]Status, error)
 	StatusByID(ctx context.Context, id string) (Status, error)
 	RenameStatus(ctx context.Context, id, name string) error
 	SetStatusColor(ctx context.Context, id, color string) error
@@ -416,6 +451,7 @@ type Store interface {
 	RecordEvent(ctx context.Context, e Event) (Event, error)
 	EventsByItem(ctx context.Context, itemID string, limit int) ([]Event, error)
 	EventsByWorkspace(ctx context.Context, workspaceID string, limit int) ([]Event, error)
+	EventsByBoard(ctx context.Context, boardID string, limit int) ([]Event, error)
 	// LatestEventForActor returns the most recent event of verb by actorID on
 	// itemID recorded at or after since, and whether one exists. It backs the
 	// activity log's coalescing: a burst of autosave-driven edits folds into a

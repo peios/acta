@@ -67,6 +67,13 @@ type mcpStatusesT struct {
 	} `json:"statuses"`
 }
 
+type mcpBoardsT struct {
+	Boards []struct {
+		Slug string `json:"slug"`
+		Name string `json:"name"`
+	} `json:"boards"`
+}
+
 type mcpEventT struct {
 	Actor     string            `json:"actor"`
 	Verb      string            `json:"verb"`
@@ -343,6 +350,49 @@ func TestMCPListStatuses(t *testing.T) {
 	}
 	if !res.IsError {
 		t.Fatalf("list_statuses on unknown workspace: want tool error, got %s", toolText(res))
+	}
+}
+
+func TestMCPBoards(t *testing.T) {
+	base, client := newTestServer(t)
+	csrf := signIn(t, client, base)
+	token := mintToken(t, client, base, csrf)
+	sess := mcpConnect(t, base, token)
+
+	// list_boards surfaces both boards, primary first.
+	boards := callTool[mcpBoardsT](t, sess, "list_boards", map[string]any{"workspace": "general"})
+	var slugs []string
+	for _, b := range boards.Boards {
+		slugs = append(slugs, b.Slug)
+	}
+	if !reflect.DeepEqual(slugs, []string{"tasks", "backlog"}) {
+		t.Fatalf("list_boards = %v, want [tasks backlog]", slugs)
+	}
+
+	// list_statuses scoped to Backlog returns just its lane.
+	st := callTool[mcpStatusesT](t, sess, "list_statuses", map[string]any{"workspace": "general", "board": "backlog"})
+	if len(st.Statuses) != 1 || st.Statuses[0].Name != "Backlog" {
+		t.Fatalf("backlog statuses = %v, want [Backlog]", st.Statuses)
+	}
+
+	// create_item on the Backlog board lands in its entry lane and lists only
+	// under board=backlog — never on the default (Tasks) board.
+	created := callTool[mcpItemT](t, sess, "create_item", map[string]any{
+		"workspace": "general", "board": "backlog", "title": "An idea",
+	})
+	if created.Status != "Backlog" {
+		t.Errorf("created status = %q, want Backlog (the board's entry lane)", created.Status)
+	}
+	if back := callTool[mcpItemsT](t, sess, "list_items", map[string]any{"workspace": "general", "board": "backlog"}); !hasItem(back, created.ID) {
+		t.Error("new Backlog item missing from board=backlog listing")
+	}
+	if tasks := callTool[mcpItemsT](t, sess, "list_items", map[string]any{"workspace": "general"}); hasItem(tasks, created.ID) {
+		t.Error("Backlog item leaked into the default board listing")
+	}
+
+	// An unknown board slug is a tool error.
+	if msg := toolErr(t, sess, "list_statuses", map[string]any{"workspace": "general", "board": "nope"}); msg == "" {
+		t.Error("unknown board: want a tool error message")
 	}
 }
 

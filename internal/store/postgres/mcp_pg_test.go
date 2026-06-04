@@ -173,7 +173,11 @@ func TestPGMilestoneReorder(t *testing.T) {
 		t.Fatalf("workspace: %v", err)
 	}
 	t.Cleanup(func() { _ = pg.DeleteWorkspace(ctx, ws.ID) })
-	st, err := pg.CreateStatus(ctx, store.Status{WorkspaceID: ws.ID, Name: "To do"})
+	bd, err := pg.CreateBoard(ctx, store.Board{WorkspaceID: ws.ID, Name: "Tasks", Slug: "tasks", Position: 0})
+	if err != nil {
+		t.Fatalf("board: %v", err)
+	}
+	st, err := pg.CreateStatus(ctx, store.Status{WorkspaceID: ws.ID, BoardID: bd.ID, Name: "To do"})
 	if err != nil {
 		t.Fatalf("status: %v", err)
 	}

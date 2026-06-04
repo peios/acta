@@ -63,8 +63,16 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	// board lives at the path root (/{slug}); slugs that would shadow a built-in
 	// route are reserved (see workspace.reservedSlugs).
 	mux.Handle("GET /{slug}", protected(h.boardPage))
+	// A bare /{slug}/activity and /{slug}/archive are workspace-wide; a ?board=
+	// query scopes them to one board (the header toolbar always passes it). They
+	// stay a query rather than a third path segment because a two-wildcard prefix
+	// like /{slug}/{board}/activity collides with the literal /account, /settings
+	// trees (Go's mux can't rank them).
 	mux.Handle("GET /{slug}/archive", protected(h.archivePage))
 	mux.Handle("GET /{slug}/activity", protected(h.activityPage))
+	// A second path segment selects a non-default board (e.g. /{slug}/backlog);
+	// the literal sub-routes above are more specific, so they always win.
+	mux.Handle("GET /{slug}/{board}", protected(h.boardPage))
 	mux.Handle("POST /{slug}/statuses", protected(h.statusCreate))
 	mux.Handle("POST /{slug}/statuses/reorder", protected(h.statusReorder))
 	mux.Handle("POST /{slug}/statuses/{id}/rename", protected(h.statusRename))
@@ -76,6 +84,7 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("GET /{slug}/mentionables", protected(h.mentionables))
 	mux.Handle("POST /{slug}/items/{id}/rename", protected(h.itemRename))
 	mux.Handle("POST /{slug}/items/{id}/move", protected(h.itemMove))
+	mux.Handle("POST /{slug}/items/{id}/board", protected(h.itemSetBoard))
 	mux.Handle("POST /{slug}/items/{id}/description", protected(h.itemDescription))
 	mux.Handle("POST /{slug}/items/{id}/assignee", protected(h.itemAssignee))
 	mux.Handle("POST /{slug}/items/{id}/status", protected(h.itemSetStatus))

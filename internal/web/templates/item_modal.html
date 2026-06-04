@@ -11,16 +11,19 @@
     <div class="modal-status-bar">
       <div class="status-pill-wrap" data-status-pill>
         <button class="status-pill" type="button" data-pill-trigger aria-label="Change status">
-          <span class="status-dot" data-status-pill-dot style="{{.StatusColorVar}}"></span>
+          <span class="status-dot{{if .StatusDashed}} dashed{{end}}" data-status-pill-dot style="{{.StatusColorVar}}"></span>
           <span class="status-pill-name" data-status-pill-name>{{.StatusName}}</span>
           <span class="chev">&#9662;</span>
         </button>
         <div class="popover status-pop" data-pill-menu hidden>
-          {{range .Statuses}}
-          <button class="status-opt" type="button" data-status-opt="{{.ID}}" data-color="{{.Color}}">
-            <span class="status-dot" style="{{.ColorVar}}"></span>
+          {{range .StatusGroups}}
+          <div class="status-group">{{.Board}}</div>
+          {{range .Choices}}
+          <button class="status-opt" type="button" data-status-opt="{{.ID}}" data-color="{{.Color}}"{{if .Dashed}} data-dashed="1"{{end}}>
+            <span class="status-dot{{if .Dashed}} dashed{{end}}" style="{{.ColorVar}}"></span>
             <span class="status-opt-name">{{.Name}}</span>
           </button>
+          {{end}}
           {{end}}
         </div>
       </div>
@@ -122,7 +125,7 @@
         <div class="side-field side-status">
           <span class="modal-label">Status</span>
           <select class="modal-status">
-            {{range .Statuses}}<option value="{{.ID}}" {{if eq .ID $.Item.StatusID}}selected{{end}}>{{.Name}}</option>{{end}}
+            {{range .StatusGroups}}<optgroup label="{{.Board}}">{{range .Choices}}<option value="{{.ID}}" {{if eq .ID $.Item.StatusID}}selected{{end}}>{{.Name}}</option>{{end}}</optgroup>{{end}}
           </select>
         </div>
         <div class="side-field side-assignee">
@@ -212,7 +215,7 @@
      creation events fill it with the destination lane colour (Dot); the rest use
      a per-kind outline glyph. */}}
 {{define "evt-glyph"}}
-{{- if .Dot}}<span class="status-dot" style="{{.Dot}}"></span>
+{{- if .Dot}}<span class="status-dot{{if .Dashed}} dashed{{end}}" style="{{.Dot}}"></span>
 {{- else if eq .Kind "assign"}}<svg class="evt-ico" viewBox="0 0 16 16"><circle cx="8" cy="6" r="2.4"/><path d="M3.2 13a4.8 4.8 0 0 1 9.6 0"/></svg>
 {{- else if eq .Kind "milestone"}}<svg class="evt-ico" viewBox="0 0 16 16"><path d="M8 2.4 13.6 8 8 13.6 2.4 8Z"/></svg>
 {{- else if eq .Kind "parent"}}<svg class="evt-ico" viewBox="0 0 16 16"><path d="M4 3v6.5a2 2 0 0 0 2 2h5.5"/><path d="M9 9 12 11.5 9 14"/></svg>

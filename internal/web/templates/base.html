@@ -145,6 +145,19 @@
   .nav-item.active { background: var(--surface-h); color: var(--text); }
   .nav-item.active .ico { color: var(--accent); }
   .nav-item .count { margin-left: auto; font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  /* Dragging a card marks the other boards in the sidebar as drop targets — drop
+     to promote/demote the card onto that board's entry lane. The card hovering
+     in (Sortable inserts it as a child) lights the target up via :has. */
+  body.card-dragging .nav-item[data-board-drop]:not(.active) {
+    outline: 1px dashed var(--border); outline-offset: -3px;
+  }
+  .nav-item[data-board-drop]:not(.active):has(.item) {
+    background: var(--accent-weak); color: var(--text); outline: 1px solid var(--accent); outline-offset: -3px;
+  }
+  .nav-item[data-board-drop]:not(.active):has(.item) .ico { color: var(--accent); }
+  /* The card Sortable inserts into the link while hovering — keep it invisible
+     there (the promote happens on drop); the link must never grow or scroll. */
+  .nav-item[data-board-drop] .item { display: none; }
 
   .side-foot { border-top: 1px solid var(--border-soft); padding: 7px 8px; display: flex; flex-direction: column; gap: 1px; }
   .acctmenu { display: block; }
@@ -626,7 +639,29 @@
     background: var(--lane-color, var(--faint));
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--lane-color, var(--faint)) 15%, transparent);
   }
+  /* Backlog statuses read as "unstarted": a thin, finely-dashed ring replaces
+     the solid centre; the soft halo (box-shadow) stays. The ring is a conic
+     gradient of colour wedges masked to a thin annulus, drawn on a ::before so
+     the halo is untouched. One modifier — .dashed — works on every dot kind
+     (picker/pill status-dot, board lane-dot, filter facet-dot, activity-feed
+     status-dot), so the icon is defined once and applied wherever a Backlog
+     status shows. Tune dash count via the conic period (dashes = 360/period)
+     and thickness via the mask radii. */
+  .status-dot.dashed, .lane-dot.dashed, .facet-dot.dashed {
+    background: transparent; border: 0; position: relative;
+  }
+  .status-dot.dashed::before, .lane-dot.dashed::before, .facet-dot.dashed::before {
+    content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+    background: repeating-conic-gradient(var(--lane-color, var(--faint)) 0 8deg, transparent 8deg 30deg);
+    -webkit-mask: radial-gradient(circle closest-side, transparent 77%, #000 80%);
+            mask: radial-gradient(circle closest-side, transparent 77%, #000 80%);
+  }
   .status-pop { left: 0; right: auto; width: auto; min-width: 11rem; }
+  .status-group {
+    padding: .45rem .55rem .2rem; font-size: .68rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .04em; color: var(--faint);
+  }
+  .status-group:not(:first-child) { margin-top: .15rem; border-top: 1px solid var(--border-soft); padding-top: .5rem; }
   .status-opt {
     display: flex; align-items: center; gap: .6rem; width: 100%;
     background: none; border: 0; color: var(--muted); font: inherit; font-size: .92rem;
@@ -1057,12 +1092,18 @@
 
     <div class="side-body">
     <nav class="nav">
-      <a class="nav-item{{if eq .Section "home"}} active{{end}}" href="/">
-        <svg class="ico" viewBox="0 0 16 16"><path d="M2.5 7 8 2.5 13.5 7"/><path d="M3.5 6.5V13h9V6.5"/></svg>
-        <span class="nav-label">Home</span>
+      {{range .Boards}}
+      <a class="nav-item{{if eq .Slug $.ActiveBoard}} active{{end}}" href="{{.Href}}" data-board-drop data-board-id="{{.ID}}">
+        {{if eq .Slug "backlog"}}
+        <svg class="ico" viewBox="0 0 16 16"><path d="M8 2.5 14 5.5 8 8.5 2 5.5z"/><path d="M2 8.5 8 11.5 14 8.5"/><path d="M2 11.5 8 14.5 14 11.5"/></svg>
+        {{else}}
+        <svg class="ico" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M6.5 3v10M10 3v10"/></svg>
+        {{end}}
+        <span class="nav-label">{{.Name}}</span>
       </a>
+      {{end}}
       {{if .Workspace}}
-      <a class="nav-item{{if eq .Section "activity"}} active{{end}}" href="/{{.Workspace.Slug}}/activity">
+      <a class="nav-item{{if and (eq .Section "activity") (not .ActiveBoard)}} active{{end}}" href="/{{.Workspace.Slug}}/activity">
         <svg class="ico" viewBox="0 0 16 16"><path d="M1.5 8h3l1.5-4 3 8 1.5-4h4"/></svg>
         <span class="nav-label">Activity</span>
       </a>

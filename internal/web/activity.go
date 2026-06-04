@@ -21,6 +21,7 @@ type eventView struct {
 	ItemTitle string
 	Kind      string       // glyph selector: status/create/assign/milestone/parent/rename/describe/archive/comment/generic
 	Dot       template.CSS // for status/create events, the lane colour to fill the glyph; "" → use the Kind glyph
+	Dashed    bool         // the dot is a Backlog-board status — render it as a dashed ring
 }
 
 // humanizeEvent turns a stored event into the verb phrase shown to people. It
@@ -37,6 +38,9 @@ func humanizeEvent(e store.Event) string {
 	case store.EventItemRenamed:
 		return "renamed “" + d["from"] + "” → “" + d["to"] + "”"
 	case store.EventItemStatusChange:
+		if b := d["toBoard"]; b != "" {
+			return "moved to the " + b + " board"
+		}
 		return "moved from " + d["from"] + " to " + d["to"]
 	case store.EventItemAssigned:
 		switch {
@@ -130,7 +134,7 @@ func toEventViews(events []store.Event) []eventView {
 // setEventDot fills a status/create event's glyph with its destination lane
 // colour (when known), so the feed shows the status's coloured dot rather than a
 // generic icon. Shared by the item modal timeline and the workspace feed.
-func setEventDot(ev *eventView, data, colorByStatus map[string]string) {
+func setEventDot(ev *eventView, data, colorByStatus map[string]string, eventBoardID, backlogBoardID string) {
 	switch ev.Kind {
 	case "status":
 		if c := colorByStatus[data["to"]]; c != "" {
@@ -141,15 +145,15 @@ func setEventDot(ev *eventView, data, colorByStatus map[string]string) {
 			ev.Dot = colorVar(c)
 		}
 	}
+	// A dot whose status lives on the Backlog board renders dashed (unstarted),
+	// matching the picker and board. The event's board is the item's board at the
+	// time — for a cross-board move, the destination — so this is exact.
+	ev.Dashed = backlogBoardID != "" && eventBoardID == backlogBoardID
 }
 
-// statusColorsByName resolves a workspace's lane colours keyed by status name —
-// the form event Data carries (humanised), so the feed can colour its dots.
-func (h *handlers) statusColorsByName(r *http.Request, wsID string) map[string]string {
-	statuses, err := h.board.Statuses(r.Context(), wsID)
-	if err != nil {
-		return nil
-	}
+// statusColors keys lane colours by status name — the form event Data carries
+// (humanised), so the feed can colour its dots.
+func statusColors(statuses []store.Status) map[string]string {
 	m := make(map[string]string, len(statuses))
 	for _, st := range statuses {
 		m[st.Name] = board.ColorFor(st)
@@ -157,22 +161,30 @@ func (h *handlers) statusColorsByName(r *http.Request, wsID string) map[string]s
 	return m
 }
 
+// statusColorsByName resolves a whole workspace's lane colours (across boards),
+// for the workspace-wide feed.
+func (h *handlers) statusColorsByName(r *http.Request, wsID string) map[string]string {
+	statuses, err := h.board.Statuses(r.Context(), wsID)
+	if err != nil {
+		return nil
+	}
+	return statusColors(statuses)
+}
+
 type activityData struct {
 	chrome
 	Principal *identity.Principal
+	Title     string // "Activity" (workspace) or "Tasks activity" (board)
+	BackHref  string // where the ‹ Back link points
 	Events    []eventView
 }
 
-// activityPage renders the workspace-wide activity feed: every recorded
-// mutation, newest first, each linking back to the item it touched.
+// activityPage renders an activity feed, newest first, each line linking back to
+// the item it touched. With a {board} segment it's that board's feed; without,
+// the whole workspace's.
 func (h *handlers) activityPage(w http.ResponseWriter, r *http.Request) {
 	ws, ok := h.resolveWorkspace(w, r)
 	if !ok {
-		return
-	}
-	events, err := h.board.WorkspaceActivity(r.Context(), ws.ID, 200)
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	ch, err := h.chromeFor(r, "activity", &ws)
@@ -180,14 +192,39 @@ func (h *handlers) activityPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+
+	title, backHref := "Activity", "/"+ws.Slug
 	colorByStatus := h.statusColorsByName(r, ws.ID)
+	var events []store.Event
+	if boardSlugParam(r) != "" {
+		bd, ok := h.resolveBoard(w, r, ws)
+		if !ok {
+			return
+		}
+		events, err = h.board.BoardActivity(r.Context(), bd.ID, 200)
+		ch.ActiveBoard = bd.Slug
+		title, backHref = bd.Name+" activity", boardViewPath(ws.Slug, bd)
+		if sts, serr := h.board.BoardStatuses(r.Context(), bd.ID); serr == nil {
+			colorByStatus = statusColors(sts)
+		}
+	} else {
+		events, err = h.board.WorkspaceActivity(r.Context(), ws.ID, 200)
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	backlogID := h.backlogBoardID(r.Context(), ws.ID)
 	views := toEventViews(events)
 	for i := range views {
-		setEventDot(&views[i], events[i].Data, colorByStatus)
+		setEventDot(&views[i], events[i].Data, colorByStatus, events[i].BoardID, backlogID)
 	}
 	render(w, http.StatusOK, "activity.html", activityData{
 		chrome:    ch,
 		Principal: principalFrom(r.Context()),
+		Title:     title,
+		BackHref:  backHref,
 		Events:    views,
 	})
 }

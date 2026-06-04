@@ -46,9 +46,13 @@ var (
 	ErrInvalidColor = errors.New("board: invalid lane colour")
 )
 
-// DefaultStatuses are the lanes seeded into a new workspace so its board is
-// usable immediately.
-var DefaultStatuses = []string{"To do", "Doing", "Done"}
+// DefaultStatuses are the lanes seeded onto a new workspace's Tasks board so it
+// is usable immediately. DefaultBacklogStatuses does the same for the Backlog
+// board — a single entry lane, since most workspaces keep just the one.
+var (
+	DefaultStatuses        = []string{"To do", "Doing", "Done"}
+	DefaultBacklogStatuses = []string{"Backlog"}
+)
 
 // Palette is the set of lane colours the board offers. A status without an
 // explicit colour falls back to one of these by position, so a fresh board is
@@ -138,6 +142,13 @@ func (s *Service) recordEvent(ctx context.Context, item store.Item, verb string,
 		Data:        data,
 		CreatedAt:   s.now(),
 	}
+	// An item's board is derived from its status, so resolve it here for the
+	// per-board activity feed. Callers that change an item's status set the new
+	// StatusID on item before recording, so a board-crossing move is attributed
+	// to the destination board. Best-effort: an unresolved status leaves it "".
+	if st, err := s.store.StatusByID(ctx, item.StatusID); err == nil {
+		ev.BoardID = st.BoardID
+	}
 	if p, ok := identity.FromContext(ctx); ok && p != nil {
 		ev.ActorID = p.ID
 		ev.ActorName = principalName(p)
@@ -206,6 +217,55 @@ func boolStr(b bool) string {
 	return "false"
 }
 
+// --- boards ---
+
+// Boards returns a workspace's boards in display order (Tasks, then Backlog).
+func (s *Service) Boards(ctx context.Context, workspaceID string) ([]store.Board, error) {
+	return s.store.BoardsByWorkspace(ctx, workspaceID)
+}
+
+// DefaultBoard is a workspace's primary board — the first by position (Tasks).
+// It's what a board-unaware caller (or the bare /{slug} URL) resolves to.
+func (s *Service) DefaultBoard(ctx context.Context, workspaceID string) (store.Board, error) {
+	boards, err := s.store.BoardsByWorkspace(ctx, workspaceID)
+	if err != nil {
+		return store.Board{}, err
+	}
+	if len(boards) == 0 {
+		return store.Board{}, store.ErrBoardNotFound
+	}
+	return boards[0], nil
+}
+
+// BoardBySlug resolves a board within a workspace by its URL slug.
+func (s *Service) BoardBySlug(ctx context.Context, workspaceID, slug string) (store.Board, error) {
+	return s.store.BoardBySlug(ctx, workspaceID, slug)
+}
+
+// BoardByID resolves a board by id.
+func (s *Service) BoardByID(ctx context.Context, id string) (store.Board, error) {
+	return s.store.BoardByID(ctx, id)
+}
+
+// EntryStatus returns a board's entry lane — where new (and cross-board) items
+// land. It falls back to the lowest-position lane if no lane is flagged (an
+// invariant the seed and the entry-management guard keep, but a safe default).
+func (s *Service) EntryStatus(ctx context.Context, boardID string) (store.Status, error) {
+	lanes, err := s.store.StatusesByBoard(ctx, boardID)
+	if err != nil {
+		return store.Status{}, err
+	}
+	if len(lanes) == 0 {
+		return store.Status{}, ErrNoStatus
+	}
+	for _, l := range lanes {
+		if l.IsEntry {
+			return l, nil
+		}
+	}
+	return lanes[0], nil
+}
+
 // --- statuses ---
 
 func (s *Service) Statuses(ctx context.Context, workspaceID string) ([]store.Status, error) {
@@ -216,17 +276,29 @@ func (s *Service) StatusByID(ctx context.Context, id string) (store.Status, erro
 	return s.store.StatusByID(ctx, id)
 }
 
-func (s *Service) CreateStatus(ctx context.Context, workspaceID, name string) (store.Status, error) {
+// BoardStatuses returns one board's lanes, in position order.
+func (s *Service) BoardStatuses(ctx context.Context, boardID string) ([]store.Status, error) {
+	return s.store.StatusesByBoard(ctx, boardID)
+}
+
+// CreateStatus appends a lane to a specific board. The caller resolves which
+// board the request targets (the board the user is viewing).
+func (s *Service) CreateStatus(ctx context.Context, boardID, name string) (store.Status, error) {
 	name, err := cleanName(name)
 	if err != nil {
 		return store.Status{}, err
 	}
-	existing, err := s.store.StatusesByWorkspace(ctx, workspaceID)
+	b, err := s.store.BoardByID(ctx, boardID)
+	if err != nil {
+		return store.Status{}, err
+	}
+	existing, err := s.store.StatusesByBoard(ctx, b.ID)
 	if err != nil {
 		return store.Status{}, err
 	}
 	return s.store.CreateStatus(ctx, store.Status{
-		WorkspaceID: workspaceID,
+		WorkspaceID: b.WorkspaceID,
+		BoardID:     b.ID,
 		Name:        name,
 		Position:    len(existing),
 	})
@@ -341,6 +413,20 @@ func (s *Service) RenameItem(ctx context.Context, id, title string) error {
 	return nil
 }
 
+// statusChangeData builds an item.status_changed event's payload. When the move
+// crosses boards (the from/to statuses live on different boards), it records the
+// destination board so the feed can say "moved to the Backlog board" rather than
+// an ambiguous lane-to-lane line.
+func (s *Service) statusChangeData(ctx context.Context, from, to store.Status) map[string]string {
+	data := map[string]string{"from": from.Name, "to": to.Name}
+	if from.BoardID != to.BoardID {
+		if tb, err := s.store.BoardByID(ctx, to.BoardID); err == nil {
+			data["toBoard"] = tb.Name
+		}
+	}
+	return data
+}
+
 // MoveItem transitions an item into toStatusID at the given index, keeping both
 // the destination lane and (if it changed) the source lane densely ordered.
 func (s *Service) MoveItem(ctx context.Context, itemID, toStatusID string, index int) error {
@@ -395,7 +481,7 @@ func (s *Service) MoveItem(ctx context.Context, itemID, toStatusID string, index
 		to, _ := s.store.StatusByID(ctx, toStatusID)
 		item.StatusID = toStatusID
 		s.recordEvent(ctx, item, store.EventItemStatusChange,
-			map[string]string{"from": from.Name, "to": to.Name})
+			s.statusChangeData(ctx, from, to))
 	}
 	return nil
 }
@@ -532,7 +618,7 @@ func (s *Service) SetStatus(ctx context.Context, id, statusID string) error {
 		}
 		item.StatusID = statusID
 		s.recordEvent(ctx, item, store.EventItemStatusChange,
-			map[string]string{"from": from.Name, "to": to.Name})
+			s.statusChangeData(ctx, from, to))
 		return nil
 	}
 	return s.MoveItem(ctx, id, statusID, endOfLane)
@@ -1142,13 +1228,42 @@ func (s *Service) WorkspaceActivity(ctx context.Context, workspaceID string, lim
 	return s.store.EventsByWorkspace(ctx, workspaceID, limit)
 }
 
-// SeedDefaults gives a new workspace its starter lanes.
+// BoardActivity returns the most recent activity-log entries for one board,
+// newest first.
+func (s *Service) BoardActivity(ctx context.Context, boardID string, limit int) ([]store.Event, error) {
+	return s.store.EventsByBoard(ctx, boardID, limit)
+}
+
+// SeedDefaults gives a new workspace its two starter boards: "Tasks" (To do /
+// Doing / Done) and "Backlog" (a single Backlog lane). The first lane of each
+// board is its entry lane. This mirrors migration 0020 for workspaces created
+// after boards existed.
 func (s *Service) SeedDefaults(ctx context.Context, workspaceID string) error {
-	for i, name := range DefaultStatuses {
+	if err := s.seedBoard(ctx, workspaceID, "Tasks", "tasks", 0, DefaultStatuses); err != nil {
+		return err
+	}
+	return s.seedBoard(ctx, workspaceID, "Backlog", "backlog", 1, DefaultBacklogStatuses)
+}
+
+// seedBoard creates one board and its lanes, flagging the first lane as the
+// board's entry lane.
+func (s *Service) seedBoard(ctx context.Context, workspaceID, name, slug string, position int, lanes []string) error {
+	b, err := s.store.CreateBoard(ctx, store.Board{
+		WorkspaceID: workspaceID,
+		Name:        name,
+		Slug:        slug,
+		Position:    position,
+	})
+	if err != nil {
+		return err
+	}
+	for i, lane := range lanes {
 		if _, err := s.store.CreateStatus(ctx, store.Status{
 			WorkspaceID: workspaceID,
-			Name:        name,
+			BoardID:     b.ID,
+			Name:        lane,
 			Position:    i,
+			IsEntry:     i == 0,
 		}); err != nil {
 			return err
 		}

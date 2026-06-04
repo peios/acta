@@ -552,32 +552,86 @@ func mapWorkspaceConflict(err error) error {
 	return err
 }
 
-// --- board: statuses ---
+// --- boards ---
 
-func (p *Postgres) CreateStatus(ctx context.Context, s store.Status) (store.Status, error) {
-	return createWithRetry(func() (store.Status, error) {
-		const q = `INSERT INTO statuses (workspace_id, name, position, color)
+const boardCols = `id::text, workspace_id::text, name, slug, position, created_at`
+
+func scanBoard(row pgx.Row) (store.Board, error) {
+	var b store.Board
+	err := row.Scan(&b.ID, &b.WorkspaceID, &b.Name, &b.Slug, &b.Position, &b.CreatedAt)
+	return b, err
+}
+
+func (p *Postgres) CreateBoard(ctx context.Context, b store.Board) (store.Board, error) {
+	return createWithRetry(func() (store.Board, error) {
+		const q = `INSERT INTO boards (workspace_id, name, slug, position)
 		           VALUES ($1, $2, $3, $4)
-		           RETURNING id::text, workspace_id::text, name, position, color, created_at`
-		var out store.Status
-		err := p.pool.QueryRow(ctx, q, s.WorkspaceID, s.Name, s.Position, s.Color).
-			Scan(&out.ID, &out.WorkspaceID, &out.Name, &out.Position, &out.Color, &out.CreatedAt)
-		return out, err
+		           RETURNING ` + boardCols
+		board, err := scanBoard(p.pool.QueryRow(ctx, q, b.WorkspaceID, b.Name, b.Slug, b.Position))
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return store.Board{}, store.ErrWorkspaceSlugTaken
+		}
+		return board, err
 	})
 }
 
-func (p *Postgres) StatusesByWorkspace(ctx context.Context, workspaceID string) ([]store.Status, error) {
-	const q = `SELECT id::text, workspace_id::text, name, position, color, created_at
-	           FROM statuses WHERE workspace_id = $1 ORDER BY position`
+func (p *Postgres) BoardsByWorkspace(ctx context.Context, workspaceID string) ([]store.Board, error) {
+	const q = `SELECT ` + boardCols + ` FROM boards WHERE workspace_id = $1 ORDER BY position`
 	rows, err := p.pool.Query(ctx, q, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Board
+	for rows.Next() {
+		b, err := scanBoard(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) BoardByID(ctx context.Context, id string) (store.Board, error) {
+	const q = `SELECT ` + boardCols + ` FROM boards WHERE id = $1`
+	b, err := scanBoard(p.pool.QueryRow(ctx, q, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.Board{}, store.ErrBoardNotFound
+	}
+	return b, err
+}
+
+func (p *Postgres) BoardBySlug(ctx context.Context, workspaceID, slug string) (store.Board, error) {
+	const q = `SELECT ` + boardCols + ` FROM boards WHERE workspace_id = $1 AND slug = $2`
+	b, err := scanBoard(p.pool.QueryRow(ctx, q, workspaceID, slug))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.Board{}, store.ErrBoardNotFound
+	}
+	return b, err
+}
+
+// --- board: statuses ---
+
+const statusCols = `id::text, workspace_id::text, board_id::text, name, position, color, is_entry, created_at`
+
+func scanStatus(row pgx.Row) (store.Status, error) {
+	var s store.Status
+	err := row.Scan(&s.ID, &s.WorkspaceID, &s.BoardID, &s.Name, &s.Position, &s.Color, &s.IsEntry, &s.CreatedAt)
+	return s, err
+}
+
+func (p *Postgres) queryStatuses(ctx context.Context, q string, args ...any) ([]store.Status, error) {
+	rows, err := p.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []store.Status
 	for rows.Next() {
-		var s store.Status
-		if err := rows.Scan(&s.ID, &s.WorkspaceID, &s.Name, &s.Position, &s.Color, &s.CreatedAt); err != nil {
+		s, err := scanStatus(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, s)
@@ -585,11 +639,34 @@ func (p *Postgres) StatusesByWorkspace(ctx context.Context, workspaceID string) 
 	return out, rows.Err()
 }
 
+func (p *Postgres) CreateStatus(ctx context.Context, s store.Status) (store.Status, error) {
+	return createWithRetry(func() (store.Status, error) {
+		const q = `INSERT INTO statuses (workspace_id, board_id, name, position, color, is_entry)
+		           VALUES ($1, $2, $3, $4, $5, $6)
+		           RETURNING ` + statusCols
+		return scanStatus(p.pool.QueryRow(ctx, q,
+			s.WorkspaceID, s.BoardID, s.Name, s.Position, s.Color, s.IsEntry))
+	})
+}
+
+func (p *Postgres) StatusesByWorkspace(ctx context.Context, workspaceID string) ([]store.Status, error) {
+	// Order by board first so the default board's lanes lead (and lanes never
+	// interleave across boards, which share a 0-based position sequence).
+	const q = `SELECT s.id::text, s.workspace_id::text, s.board_id::text, s.name,
+	                  s.position, s.color, s.is_entry, s.created_at
+	           FROM statuses s JOIN boards b ON s.board_id = b.id
+	           WHERE s.workspace_id = $1 ORDER BY b.position, s.position`
+	return p.queryStatuses(ctx, q, workspaceID)
+}
+
+func (p *Postgres) StatusesByBoard(ctx context.Context, boardID string) ([]store.Status, error) {
+	const q = `SELECT ` + statusCols + ` FROM statuses WHERE board_id = $1 ORDER BY position`
+	return p.queryStatuses(ctx, q, boardID)
+}
+
 func (p *Postgres) StatusByID(ctx context.Context, id string) (store.Status, error) {
-	const q = `SELECT id::text, workspace_id::text, name, position, color, created_at
-	           FROM statuses WHERE id = $1`
-	var s store.Status
-	err := p.pool.QueryRow(ctx, q, id).Scan(&s.ID, &s.WorkspaceID, &s.Name, &s.Position, &s.Color, &s.CreatedAt)
+	const q = `SELECT ` + statusCols + ` FROM statuses WHERE id = $1`
+	s, err := scanStatus(p.pool.QueryRow(ctx, q, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.Status{}, store.ErrStatusNotFound
 	}
@@ -974,6 +1051,8 @@ func (p *Postgres) SoftDeleteComment(ctx context.Context, id string, deletedAt t
 
 // --- activity log ---
 
+const eventCols = `id::text, workspace_id::text, board_id, item_id, item_title, actor_id, actor_name, verb, data, created_at`
+
 func (p *Postgres) RecordEvent(ctx context.Context, e store.Event) (store.Event, error) {
 	return createWithRetry(func() (store.Event, error) {
 		data, err := json.Marshal(normalizeEventData(e.Data))
@@ -981,35 +1060,38 @@ func (p *Postgres) RecordEvent(ctx context.Context, e store.Event) (store.Event,
 			return store.Event{}, err
 		}
 		const q = `INSERT INTO events
-		             (workspace_id, item_id, item_title, actor_id, actor_name, verb, data)
-		           VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
-		           RETURNING id::text, workspace_id::text, item_id, item_title,
-		                     actor_id, actor_name, verb, data, created_at`
+		             (workspace_id, board_id, item_id, item_title, actor_id, actor_name, verb, data)
+		           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+		           RETURNING ` + eventCols
 		row := p.pool.QueryRow(ctx, q,
-			e.WorkspaceID, e.ItemID, e.ItemTitle, e.ActorID, e.ActorName, e.Verb, data)
+			e.WorkspaceID, e.BoardID, e.ItemID, e.ItemTitle, e.ActorID, e.ActorName, e.Verb, data)
 		return scanEvent(row)
 	})
 }
 
 func (p *Postgres) EventsByItem(ctx context.Context, itemID string, limit int) ([]store.Event, error) {
-	const q = `SELECT id::text, workspace_id::text, item_id, item_title,
-	                  actor_id, actor_name, verb, data, created_at
+	const q = `SELECT ` + eventCols + `
 	           FROM events WHERE item_id = $1
 	           ORDER BY created_at DESC, id DESC LIMIT $2`
 	return p.queryEvents(ctx, q, itemID, clampEventLimit(limit))
 }
 
 func (p *Postgres) EventsByWorkspace(ctx context.Context, workspaceID string, limit int) ([]store.Event, error) {
-	const q = `SELECT id::text, workspace_id::text, item_id, item_title,
-	                  actor_id, actor_name, verb, data, created_at
+	const q = `SELECT ` + eventCols + `
 	           FROM events WHERE workspace_id = $1
 	           ORDER BY created_at DESC, id DESC LIMIT $2`
 	return p.queryEvents(ctx, q, workspaceID, clampEventLimit(limit))
 }
 
+func (p *Postgres) EventsByBoard(ctx context.Context, boardID string, limit int) ([]store.Event, error) {
+	const q = `SELECT ` + eventCols + `
+	           FROM events WHERE board_id = $1
+	           ORDER BY created_at DESC, id DESC LIMIT $2`
+	return p.queryEvents(ctx, q, boardID, clampEventLimit(limit))
+}
+
 func (p *Postgres) LatestEventForActor(ctx context.Context, itemID, actorID, verb string, since time.Time) (store.Event, bool, error) {
-	const q = `SELECT id::text, workspace_id::text, item_id, item_title,
-	                  actor_id, actor_name, verb, data, created_at
+	const q = `SELECT ` + eventCols + `
 	           FROM events
 	           WHERE item_id = $1 AND actor_id = $2 AND verb = $3 AND created_at >= $4
 	           ORDER BY created_at DESC, id DESC LIMIT 1`
@@ -1055,7 +1137,7 @@ func scanEvent(row pgx.Row) (store.Event, error) {
 		e   store.Event
 		raw []byte
 	)
-	if err := row.Scan(&e.ID, &e.WorkspaceID, &e.ItemID, &e.ItemTitle,
+	if err := row.Scan(&e.ID, &e.WorkspaceID, &e.BoardID, &e.ItemID, &e.ItemTitle,
 		&e.ActorID, &e.ActorName, &e.Verb, &raw, &e.CreatedAt); err != nil {
 		return store.Event{}, err
 	}

@@ -1,9 +1,9 @@
-{{define "title"}}Activity · {{.Workspace.Name}} · Acta{{end}}
+{{define "title"}}{{.Title}} · {{.Workspace.Name}} · Acta{{end}}
 {{define "content"}}
 <main class="stage stage--wide">
   <div class="archive-head reveal d1">
-    <h1 class="title" style="font-size: 1.45rem; margin: 0;">Activity</h1>
-    <a class="toplink" href="/{{.Workspace.Slug}}">&lsaquo; Back to board</a>
+    <h1 class="title" style="font-size: 1.45rem; margin: 0;">{{.Title}}</h1>
+    <a class="toplink" href="{{.BackHref}}">&lsaquo; Back to board</a>
   </div>
 
   {{if .Events}}

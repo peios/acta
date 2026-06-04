@@ -69,17 +69,22 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_workspaces",
-		Description: "List the workspaces (boards). Each has a slug (used to address it in other tools) and a display name.",
+		Description: "List the workspaces. Each has a slug (used to address it in other tools) and a display name. A workspace contains boards (see list_boards) — Tasks and Backlog.",
 	}, h.mcpListWorkspaces)
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "list_boards",
+		Description: "List a workspace's boards (e.g. Tasks and Backlog). Each has a slug to pass as the `board` argument on list_statuses, list_items, create_item and list_activity. The first board is the primary one those tools default to.",
+	}, h.mcpListBoards)
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_statuses",
-		Description: "List a workspace's status lanes, in board order. Statuses are addressed by name (in create_item, set_item_status, and the list_items status filter), and the names differ per board — call this to learn the exact lanes instead of guessing. The first lane is the default for new items.",
+		Description: "List a board's status lanes, in order. Statuses are addressed by name (in create_item, set_item_status, and the list_items status filter). Defaults to the primary board; pass board (a slug from list_boards) for another. The first lane is a board's entry lane (where new items land).",
 	}, h.mcpListStatuses)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_items",
-		Description: "List items on a workspace board. Returns top-level items by default; pass parent to list the direct subtasks of an item instead. Optional filters narrow by status (lane name), assignee (username, or \"me\"), or mine. Statuses and principals are named, not id-addressed; items are addressed by id.",
+		Description: "List a board's items. Defaults to the primary board; pass board (a slug from list_boards) for another. Returns top-level items by default; pass parent to list the direct subtasks of an item instead. Optional filters narrow by status (lane name), assignee (username, or \"me\"), or mine. Statuses and principals are named, not id-addressed; items are addressed by id.",
 	}, h.mcpListItems)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -89,7 +94,7 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "create_item",
-		Description: "Create an item on a workspace board. Provide a status lane by name (defaults to the first lane) or a parent item id to create it as a subtask. The item is attributed to the calling principal.",
+		Description: "Create an item. Defaults to the primary board; pass board (a slug from list_boards) to create it on another (e.g. Backlog). Provide a status lane by name (defaults to the board's entry lane) or a parent item id to create it as a subtask. The item is attributed to the calling principal.",
 	}, h.mcpCreateItem)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -139,7 +144,7 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_activity",
-		Description: "Read the activity log, newest first: who changed what and when (creations, status moves, assignments, comments, archives, …). Pass item to get one item's history, or omit it for the whole workspace feed. Use this to answer \"what changed since yesterday\" for a standup instead of diffing the board. Each entry has a human-readable summary plus the raw verb and data for precise parsing.",
+		Description: "Read the activity log, newest first: who changed what and when (creations, status moves, assignments, comments, archives, …). Pass item for one item's history, board (a slug from list_boards) for one board's feed, or omit both for the whole workspace. Use this to answer \"what changed since yesterday\" for a standup instead of diffing the board. Each entry has a human-readable summary plus the raw verb and data for precise parsing.",
 	}, h.mcpListActivity)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -210,6 +215,21 @@ type statusListOutput struct {
 	Statuses []statusAPI `json:"statuses"`
 }
 
+type listBoardsInput struct {
+	Workspace string `json:"workspace" jsonschema:"slug of the workspace whose boards to list"`
+}
+
+// boardAPI is a board as the MCP surface presents it: a slug to pass as the
+// `board` argument on other tools, and a display name.
+type boardAPI struct {
+	Slug string `json:"slug"`
+	Name string `json:"name"`
+}
+
+type boardListOutput struct {
+	Boards []boardAPI `json:"boards"`
+}
+
 // statusAPI is a board lane as the MCP surface presents it: the name agents
 // address it by, and its zero-based board position (position 0 is the first
 // lane, the default for new items). Colour is omitted as UI-only.
@@ -268,10 +288,12 @@ func (h *handlers) prefixFor(ctx context.Context, workspaceID string) string {
 
 type listStatusesInput struct {
 	Workspace string `json:"workspace" jsonschema:"slug of the workspace whose status lanes to list"`
+	Board     string `json:"board,omitempty" jsonschema:"board slug (from list_boards); defaults to the primary board"`
 }
 
 type listItemsInput struct {
 	Workspace string `json:"workspace" jsonschema:"slug of the workspace to list"`
+	Board     string `json:"board,omitempty" jsonschema:"board slug (from list_boards); defaults to the primary board. Ignored when parent is set"`
 	Status    string `json:"status,omitempty" jsonschema:"only items in this status lane, by name"`
 	Assignee  string `json:"assignee,omitempty" jsonschema:"only items assigned to this username; use \"me\" for the caller"`
 	Parent    string `json:"parent,omitempty" jsonschema:"list the direct subtasks of this item id instead of the board's top-level items"`
@@ -285,7 +307,8 @@ type itemIDInput struct {
 type createItemInput struct {
 	Workspace string `json:"workspace" jsonschema:"slug of the workspace to create the item in"`
 	Title     string `json:"title" jsonschema:"the item title"`
-	Status    string `json:"status,omitempty" jsonschema:"status lane by name; defaults to the first lane. Ignored when parent is set"`
+	Board     string `json:"board,omitempty" jsonschema:"board slug (from list_boards); defaults to the primary board. Ignored when parent is set"`
+	Status    string `json:"status,omitempty" jsonschema:"status lane by name (on the chosen board); defaults to the board's entry lane. Ignored when parent is set"`
 	Parent    string `json:"parent,omitempty" jsonschema:"parent item id; when set, create this as a subtask of that item"`
 }
 
@@ -334,6 +357,7 @@ type setItemParentInput struct {
 
 type listActivityInput struct {
 	Workspace string `json:"workspace" jsonschema:"slug of the workspace whose activity to read"`
+	Board     string `json:"board,omitempty" jsonschema:"board slug (from list_boards); scope the feed to one board. Ignored when item is set"`
 	Item      string `json:"item,omitempty" jsonschema:"restrict to a single item id's history; omit for the whole-workspace feed"`
 	Limit     int    `json:"limit,omitempty" jsonschema:"max entries to return, newest first (default 50)"`
 }
@@ -415,12 +439,50 @@ func (h *handlers) mcpListWorkspaces(ctx context.Context, _ *mcp.CallToolRequest
 	return &mcp.CallToolResult{}, out, nil
 }
 
+// mcpBoard resolves the board a tool targets: the named board (by slug) or the
+// workspace's primary board when the slug is blank. Agents discover slugs via
+// list_boards.
+func (h *handlers) mcpBoard(ctx context.Context, ws store.Workspace, slug string) (store.Board, error) {
+	if slug = strings.ToLower(strings.TrimSpace(slug)); slug != "" {
+		bd, err := h.board.BoardBySlug(ctx, ws.ID, slug)
+		if err != nil {
+			return store.Board{}, mcpErr(err)
+		}
+		return bd, nil
+	}
+	bd, err := h.board.DefaultBoard(ctx, ws.ID)
+	if err != nil {
+		return store.Board{}, mcpErr(err)
+	}
+	return bd, nil
+}
+
+func (h *handlers) mcpListBoards(ctx context.Context, _ *mcp.CallToolRequest, in listBoardsInput) (*mcp.CallToolResult, boardListOutput, error) {
+	ws, err := h.mcpWorkspace(ctx, in.Workspace)
+	if err != nil {
+		return nil, boardListOutput{}, err
+	}
+	list, err := h.board.Boards(ctx, ws.ID)
+	if err != nil {
+		return nil, boardListOutput{}, mcpErr(err)
+	}
+	out := boardListOutput{Boards: make([]boardAPI, len(list))}
+	for i, b := range list {
+		out.Boards[i] = boardAPI{Slug: b.Slug, Name: b.Name}
+	}
+	return &mcp.CallToolResult{}, out, nil
+}
+
 func (h *handlers) mcpListStatuses(ctx context.Context, _ *mcp.CallToolRequest, in listStatusesInput) (*mcp.CallToolResult, statusListOutput, error) {
 	ws, err := h.mcpWorkspace(ctx, in.Workspace)
 	if err != nil {
 		return nil, statusListOutput{}, err
 	}
-	list, err := h.board.Statuses(ctx, ws.ID)
+	bd, err := h.mcpBoard(ctx, ws, in.Board)
+	if err != nil {
+		return nil, statusListOutput{}, err
+	}
+	list, err := h.board.BoardStatuses(ctx, bd.ID)
 	if err != nil {
 		return nil, statusListOutput{}, mcpErr(err)
 	}
@@ -437,11 +499,20 @@ func (h *handlers) mcpListItems(ctx context.Context, _ *mcp.CallToolRequest, in 
 		return nil, itemListOutput{}, err
 	}
 
-	// Resolve filters up front so a bad name fails before we list.
+	bd, err := h.mcpBoard(ctx, ws, in.Board)
+	if err != nil {
+		return nil, itemListOutput{}, err
+	}
+	boardStatuses, err := h.board.BoardStatuses(ctx, bd.ID)
+	if err != nil {
+		return nil, itemListOutput{}, mcpErr(err)
+	}
+
+	// Resolve filters up front so a bad name fails before we list. The status
+	// filter is scoped to the chosen board.
 	statusID := ""
 	if s := strings.TrimSpace(in.Status); s != "" {
-		statusID, err = h.statusIDByName(ctx, ws.ID, s)
-		if err != nil {
+		if statusID, err = statusIDInList(boardStatuses, s); err != nil {
 			return nil, itemListOutput{}, mcpErr(err)
 		}
 	}
@@ -450,20 +521,26 @@ func (h *handlers) mcpListItems(ctx context.Context, _ *mcp.CallToolRequest, in 
 		return nil, itemListOutput{}, mcpErr(err)
 	}
 
-	// Base set: a parent's direct subtasks, or the board's top-level items.
+	// Base set: a parent's direct subtasks (board-agnostic), or the chosen
+	// board's top-level items.
 	var items []store.Item
 	if parent := strings.ToLower(strings.TrimSpace(in.Parent)); parent != "" {
 		if _, err := h.mcpItem(ctx, parent, ws.ID); err != nil {
 			return nil, itemListOutput{}, err
 		}
-		items, err = h.board.Children(ctx, parent)
+		if items, err = h.board.Children(ctx, parent); err != nil {
+			return nil, itemListOutput{}, mcpErr(err)
+		}
 	} else {
-		items, err = h.board.Items(ctx, ws.ID)
-	}
-	if err != nil {
-		return nil, itemListOutput{}, mcpErr(err)
+		all, ierr := h.board.Items(ctx, ws.ID)
+		if ierr != nil {
+			return nil, itemListOutput{}, mcpErr(ierr)
+		}
+		items = itemsOnBoard(all, boardStatuses)
 	}
 
+	// Labels cover every board (a subtask may sit on another); the done lane for
+	// progress is the chosen board's last lane.
 	statuses, err := h.board.Statuses(ctx, ws.ID)
 	if err != nil {
 		return nil, itemListOutput{}, mcpErr(err)
@@ -481,8 +558,8 @@ func (h *handlers) mcpListItems(ctx context.Context, _ *mcp.CallToolRequest, in 
 		userName[u.ID] = u.Username
 	}
 	doneStatusID := ""
-	if len(statuses) > 0 {
-		doneStatusID = statuses[len(statuses)-1].ID
+	if n := len(boardStatuses); n > 0 {
+		doneStatusID = boardStatuses[n-1].ID
 	}
 	counts, err := h.board.SubtaskCounts(ctx, ws.ID, doneStatusID)
 	if err != nil {
@@ -566,12 +643,25 @@ func (h *handlers) mcpCreateItem(ctx context.Context, _ *mcp.CallToolRequest, in
 		}
 		it, err = h.board.CreateSubtaskAs(ctx, parent, in.Title, p.ID)
 	} else {
-		statusID := ""
+		bd, berr := h.mcpBoard(ctx, ws, in.Board)
+		if berr != nil {
+			return nil, mcpItem{}, berr
+		}
+		boardStatuses, serr := h.board.BoardStatuses(ctx, bd.ID)
+		if serr != nil {
+			return nil, mcpItem{}, mcpErr(serr)
+		}
+		var statusID string
 		if s := strings.TrimSpace(in.Status); s != "" {
-			statusID, err = h.statusIDByName(ctx, ws.ID, s)
-			if err != nil {
+			if statusID, err = statusIDInList(boardStatuses, s); err != nil {
 				return nil, mcpItem{}, mcpErr(err)
 			}
+		} else {
+			entry, eerr := h.board.EntryStatus(ctx, bd.ID)
+			if eerr != nil {
+				return nil, mcpItem{}, mcpErr(eerr)
+			}
+			statusID = entry.ID
 		}
 		it, err = h.board.CreateRootItemAs(ctx, ws.ID, statusID, in.Title, p.ID)
 	}
@@ -849,14 +939,21 @@ func (h *handlers) mcpListActivity(ctx context.Context, _ *mcp.CallToolRequest, 
 		limit = 50
 	}
 	var events []store.Event
-	if item := strings.TrimSpace(in.Item); item != "" {
+	switch {
+	case strings.TrimSpace(in.Item) != "":
 		// Scope to one item, but keep it inside the named workspace.
-		it, ierr := h.mcpItem(ctx, item, ws.ID)
+		it, ierr := h.mcpItem(ctx, strings.TrimSpace(in.Item), ws.ID)
 		if ierr != nil {
 			return nil, activityOutput{}, ierr
 		}
 		events, err = h.board.ItemHistory(ctx, it.ID, limit)
-	} else {
+	case strings.TrimSpace(in.Board) != "":
+		bd, berr := h.mcpBoard(ctx, ws, in.Board)
+		if berr != nil {
+			return nil, activityOutput{}, berr
+		}
+		events, err = h.board.BoardActivity(ctx, bd.ID, limit)
+	default:
 		events, err = h.board.WorkspaceActivity(ctx, ws.ID, limit)
 	}
 	if err != nil {
