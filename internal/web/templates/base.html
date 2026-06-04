@@ -828,7 +828,13 @@
   .cmt-menu-item:hover { background: var(--surface-h); }
   .cmt-menu-item.danger { color: var(--danger-text); }
   .cmt-menu-item.armed { background: color-mix(in srgb, var(--danger) 22%, transparent); color: var(--danger-text); }
-  @media (hover: none) { .cmt-menu-btn { opacity: 1; } }
+  /* Touch has no hover to reveal hover-gated controls, so show them. The card
+     archive button (×) is otherwise unreachable on mobile; give it a roomier
+     tap target than its desktop hover affordance. */
+  @media (hover: none) {
+    .cmt-menu-btn { opacity: 1; }
+    .item-del { opacity: 1; padding: .25rem .45rem; font-size: 1.05rem; }
+  }
 
   /* tombstone for a soft-deleted comment */
   .cmt-deleted { display: flex; align-items: center; min-height: 2.2rem; padding: .5rem .75rem; background: none; border: 1px dashed var(--border-soft); }
