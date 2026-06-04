@@ -1214,13 +1214,12 @@
     return true;
   }
 
-  // Reorder vs nest, decided by where in the hovered card you are. SortableJS's
-  // default swaps the instant the dragged ghost touches a card's edge, so the
-  // card flees before you can hover it. We override that swap threshold via
-  // onMove's before/after return so the card stays put while you're over it.
-  // Nest fires the moment the cursor is over the card — anywhere on it, top edge
-  // to bottom edge, lights up. The only reorder triggers are the gaps *above*
-  // (insert before) and *below* (insert after) a card, so there's no dead zone.
+  // Reorder vs nest, decided by where in the hovered card you are. Reorder can
+  // only happen *over a card*: SortableJS treats the gaps between cards as inert
+  // container space, never a drop target — so the edges of each card are the
+  // reorder zones (top fifth inserts before it, bottom fifth inserts after) and
+  // the middle is the nest zone. We override SortableJS's eager edge-swap so the
+  // card holds still and lights up "↳ subtask" while you're over its middle.
   let nestTarget = null;
   function setNest(card) {
     if (nestTarget === card) return;
@@ -1244,10 +1243,10 @@
     if (y == null || !rel || !rel.classList || !rel.classList.contains('item')
         || rel.dataset.itemId === evt.dragged.dataset.itemId) { clearNest(); return true; }
     const r = evt.relatedRect || rel.getBoundingClientRect();
-    if (y < r.top) { clearNest(); return -1; }    // gap above the card → insert before
-    if (y > r.bottom) { clearNest(); return 1; }  // gap below the card → insert after
+    if (y < r.top + r.height * 0.2) { clearNest(); return -1; } // top fifth (or above) → reorder before
+    if (y > r.top + r.height * 0.8) { clearNest(); return 1; }  // bottom fifth (or below) → reorder after
     setNest(rel);
-    return false; // anywhere over the card → nest; hold it still
+    return false; // middle → nest; hold the card still
   }
   // Belt-and-braces for onMove's gaps: SortableJS only fires onMove while
   // evaluating a move over a sibling, so drifting the cursor into dead space
