@@ -84,6 +84,10 @@
             </div>
             {{end}}
           </div>
+          <div class="subtask-promote" data-subtask-promote aria-hidden="true">
+            <svg class="ico" viewBox="0 0 16 16"><path d="M8 12.5V4M4.5 7.5 8 4l3.5 3.5"/></svg>
+            Drop here to make top-level
+          </div>
           <form class="subtask-add" data-subtask-form>
             <input class="subtask-input" placeholder="+ Add subtask" maxlength="200" aria-label="New subtask">
           </form>
@@ -122,29 +126,63 @@
       </div>
 
       <aside class="modal-side">
+        {{/* Each field is a full-width "pill" trigger opening a custom popover —
+             the same dropdown machinery as the mobile status bar. The hidden
+             <select> beside each one stays the source of truth the change
+             handlers hang off, so nothing about the API path changes. */}}
         <div class="side-field side-status">
           <span class="modal-label">Status</span>
-          <select class="modal-status">
+          <div class="side-pick" data-status-pill-side>
+            <button class="side-pill" type="button" data-pill-trigger aria-label="Change status">
+              <span class="status-dot{{if .StatusDashed}} dashed{{end}}" data-side-status-dot style="{{.StatusColorVar}}"></span>
+              <span class="side-pill-name" data-side-status-name>{{.StatusName}}</span>
+              <span class="chev">&#9662;</span>
+            </button>
+            <div class="popover side-pop" data-pill-menu hidden>
+              {{range .StatusGroups}}
+              <div class="status-group">{{.Board}}</div>
+              {{range .Choices}}
+              <button class="status-opt" type="button" data-status-opt="{{.ID}}" data-color="{{.Color}}"{{if .Dashed}} data-dashed="1"{{end}}>
+                <span class="status-dot{{if .Dashed}} dashed{{end}}" style="{{.ColorVar}}"></span>
+                <span class="status-opt-name">{{.Name}}</span>
+              </button>
+              {{end}}
+              {{end}}
+            </div>
+          </div>
+          <select class="modal-status" hidden aria-hidden="true">
             {{range .StatusGroups}}<optgroup label="{{.Board}}">{{range .Choices}}<option value="{{.ID}}" {{if eq .ID $.Item.StatusID}}selected{{end}}>{{.Name}}</option>{{end}}</optgroup>{{end}}
           </select>
         </div>
+
         <div class="side-field side-assignee">
           <span class="modal-label">Assignee</span>
-          <select class="modal-assignee">
+          <div class="side-pick" data-assignee-pill-side>
+            <button class="side-pill{{if not .Item.AssigneeID}} unset{{end}}" type="button" data-pill-trigger aria-label="Change assignee">
+              <svg class="ico person-icon" viewBox="0 0 16 16"><circle cx="8" cy="5" r="2.7"/><path d="M2.9 13.4a5.1 5.1 0 0 1 10.2 0Z"/></svg>
+              <span class="avatar sm" data-side-assignee-avatar></span>
+              <span class="side-pill-name" data-side-assignee-name>{{if .Assignee}}{{.Assignee}}{{else}}Unassigned{{end}}</span>
+              <span class="chev">&#9662;</span>
+            </button>
+            <div class="popover side-pop" data-pill-menu hidden>
+              <button class="assignee-opt" type="button" data-assignee-opt="">Unassigned</button>
+              {{range .Assignables}}
+              <button class="assignee-opt" type="button" data-assignee-opt="{{.ID}}">{{.Display}}{{if .AgentOfID}} · agent{{end}}</button>
+              {{end}}
+            </div>
+          </div>
+          <select class="modal-assignee" hidden aria-hidden="true">
             <option value="">Unassigned</option>
             {{range .Assignables}}<option value="{{.ID}}" {{if eq .ID $.Item.AssigneeID}}selected{{end}}>{{.Display}}{{if .AgentOfID}} · agent{{end}}</option>{{end}}
           </select>
         </div>
-        <div class="side-field">
-          <span class="modal-label">Parent</span>
-          <select class="modal-parent-select">
-            <option value="">None (top-level)</option>
-            {{range .Parents}}<option value="{{.ID}}" {{if eq .ID $.Item.ParentID}}selected{{end}}>{{.Title}}</option>{{end}}
-          </select>
-        </div>
-        <div class="side-field">
-          <span class="modal-label">Milestone</span>
-          <label class="modal-ms"><input type="checkbox" class="modal-ms-toggle" {{if .Item.IsMilestone}}checked{{end}}> Mark as milestone</label>
+
+        <div class="side-field side-milestone">
+          <div class="side-toggle-row">
+            <span class="modal-label">Milestone</span>
+            <button class="toggle" type="button" data-ms-toggle role="switch" aria-checked="{{if .Item.IsMilestone}}true{{else}}false{{end}}" aria-label="Mark as milestone"></button>
+          </div>
+          <input type="checkbox" class="modal-ms-toggle" hidden {{if .Item.IsMilestone}}checked{{end}}>
         </div>
         {{if .CreatedBy}}
         <div class="side-field">

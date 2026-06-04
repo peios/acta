@@ -38,7 +38,6 @@ type modalView struct {
 	Archived       bool
 	ParentID       string // "" if this is a top-level item
 	ParentTitle    string
-	Parents        []parentOption // candidates this item may be reparented under
 	Children       []childView
 	SubDone        int
 	SubTotal       int
@@ -64,11 +63,6 @@ func (s statusChoice) ColorVar() template.CSS { return colorVar(s.Color) }
 type statusGroup struct {
 	Board   string
 	Choices []statusChoice
-}
-
-type parentOption struct {
-	ID    string
-	Title string
 }
 
 // containsUser reports whether a user with the given id is in us.
@@ -337,15 +331,6 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 			parentTitle = p.Title
 		}
 	}
-	candidates, err := h.board.CandidateParents(ctx, ws.ID, item.ID)
-	if err != nil {
-		return modalView{}, false, err
-	}
-	parents := make([]parentOption, len(candidates))
-	for i, c := range candidates {
-		parents[i] = parentOption{ID: c.ID, Title: c.Title}
-	}
-
 	history, err := h.board.ItemHistory(ctx, item.ID, 50)
 	if err != nil {
 		return modalView{}, false, err
@@ -396,7 +381,6 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		Archived:       item.ArchivedAt != nil,
 		ParentID:       item.ParentID,
 		ParentTitle:    parentTitle,
-		Parents:        parents,
 		Children:       kids,
 		SubDone:        done,
 		SubTotal:       len(children),

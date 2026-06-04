@@ -418,9 +418,11 @@
       scrollSensitivity: 60,
       scrollSpeed: 14,
       onStart: startCardDrag,
+      onMove: nestOnMove,
       onChange: onDragChange,
       onEnd: (evt) => {
         endCardDrag();
+        if (handleNestDrop(evt)) return;
         if (handleBoardDrop(evt)) return;
         const id = evt.item.dataset.itemId;
         const destLane = evt.to.closest('.lane');
@@ -478,9 +480,11 @@
       scrollSensitivity: 60,
       scrollSpeed: 14,
       onStart: startCardDrag,
+      onMove: nestOnMove,
       onChange: onDragChange,
       onEnd: (evt) => {
         endCardDrag();
+        if (handleNestDrop(evt)) return;
         if (handleBoardDrop(evt)) return;
         const itemId = evt.item.dataset.itemId;
         const toCol = evt.to.closest('.mcol').dataset.parentId;
@@ -660,23 +664,34 @@
     // side <select>, so the change handlers do the real work. A shared manager
     // closes any open pill on an outside tap (pointerdown — iOS-safe). All
     // listeners hang off `el`, so they're torn down when the modal is replaced.
-    const modalPops = [];
-    const closeModalPops = () => modalPops.forEach((p) => { p.menu.hidden = true; p.trigger.classList.remove('active'); });
-    const wirePill = (wrap) => {
-      const trigger = wrap.querySelector('[data-pill-trigger]');
-      const menu = wrap.querySelector('[data-pill-menu]');
-      modalPops.push({ wrap, trigger, menu });
-      trigger.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const willOpen = menu.hidden;
-        closeModalPops();
-        menu.hidden = !willOpen;
-        trigger.classList.toggle('active', willOpen);
-      });
-      return { trigger, menu };
+    // A pop manager is one set of mutually-exclusive popovers. The top bar +
+    // "more" kebab live in one (modalPops); the side-panel pills live in a
+    // separate one (sidePops) so opening a side dropdown only closes its
+    // siblings — never the kebab that hosts the whole side panel on mobile.
+    const makePops = () => {
+      const pops = [];
+      const closeAll = () => pops.forEach((p) => { p.menu.hidden = true; p.trigger.classList.remove('active'); });
+      const wire = (wrap) => {
+        const trigger = wrap.querySelector('[data-pill-trigger]');
+        const menu = wrap.querySelector('[data-pill-menu]');
+        pops.push({ wrap, trigger, menu });
+        trigger.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const willOpen = menu.hidden;
+          closeAll();
+          menu.hidden = !willOpen;
+          trigger.classList.toggle('active', willOpen);
+        });
+        return { trigger, menu };
+      };
+      return { pops, closeAll, wire };
     };
+    const top = makePops();
+    const side = makePops();
+    const modalPops = top.pops, closeModalPops = top.closeAll, wirePill = top.wire;
     el.addEventListener('pointerdown', (e) => {
-      if (modalPops.length && !modalPops.some((p) => p.wrap.contains(e.target))) closeModalPops();
+      if (top.pops.length && !top.pops.some((p) => p.wrap.contains(e.target))) top.closeAll();
+      if (side.pops.length && !side.pops.some((p) => p.wrap.contains(e.target))) side.closeAll();
     });
 
     const statusSelect = el.querySelector('.modal-status');
@@ -742,6 +757,70 @@
       syncAssignee();
     }
 
+    // --- side-panel pills (desktop) ---------------------------------------
+    // Same dropdowns, driving the same hidden side <select>s. Status/assignee
+    // here are desktop-only (hidden on mobile, where the top bar covers them),
+    // so they never need to stay in display-sync with the top-bar pills — only
+    // one set is ever visible. Each pill resyncs itself off its own select.
+    const sideStatusPill = el.querySelector('[data-status-pill-side]');
+    if (sideStatusPill && statusSelect) {
+      side.wire(sideStatusPill);
+      const dot = sideStatusPill.querySelector('[data-side-status-dot]');
+      const nameEl = sideStatusPill.querySelector('[data-side-status-name]');
+      const opts = {};
+      sideStatusPill.querySelectorAll('[data-status-opt]').forEach((o) => {
+        opts[o.dataset.statusOpt] = { color: o.dataset.color || '', name: o.querySelector('.status-opt-name').textContent, dashed: o.dataset.dashed === '1' };
+      });
+      const syncSideStatus = () => {
+        const d = opts[statusSelect.value];
+        if (!d) return;
+        nameEl.textContent = d.name;
+        dot.style.setProperty('--lane-color', d.color);
+        dot.classList.toggle('dashed', d.dashed);
+      };
+      sideStatusPill.querySelectorAll('[data-status-opt]').forEach((o) => {
+        o.addEventListener('click', () => {
+          side.closeAll();
+          if (o.dataset.statusOpt !== statusSelect.value) {
+            statusSelect.value = o.dataset.statusOpt;
+            statusSelect.dispatchEvent(new Event('change'));
+          }
+          syncSideStatus();
+        });
+      });
+      syncSideStatus();
+    }
+
+    const sideAssigneePill = el.querySelector('[data-assignee-pill-side]');
+    if (sideAssigneePill && assigneeSelect) {
+      const { trigger } = side.wire(sideAssigneePill);
+      const avatar = sideAssigneePill.querySelector('[data-side-assignee-avatar]');
+      const nameEl = sideAssigneePill.querySelector('[data-side-assignee-name]');
+      const syncSideAssignee = () => {
+        const aid = assigneeSelect.value;
+        trigger.classList.toggle('unset', !aid);
+        if (!aid) { nameEl.textContent = 'Unassigned'; return; }
+        const opt = assigneeSelect.options[assigneeSelect.selectedIndex];
+        const raw = (opt ? opt.textContent : '').trim();
+        const name = raw.split('·')[0].trim();
+        nameEl.textContent = name;
+        avatar.className = 'avatar sm' + (raw.includes('agent') ? ' bot' : '');
+        avatar.setAttribute('style', avatarStyle(aid));
+        avatar.textContent = avatarInitials(name);
+      };
+      sideAssigneePill.querySelectorAll('[data-assignee-opt]').forEach((o) => {
+        o.addEventListener('click', () => {
+          side.closeAll();
+          if (o.dataset.assigneeOpt !== assigneeSelect.value) {
+            assigneeSelect.value = o.dataset.assigneeOpt;
+            assigneeSelect.dispatchEvent(new Event('change'));
+          }
+          syncSideAssignee();
+        });
+      });
+      syncSideAssignee();
+    }
+
     // "More" kebab (mobile): relocate the whole side panel into a dropdown so
     // its remaining fields (parent, milestone, created, archive) live behind the
     // kebab. The hidden status/assignee selects ride along, still pill-driven, so
@@ -776,13 +855,6 @@
       } catch (err2) { fail(err2); }
     });
 
-    // Reparenting (promote to None / demote under an item) restructures the
-    // board, so reload to reflect it; the ?item= in the URL reopens the modal.
-    el.querySelector('.modal-parent-select').addEventListener('change', async (e) => {
-      try { await api('/items/' + id + '/parent', { parent_id: e.target.value }); location.reload(); }
-      catch (err2) { fail(err2); }
-    });
-
     wireDescription(el, id, fail);
 
     // The new-comment composer: post, append the card optimistically, clear.
@@ -808,15 +880,38 @@
       row.querySelector('.subtask-open').addEventListener('click', () => openModal(row.dataset.itemId));
     subList.querySelectorAll('.subtask').forEach(wireSubRow);
 
+    // Dragging a subtask out onto the promote zone reparents it to root; the
+    // shared 'subtasks' group connects the list to that zone. Reparenting
+    // restructures the board, so reload (the ?item= reopens this modal) — same
+    // as the Parent picker does.
+    const promoteZone = el.querySelector('[data-subtask-promote]');
     new Sortable(subList, {
+      group: { name: 'subtasks', pull: true, put: true },
       handle: '.subtask-grip',
       animation: 150,
       draggable: '.subtask',
-      onEnd: () => {
+      onStart: () => el.classList.add('subtask-dragging'),
+      onEnd: (evt) => {
+        el.classList.remove('subtask-dragging');
+        if (promoteZone && evt.to === promoteZone) {
+          const subId = evt.item.dataset.itemId;
+          evt.item.remove();
+          api('/items/' + subId + '/parent', { parent_id: '' })
+            .then(() => location.reload())
+            .catch((e) => fail(e));
+          return;
+        }
         const ids = [...subList.querySelectorAll('.subtask')].map((r) => r.dataset.itemId);
         api('/items/' + id + '/subtasks/reorder', { ids }).catch(fail);
       },
     });
+    if (promoteZone) {
+      new Sortable(promoteZone, {
+        group: { name: 'subtasks', pull: false, put: true },
+        sort: false,
+        draggable: '.subtask',
+      });
+    }
 
     el.querySelector('[data-subtask-form]').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -848,10 +943,22 @@
       } catch (err2) { fail(err2); }
     });
 
+    // Milestone: a switch (the visible control) backed by a hidden checkbox
+    // (the source of truth the change handler reads).
     const msToggle = el.querySelector('.modal-ms-toggle');
+    const msSwitch = el.querySelector('[data-ms-toggle]');
+    if (msSwitch && msToggle) msSwitch.addEventListener('click', () => {
+      msToggle.checked = !msToggle.checked;
+      msSwitch.setAttribute('aria-checked', msToggle.checked ? 'true' : 'false');
+      msToggle.dispatchEvent(new Event('change'));
+    });
     if (msToggle) msToggle.addEventListener('change', async () => {
       try { await api('/items/' + id + '/milestone', { is_milestone: msToggle.checked }); location.reload(); }
-      catch (e) { fail(e); msToggle.checked = !msToggle.checked; }
+      catch (e) {
+        fail(e);
+        msToggle.checked = !msToggle.checked;
+        if (msSwitch) msSwitch.setAttribute('aria-checked', msToggle.checked ? 'true' : 'false');
+      }
     });
 
     const archive = el.querySelector('.modal-archive');
@@ -1079,8 +1186,19 @@
   function onDragChange(evt) {
     if (touchPaging) centerLane(evt.to.closest('.lane'));
   }
-  function startCardDrag() { board.classList.add('dragging'); document.body.classList.add('card-dragging'); }
-  function endCardDrag() { board.classList.remove('dragging'); document.body.classList.remove('card-dragging'); }
+  function startCardDrag() {
+    board.classList.add('dragging');
+    document.body.classList.add('card-dragging');
+    document.addEventListener('dragover', clearNestIfOff, true);
+    document.addEventListener('touchmove', clearNestIfOff, { passive: true });
+  }
+  function endCardDrag() {
+    board.classList.remove('dragging');
+    document.body.classList.remove('card-dragging');
+    document.removeEventListener('dragover', clearNestIfOff, true);
+    document.removeEventListener('touchmove', clearNestIfOff, { passive: true });
+    // NB: don't clearNest here — onEnd runs this then reads nestTarget for the drop.
+  }
 
   // handleBoardDrop fires when a card is dropped on a board in the sidebar: the
   // card leaves this board and takes the target board's entry lane (promote /
@@ -1094,6 +1212,88 @@
     api('/items/' + id + '/board', { board_id: drop.dataset.boardId })
       .catch((e) => { if (boardErr) boardErr.textContent = msg(e); location.reload(); });
     return true;
+  }
+
+  // Reorder vs nest, decided by where in the hovered card you are. SortableJS's
+  // default swaps the instant the dragged ghost touches a card's edge, so the
+  // card flees before you can hover it. We override that swap threshold via
+  // onMove's before/after return so the card stays put while you're over it.
+  // Nest fires the moment the cursor is over the card — anywhere on it, top edge
+  // to bottom edge, lights up. The only reorder triggers are the gaps *above*
+  // (insert before) and *below* (insert after) a card, so there's no dead zone.
+  let nestTarget = null;
+  function setNest(card) {
+    if (nestTarget === card) return;
+    if (nestTarget) nestTarget.classList.remove('nest-target');
+    nestTarget = card;
+    card.classList.add('nest-target');
+  }
+  function clearNest() {
+    if (nestTarget) nestTarget.classList.remove('nest-target');
+    nestTarget = null;
+  }
+  function pointY(oe) {
+    if (!oe) return null;
+    if (oe.clientY != null) return oe.clientY;
+    if (oe.touches && oe.touches[0]) return oe.touches[0].clientY;
+    return null;
+  }
+  function nestOnMove(evt, oe) {
+    const rel = evt.related;
+    const y = pointY(oe);
+    if (y == null || !rel || !rel.classList || !rel.classList.contains('item')
+        || rel.dataset.itemId === evt.dragged.dataset.itemId) { clearNest(); return true; }
+    const r = evt.relatedRect || rel.getBoundingClientRect();
+    if (y < r.top) { clearNest(); return -1; }    // gap above the card → insert before
+    if (y > r.bottom) { clearNest(); return 1; }  // gap below the card → insert after
+    setNest(rel);
+    return false; // anywhere over the card → nest; hold it still
+  }
+  // Belt-and-braces for onMove's gaps: SortableJS only fires onMove while
+  // evaluating a move over a sibling, so drifting the cursor into dead space
+  // (the frozen ghost, empty lane area, off-board) wouldn't otherwise clear a
+  // nest highlight. Drop it the moment the cursor leaves the target's box.
+  function clearNestIfOff(e) {
+    if (!nestTarget) return;
+    const t = e.touches && e.touches[0] ? e.touches[0] : e;
+    if (t.clientX == null) return;
+    const r = nestTarget.getBoundingClientRect();
+    if (t.clientX < r.left || t.clientX > r.right || t.clientY < r.top || t.clientY > r.bottom) clearNest();
+  }
+  // Consume a pending nest target on drop: the dragged card becomes its subtask
+  // and leaves the board (subtasks aren't shown as top-level cards). Returns
+  // true when it handled the drop. The server rejects cycles/self-parenting.
+  function handleNestDrop(evt) {
+    const parent = nestTarget;
+    clearNest();
+    if (!parent) return false;
+    const parentId = parent.dataset.itemId;
+    const childId = evt.item.dataset.itemId;
+    if (!parentId || parentId === childId) return false; // fall through to a normal move
+    evt.item.remove();
+    bumpSubCount(parent); // reflect the new child on the parent's badge
+    api('/items/' + childId + '/parent', { parent_id: parentId })
+      .catch((e) => { if (boardErr) boardErr.textContent = msg(e); location.reload(); });
+    return true;
+  }
+
+  // Optimistically grow a parent card's "done/total" subtask badge by one
+  // (creating it if this is its first subtask). The exact figure reconciles on
+  // the next load — this just avoids the card looking childless mid-drag.
+  function bumpSubCount(card) {
+    const sub = card.querySelector('.item-sub');
+    if (sub) {
+      const [done, total] = sub.textContent.split('/').map((n) => parseInt(n, 10) || 0);
+      sub.textContent = done + '/' + (total + 1);
+      return;
+    }
+    const meta = card.querySelector('.item-meta');
+    if (!meta) return;
+    const badge = document.createElement('span');
+    badge.className = 'item-sub';
+    badge.title = 'Subtasks done';
+    badge.textContent = '0/1';
+    meta.insertBefore(badge, meta.querySelector('.meta-spacer'));
   }
 
   // --- wire the server-rendered board ---
