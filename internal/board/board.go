@@ -34,6 +34,7 @@ var (
 	ErrInvalidTitle       = errors.New("board: invalid item title")
 	ErrInvalidDescription = errors.New("board: description too long")
 	ErrInvalidComment     = errors.New("board: invalid comment")
+	ErrCommentForbidden   = errors.New("board: not the comment author")
 	ErrStatusNotEmpty     = errors.New("board: status still has items")
 	ErrNoStatus           = errors.New("board: workspace has no statuses")
 	ErrCycle              = errors.New("board: would create a cycle")
@@ -908,8 +909,74 @@ func (s *Service) CandidateParents(ctx context.Context, workspaceID, itemID stri
 
 // --- comments ---
 
+// Comments returns an item's live comments (soft-deleted ones excluded),
+// oldest-first — the default any consumer wants. The web activity feed, which
+// renders a tombstone for deleted comments, uses CommentsWithDeleted instead.
 func (s *Service) Comments(ctx context.Context, itemID string) ([]store.Comment, error) {
+	all, err := s.store.CommentsByItem(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	out := all[:0]
+	for _, c := range all {
+		if c.DeletedAt == nil {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+// CommentsWithDeleted returns every comment including soft-deleted tombstones.
+func (s *Service) CommentsWithDeleted(ctx context.Context, itemID string) ([]store.Comment, error) {
 	return s.store.CommentsByItem(ctx, itemID)
+}
+
+// EditComment replaces a comment's body. Only the author may edit, and only a
+// live (non-deleted) comment. The body is validated like a new comment. Any
+// @mention the edit newly introduces is notified (existing mentions are not
+// re-pinged); the notifications are returned so the caller can bump bells.
+func (s *Service) EditComment(ctx context.Context, commentID, actorID, body string) (store.Comment, []store.Notification, error) {
+	body = strings.TrimSpace(body)
+	if body == "" || len([]rune(body)) > MaxCommentLen {
+		return store.Comment{}, nil, ErrInvalidComment
+	}
+	c, err := s.store.CommentByID(ctx, commentID)
+	if err != nil {
+		return store.Comment{}, nil, err
+	}
+	if c.DeletedAt != nil {
+		return store.Comment{}, nil, store.ErrCommentNotFound
+	}
+	if c.AuthorID == "" || c.AuthorID != actorID {
+		return store.Comment{}, nil, ErrCommentForbidden
+	}
+	updated, err := s.store.UpdateComment(ctx, commentID, body, s.now())
+	if err != nil {
+		return store.Comment{}, nil, err
+	}
+	var notified []store.Notification
+	if added := newMentions(updated.Body, c.Body); len(added) > 0 {
+		if item, ierr := s.store.ItemByID(ctx, updated.ItemID); ierr == nil {
+			notified = s.notifyHandles(ctx, item, updated, updated.Body, added)
+		}
+	}
+	return updated, notified, nil
+}
+
+// DeleteComment soft-deletes a comment. Only the author may delete; deleting an
+// already-deleted comment is a no-op (idempotent).
+func (s *Service) DeleteComment(ctx context.Context, commentID, actorID string) (store.Comment, error) {
+	c, err := s.store.CommentByID(ctx, commentID)
+	if err != nil {
+		return store.Comment{}, err
+	}
+	if c.DeletedAt != nil {
+		return c, nil
+	}
+	if c.AuthorID == "" || c.AuthorID != actorID {
+		return store.Comment{}, ErrCommentForbidden
+	}
+	return s.store.SoftDeleteComment(ctx, commentID, s.now())
 }
 
 // AddComment appends a comment and, for each resolvable @mention in it, files a
@@ -960,15 +1027,37 @@ func parseMentions(body string) []string {
 	return out
 }
 
-// notifyMentions writes a mention notification for each distinct, resolvable
-// @handle in a freshly-added comment. Self-mentions are intentionally allowed —
-// @-ing yourself is a valid way to bookmark a thread. Best-effort like the
-// activity log: a failed write is logged, never surfaced — a missed
-// notification must not fail the comment that triggered it. The recipient's
-// inbox is the single source both the bell and (later) the MCP poll read from,
-// so this is the only place mentions become deliveries.
+// notifyMentions delivers to every distinct, resolvable @handle in a
+// freshly-added comment. An edit instead calls notifyHandles with only the
+// handles it introduced (see newMentions), so re-saving doesn't re-ping people.
 func (s *Service) notifyMentions(ctx context.Context, item store.Item, c store.Comment, body string) []store.Notification {
-	handles := parseMentions(body)
+	return s.notifyHandles(ctx, item, c, body, parseMentions(body))
+}
+
+// newMentions returns the handles present in newBody but not oldBody (set
+// difference, first-seen order) — the mentions an edit added.
+func newMentions(newBody, oldBody string) []string {
+	had := map[string]bool{}
+	for _, h := range parseMentions(oldBody) {
+		had[h] = true
+	}
+	var out []string
+	for _, h := range parseMentions(newBody) {
+		if !had[h] {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// notifyHandles writes a mention notification for each handle in handles,
+// attributing it to the acting principal and excerpting body. Self-mentions are
+// intentionally allowed — @-ing yourself bookmarks a thread. Best-effort like
+// the activity log: a failed write is logged, never surfaced — a missed
+// notification must not fail the comment that triggered it. The recipient's
+// inbox is the single source both the bell and the MCP poll read from, so this
+// is the only place mentions become deliveries.
+func (s *Service) notifyHandles(ctx context.Context, item store.Item, c store.Comment, body string, handles []string) []store.Notification {
 	if len(handles) == 0 {
 		return nil
 	}

@@ -580,3 +580,56 @@ func TestUpdateDescriptionLengthCap(t *testing.T) {
 		t.Fatalf("over cap: want ErrInvalidDescription, got %v", err)
 	}
 }
+
+func TestCommentEditDelete(t *testing.T) {
+	svc, wsID, statuses := setup(t)
+	ctx := context.Background()
+	it, _ := svc.CreateItem(ctx, wsID, statuses[0].ID, "Task")
+	const ada, ben = "ada-id", "ben-id"
+
+	c, _, err := svc.AddComment(ctx, it.ID, ada, "first")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Non-author can neither edit nor delete.
+	if _, _, err := svc.EditComment(ctx, c.ID, ben, "hax"); !errors.Is(err, board.ErrCommentForbidden) {
+		t.Fatalf("edit by non-author: want ErrCommentForbidden, got %v", err)
+	}
+	if _, err := svc.DeleteComment(ctx, c.ID, ben); !errors.Is(err, board.ErrCommentForbidden) {
+		t.Fatalf("delete by non-author: want ErrCommentForbidden, got %v", err)
+	}
+
+	// Author edits: trimmed body, EditedAt stamped.
+	ed, _, err := svc.EditComment(ctx, c.ID, ada, "  second  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ed.Body != "second" || ed.EditedAt == nil {
+		t.Fatalf("edit: body=%q editedAt=%v", ed.Body, ed.EditedAt)
+	}
+	// An empty edit is rejected.
+	if _, _, err := svc.EditComment(ctx, c.ID, ada, "   "); !errors.Is(err, board.ErrInvalidComment) {
+		t.Fatalf("empty edit: want ErrInvalidComment, got %v", err)
+	}
+
+	// Delete drops it from Comments but keeps a tombstone in WithDeleted.
+	if _, err := svc.DeleteComment(ctx, c.ID, ada); err != nil {
+		t.Fatal(err)
+	}
+	if cs, _ := svc.Comments(ctx, it.ID); len(cs) != 0 {
+		t.Fatalf("live comments after delete: want 0, got %d", len(cs))
+	}
+	all, _ := svc.CommentsWithDeleted(ctx, it.ID)
+	if len(all) != 1 || all[0].DeletedAt == nil {
+		t.Fatalf("withDeleted: want 1 tombstone, got %d", len(all))
+	}
+
+	// A deleted comment can't be edited; deleting it again is a no-op.
+	if _, _, err := svc.EditComment(ctx, c.ID, ada, "zombie"); !errors.Is(err, store.ErrCommentNotFound) {
+		t.Fatalf("edit deleted: want ErrCommentNotFound, got %v", err)
+	}
+	if _, err := svc.DeleteComment(ctx, c.ID, ada); err != nil {
+		t.Fatalf("re-delete: want nil (idempotent), got %v", err)
+	}
+}

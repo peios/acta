@@ -82,3 +82,24 @@ func TestRenderDescriptionEmptyAndTruncated(t *testing.T) {
 		t.Error("a truncated description's preview should differ from the full HTML")
 	}
 }
+
+func TestMarkdownMentionChips(t *testing.T) {
+	// A handle at a word boundary becomes a chip.
+	out := string(mdToHTML("hey @jack and @jack/bot, ping me"))
+	if !strings.Contains(out, `<span class="mention">@jack</span>`) {
+		t.Errorf("plain mention not chipped:\n%s", out)
+	}
+	if !strings.Contains(out, `<span class="mention">@jack/bot</span>`) {
+		t.Errorf("agent mention not chipped:\n%s", out)
+	}
+
+	// Emails are not mentions (the char before '@' is a word char).
+	if c := string(mdToHTML("mail ada@example.com")); strings.Contains(c, `class="mention"`) {
+		t.Errorf("email wrongly chipped:\n%s", c)
+	}
+
+	// A mention inside inline code stays literal.
+	if c := string(mdToHTML("use `@handle` syntax")); strings.Contains(c, `class="mention"`) {
+		t.Errorf("mention in code span wrongly chipped:\n%s", c)
+	}
+}

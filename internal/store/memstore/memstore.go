@@ -883,6 +883,41 @@ func (s *Store) CommentsByItem(_ context.Context, itemID string) ([]store.Commen
 	return out, nil
 }
 
+func (s *Store) CommentByID(_ context.Context, id string) (store.Comment, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.comments[id]
+	if !ok {
+		return store.Comment{}, store.ErrCommentNotFound
+	}
+	return c, nil
+}
+
+func (s *Store) UpdateComment(_ context.Context, id, body string, editedAt time.Time) (store.Comment, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.comments[id]
+	if !ok {
+		return store.Comment{}, store.ErrCommentNotFound
+	}
+	c.Body = body
+	c.EditedAt = &editedAt
+	s.comments[id] = c
+	return c, nil
+}
+
+func (s *Store) SoftDeleteComment(_ context.Context, id string, deletedAt time.Time) (store.Comment, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.comments[id]
+	if !ok {
+		return store.Comment{}, store.ErrCommentNotFound
+	}
+	c.DeletedAt = &deletedAt
+	s.comments[id] = c
+	return c, nil
+}
+
 // --- activity log ---
 
 func (s *Store) RecordEvent(_ context.Context, e store.Event) (store.Event, error) {

@@ -80,6 +80,8 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("POST /{slug}/items/{id}/assignee", protected(h.itemAssignee))
 	mux.Handle("POST /{slug}/items/{id}/status", protected(h.itemSetStatus))
 	mux.Handle("POST /{slug}/items/{id}/comment", protected(h.itemComment))
+	mux.Handle("POST /{slug}/items/{id}/comment/{cid}/edit", protected(h.itemCommentEdit))
+	mux.Handle("POST /{slug}/items/{id}/comment/{cid}/delete", protected(h.itemCommentDelete))
 	mux.Handle("POST /{slug}/items/{id}/parent", protected(h.itemParent))
 	mux.Handle("POST /{slug}/items/{id}/milestone", protected(h.itemMilestone))
 	mux.Handle("POST /{slug}/items/{id}/subtasks", protected(h.subtaskCreate))

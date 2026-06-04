@@ -86,37 +86,36 @@
           </form>
         </div>
 
-        <div class="modal-comments">
-          <p class="section-title">Comments</p>
-          <div class="comment-list" data-comment-list>
-            {{range .Comments}}
-            <div class="comment">
-              <div class="comment-meta">{{.Author}} · {{.At}}</div>
-              <div class="comment-body">{{.Body}}</div>
-            </div>
-            {{end}}
-          </div>
-          <div class="comment-compose">
-            <textarea class="comment-input" rows="2" placeholder="Add a comment…  (⌘↵)" maxlength="5000" aria-label="New comment" data-comment-input></textarea>
-            <button class="comment-send" type="button" data-comment-send aria-label="Send comment">
-              <svg class="ico" viewBox="0 0 16 16"><path d="M8 13.5V3.5M3.5 8 8 3.5 12.5 8"/></svg>
-            </button>
-          </div>
-        </div>
-
-        {{if .History}}
-        <div class="modal-history">
+        <div class="modal-activity" data-activity>
           <p class="section-title">Activity</p>
-          <ol class="history-list">
-            {{range .History}}
-            <li class="history-row">
-              <span class="history-line"><span class="history-actor">{{.Actor}}</span> {{.Summary}}</span>
-              <span class="history-when">{{.When}}</span>
-            </li>
+          <div class="feed" data-feed>
+            {{range .Timeline}}
+              {{- if .Comment}}
+                {{template "comment-card" .Comment}}
+              {{- else}}
+              <div class="evt-cluster">
+                {{range .Events}}
+                <div class="evt">
+                  <span class="evt-icon">{{template "evt-glyph" .}}</span>
+                  <span class="evt-line"><span class="evt-actor">{{.Actor}}</span> {{.Summary}} <time class="evt-when" title="{{.When}}">· {{.Rel}}</time></span>
+                </div>
+                {{end}}
+              </div>
+              {{- end}}
             {{end}}
-          </ol>
+          </div>
+          <div class="composer" data-composer>
+            <textarea class="composer-input" rows="1" placeholder="Leave a comment…" maxlength="5000" aria-label="New comment" data-comment-input></textarea>
+            <div class="composer-foot">
+              <span class="composer-hint">Markdown supported · ⌘↵ to send</span>
+              <div class="composer-actions">
+                <button class="composer-send" type="button" data-comment-send aria-label="Send comment" disabled>
+                  <svg class="ico" viewBox="0 0 16 16"><path d="M8 13.5V3.5M3.5 8 8 3.5 12.5 8"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-        {{end}}
       </div>
 
       <aside class="modal-side">
@@ -177,5 +176,49 @@
 {{- if .Truncated}}<button type="button" class="modal-desc-more" data-desc-more aria-expanded="false">Show more</button>{{end}}
 {{- else}}
 <p class="modal-desc-empty" data-desc-empty>No description yet.</p>
+{{- end}}
+{{end}}
+
+{{define "comment-card"}}
+{{- if .Deleted}}
+<article class="cmt cmt-deleted" data-comment-id="{{.ID}}">
+  <span class="cmt-deleted-text">Comment deleted</span>
+</article>
+{{- else}}
+<article class="cmt" data-comment-id="{{.ID}}"{{if .Mine}} data-mine{{end}} data-src="{{.Body}}">
+  <header class="cmt-head">
+    <span class="avatar cmt-avatar" style="{{.AvatarStyle}}">{{.AvatarText}}</span>
+    <span class="cmt-author">{{.Author}}</span>
+    <time class="cmt-when" title="{{.Abs}}">{{.Rel}}</time>
+    <span class="cmt-edited"{{if not .Edited}} hidden{{end}}>(edited)</span>
+    {{- if .Mine}}
+    <div class="cmt-menu" data-cmt-menu>
+      <button class="cmt-menu-btn" type="button" data-cmt-menu-btn aria-label="Comment actions">
+        <svg class="ico" viewBox="0 0 16 16"><circle cx="3.2" cy="8" r="1.25"/><circle cx="8" cy="8" r="1.25"/><circle cx="12.8" cy="8" r="1.25"/></svg>
+      </button>
+      <div class="popover cmt-menu-pop" data-cmt-menu-pop hidden>
+        <button class="cmt-menu-item" type="button" data-cmt-edit>Edit</button>
+        <button class="cmt-menu-item danger" type="button" data-cmt-delete>Delete</button>
+      </div>
+    </div>
+    {{- end}}
+  </header>
+  <div class="cmt-body md" data-cmt-body>{{.BodyHTML}}</div>
+</article>
+{{- end}}
+{{end}}
+
+{{/* evt-glyph: the small left-column icon for one system event. Status and
+     creation events fill it with the destination lane colour (Dot); the rest use
+     a per-kind outline glyph. */}}
+{{define "evt-glyph"}}
+{{- if .Dot}}<span class="status-dot" style="{{.Dot}}"></span>
+{{- else if eq .Kind "assign"}}<svg class="evt-ico" viewBox="0 0 16 16"><circle cx="8" cy="6" r="2.4"/><path d="M3.2 13a4.8 4.8 0 0 1 9.6 0"/></svg>
+{{- else if eq .Kind "milestone"}}<svg class="evt-ico" viewBox="0 0 16 16"><path d="M8 2.4 13.6 8 8 13.6 2.4 8Z"/></svg>
+{{- else if eq .Kind "parent"}}<svg class="evt-ico" viewBox="0 0 16 16"><path d="M4 3v6.5a2 2 0 0 0 2 2h5.5"/><path d="M9 9 12 11.5 9 14"/></svg>
+{{- else if eq .Kind "rename"}}<svg class="evt-ico" viewBox="0 0 16 16"><path d="M10.8 3.3 12.7 5.2 6 11.9l-2.5.6.6-2.5z"/></svg>
+{{- else if eq .Kind "describe"}}<svg class="evt-ico" viewBox="0 0 16 16"><path d="M3.5 4.5h9M3.5 8h9M3.5 11.5h6"/></svg>
+{{- else if eq .Kind "archive"}}<svg class="evt-ico" viewBox="0 0 16 16"><rect x="2.6" y="3.8" width="10.8" height="2.6" rx=".4"/><path d="M3.6 6.4v6h8.8v-6M6.4 8.8h3.2"/></svg>
+{{- else}}<span class="evt-bullet"></span>
 {{- end}}
 {{end}}

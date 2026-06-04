@@ -919,9 +919,16 @@ func (p *Postgres) CreateComment(ctx context.Context, c store.Comment) (store.Co
 	})
 }
 
+const commentCols = `id::text, item_id::text, COALESCE(author_id::text, ''), body, created_at, edited_at, deleted_at`
+
+func scanComment(row interface{ Scan(...any) error }) (store.Comment, error) {
+	var c store.Comment
+	err := row.Scan(&c.ID, &c.ItemID, &c.AuthorID, &c.Body, &c.CreatedAt, &c.EditedAt, &c.DeletedAt)
+	return c, err
+}
+
 func (p *Postgres) CommentsByItem(ctx context.Context, itemID string) ([]store.Comment, error) {
-	const q = `SELECT id::text, item_id::text, COALESCE(author_id::text, ''), body, created_at
-	           FROM comments WHERE item_id = $1 ORDER BY created_at`
+	q := `SELECT ` + commentCols + ` FROM comments WHERE item_id = $1 ORDER BY created_at`
 	rows, err := p.pool.Query(ctx, q, itemID)
 	if err != nil {
 		return nil, err
@@ -929,13 +936,40 @@ func (p *Postgres) CommentsByItem(ctx context.Context, itemID string) ([]store.C
 	defer rows.Close()
 	var out []store.Comment
 	for rows.Next() {
-		var c store.Comment
-		if err := rows.Scan(&c.ID, &c.ItemID, &c.AuthorID, &c.Body, &c.CreatedAt); err != nil {
+		c, err := scanComment(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+func (p *Postgres) CommentByID(ctx context.Context, id string) (store.Comment, error) {
+	q := `SELECT ` + commentCols + ` FROM comments WHERE id = $1`
+	c, err := scanComment(p.pool.QueryRow(ctx, q, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.Comment{}, store.ErrCommentNotFound
+	}
+	return c, err
+}
+
+func (p *Postgres) UpdateComment(ctx context.Context, id, body string, editedAt time.Time) (store.Comment, error) {
+	q := `UPDATE comments SET body = $2, edited_at = $3 WHERE id = $1 RETURNING ` + commentCols
+	c, err := scanComment(p.pool.QueryRow(ctx, q, id, body, editedAt))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.Comment{}, store.ErrCommentNotFound
+	}
+	return c, err
+}
+
+func (p *Postgres) SoftDeleteComment(ctx context.Context, id string, deletedAt time.Time) (store.Comment, error) {
+	q := `UPDATE comments SET deleted_at = $2 WHERE id = $1 RETURNING ` + commentCols
+	c, err := scanComment(p.pool.QueryRow(ctx, q, id, deletedAt))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.Comment{}, store.ErrCommentNotFound
+	}
+	return c, err
 }
 
 // --- activity log ---

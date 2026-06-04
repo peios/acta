@@ -7,18 +7,18 @@
   </div>
 
   {{if .Events}}
-  <ol class="feed reveal d1">
+  <div class="feed reveal d1">
     {{range .Events}}
-    <li class="feed-row">
-      <div class="feed-body">
-        <span class="feed-actor">{{.Actor}}</span>
-        <span class="feed-summary">{{.Summary}}</span>
-        {{if .ItemID}}<a class="feed-item" href="/{{$.Workspace.Slug}}?item={{.ItemID}}">{{.ItemTitle}}</a>{{end}}
-      </div>
-      <time class="feed-when">{{.When}}</time>
-    </li>
+    <div class="evt">
+      <span class="evt-icon">{{template "evt-glyph" .}}</span>
+      <span class="evt-line">
+        <span class="evt-actor">{{.Actor}}</span> {{.Summary}}
+        {{- if .ItemID}} <a class="evt-item" href="/{{$.Workspace.Slug}}?item={{.ItemID}}">{{.ItemTitle}}</a>{{end}}
+        <time class="evt-when" title="{{.When}}">· {{.Rel}}</time>
+      </span>
+    </div>
     {{end}}
-  </ol>
+  </div>
   {{else}}
   <p class="subtitle reveal d1">No activity yet.</p>
   {{end}}

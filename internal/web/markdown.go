@@ -8,8 +8,13 @@ import (
 
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/renderer"
 	ghtml "github.com/yuin/goldmark/renderer/html"
+	"github.com/yuin/goldmark/text"
+	"github.com/yuin/goldmark/util"
 )
 
 // Markdown is rendered server-side and sanitized. goldmark runs with raw HTML
@@ -18,7 +23,7 @@ import (
 // layer. The result is trusted template.HTML.
 
 var mdRenderer = goldmark.New(
-	goldmark.WithExtensions(extension.GFM), // tables, strikethrough, autolinks, task lists
+	goldmark.WithExtensions(extension.GFM, mentionExtension{}), // tables, strikethrough, autolinks, task lists, @mentions
 	goldmark.WithRendererOptions(ghtml.WithHardWraps()),
 )
 
@@ -27,10 +32,79 @@ var mdPolicy = func() *bluemonday.Policy {
 	// GFM task lists render disabled checkboxes; allow exactly those.
 	p.AllowAttrs("checked", "disabled").OnElements("input")
 	p.AllowAttrs("type").Matching(regexp.MustCompile(`^checkbox$`)).OnElements("input")
+	// Mention chips: a span with exactly class="mention" (our renderer's output).
+	p.AllowAttrs("class").Matching(regexp.MustCompile(`^mention$`)).OnElements("span")
 	// Open external links in a new tab (bluemonday adds rel=noopener).
 	p.AddTargetBlankToFullyQualifiedLinks(true)
 	return p
 }()
+
+// --- @mention chips ---
+//
+// A goldmark inline extension that renders @handles as <span class="mention">
+// chips. Working inside goldmark's pipeline (rather than post-processing the
+// HTML) means mentions inside code spans/fences are left alone for free, and the
+// same @handle tokens that drive notifications (board.parseMentions) render as
+// chips. The handle grammar mirrors that regexp.
+
+var mentionInlineRe = regexp.MustCompile(`^@[A-Za-z0-9][A-Za-z0-9._/-]*`)
+
+var kindMention = ast.NewNodeKind("Mention")
+
+type mentionNode struct {
+	ast.BaseInline
+	handle []byte // the @-stripped handle, e.g. "jack" or "jack/bot"
+}
+
+func (n *mentionNode) Kind() ast.NodeKind         { return kindMention }
+func (n *mentionNode) Dump(src []byte, level int) { ast.DumpHelper(n, src, level, nil, nil) }
+
+type mentionParser struct{}
+
+func (mentionParser) Trigger() []byte { return []byte{'@'} }
+
+func (mentionParser) Parse(_ ast.Node, block text.Reader, _ parser.Context) ast.Node {
+	line, seg := block.PeekLine()
+	// Require a non-word char before '@' so emails (a@b.com) aren't chipped —
+	// those fall through to GFM's autolinker.
+	if seg.Start > 0 {
+		if b := block.Source()[seg.Start-1]; isWordByte(b) {
+			return nil
+		}
+	}
+	m := mentionInlineRe.Find(line)
+	if m == nil {
+		return nil
+	}
+	block.Advance(len(m))
+	return &mentionNode{handle: m[1:]} // drop the leading '@'
+}
+
+func isWordByte(b byte) bool {
+	return b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
+}
+
+type mentionRenderer struct{}
+
+func (mentionRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
+	reg.Register(kindMention, renderMention)
+}
+
+func renderMention(w util.BufWriter, _ []byte, n ast.Node, entering bool) (ast.WalkStatus, error) {
+	if entering {
+		w.WriteString(`<span class="mention">@`)
+		_, _ = w.Write(util.EscapeHTML(n.(*mentionNode).handle))
+		w.WriteString(`</span>`)
+	}
+	return ast.WalkContinue, nil
+}
+
+type mentionExtension struct{}
+
+func (mentionExtension) Extend(m goldmark.Markdown) {
+	m.Parser().AddOptions(parser.WithInlineParsers(util.Prioritized(mentionParser{}, 199)))
+	m.Renderer().AddOptions(renderer.WithNodeRenderers(util.Prioritized(mentionRenderer{}, 199)))
+}
 
 func mdToHTML(src string) template.HTML {
 	var buf bytes.Buffer

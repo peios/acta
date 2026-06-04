@@ -563,6 +563,10 @@ func writeBoardErr(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusBadRequest, body{"invalid_description"})
 	case errors.Is(err, board.ErrInvalidComment):
 		writeJSON(w, http.StatusBadRequest, body{"invalid_comment"})
+	case errors.Is(err, board.ErrCommentForbidden):
+		writeJSON(w, http.StatusForbidden, body{"comment_forbidden"})
+	case errors.Is(err, store.ErrCommentNotFound):
+		writeJSON(w, http.StatusNotFound, body{"comment_not_found"})
 	case errors.Is(err, board.ErrStatusNotEmpty):
 		writeJSON(w, http.StatusConflict, body{"status_not_empty"})
 	case errors.Is(err, board.ErrNoStatus):

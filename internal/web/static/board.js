@@ -80,6 +80,85 @@
     av.textContent = avatarInitials(name);
   }
 
+  // --- comment composer (shared by the new-comment box and inline edit) ---
+  // One behaviour for both: auto-grow, a send that enables once there's text,
+  // ⌘/Ctrl+Enter (and the button) to submit, Escape/Cancel to back out, and
+  // @-mention autocomplete. onSubmit(text) may be async; after a successful
+  // submit the box clears (unless resetOnSubmit:false, e.g. for inline edit,
+  // where the caller tears the composer down itself).
+  function autogrow(ta) {
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 'px';
+  }
+
+  function wireComposer(box, opts) {
+    const ta = box.querySelector('.composer-input');
+    const send = box.querySelector('.composer-send');
+    const cancel = box.querySelector('.composer-cancel');
+    let busy = false;
+    const sync = () => { send.disabled = busy || !ta.value.trim(); autogrow(ta); };
+    const submit = async () => {
+      const text = ta.value.trim();
+      if (!text || busy) return;
+      busy = true; sync();
+      try {
+        await opts.onSubmit(text);
+        if (opts.resetOnSubmit !== false) ta.value = '';
+        hideMentions();
+      } catch (e) { if (opts.onError) opts.onError(e); }
+      finally { busy = false; sync(); }
+    };
+    ta.addEventListener('input', sync);
+    ta.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); submit(); }
+      else if (e.key === 'Escape' && opts.onCancel) { e.preventDefault(); e.stopPropagation(); opts.onCancel(); }
+    });
+    send.addEventListener('click', submit);
+    if (cancel && opts.onCancel) cancel.addEventListener('click', opts.onCancel);
+    wireMention(ta);
+    requestAnimationFrame(() => autogrow(ta)); // size correctly once laid out
+    sync();
+    return { textarea: ta, focus: () => ta.focus() };
+  }
+
+  // buildComposer mints a .composer matching the server-rendered one, for inline
+  // edit. Mirror the markup in item_modal.html if you change either.
+  function buildComposer({ value = '', placeholder = '', withCancel = false } = {}) {
+    const box = document.createElement('div');
+    box.className = 'composer';
+    box.dataset.composer = '';
+    const ta = document.createElement('textarea');
+    ta.className = 'composer-input';
+    ta.rows = 1;
+    ta.maxLength = 5000;
+    ta.placeholder = placeholder;
+    ta.value = value;
+    const foot = document.createElement('div');
+    foot.className = 'composer-foot';
+    const hint = document.createElement('span');
+    hint.className = 'composer-hint';
+    hint.textContent = 'Markdown supported · ⌘↵ to save';
+    const actions = document.createElement('div');
+    actions.className = 'composer-actions';
+    if (withCancel) {
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'composer-cancel';
+      cancel.textContent = 'Cancel';
+      actions.appendChild(cancel);
+    }
+    const send = document.createElement('button');
+    send.type = 'button';
+    send.className = 'composer-send';
+    send.setAttribute('aria-label', 'Save');
+    send.disabled = true;
+    send.innerHTML = '<svg class="ico" viewBox="0 0 16 16"><path d="M8 13.5V3.5M3.5 8 8 3.5 12.5 8"/></svg>';
+    actions.appendChild(send);
+    foot.append(hint, actions);
+    box.append(ta, foot);
+    return box;
+  }
+
   // --- @-mention autocomplete (comment box) ---
   // Suggests directable principals (humans + your own agents) from
   // /mentionables and inserts the canonical @handle. The panel is fixed-
@@ -698,35 +777,20 @@
 
     wireDescription(el, id, fail);
 
-    // Comments post on Cmd/Ctrl+Enter.
-    const commentInput = el.querySelector('[data-comment-input]');
-    const postComment = async () => {
-      const body = commentInput.value.trim();
-      if (!body) return;
-      try {
-        const c = await api('/items/' + id + '/comment', { body });
-        const div = document.createElement('div');
-        div.className = 'comment';
-        const meta = document.createElement('div');
-        meta.className = 'comment-meta';
-        meta.textContent = c.author + ' · ' + c.at;
-        const text = document.createElement('div');
-        text.className = 'comment-body';
-        text.textContent = c.body;
-        div.append(meta, text);
-        el.querySelector('[data-comment-list]').append(div);
-        commentInput.value = '';
-        hideMentions();
-      } catch (err2) { fail(err2); }
-    };
-    // ⌘/Ctrl+Enter posts (desktop); the on-screen send button posts on touch,
-    // where the system keyboard has no key separate from the newline return.
-    commentInput.addEventListener('keydown', (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); postComment(); }
-    });
-    const commentSend = el.querySelector('[data-comment-send]');
-    if (commentSend) commentSend.addEventListener('click', postComment);
-    wireMention(commentInput);
+    // The new-comment composer: post, append the card optimistically, clear.
+    const feed = el.querySelector('[data-feed]');
+    const composerBox = el.querySelector('[data-composer]');
+    if (composerBox) {
+      wireComposer(composerBox, {
+        onSubmit: async (body) => {
+          const c = await api('/items/' + id + '/comment', { body });
+          appendComment(feed, { ...c, mine: true }, id);
+        },
+        onError: fail,
+      });
+    }
+    // Wire edit/delete on the viewer's own comments already in the feed.
+    el.querySelectorAll('.cmt[data-mine]').forEach((card) => wireCommentCard(card, id));
 
     const parentLink = el.querySelector('[data-parent-link]');
     if (parentLink) parentLink.addEventListener('click', (e) => { e.preventDefault(); openModal(parentLink.dataset.parentLink); });
@@ -1162,20 +1226,163 @@
     if (modalEl && modalEl.dataset.itemId === msg.id) closeModal();
   }
 
+  // commentCard builds one feed card from a server payload ({id, author,
+  // body, body_html, rel, abs, avatar_style, avatar_text, mine, edited}).
+  // body_html is server-rendered and sanitized (bluemonday), so injecting it via
+  // innerHTML matches a reload. The owner kebab mirrors comment-card in
+  // item_modal.html — keep the two in sync.
+  function commentCard(c) {
+    const art = document.createElement('article');
+    art.className = 'cmt';
+    if (c.id) art.dataset.commentId = c.id;
+    if (c.mine) art.dataset.mine = '';
+    art.dataset.src = c.body || '';
+    const head = document.createElement('header');
+    head.className = 'cmt-head';
+    const av = document.createElement('span');
+    av.className = 'avatar cmt-avatar';
+    if (c.avatar_style) av.setAttribute('style', c.avatar_style);
+    av.textContent = c.avatar_text || '';
+    const who = document.createElement('span');
+    who.className = 'cmt-author';
+    who.textContent = c.author || '';
+    const when = document.createElement('time');
+    when.className = 'cmt-when';
+    if (c.abs) when.title = c.abs;
+    when.textContent = c.rel || '';
+    const edited = document.createElement('span');
+    edited.className = 'cmt-edited';
+    edited.textContent = '(edited)';
+    edited.hidden = !c.edited;
+    head.append(av, who, when, edited);
+    if (c.mine) head.appendChild(commentMenu());
+    const body = document.createElement('div');
+    body.className = 'cmt-body md';
+    body.dataset.cmtBody = '';
+    body.innerHTML = c.body_html || '';
+    art.append(head, body);
+    return art;
+  }
+
+  function commentMenu() {
+    const menu = document.createElement('div');
+    menu.className = 'cmt-menu';
+    menu.dataset.cmtMenu = '';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cmt-menu-btn';
+    btn.dataset.cmtMenuBtn = '';
+    btn.setAttribute('aria-label', 'Comment actions');
+    btn.innerHTML = '<svg class="ico" viewBox="0 0 16 16"><circle cx="3.2" cy="8" r="1.25"/><circle cx="8" cy="8" r="1.25"/><circle cx="12.8" cy="8" r="1.25"/></svg>';
+    const pop = document.createElement('div');
+    pop.className = 'popover cmt-menu-pop';
+    pop.dataset.cmtMenuPop = '';
+    pop.hidden = true;
+    const edit = document.createElement('button');
+    edit.type = 'button'; edit.className = 'cmt-menu-item'; edit.dataset.cmtEdit = ''; edit.textContent = 'Edit';
+    const del = document.createElement('button');
+    del.type = 'button'; del.className = 'cmt-menu-item danger'; del.dataset.cmtDelete = ''; del.textContent = 'Delete';
+    pop.append(edit, del);
+    menu.append(btn, pop);
+    return menu;
+  }
+
+  function appendComment(feed, c, itemId) {
+    if (!feed) return null;
+    const card = commentCard(c);
+    feed.appendChild(card);
+    if (c.mine && itemId) wireCommentCard(card, itemId);
+    return card;
+  }
+
+  // wireCommentCard attaches the owner kebab: a menu toggle, inline edit (the
+  // body swaps for a pre-filled composer), and an arm-then-confirm delete.
+  function wireCommentCard(card, itemId) {
+    const menu = card.querySelector('[data-cmt-menu]');
+    if (!menu) return;
+    const btn = menu.querySelector('[data-cmt-menu-btn]');
+    const pop = menu.querySelector('[data-cmt-menu-pop]');
+    const editBtn = menu.querySelector('[data-cmt-edit]');
+    const delBtn = menu.querySelector('[data-cmt-delete]');
+    const cid = card.dataset.commentId;
+
+    let armed = false, armTimer = null;
+    function resetDelete() { armed = false; clearTimeout(armTimer); delBtn.textContent = 'Delete'; delBtn.classList.remove('armed'); }
+    const closeMenu = () => { pop.hidden = true; resetDelete(); };
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      pop.hidden = !pop.hidden;
+      if (pop.hidden) resetDelete();
+    });
+
+    editBtn.addEventListener('click', () => {
+      closeMenu();
+      const bodyEl = card.querySelector('[data-cmt-body]');
+      if (!bodyEl || card.querySelector('.composer')) return; // already editing
+      const composer = buildComposer({ value: card.dataset.src || '', placeholder: 'Edit comment…', withCancel: true });
+      bodyEl.hidden = true;
+      bodyEl.after(composer);
+      const restore = () => { composer.remove(); bodyEl.hidden = false; };
+      const h = wireComposer(composer, {
+        resetOnSubmit: false,
+        onSubmit: async (body) => {
+          const c = await api('/items/' + itemId + '/comment/' + cid + '/edit', { body });
+          bodyEl.innerHTML = c.body_html || '';
+          card.dataset.src = c.body != null ? c.body : body;
+          const ed = card.querySelector('.cmt-edited');
+          if (ed) ed.hidden = false;
+          restore();
+        },
+        onCancel: restore,
+      });
+      h.focus();
+    });
+
+    delBtn.addEventListener('click', async () => {
+      if (!armed) { // first click arms; a second within 2.5s confirms
+        armed = true;
+        delBtn.textContent = 'Click to confirm';
+        delBtn.classList.add('armed');
+        armTimer = setTimeout(resetDelete, 2500);
+        return;
+      }
+      resetDelete();
+      pop.hidden = true;
+      try {
+        await api('/items/' + itemId + '/comment/' + cid + '/delete');
+        tombstone(card);
+      } catch (_) { /* leave the card as-is on failure */ }
+    });
+  }
+
+  function tombstone(card) {
+    card.className = 'cmt cmt-deleted';
+    card.removeAttribute('data-mine');
+    delete card.dataset.src;
+    card.innerHTML = '<span class="cmt-deleted-text">Comment deleted</span>';
+  }
+
   function applyComment(msg) {
     if (!modalEl || modalEl.dataset.itemId !== msg.item) return;
-    const list = modalEl.querySelector('[data-comment-list]');
-    if (!list) return;
-    const div = document.createElement('div');
-    div.className = 'comment';
-    const meta = document.createElement('div');
-    meta.className = 'comment-meta';
-    meta.textContent = (msg.author || '') + ' · ' + (msg.at || '');
-    const text = document.createElement('div');
-    text.className = 'comment-body';
-    text.textContent = msg.body || '';
-    div.append(meta, text);
-    list.append(div);
+    appendComment(modalEl.querySelector('[data-feed]'), msg, msg.item);
+  }
+
+  function applyCommentEdit(msg) {
+    if (!modalEl || modalEl.dataset.itemId !== msg.item) return;
+    const card = modalEl.querySelector('.cmt[data-comment-id="' + CSS.escape(msg.id) + '"]');
+    if (!card) return;
+    const bodyEl = card.querySelector('[data-cmt-body]');
+    if (bodyEl) bodyEl.innerHTML = msg.body_html || '';
+    card.dataset.src = msg.body || '';
+    const ed = card.querySelector('.cmt-edited');
+    if (ed) ed.hidden = false;
+  }
+
+  function applyCommentDelete(msg) {
+    if (!modalEl || modalEl.dataset.itemId !== msg.item) return;
+    const card = modalEl.querySelector('.cmt[data-comment-id="' + CSS.escape(msg.id) + '"]');
+    if (card) tombstone(card);
   }
 
   function applySubtaskAdd(msg) {
@@ -1200,8 +1407,18 @@
         case 'item.upsert': applyUpsert(msg); break;
         case 'item.remove': applyRemove(msg); break;
         case 'comment.add': applyComment(msg); break;
+        case 'comment.edit': applyCommentEdit(msg); break;
+        case 'comment.delete': applyCommentDelete(msg); break;
         case 'subtask.add': applySubtaskAdd(msg); break;
       }
     } catch (_) { /* a live update must never break the page */ }
+  });
+
+  // A pointer down outside an open comment kebab closes it.
+  document.addEventListener('pointerdown', (e) => {
+    document.querySelectorAll('[data-cmt-menu-pop]:not([hidden])').forEach((pop) => {
+      const menu = pop.closest('[data-cmt-menu]');
+      if (menu && !menu.contains(e.target)) pop.hidden = true;
+    });
   });
 })();

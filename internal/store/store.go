@@ -24,6 +24,7 @@ var (
 	ErrItemNotFound         = errors.New("store: item not found")
 	ErrMCPPromptNotFound    = errors.New("store: mcp prompt not found")
 	ErrMCPPromptNameTaken   = errors.New("store: mcp prompt name already taken")
+	ErrCommentNotFound      = errors.New("store: comment not found")
 )
 
 // MCPPrompt is a user-defined Model Context Protocol prompt: a named, optionally
@@ -235,14 +236,18 @@ type SubtaskCount struct {
 	Total int
 }
 
-// Comment is an append-only note by a user on an item. AuthorID may be empty if
-// the author's account was later removed.
+// Comment is a note by a user on an item. AuthorID may be empty if the author's
+// account was later removed. EditedAt is non-nil once the author has edited it;
+// DeletedAt is non-nil once soft-deleted — the row is kept (append-only audit)
+// but presented as a tombstone and dropped from the default Comments view.
 type Comment struct {
 	ID        string
 	ItemID    string
 	AuthorID  string
 	Body      string
 	CreatedAt time.Time
+	EditedAt  *time.Time
+	DeletedAt *time.Time
 }
 
 // Notification kinds. Each names why a principal was notified; the row's
@@ -395,9 +400,15 @@ type Store interface {
 	SetItemPositions(ctx context.Context, orderedIDs []string) error
 	DeleteItem(ctx context.Context, id string) error
 
-	// Comments on an item, returned oldest-first.
+	// Comments on an item, returned oldest-first (including soft-deleted ones;
+	// callers filter as they need). CommentByID returns ErrCommentNotFound when
+	// absent. UpdateComment replaces the body and stamps editedAt; SoftDelete
+	// stamps deletedAt. Both return the updated row.
 	CreateComment(ctx context.Context, c Comment) (Comment, error)
 	CommentsByItem(ctx context.Context, itemID string) ([]Comment, error)
+	CommentByID(ctx context.Context, id string) (Comment, error)
+	UpdateComment(ctx context.Context, id, body string, editedAt time.Time) (Comment, error)
+	SoftDeleteComment(ctx context.Context, id string, deletedAt time.Time) (Comment, error)
 
 	// Activity log. RecordEvent appends an entry (assigning its id). The two
 	// readers return newest-first, capped at limit (a non-positive limit is

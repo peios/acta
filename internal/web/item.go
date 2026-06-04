@@ -3,8 +3,11 @@ package web
 import (
 	"context"
 	"errors"
+	"fmt"
 	"html/template"
+	"maps"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -27,7 +30,6 @@ type modalView struct {
 	StatusColorVar template.CSS // current status's --lane-color (for the pill dot)
 	Assignables    []store.User // assignee-picker options: humans + your agents (+ current assignee)
 	Assignee       string       // display name of the assignee, "" if unassigned
-	Comments       []commentView
 	Archived       bool
 	ParentID       string // "" if this is a top-level item
 	ParentTitle    string
@@ -37,7 +39,7 @@ type modalView struct {
 	SubTotal       int
 	CreatedBy      string // display name of the creator, "" if unrecorded
 	CreatedByAgent bool
-	History        []eventView // activity log for this item, newest first
+	Timeline       []timelineGroup // unified activity feed: comments + system events, oldest first
 }
 
 // statusChoice is one option in the modal's status pickers (the side <select>
@@ -67,9 +69,94 @@ func containsUser(us []store.User, id string) bool {
 }
 
 type commentView struct {
-	Author string
-	Body   string
-	At     string
+	ID          string
+	AuthorID    string
+	Author      string
+	AvatarStyle template.CSS
+	AvatarText  string
+	Body        string        // raw markdown source, for the inline editor (empty if deleted)
+	BodyHTML    template.HTML // rendered, sanitized markdown (empty if deleted)
+	Rel         string        // relative time ("2h ago")
+	Abs         string        // absolute time, for the hover tooltip
+	Mine        bool          // authored by the viewer (gates edit/delete affordances)
+	Edited      bool          // has been edited at least once
+	Deleted     bool          // soft-deleted — render a tombstone, no body
+}
+
+// timelineGroup is one render unit in the unified activity feed: either a
+// comment card (Comment != nil) or a run of consecutive system events sharing a
+// connecting rail (Events).
+type timelineGroup struct {
+	Comment *commentView
+	Events  []eventView
+}
+
+// commentToView renders a stored comment for the feed: author display + avatar,
+// markdown body, and a Mine flag when the viewer wrote it.
+func commentToView(c store.Comment, nameByID map[string]string, viewerID string) commentView {
+	author := nameByID[c.AuthorID]
+	if author == "" {
+		author = "Unknown"
+	}
+	cv := commentView{
+		ID:          c.ID,
+		AuthorID:    c.AuthorID,
+		Author:      author,
+		AvatarStyle: avatarStyle(c.AuthorID),
+		AvatarText:  initials(author),
+		Rel:         relativeWhen(c.CreatedAt),
+		Abs:         formatWhen(c.CreatedAt),
+		Mine:        viewerID != "" && c.AuthorID == viewerID,
+		Edited:      c.EditedAt != nil,
+		Deleted:     c.DeletedAt != nil,
+	}
+	// A tombstone carries no body — the deleted text never reaches the client.
+	if c.DeletedAt == nil {
+		cv.Body = c.Body
+		cv.BodyHTML = mdToHTML(c.Body)
+	}
+	return cv
+}
+
+// buildTimeline merges an item's comments and system events into one
+// chronological feed (oldest first). The comment.added events are dropped — the
+// comment card stands in for them — and consecutive system events are folded
+// into one group so the template can draw a single rail through them. events
+// arrives newest-first (as the store returns it); comments oldest-first.
+func buildTimeline(comments []store.Comment, events []store.Event, nameByID, colorByStatus map[string]string, viewerID string) []timelineGroup {
+	type entry struct {
+		when    time.Time
+		comment *store.Comment
+		event   *store.Event
+	}
+	entries := make([]entry, 0, len(comments)+len(events))
+	for i := range comments {
+		entries = append(entries, entry{when: comments[i].CreatedAt, comment: &comments[i]})
+	}
+	for i := range events {
+		if events[i].Verb == store.EventCommentAdded {
+			continue
+		}
+		entries = append(entries, entry{when: events[i].CreatedAt, event: &events[i]})
+	}
+	sort.SliceStable(entries, func(i, j int) bool { return entries[i].when.Before(entries[j].when) })
+
+	var feed []timelineGroup
+	for _, e := range entries {
+		if e.comment != nil {
+			cv := commentToView(*e.comment, nameByID, viewerID)
+			feed = append(feed, timelineGroup{Comment: &cv})
+			continue
+		}
+		ev := eventToView(*e.event)
+		setEventDot(&ev, e.event.Data, colorByStatus)
+		if n := len(feed); n > 0 && feed[n-1].Comment == nil {
+			feed[n-1].Events = append(feed[n-1].Events, ev)
+		} else {
+			feed = append(feed, timelineGroup{Events: []eventView{ev}})
+		}
+	}
+	return feed
 }
 
 type childView struct {
@@ -154,7 +241,7 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 	if err != nil {
 		return modalView{}, false, err
 	}
-	comments, err := h.board.Comments(ctx, itemID)
+	comments, err := h.board.CommentsWithDeleted(ctx, itemID)
 	if err != nil {
 		return modalView{}, false, err
 	}
@@ -176,15 +263,6 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 			createdBy = "Unknown"
 		}
 	}
-	cvs := make([]commentView, len(comments))
-	for i, c := range comments {
-		author := nameByID[c.AuthorID]
-		if author == "" {
-			author = "Unknown"
-		}
-		cvs[i] = commentView{Author: author, Body: c.Body, At: formatWhen(c.CreatedAt)}
-	}
-
 	statusName := make(map[string]string, len(statuses))
 	for _, st := range statuses {
 		statusName[st.ID] = st.Name
@@ -238,16 +316,25 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 	}
 
 	// Resolve each status's lane colour once (explicit or palette-derived), so
-	// the modal's pill dots are coloured without depending on the board DOM.
+	// the modal's pill dots — and the feed's status-change glyphs — are coloured
+	// without depending on the board DOM.
 	statusChoices := make([]statusChoice, len(statuses))
+	colorByStatus := make(map[string]string, len(statuses))
 	var curStatusName, curStatusColor string
 	for i, st := range statuses {
 		c := board.ColorFor(st)
 		statusChoices[i] = statusChoice{ID: st.ID, Name: st.Name, Color: c}
+		colorByStatus[st.Name] = c
 		if st.ID == item.StatusID {
 			curStatusName, curStatusColor = st.Name, c
 		}
 	}
+
+	viewerID := ""
+	if p := principalFrom(ctx); p != nil {
+		viewerID = p.ID
+	}
+	timeline := buildTimeline(comments, history, nameByID, colorByStatus, viewerID)
 
 	return modalView{
 		Slug:           ws.Slug,
@@ -260,7 +347,6 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		StatusColorVar: colorVar(curStatusColor),
 		Assignables:    assignables,
 		Assignee:       nameByID[item.AssigneeID],
-		Comments:       cvs,
 		Archived:       item.ArchivedAt != nil,
 		ParentID:       item.ParentID,
 		ParentTitle:    parentTitle,
@@ -270,7 +356,7 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		SubTotal:       len(children),
 		CreatedBy:      createdBy,
 		CreatedByAgent: isAgent[item.CreatedBy],
-		History:        toEventViews(history),
+		Timeline:       timeline,
 	}, true, nil
 }
 
@@ -368,21 +454,79 @@ func (h *handlers) itemComment(w http.ResponseWriter, r *http.Request) {
 		writeBoardErr(w, err)
 		return
 	}
-	at := formatWhen(c.CreatedAt)
-	// Stream the comment to everyone with this item's modal open, and bump each
-	// mentioned principal's bell.
-	h.publishLive(wsTopic(ws.ID), "comment.add", clientID(r), map[string]any{
-		"item":   itemID,
-		"author": p.Display,
-		"body":   c.Body,
-		"at":     at,
-	})
+	// Render server-side so a freshly posted comment renders identically to a
+	// reloaded one (markdown, avatar colour, relative time) — the card builder in
+	// board.js just injects these.
+	abs := formatWhen(c.CreatedAt)
+	card := map[string]any{
+		"id":           c.ID,
+		"author":       p.Display,
+		"body":         c.Body,
+		"body_html":    string(mdToHTML(c.Body)),
+		"rel":          relativeWhen(c.CreatedAt),
+		"abs":          abs,
+		"avatar_style": string(avatarStyle(p.ID)),
+		"avatar_text":  initials(p.Display),
+	}
+	// Stream the comment to everyone else with this item's modal open, and bump
+	// each mentioned principal's bell.
+	live := map[string]any{"item": itemID}
+	maps.Copy(live, card)
+	h.publishLive(wsTopic(ws.ID), "comment.add", clientID(r), live)
 	h.publishNotifications(r.Context(), notified)
-	writeJSON(w, http.StatusOK, struct {
-		Author string `json:"author"`
-		Body   string `json:"body"`
-		At     string `json:"at"`
-	}{p.Display, c.Body, at})
+	writeJSON(w, http.StatusOK, card)
+}
+
+// itemCommentEdit replaces the body of the caller's own comment. The author
+// check lives in the board service; here we just render the new body and fan it
+// out to other open modals.
+func (h *handlers) itemCommentEdit(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.resolveWorkspace(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Body string `json:"body"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	p := principalFrom(r.Context())
+	c, notified, err := h.board.EditComment(r.Context(), r.PathValue("cid"), p.ID, req.Body)
+	if err != nil {
+		writeBoardErr(w, err)
+		return
+	}
+	payload := map[string]any{
+		"item":      r.PathValue("id"),
+		"id":        c.ID,
+		"body":      c.Body,
+		"body_html": string(mdToHTML(c.Body)),
+		"edited":    true,
+	}
+	h.publishLive(wsTopic(ws.ID), "comment.edit", clientID(r), payload)
+	h.publishNotifications(r.Context(), notified) // ping any newly @mentioned principal
+	writeJSON(w, http.StatusOK, payload)
+}
+
+// itemCommentDelete soft-deletes the caller's own comment, replacing it with a
+// tombstone everywhere the item's modal is open.
+func (h *handlers) itemCommentDelete(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.resolveWorkspace(w, r)
+	if !ok {
+		return
+	}
+	p := principalFrom(r.Context())
+	cid := r.PathValue("cid")
+	if _, err := h.board.DeleteComment(r.Context(), cid, p.ID); err != nil {
+		writeBoardErr(w, err)
+		return
+	}
+	h.publishLive(wsTopic(ws.ID), "comment.delete", clientID(r), map[string]any{
+		"item": r.PathValue("id"),
+		"id":   cid,
+	})
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // --- subtasks ---
@@ -558,4 +702,26 @@ func respond204OrRedirect(w http.ResponseWriter, r *http.Request, redirect strin
 
 func formatWhen(t time.Time) string {
 	return t.Format("2 Jan 2006, 15:04")
+}
+
+// relativeWhen renders a coarse, human relative time ("just now", "5m ago",
+// "3h ago", "2d ago", "4w ago"), falling back to the absolute date past a month.
+func relativeWhen(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < 45*time.Second:
+		return "just now"
+	case d < 90*time.Second:
+		return "1m ago"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	case d < 7*24*time.Hour:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	case d < 30*24*time.Hour:
+		return fmt.Sprintf("%dw ago", int(d.Hours()/(24*7)))
+	default:
+		return formatWhen(t)
+	}
 }

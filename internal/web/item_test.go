@@ -28,8 +28,8 @@ func TestDeepLinkRendersModal(t *testing.T) {
 	if !strings.Contains(page, "data-modal") || !strings.Contains(page, `value="Deep linked"`) {
 		t.Fatalf("deep-link did not render the modal:\n%s", page)
 	}
-	if !strings.Contains(page, "Comments") {
-		t.Error("modal missing comments section")
+	if !strings.Contains(page, "data-feed") || !strings.Contains(page, "data-comment-input") {
+		t.Error("modal missing activity feed / comment composer")
 	}
 
 	// The fragment endpoint returns just the modal.
@@ -97,6 +97,57 @@ func TestDescriptionAndComment(t *testing.T) {
 	}
 	if !strings.Contains(modal, "first thoughts") || !strings.Contains(modal, "Jack") {
 		t.Error("modal missing the comment")
+	}
+}
+
+func TestCommentEditDeleteHTTP(t *testing.T) {
+	base, client := newTestServer(t)
+	token := csrfToken(t, client, base)
+	login(t, client, base, token)
+	id := makeItem(t, client, base, token, statusID(t, client, base, "To do"), "Task")
+
+	// Post a comment and capture its id.
+	cm := postJSON(t, client, base+"/general/items/"+id+"/comment", token, map[string]any{"body": "draft"})
+	var c struct {
+		ID string `json:"id"`
+	}
+	json.NewDecoder(cm.Body).Decode(&c)
+	cm.Body.Close()
+	if c.ID == "" {
+		t.Fatal("comment response missing id")
+	}
+
+	// Edit it.
+	ed := postJSON(t, client, base+"/general/items/"+id+"/comment/"+c.ID+"/edit", token, map[string]any{"body": "final **edit**"})
+	ed.Body.Close()
+	if ed.StatusCode != http.StatusOK {
+		t.Fatalf("edit: want 200, got %d", ed.StatusCode)
+	}
+	// Modal shows the edited body rendered as markdown, plus an (edited) tag.
+	modal := getBody(t, client, base+"/general/items/"+id+"/modal", http.StatusOK)
+	if !strings.Contains(modal, "<strong>edit</strong>") || !strings.Contains(modal, "(edited)") {
+		t.Errorf("modal missing edited comment / tag:\n%s", modal)
+	}
+
+	// A non-existent comment id is rejected, not silently accepted.
+	miss := postJSON(t, client, base+"/general/items/"+id+"/comment/deadbeef/edit", token, map[string]any{"body": "x"})
+	miss.Body.Close()
+	if miss.StatusCode != http.StatusNotFound {
+		t.Fatalf("edit unknown comment: want 404, got %d", miss.StatusCode)
+	}
+
+	// Delete it: 204, and the modal renders a tombstone, not the body.
+	del := postJSON(t, client, base+"/general/items/"+id+"/comment/"+c.ID+"/delete", token, nil)
+	del.Body.Close()
+	if del.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete: want 204, got %d", del.StatusCode)
+	}
+	modal = getBody(t, client, base+"/general/items/"+id+"/modal", http.StatusOK)
+	if !strings.Contains(modal, "Comment deleted") {
+		t.Error("modal missing tombstone after delete")
+	}
+	if strings.Contains(modal, "final") {
+		t.Error("deleted comment body still present in modal")
 	}
 }
 

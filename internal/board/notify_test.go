@@ -133,3 +133,35 @@ func TestMentionMarkRead(t *testing.T) {
 		t.Fatalf("want 0 unread after mark, got %d", c)
 	}
 }
+
+func TestEditCommentNotifiesNewMention(t *testing.T) {
+	ms, svc, wsID, statusID, ada, ben, _ := notifySetup(t)
+	ctx := actorCtx(ada, "Ada")
+	it, err := svc.CreateRootItem(ctx, wsID, statusID, "Edit pings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _, err := svc.AddComment(ctx, it.ID, ada, "first pass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bn, _ := ms.NotificationsByRecipient(ctx, ben, 50); len(bn) != 0 {
+		t.Fatalf("ben pre-edit: want 0 notifications, got %d", len(bn))
+	}
+
+	// Editing in @ben notifies him once.
+	if _, _, err := svc.EditComment(ctx, c.ID, ada, "first pass — cc @ben"); err != nil {
+		t.Fatal(err)
+	}
+	if bn, _ := ms.NotificationsByRecipient(ctx, ben, 50); len(bn) != 1 {
+		t.Fatalf("ben after edit-in mention: want 1 notification, got %d", len(bn))
+	}
+
+	// Editing again while @ben stays mentioned must not re-ping him.
+	if _, _, err := svc.EditComment(ctx, c.ID, ada, "first pass — cc @ben (typo fix)"); err != nil {
+		t.Fatal(err)
+	}
+	if bn, _ := ms.NotificationsByRecipient(ctx, ben, 50); len(bn) != 1 {
+		t.Fatalf("ben after re-edit: want still 1 notification, got %d", len(bn))
+	}
+}
