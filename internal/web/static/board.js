@@ -124,7 +124,10 @@
     const place = () => {
       const r = input.getBoundingClientRect();
       pop.style.left = r.left + 'px';
-      pop.style.top = (r.bottom + 4) + 'px';
+      // Anchor the panel's bottom just above the input so it overlays upward —
+      // clears the on-screen keyboard on mobile, and is consistent on desktop.
+      pop.style.top = 'auto';
+      pop.style.bottom = (window.innerHeight - r.top + 4) + 'px';
       pop.style.width = Math.max(r.width, 220) + 'px';
     };
     // The @token under the caret: its '@' index, the caret, and the query text.
@@ -220,8 +223,25 @@
       try { await api('/items/' + el.dataset.itemId + '/archive'); el.remove(); }
       catch (err) { if (boardErr) boardErr.textContent = msg(err); }
     });
-    el.addEventListener('click', (e) => {
-      if (e.target.closest('.item-del')) return;
+    // Open on a tap. We use pointer events rather than `click` because
+    // SortableJS's touch drag-delay swallows the first click on touch (it took
+    // two taps). A tap is down→up on the same card with negligible movement and,
+    // on touch, quicker than the drag delay — so a real drag (moves, or is held
+    // past the delay) and a scroll (moves, or fires pointercancel) never open it.
+    const DRAG_DELAY = 200; // keep in sync with the card Sortable's `delay`
+    let px = 0, py = 0, downT = 0, pmoved = false;
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button > 0) return;
+      px = e.clientX; py = e.clientY; downT = Date.now(); pmoved = false;
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (!pmoved && (Math.abs(e.clientX - px) > 9 || Math.abs(e.clientY - py) > 9)) pmoved = true;
+    });
+    el.addEventListener('pointercancel', () => { downT = 0; });
+    el.addEventListener('pointerup', (e) => {
+      const t = downT; downT = 0;
+      if (!t || pmoved || e.target.closest('.item-del')) return;
+      if (e.pointerType === 'touch' && Date.now() - t >= DRAG_DELAY) return;
       openModal(el.dataset.itemId);
     });
   }
@@ -304,7 +324,23 @@
       filter: '.item-del',
       ghostClass: 'sortable-ghost',
       chosenClass: 'sortable-chosen',
+      // On touch, require a short hold before a card starts dragging so quick
+      // swipes still scroll the board; moving past the threshold mid-hold
+      // cancels the pending drag (treated as a scroll). Mouse drag stays instant.
+      delay: 200,
+      delayOnTouchOnly: true,
+      touchStartThreshold: 6,
+      // On touch the board doesn't auto-scroll (scroll:false); instead onChange
+      // snaps the board to whichever lane the placeholder enters, so a card
+      // crosses columns one snap at a time. Desktop keeps normal auto-scroll.
+      scroll: !touchPaging,
+      forceAutoScrollFallback: true,
+      scrollSensitivity: 60,
+      scrollSpeed: 14,
+      onStart: startCardDrag,
+      onChange: onDragChange,
       onEnd: (evt) => {
+        endCardDrag();
         const id = evt.item.dataset.itemId;
         const destLane = evt.to.closest('.lane');
         evt.item.style.setProperty('--lane-color', destLane.dataset.color || '');
@@ -347,7 +383,23 @@
       filter: '.item-del',
       ghostClass: 'sortable-ghost',
       chosenClass: 'sortable-chosen',
+      // On touch, require a short hold before a card starts dragging so quick
+      // swipes still scroll the board; moving past the threshold mid-hold
+      // cancels the pending drag (treated as a scroll). Mouse drag stays instant.
+      delay: 200,
+      delayOnTouchOnly: true,
+      touchStartThreshold: 6,
+      // On touch the board doesn't auto-scroll (scroll:false); instead onChange
+      // snaps the board to whichever lane the placeholder enters, so a card
+      // crosses columns one snap at a time. Desktop keeps normal auto-scroll.
+      scroll: !touchPaging,
+      forceAutoScrollFallback: true,
+      scrollSensitivity: 60,
+      scrollSpeed: 14,
+      onStart: startCardDrag,
+      onChange: onDragChange,
       onEnd: (evt) => {
+        endCardDrag();
         const itemId = evt.item.dataset.itemId;
         const toCol = evt.to.closest('.mcol').dataset.parentId;
         const fromCol = evt.from.closest('.mcol').dataset.parentId;
@@ -517,6 +569,112 @@
       } catch (err2) { fail(err2); }
     });
 
+    // --- modal pills (status / assignee) ----------------------------------
+    // Each pill is a styled trigger + dropdown that drives the matching hidden
+    // side <select>, so the change handlers do the real work. A shared manager
+    // closes any open pill on an outside tap (pointerdown — iOS-safe). All
+    // listeners hang off `el`, so they're torn down when the modal is replaced.
+    const modalPops = [];
+    const closeModalPops = () => modalPops.forEach((p) => { p.menu.hidden = true; p.trigger.classList.remove('active'); });
+    const wirePill = (wrap) => {
+      const trigger = wrap.querySelector('[data-pill-trigger]');
+      const menu = wrap.querySelector('[data-pill-menu]');
+      modalPops.push({ wrap, trigger, menu });
+      trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const willOpen = menu.hidden;
+        closeModalPops();
+        menu.hidden = !willOpen;
+        trigger.classList.toggle('active', willOpen);
+      });
+      return { trigger, menu };
+    };
+    el.addEventListener('pointerdown', (e) => {
+      if (modalPops.length && !modalPops.some((p) => p.wrap.contains(e.target))) closeModalPops();
+    });
+
+    const statusSelect = el.querySelector('.modal-status');
+    const statusPill = el.querySelector('[data-status-pill]');
+    if (statusPill && statusSelect) {
+      wirePill(statusPill);
+      const dot = statusPill.querySelector('[data-status-pill-dot]');
+      const nameEl = statusPill.querySelector('[data-status-pill-name]');
+      const opts = {};
+      statusPill.querySelectorAll('[data-status-opt]').forEach((o) => {
+        opts[o.dataset.statusOpt] = { color: o.dataset.color || '', name: o.querySelector('.status-opt-name').textContent };
+      });
+      const syncStatus = () => {
+        const d = opts[statusSelect.value];
+        if (!d) return;
+        nameEl.textContent = d.name;
+        dot.style.setProperty('--lane-color', d.color);
+      };
+      statusPill.querySelectorAll('[data-status-opt]').forEach((o) => {
+        o.addEventListener('click', () => {
+          closeModalPops();
+          if (o.dataset.statusOpt !== statusSelect.value) {
+            statusSelect.value = o.dataset.statusOpt;
+            statusSelect.dispatchEvent(new Event('change'));
+          }
+          syncStatus();
+        });
+      });
+      syncStatus();
+    }
+
+    const assigneeSelect = el.querySelector('.modal-assignee');
+    const assigneePill = el.querySelector('[data-assignee-pill]');
+    if (assigneePill && assigneeSelect) {
+      const { trigger } = wirePill(assigneePill);
+      const current = assigneePill.querySelector('[data-assignee-current]');
+      const curAvatar = assigneePill.querySelector('[data-assignee-current-avatar]');
+      const curName = assigneePill.querySelector('[data-assignee-current-name]');
+      const syncAssignee = () => {
+        const aid = assigneeSelect.value;
+        trigger.classList.toggle('assigned', !!aid);
+        if (!aid) { current.hidden = true; return; }
+        const opt = assigneeSelect.options[assigneeSelect.selectedIndex];
+        const raw = (opt ? opt.textContent : '').trim();
+        const name = raw.split('·')[0].trim();
+        current.hidden = false;
+        curAvatar.className = 'avatar sm' + (raw.includes('agent') ? ' bot' : '');
+        curAvatar.setAttribute('style', avatarStyle(aid));
+        curAvatar.textContent = avatarInitials(name);
+        curName.textContent = name;
+      };
+      assigneePill.querySelectorAll('[data-assignee-opt]').forEach((o) => {
+        o.addEventListener('click', () => {
+          closeModalPops();
+          if (o.dataset.assigneeOpt !== assigneeSelect.value) {
+            assigneeSelect.value = o.dataset.assigneeOpt;
+            assigneeSelect.dispatchEvent(new Event('change'));
+          }
+          syncAssignee();
+        });
+      });
+      syncAssignee();
+    }
+
+    // "More" kebab (mobile): relocate the whole side panel into a dropdown so
+    // its remaining fields (parent, milestone, created, archive) live behind the
+    // kebab. The hidden status/assignee selects ride along, still pill-driven, so
+    // every existing handler keeps working — nothing is re-wired or duplicated.
+    const moreWrap = el.querySelector('[data-more-pill]');
+    const sideEl = el.querySelector('.modal-side');
+    if (moreWrap && sideEl && window.matchMedia('(max-width: 768px)').matches) {
+      const moreTrigger = moreWrap.querySelector('[data-pill-trigger]');
+      moreWrap.appendChild(sideEl);
+      sideEl.hidden = true;
+      modalPops.push({ wrap: moreWrap, trigger: moreTrigger, menu: sideEl });
+      moreTrigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const willOpen = sideEl.hidden;
+        closeModalPops();
+        sideEl.hidden = !willOpen;
+        moreTrigger.classList.toggle('active', willOpen);
+      });
+    }
+
     el.querySelector('.modal-assignee').addEventListener('change', async (e) => {
       const assigneeId = e.target.value;
       try {
@@ -542,9 +700,7 @@
 
     // Comments post on Cmd/Ctrl+Enter.
     const commentInput = el.querySelector('[data-comment-input]');
-    commentInput.addEventListener('keydown', async (e) => {
-      if (!((e.metaKey || e.ctrlKey) && e.key === 'Enter')) return;
-      e.preventDefault();
+    const postComment = async () => {
       const body = commentInput.value.trim();
       if (!body) return;
       try {
@@ -562,7 +718,14 @@
         commentInput.value = '';
         hideMentions();
       } catch (err2) { fail(err2); }
+    };
+    // ⌘/Ctrl+Enter posts (desktop); the on-screen send button posts on touch,
+    // where the system keyboard has no key separate from the newline return.
+    commentInput.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); postComment(); }
     });
+    const commentSend = el.querySelector('[data-comment-send]');
+    if (commentSend) commentSend.addEventListener('click', postComment);
     wireMention(commentInput);
 
     const parentLink = el.querySelector('[data-parent-link]');
@@ -770,10 +933,17 @@
         closePops();
         if (willOpen) { menu.hidden = false; btn.classList.add('active'); }
       });
-      // Clicks inside a menu must not bubble out and close it.
+      // Taps inside the trigger or menu must not reach the document dismiss
+      // handlers. We dismiss on `pointerdown` as well as `click` because iOS
+      // doesn't reliably bubble `click` from the (non-interactive) board
+      // background, so an outside tap was being missed; guarding pointerdown on
+      // the trigger keeps tap-to-close from closing-then-reopening.
+      btn.addEventListener('pointerdown', (e) => e.stopPropagation());
       menu.addEventListener('click', (e) => e.stopPropagation());
+      menu.addEventListener('pointerdown', (e) => e.stopPropagation());
     });
     document.addEventListener('click', () => closePops());
+    document.addEventListener('pointerdown', () => closePops());
   }
 
   // --- display properties (which fields/empty lanes show; per-workspace pref) ---
@@ -805,12 +975,48 @@
     applyDisp();
   }
 
+  // --- view-tab strip: fade whichever edge still has tabs off-screen ---
+  function wireViewScroll() {
+    const views = document.querySelector('.views');
+    if (!views) return;
+    const update = () => {
+      const max = views.scrollWidth - views.clientWidth;
+      views.classList.toggle('fade-start', views.scrollLeft > 1);
+      views.classList.toggle('fade-end', max > 1 && views.scrollLeft < max - 1);
+    };
+    views.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    update();
+  }
+
+  // --- card drag: snap the board to the lane the ghost enters (mobile) -------
+  // On touch the board does NOT auto-scroll (scroll:false below). Instead, when
+  // SortableJS moves the drag placeholder into a different lane (onChange fires),
+  // we snap-scroll that lane to centre — so a card crosses columns one snap at a
+  // time, driven by SortableJS's own target detection (no touch/scroll guesswork).
+  // CSS snap is suspended mid-drag (.board.dragging) so the scroll lands clean.
+  const touchPaging = window.matchMedia('(max-width: 768px)').matches;
+  function centerLane(lane) {
+    if (!lane) return;
+    const bLeft = board.getBoundingClientRect().left;
+    const r = lane.getBoundingClientRect();
+    const target = (r.left - bLeft) + board.scrollLeft + r.width / 2 - board.clientWidth / 2;
+    if (Math.abs(target - board.scrollLeft) < 4) return; // already centred
+    board.scrollTo({ left: target, behavior: 'smooth' });
+  }
+  function onDragChange(evt) {
+    if (touchPaging) centerLane(evt.to.closest('.lane'));
+  }
+  function startCardDrag() { board.classList.add('dragging'); }
+  function endCardDrag() { board.classList.remove('dragging'); }
+
   // --- wire the server-rendered board ---
 
   board.querySelectorAll('.item').forEach(wireItem);
   wireFilters();
   wirePopovers();
   wireDisplay();
+  wireViewScroll();
 
   if (board.dataset.mode === 'milestone') {
     board.querySelectorAll('.mcol').forEach(wireColumn);

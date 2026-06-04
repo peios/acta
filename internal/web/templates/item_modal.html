@@ -8,6 +8,46 @@
       <a class="modal-close" href="/{{.Slug}}" data-modal-close aria-label="Close">×</a>
     </header>
 
+    <div class="modal-status-bar">
+      <div class="status-pill-wrap" data-status-pill>
+        <button class="status-pill" type="button" data-pill-trigger aria-label="Change status">
+          <span class="status-dot" data-status-pill-dot style="{{.StatusColorVar}}"></span>
+          <span class="status-pill-name" data-status-pill-name>{{.StatusName}}</span>
+          <span class="chev">&#9662;</span>
+        </button>
+        <div class="popover status-pop" data-pill-menu hidden>
+          {{range .Statuses}}
+          <button class="status-opt" type="button" data-status-opt="{{.ID}}" data-color="{{.Color}}">
+            <span class="status-dot" style="{{.ColorVar}}"></span>
+            <span class="status-opt-name">{{.Name}}</span>
+          </button>
+          {{end}}
+        </div>
+      </div>
+
+      <div class="assignee-pill-wrap" data-assignee-pill>
+        <button class="assignee-btn{{if .Item.AssigneeID}} assigned{{end}}" type="button" data-pill-trigger aria-label="Assignee">
+          <svg class="ico person-icon" viewBox="0 0 16 16"><circle cx="8" cy="5" r="2.7"/><path d="M2.9 13.4a5.1 5.1 0 0 1 10.2 0Z"/></svg>
+        </button>
+        <div class="popover assignee-pop" data-pill-menu hidden>
+          <div class="assignee-current" data-assignee-current{{if not .Item.AssigneeID}} hidden{{end}}>
+            <span class="avatar sm" data-assignee-current-avatar></span>
+            <span class="assignee-current-name" data-assignee-current-name>{{.Assignee}}</span>
+          </div>
+          <button class="assignee-opt" type="button" data-assignee-opt="">Unassigned</button>
+          {{range .Assignables}}
+          <button class="assignee-opt" type="button" data-assignee-opt="{{.ID}}">{{.Display}}{{if .AgentOfID}} · agent{{end}}</button>
+          {{end}}
+        </div>
+      </div>
+
+      <div class="more-pill-wrap" data-more-pill>
+        <button class="assignee-btn" type="button" data-pill-trigger aria-label="More fields">
+          <svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="3.4" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="8" cy="12.6" r="1.3"/></svg>
+        </button>
+      </div>
+    </div>
+
     <div class="modal-grid">
       <div class="modal-main">
         {{if .Archived}}<p class="modal-archived-note">This item is archived.</p>{{end}}
@@ -56,7 +96,12 @@
             </div>
             {{end}}
           </div>
-          <textarea class="comment-input" rows="2" placeholder="Add a comment…  (⌘↵)" maxlength="5000" aria-label="New comment" data-comment-input></textarea>
+          <div class="comment-compose">
+            <textarea class="comment-input" rows="2" placeholder="Add a comment…  (⌘↵)" maxlength="5000" aria-label="New comment" data-comment-input></textarea>
+            <button class="comment-send" type="button" data-comment-send aria-label="Send comment">
+              <svg class="ico" viewBox="0 0 16 16"><path d="M8 13.5V3.5M3.5 8 8 3.5 12.5 8"/></svg>
+            </button>
+          </div>
         </div>
 
         {{if .History}}
@@ -75,13 +120,13 @@
       </div>
 
       <aside class="modal-side">
-        <div class="side-field">
+        <div class="side-field side-status">
           <span class="modal-label">Status</span>
           <select class="modal-status">
             {{range .Statuses}}<option value="{{.ID}}" {{if eq .ID $.Item.StatusID}}selected{{end}}>{{.Name}}</option>{{end}}
           </select>
         </div>
-        <div class="side-field">
+        <div class="side-field side-assignee">
           <span class="modal-label">Assignee</span>
           <select class="modal-assignee">
             <option value="">Unassigned</option>

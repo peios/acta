@@ -31,13 +31,12 @@ func (h *handlers) cliAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid redirect_uri (must be a loopback address)", http.StatusBadRequest)
 		return
 	}
-	ch, err := h.chromeFor(r, "", nil)
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	// A focused consent screen reached by redirect right after `acta login`:
+	// render it chrome-less (Nav stays false) so the only actions are Authorize
+	// or Cancel — no sidebar to wander off into mid-approval. CSRFToken is still
+	// threaded through for the form's hidden field and the <head> meta tag.
 	render(w, http.StatusOK, "cli_authorize.html", cliAuthData{
-		chrome:      ch,
+		chrome:      chrome{CSRFToken: csrfTokenFrom(r.Context())},
 		Principal:   principalFrom(r.Context()),
 		RedirectURI: redirectURI,
 		State:       r.URL.Query().Get("state"),

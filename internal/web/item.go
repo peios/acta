@@ -3,11 +3,13 @@ package web
 import (
 	"context"
 	"errors"
+	"html/template"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/identity"
 	"github.com/peios/acta/internal/store"
 )
@@ -20,7 +22,9 @@ type modalView struct {
 	Item           store.Item
 	RefID          string   // human id, e.g. "ACTA-12"
 	Desc           descView // the rendered, collapsible description
-	Statuses       []store.Status
+	Statuses       []statusChoice
+	StatusName     string       // current status's display name (for the pill)
+	StatusColorVar template.CSS // current status's --lane-color (for the pill dot)
 	Assignables    []store.User // assignee-picker options: humans + your agents (+ current assignee)
 	Assignee       string       // display name of the assignee, "" if unassigned
 	Comments       []commentView
@@ -35,6 +39,17 @@ type modalView struct {
 	CreatedByAgent bool
 	History        []eventView // activity log for this item, newest first
 }
+
+// statusChoice is one option in the modal's status pickers (the side <select>
+// and the mobile pill); Color is the resolved lane hex so the pill's dot is
+// coloured server-side, working regardless of the board's current view mode.
+type statusChoice struct {
+	ID    string
+	Name  string
+	Color string
+}
+
+func (s statusChoice) ColorVar() template.CSS { return colorVar(s.Color) }
 
 type parentOption struct {
 	ID    string
@@ -222,13 +237,27 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		}
 	}
 
+	// Resolve each status's lane colour once (explicit or palette-derived), so
+	// the modal's pill dots are coloured without depending on the board DOM.
+	statusChoices := make([]statusChoice, len(statuses))
+	var curStatusName, curStatusColor string
+	for i, st := range statuses {
+		c := board.ColorFor(st)
+		statusChoices[i] = statusChoice{ID: st.ID, Name: st.Name, Color: c}
+		if st.ID == item.StatusID {
+			curStatusName, curStatusColor = st.Name, c
+		}
+	}
+
 	return modalView{
 		Slug:           ws.Slug,
 		CSRFToken:      csrfTokenFrom(ctx),
 		Item:           item,
 		RefID:          refID(ws.ItemPrefix, item.RefNum),
 		Desc:           renderDescription(item.Description),
-		Statuses:       statuses,
+		Statuses:       statusChoices,
+		StatusName:     curStatusName,
+		StatusColorVar: colorVar(curStatusColor),
 		Assignables:    assignables,
 		Assignee:       nameByID[item.AssigneeID],
 		Comments:       cvs,

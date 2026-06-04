@@ -96,7 +96,10 @@
     border-right: 1px solid var(--border-soft);
     background: var(--bg);
   }
-  .side-top { display: flex; align-items: center; gap: 6px; padding: 10px 10px 6px; }
+  .side-top { display: flex; align-items: center; gap: 6px; padding: 10px 10px 6px; background: var(--bg); }
+  /* a transparent wrapper on desktop (nav + account behave as direct children);
+     on mobile it becomes the animated menu layer so the top bar stays put */
+  .side-body { display: contents; }
   .brand { display: inline-flex; align-items: center; font-weight: 600; font-size: 14px; letter-spacing: -.015em; color: var(--text); text-decoration: none; padding: 4px 5px; border-radius: 7px; }
   .brand:hover { background: var(--surface-h); }
   .crumb-sep { color: var(--dim); }
@@ -153,7 +156,7 @@
   .acct .more { margin-left: auto; color: var(--faint); }
   .acctmenu .wspanel { top: auto; bottom: calc(100% + 6px); left: 4px; right: 4px; }
 
-  /* notification bell — sits at the right of the workspace switcher row */
+  /* notification bell — anchored to the far right of the header row */
   .bell { margin-left: auto; }
   .bell > summary { list-style: none; cursor: pointer; }
   .bell > summary::-webkit-details-marker { display: none; }
@@ -395,6 +398,14 @@
   .board-archive-link:hover { color: var(--text); background: var(--surface-h); }
   .board-archive-link + .board-archive-link { margin-left: -4px; }
 
+  /* overflow menu — Activity/Archived collapse into a kebab on mobile (shown
+     via the @media block below; the inline links above are hidden there) */
+  .pop-anchor.board-overflow { display: none; }
+  .board-overflow .ico circle { fill: currentColor; stroke: none; }
+  .pop-overflow { width: auto; min-width: 9rem; padding: 5px; }
+  .pop-link { display: block; padding: 8px 10px; border-radius: 7px; color: var(--muted); text-decoration: none; font-size: 13.5px; }
+  .pop-link:hover { background: var(--surface-h); color: var(--text); }
+
   .board { display: flex; align-items: flex-start; gap: 10px; overflow-x: auto; overflow-y: hidden; flex: 1; min-height: 0; padding: 0 16px 12px 0; }
   .lane { flex: 0 0 286px; width: 286px; height: 100%; display: flex; flex-direction: column; }
   .lane-head { display: flex; align-items: center; gap: 8px; padding: 2px 4px 9px; }
@@ -440,7 +451,7 @@
   /* quick-add sits at the top of the column, under the header */
   .lane > .item-add { order: 1; margin: 0 0 7px; }
   .lane > .lane-items { order: 2; }
-  .lane-add { flex: 0 0 250px; padding-top: 28px; }
+  .lane-add { flex: 0 0 250px; padding-top: 2px; }
   .lane-add-form { margin: 0; }
   .lane-add-input { width: 100%; background: none; border: 1px dashed var(--border-soft); border-radius: 7px; color: var(--faint); font: inherit; font-size: 13px; padding: .5rem .6rem; }
   .lane-add-input:focus { outline: none; border-style: solid; border-color: var(--accent); color: var(--text); background: var(--field); }
@@ -499,13 +510,24 @@
   .is-filtered { display: none !important; }
 
   /* ---- board header: Views tabs + Filter/Display ---- */
-  .views { display: inline-flex; align-items: center; gap: 2px; }
-  .view-tab { display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px; border-radius: 7px; color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 500; }
+  /* fill the slack between the left edge and the right-hand controls; the tab
+     strip scrolls horizontally when it overflows (no visible scrollbar) */
+  .views {
+    display: flex; flex: 1 1 auto; min-width: 0; align-items: center; gap: 2px;
+    overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+  }
+  .views::-webkit-scrollbar { display: none; }
+  /* board.js toggles these by scroll position so the fade only appears on the
+     side that actually has more tabs off-screen */
+  .views.fade-start { -webkit-mask-image: linear-gradient(to right, transparent, #000 18px); mask-image: linear-gradient(to right, transparent, #000 18px); }
+  .views.fade-end { -webkit-mask-image: linear-gradient(to left, transparent, #000 18px); mask-image: linear-gradient(to left, transparent, #000 18px); }
+  .views.fade-start.fade-end { -webkit-mask-image: linear-gradient(to right, transparent, #000 18px, #000 calc(100% - 18px), transparent); mask-image: linear-gradient(to right, transparent, #000 18px, #000 calc(100% - 18px), transparent); }
+  .view-tab { flex: none; white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px; border-radius: 7px; color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 500; }
   .view-tab .ico { width: 14px; height: 14px; color: var(--faint); }
   .view-tab:hover { background: var(--surface-h); color: var(--text); }
   .view-tab.active { color: var(--text); background: var(--surface-h); box-shadow: inset 0 0 0 1px var(--border-soft); }
   .view-tab.active .ico { color: var(--accent); }
-  .bar-right { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
+  .bar-right { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
   .bar-sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
 
   .pop-anchor { position: relative; display: inline-flex; }
@@ -585,6 +607,71 @@
   .side-foot { margin-top: .3rem; }
   .side-foot .btn-secondary { width: 100%; text-align: center; }
   .modal-archived-note { margin: 0; color: var(--accent-hi); font-size: .85rem; }
+
+  /* status pill — colour dot + name + dropdown, shown below the title on mobile
+     (see the @media block); drives the hidden side .modal-status select */
+  .modal-status-bar { display: none; padding: .7rem 1rem 0; }
+  .status-pill-wrap { position: relative; display: inline-flex; }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: .5rem;
+    background: var(--field); border: 1px solid var(--border-soft); border-radius: 999px;
+    color: var(--text); font: inherit; font-size: .92rem; padding: .4rem .85rem; cursor: pointer;
+  }
+  .status-pill:hover, .status-pill.active { border-color: var(--border-str); }
+  .status-pill .chev { color: var(--faint); font-size: .62rem; margin-left: .05rem; }
+  .status-pill-name { font-weight: 500; }
+  /* the "fancy" status circle: solid fill + a low-opacity ring of the same hue */
+  .status-dot {
+    width: .72rem; height: .72rem; border-radius: 50%; flex: none;
+    background: var(--lane-color, var(--faint));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--lane-color, var(--faint)) 15%, transparent);
+  }
+  .status-pop { left: 0; right: auto; width: auto; min-width: 11rem; }
+  .status-opt {
+    display: flex; align-items: center; gap: .6rem; width: 100%;
+    background: none; border: 0; color: var(--muted); font: inherit; font-size: .92rem;
+    padding: .5rem .55rem; border-radius: 8px; cursor: pointer; text-align: left;
+  }
+  .status-opt:hover { background: var(--surface-h); color: var(--text); }
+
+  /* assignee control — a person icon (filled when assigned, outline when not)
+     opening a dropdown that shows the current assignee on top, then the picker */
+  .assignee-pill-wrap { position: relative; display: inline-flex; }
+  .assignee-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 2.05rem; height: 2.05rem; border-radius: 999px;
+    background: var(--field); border: 1px solid var(--border-soft); color: var(--faint); cursor: pointer;
+  }
+  .assignee-btn:hover, .assignee-btn.active { border-color: var(--border-str); color: var(--text); }
+  .assignee-btn.assigned { color: var(--text); }
+  .assignee-btn .person-icon { width: 1.05rem; height: 1.05rem; }
+  .assignee-btn.assigned .person-icon { fill: currentColor; stroke: none; }
+  .assignee-pop { left: 50%; right: auto; transform: translateX(-50%); width: auto; min-width: 13rem; }
+  .assignee-current {
+    display: flex; align-items: center; gap: .55rem; padding: .35rem .55rem .55rem;
+    margin-bottom: .3rem; border-bottom: 1px solid var(--border-soft);
+  }
+  .assignee-current-name { font-size: .9rem; color: var(--text); font-weight: 500; }
+  .assignee-opt {
+    display: flex; align-items: center; gap: .6rem; width: 100%;
+    background: none; border: 0; color: var(--muted); font: inherit; font-size: .92rem;
+    padding: .5rem .55rem; border-radius: 8px; cursor: pointer; text-align: left;
+  }
+  .assignee-opt:hover { background: var(--surface-h); color: var(--text); }
+
+  /* "more" kebab — board.js relocates .modal-side in here on mobile, so the rest
+     of the side fields live in a dropdown. Anchored to the status bar (its
+     positioned ancestor) so it spans the full width and stays on-screen. */
+  .more-pill-wrap { display: inline-flex; }
+  .more-pill-wrap .ico { width: 1.05rem; height: 1.05rem; }
+  .more-pill-wrap .ico circle { fill: currentColor; stroke: none; }
+  .more-pill-wrap .modal-side {
+    position: absolute; top: calc(100% + 7px); left: 0; right: 0; z-index: 60;
+    width: auto; border: 1px solid var(--border); border-left: 1px solid var(--border);
+    border-radius: 13px; background: #181a20; padding: 1rem 1.1rem;
+    max-height: 70vh; overflow-y: auto;
+    box-shadow: 0 24px 60px -20px rgba(0,0,0,.85), 0 2px 10px rgba(0,0,0,.4);
+  }
   .modal-field { display: grid; gap: .4rem; min-width: 0; }
   .modal-label { font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
   .modal-label-row { display: flex; align-items: baseline; justify-content: space-between; }
@@ -635,6 +722,17 @@
   .comment-meta { color: var(--faint); font-size: .76rem; margin-bottom: .25rem; }
   .comment-body { font-size: .9rem; white-space: pre-wrap; word-break: break-word; }
   .comment-input { resize: vertical; }
+  /* composer: textarea + a send button that shows on touch (no keyboard key is
+     separate from the newline return there); ⌘/Ctrl+Enter still posts elsewhere */
+  .comment-compose { display: flex; align-items: stretch; gap: .5rem; }
+  .comment-compose .comment-input { flex: 1; min-width: 0; }
+  .comment-send {
+    flex: none; display: inline-flex; align-items: center; justify-content: center;
+    width: 2.6rem; border-radius: 8px;
+    background: var(--accent); border: 0; color: var(--on-accent); cursor: pointer;
+  }
+  .comment-send:hover { background: var(--accent-hi); }
+  .comment-send .ico { width: 1.15rem; height: 1.15rem; stroke-width: 1.8; }
   .modal-ms { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .85rem; cursor: pointer; }
   .modal-ms input { accent-color: var(--accent); }
 
@@ -690,13 +788,181 @@
     .reveal.d2 { animation-delay: .12s; }
     @keyframes rise { to { opacity: 1; transform: none; } }
   }
+
+  @keyframes navIn  { from { transform: translateX(-8%); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes navOut { from { transform: none; opacity: 1; } to { transform: translateX(-8%); opacity: 0; } }
+
+  /* ============================ mobile ============================ */
+  /* iOS Safari auto-zooms the page whenever a focused text field is under
+     16px; rendering form controls at 16px on touch devices stops that while
+     leaving desktop density — and pinch-zoom — alone. Extended per page as we
+     adapt each view for small screens. */
+  @media (pointer: coarse) {
+    /* 16px stops iOS zooming the page on focus (see the login fix). Covers the
+       board's inline inputs too — column titles, quick-add, add-status, card
+       rename — since they all trip the same zoom. */
+    .input, .lane-name, .item-add-input, .lane-add-input, .item-edit { font-size: 16px; }
+    .modal-desc, .comment-input, .subtask-input,
+    .modal-status, .modal-assignee, .modal-parent-select { font-size: 16px; }
+    /* cards lift on a long-press to drag, so suppress the text-selection
+       highlight and iOS's long-press callout — but keep the inline rename input
+       selectable while editing a title. */
+    .item { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+    .item-edit { -webkit-user-select: text; user-select: text; }
+  }
+
+  /* ---- collapsible sidebar ---------------------------------------------
+     One toggle in the header (see nav.js) drives three states: desktop full,
+     desktop icon-rail (html.nav-rail, saved), and a mobile full-screen menu
+     (html.nav-open, transient). The sidebar↔top-bar boundary is 768px. */
+  .nav-toggle {
+    flex: none; display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px;
+    background: none; color: var(--muted); cursor: pointer;
+  }
+  .nav-toggle:hover { background: var(--surface-h); color: var(--text); }
+  .nav-toggle .ico { width: 17px; height: 17px; }
+  .nav-toggle .ico-menu, .nav-toggle .ico-close { display: none; }
+
+  /* desktop: collapse the sidebar to a 60px icon rail */
+  @media (min-width: 769px) {
+    html.nav-rail .sidebar { flex-basis: 60px; width: 60px; }
+    html.nav-rail .side-top { flex-direction: column; align-items: center; gap: 8px; padding: 10px 0 8px; }
+    html.nav-rail .bell { margin-left: 0; }
+    html.nav-rail .brand,
+    html.nav-rail .crumb-sep,
+    html.nav-rail .side-top .wsmenu:not(.bell),
+    html.nav-rail .side-top .wsname.manage,
+    html.nav-rail .nav-label,
+    html.nav-rail .nav-item .count,
+    html.nav-rail .acct .who,
+    html.nav-rail .acct .more { display: none; }
+    html.nav-rail .nav { align-items: center; padding: 4px 0; }
+    html.nav-rail .nav-item { justify-content: center; gap: 0; width: 40px; padding: 8px; }
+    html.nav-rail .side-foot { align-items: center; padding: 7px 0; }
+    html.nav-rail .acct { justify-content: center; gap: 0; padding: 6px; }
+    html.nav-rail .acctmenu .wspanel { left: 8px; right: auto; min-width: 184px; }
+    html.nav-rail .bell .notifs { min-width: 300px; }
+  }
+
+  /* mobile (≤768px): the sidebar becomes a top bar; the toggle opens a
+     full-screen menu (html.nav-open) */
+  @media (max-width: 768px) {
+    .app { flex-direction: column; height: 100dvh; }
+    .sidebar {
+      flex: none; width: 100%; height: auto;
+      border-right: 0; border-bottom: 1px solid var(--border-soft);
+    }
+    .nav, .side-foot { display: none; }
+    .pane { min-height: 0; }
+    .nav-toggle .ico-rail { display: none; }
+    .nav-toggle .ico-menu { display: block; }
+    /* roomier tap targets for the two header controls on touch */
+    .nav-toggle, .bell-btn { width: 40px; height: 40px; }
+    .nav-toggle .ico, .bell-btn .ico { width: 22px; height: 22px; }
+    /* the bell sits at the far-right edge here, so anchor its panel to the right
+       and open leftward — opening rightward would run off-screen */
+    .bell .notifs { left: auto; right: 0; width: min(320px, calc(100vw - 24px)); }
+
+    /* board header: collapse the Filter/Display buttons to icons only */
+    .ph-label { display: none; }
+    .ph-btn { gap: 4px; padding: 0 9px; }
+    /* Activity/Archived fold into the overflow kebab */
+    .board-archive-link { display: none; }
+    .pop-anchor.board-overflow { display: inline-flex; }
+    /* drop the divider so the header controls group together */
+    .bar-sep { display: none; }
+
+    /* swipe the board column-by-column; each lane settles in the centre with
+       its neighbours peeking. The first/last lanes clamp to the edges (the
+       browser won't scroll past 0/max), so there's no empty gutter at the ends. */
+    .board { scroll-snap-type: x mandatory; }
+    .lane, .lane-add { scroll-snap-align: center; }
+    /* CSS snap is off during a card drag so board.js can scroll the entered
+       lane to centre cleanly (onChange); mandatory snap returns on drop */
+    .board.dragging { scroll-snap-type: none; }
+
+    /* bigger, easier-to-spot/tap column markers */
+    .lane-dot { width: 12px; height: 12px; }
+    .mcol-diamond { width: 9px; height: 9px; }
+
+    /* task modal fills the screen */
+    .modal-backdrop { padding: 0; }
+    .modal { width: 100%; min-height: 100vh; min-height: 100dvh; border: 0; border-radius: 0; }
+
+    /* the per-workspace settings modal goes full-screen too */
+    .ws-modal { padding: 0; }
+    .ws-modal .modal { width: 100%; min-height: 100vh; min-height: 100dvh; border: 0; border-radius: 0; }
+
+    /* header: ID on its own line above the title, close centred on the pair
+       (scoped to the task modal — the ws-modal header has a different shape) */
+    .modal-backdrop .modal-head {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      grid-template-areas: "ref close" "title close";
+      align-items: center; column-gap: .5rem; row-gap: 2px; padding: .7rem 1rem;
+    }
+    .modal-ref { grid-area: ref; padding-left: .45rem; }
+    .modal-title { grid-area: title; }
+    .modal-close { grid-area: close; font-size: 1.7rem; padding: .2rem .45rem; }
+
+    /* status pill + assignee + "more" kebab replace the side panel on mobile;
+       the bar anchors the kebab dropdown, and the grid collapses to one column
+       (the side panel is moved out into the kebab by board.js) */
+    .modal-status-bar { display: flex; align-items: center; gap: .6rem; position: relative; }
+    .modal-grid { grid-template-columns: minmax(0, 1fr); }
+    .side-status, .side-assignee { display: none; }
+
+    /* settings: the section menu becomes a horizontal, scrollable tab strip
+       above the content. Purely server-driven — the active tab is the current
+       page — so there are no client-side stages to get out of sync. */
+    .settings { display: block; }
+    .settings .menu {
+      display: flex; gap: 4px; margin: 0 0 1.3rem;
+      overflow-x: auto; scrollbar-width: none;
+    }
+    .settings .menu::-webkit-scrollbar { display: none; }
+    .settings .menu a { flex: none; white-space: nowrap; padding: 8px 13px; border-radius: 8px; font-size: .92rem; }
+
+    /* settings lists/forms: let rows shrink and wrap long tokens (avoids the
+       flex/grid blowout that forced a slight horizontal scroll) */
+    .cred, .cred > div, .ws-row, .ws-row-main { min-width: 0; }
+    .cred-name, .cred-meta { overflow-wrap: anywhere; }
+    .passkey-add { flex-direction: column; align-items: stretch; }
+    .passkey-add .input-wrap, .passkey-add .btn-primary, .passkey-add .btn-secondary { min-width: 0; width: 100%; }
+
+    /* The top bar stays in normal flow, so the board (and its filter bar) never
+       shift; only the body is a fixed overlay sitting below the top bar, and only
+       the body animates. So neither the top bar nor the filter bar blinks out on
+       close. --topbar-h is measured by nav.js (56px fallback). */
+    html.nav-open .side-top { position: relative; z-index: 101; }
+    html.nav-open .side-body {
+      position: fixed; top: var(--topbar-h, 56px); left: 0; right: 0; bottom: 0; z-index: 100;
+      display: flex; flex-direction: column;
+      background: var(--bg); overflow-y: auto;
+      animation: navIn .24s ease;
+    }
+    html.nav-closing .side-body { animation: navOut .2s ease forwards; }
+    html.nav-open .nav { display: flex; flex: 1; padding: 10px 12px; gap: 3px; }
+    html.nav-open .side-foot { display: flex; }
+    html.nav-open .nav-item { padding: 13px 14px; font-size: 1rem; border-radius: 10px; }
+    html.nav-open .nav-item .ico { width: 19px; height: 19px; }
+    html.nav-open .nav-toggle .ico-menu { display: none; }
+    html.nav-open .nav-toggle .ico-close { display: block; }
+  }
 </style>
+{{if .Nav}}<script src="{{asset "/static/nav.js"}}"></script>{{end}}
 </head>
 <body>
 {{if .Nav}}
 <div class="app">
   <aside class="sidebar">
     <div class="side-top">
+      <button class="nav-toggle" type="button" aria-label="Toggle menu">
+        <svg class="ico ico-rail" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M6 3v10"/></svg>
+        <svg class="ico ico-menu" viewBox="0 0 16 16"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></svg>
+        <svg class="ico ico-close" viewBox="0 0 16 16"><path d="M4 4 12 12M12 4 4 12"/></svg>
+      </button>
       <a class="brand" href="/">acta</a>
       <span class="crumb-sep">/</span>
       {{if .Workspace}}
@@ -749,15 +1015,16 @@
       </details>
     </div>
 
+    <div class="side-body">
     <nav class="nav">
       <a class="nav-item{{if eq .Section "home"}} active{{end}}" href="/">
         <svg class="ico" viewBox="0 0 16 16"><path d="M2.5 7 8 2.5 13.5 7"/><path d="M3.5 6.5V13h9V6.5"/></svg>
-        Home
+        <span class="nav-label">Home</span>
       </a>
       {{if .Workspace}}
       <a class="nav-item{{if eq .Section "activity"}} active{{end}}" href="/{{.Workspace.Slug}}/activity">
         <svg class="ico" viewBox="0 0 16 16"><path d="M1.5 8h3l1.5-4 3 8 1.5-4h4"/></svg>
-        Activity
+        <span class="nav-label">Activity</span>
       </a>
       {{end}}
     </nav>
@@ -765,7 +1032,7 @@
     <div class="side-foot">
       <a class="nav-item{{if eq .Section "settings"}} active{{end}}" href="/settings">
         <svg class="ico" viewBox="0 0 16 16"><path d="M2.5 5h5"/><circle cx="9.5" cy="5" r="1.6"/><path d="M11.5 5h2"/><path d="M2.5 11h2"/><circle cx="6" cy="11" r="1.6"/><path d="M8 11h5.5"/></svg>
-        Settings
+        <span class="nav-label">Settings</span>
       </a>
       <details class="wsmenu acctmenu usermenu">
         <summary>
@@ -783,6 +1050,7 @@
           </form>
         </div>
       </details>
+    </div>
     </div>
   </aside>
 

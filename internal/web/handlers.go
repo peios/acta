@@ -544,13 +544,12 @@ type welcomeData struct {
 }
 
 func (h *handlers) welcomePasskey(w http.ResponseWriter, r *http.Request) {
-	ch, err := h.chromeFor(r, "home", nil)
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	// A focused onboarding step, not an app page: render it chrome-less like the
+	// login screen (Nav stays false) so there's no sidebar to wander off into
+	// mid-flow. CSRFToken is still threaded through for the <meta> tag the
+	// passkey-registration JS reads.
 	render(w, http.StatusOK, "welcome.html", welcomeData{
-		chrome:    ch,
+		chrome:    chrome{CSRFToken: csrfTokenFrom(r.Context())},
 		Principal: principalFrom(r.Context()),
 		ReturnTo:  httpx.SafeReturnTo(r.URL.Query().Get("return_to")),
 	})
