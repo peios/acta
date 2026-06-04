@@ -8,9 +8,17 @@ import (
 	"html/template"
 	"io/fs"
 	"log/slog"
+	"mime"
 	"net/http"
 	"strconv"
 )
+
+func init() {
+	// Serve the web app manifest with its proper media type. Without this the
+	// file server content-sniffs it as text/plain and browsers reject the
+	// manifest, so "Add to Home Screen" falls back to a chrome'd bookmark.
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
+}
 
 //go:embed templates/*.html
 var templatesFS embed.FS
@@ -73,7 +81,15 @@ func staticHandler() http.Handler {
 	}
 	fileServer := http.StripPrefix("/static/", http.FileServerFS(sub))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		// Fingerprinted (?v=hash) URLs are content-addressed, so cache them
+		// hard forever. URLs without the buster — chiefly the icon paths
+		// referenced from inside manifest.webmanifest, which can't carry the
+		// hash — get a short TTL so a later icon swap is actually picked up.
+		if r.URL.Query().Has("v") {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "public, max-age=3600")
+		}
 		fileServer.ServeHTTP(w, r)
 	})
 }
