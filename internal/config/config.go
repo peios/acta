@@ -45,7 +45,7 @@ type Config struct {
 
 	// Web Push (VAPID). The public key reaches the browser to authenticate the
 	// subscription; the private key signs the JWT we send to the push service.
-	// Generate a pair with `go run ./cmd/acta-vapid`. Both empty (the default)
+	// Generate a pair with `acta-server genvapid`. Both empty (the default)
 	// disables push entirely — the settings toggle hides and the sender no-ops —
 	// so dev and an offline Peios box need no keys. VAPIDSubject is the contact
 	// the push service can reach about our traffic; it defaults to RPOrigin.

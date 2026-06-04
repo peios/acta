@@ -41,7 +41,8 @@ services:
       ACTA_BOOTSTRAP_PASSWORD: ${ACTA_BOOTSTRAP_PASSWORD:?set ACTA_BOOTSTRAP_PASSWORD in .env}
       # Web Push (VAPID). Both empty (the default) keeps push disabled; set them
       # in .env to enable the per-device notification toggle. Mint a pair with
-      # `go run ./cmd/acta-vapid`. ACTA_VAPID_SUBJECT defaults to the origin.
+      # `docker compose run --rm app acta-server genvapid`. ACTA_VAPID_SUBJECT
+      # defaults to the origin.
       ACTA_VAPID_PUBLIC_KEY: ${ACTA_VAPID_PUBLIC_KEY:-}
       ACTA_VAPID_PRIVATE_KEY: ${ACTA_VAPID_PRIVATE_KEY:-}
     depends_on:

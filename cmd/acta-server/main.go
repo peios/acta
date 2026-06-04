@@ -3,6 +3,7 @@
 //	acta-server serve                          run the HTTP server (default)
 //	acta-server createuser -username <name>    create a local account
 //	acta-server setpassword -username <name>   reset a local account's password
+//	acta-server genvapid                       print a fresh Web Push VAPID pair
 package main
 
 import (
@@ -19,6 +20,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	webpush "github.com/SherClockHolmes/webpush-go"
 
 	"github.com/peios/acta/internal/account"
 	"github.com/peios/acta/internal/agent"
@@ -61,13 +64,30 @@ func main() {
 		err = runCreateUser(args)
 	case "setpassword":
 		err = runSetPassword(args)
+	case "genvapid":
+		err = runGenVAPID()
 	default:
-		err = fmt.Errorf("unknown command %q (want: serve, createuser, setpassword, version)", cmd)
+		err = fmt.Errorf("unknown command %q (want: serve, createuser, setpassword, genvapid, version)", cmd)
 	}
 	if err != nil {
 		slog.Error(cmd, "err", err)
 		os.Exit(1)
 	}
+}
+
+// runGenVAPID prints a fresh Web Push VAPID key pair as the env vars the server
+// reads. Run it once per deployment — from the released image with
+// `docker compose run --rm app acta-server genvapid` — and put the output in
+// the environment, keeping the private key secret. Rotating the keys
+// invalidates every existing push subscription (browsers must re-subscribe).
+func runGenVAPID() error {
+	priv, pub, err := webpush.GenerateVAPIDKeys()
+	if err != nil {
+		return fmt.Errorf("generate VAPID keys: %w", err)
+	}
+	fmt.Printf("ACTA_VAPID_PUBLIC_KEY=%s\n", pub)
+	fmt.Printf("ACTA_VAPID_PRIVATE_KEY=%s\n", priv)
+	return nil
 }
 
 func runServe(args []string) error {

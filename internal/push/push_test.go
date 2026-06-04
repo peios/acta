@@ -15,7 +15,7 @@ import (
 	"github.com/peios/acta/internal/store/memstore"
 )
 
-// A throwaway VAPID pair (from `go run ./cmd/acta-vapid`) so the real send path,
+// A throwaway VAPID pair (from `acta-server genvapid`) so the real send path,
 // including the signed VAPID header, runs without reaching a push service.
 const (
 	testPub  = "BFbdFE85plfk-WNX-NuwNFS65a83oB898guAMIfAtbajVFHhUWMdZ5HZtM-Rk63zVELCpwBIcdkXNQU_3nJ-imI"
