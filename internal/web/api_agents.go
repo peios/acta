@@ -66,6 +66,8 @@ func (h *handlers) apiCreateAgent(w http.ResponseWriter, r *http.Request) {
 		apiAgentErr(w, err)
 		return
 	}
+	// Owners watch their own agents (status changes by default). Best-effort.
+	_, _ = h.board.Subscribe(r.Context(), p.ID, store.SubjectPrincipal, a.ID)
 	writeJSON(w, http.StatusCreated, toAgentAPI(a))
 }
 

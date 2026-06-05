@@ -25,6 +25,19 @@
             <div class="cred-meta"><code>{{.Username}}</code></div>
           </div>
           <div class="arch-actions">
+            <div class="watch-control{{if .Watching}} is-on{{end}}" data-watch-control data-subscribe="/account/agents/{{.ID}}/subscribe">
+              <button class="watch-btn" type="button" data-pill-trigger aria-pressed="{{if .Watching}}true{{else}}false{{end}}" aria-label="Watch this agent" title="{{if .Watching}}You're watching this agent{{else}}Watch this agent's activity{{end}}">
+                <svg class="ico" viewBox="0 0 16 16"><path d="M1.5 8s2.4-4 6.5-4 6.5 4 6.5 4-2.4 4-6.5 4-6.5-4-6.5-4Z"/><circle cx="8" cy="8" r="1.8"/></svg>
+              </button>
+              <div class="popover watch-pop" data-pill-menu hidden>
+                <p class="watch-pop-head">Notify me about</p>
+                {{range .WatchCats}}
+                <label class="watch-cat"><input type="checkbox" data-watch-cat value="{{.Key}}"{{if .Checked}} checked{{end}}><span>{{.Label}}</span></label>
+                {{end}}
+                <button class="watch-off" type="button" data-watch-off>Unsubscribe</button>
+              </div>
+              <input type="checkbox" class="modal-watch-toggle" hidden {{if .Watching}}checked{{end}}>
+            </div>
             <a class="btn-secondary" href="/account/agents/{{.ID}}">Manage</a>
             <form method="post" action="/account/agents/{{.ID}}/delete">
               <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
@@ -51,4 +64,5 @@
     </section>
   </div>
 </main>
+<script src="{{asset "/static/watch.js"}}"></script>
 {{end}}

@@ -130,6 +130,8 @@ type projectPageData struct {
 	Pct       int
 	Items     []projectItemRow
 	Archived  bool
+	Watching  bool
+	WatchCats []catToggle
 	Form      projectFormOpts
 	Err       string
 }
@@ -229,6 +231,9 @@ func (h *handlers) projectPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	// The Watch control reflects the viewer's project subscription: whether they
+	// watch it and which categories its filter delivers (for the dropdown).
+	watchSub, watching, _ := h.board.SubscriptionFor(r.Context(), principalID(r), store.SubjectProject, p.ID)
 	render(w, http.StatusOK, "project.html", projectPageData{
 		chrome:    ch,
 		Principal: principalFrom(r.Context()),
@@ -243,6 +248,8 @@ func (h *handlers) projectPage(w http.ResponseWriter, r *http.Request) {
 		Pct:       pct(done, len(items)),
 		Items:     rows,
 		Archived:  p.ArchivedAt != nil,
+		Watching:  watching,
+		WatchCats: catToggles(watchSub.Events),
 		Form:      projectFormOpts{Leads: leads, Statuses: board.ProjectStatuses, Palette: palette()},
 		Err:       projectError(r.URL.Query().Get("err")),
 	})

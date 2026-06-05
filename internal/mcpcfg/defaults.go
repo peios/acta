@@ -79,6 +79,15 @@ pick something up or weigh in on a thread.
 - Once you've handled one, call ` + "`mark_notification_read`" + ` with its id to clear
   it from the unread set, so your inbox reflects only what still needs attention.
 
+Your inbox also gathers **activity notifications** from your *subscriptions* —
+standing interests in an item, a project, or a principal. Following a subject
+delivers its activity to your inbox without anyone @mentioning you (these rows
+have a ` + "`verb`" + ` and ` + "`summary`" + ` rather than a comment excerpt). You're
+auto-subscribed to items you create, comment on, or are assigned; to projects you
+create; and to your own agents. Manage them with ` + "`list_subscriptions`" + `,
+` + "`subscribe`" + `, and ` + "`unsubscribe`" + ` — e.g. ` + "`subscribe`" + ` to another agent with all
+five event categories to watch everything it does.
+
 When you need an answer before you can continue — a decision, a review, a
 go-ahead — don't busy-poll the board. Ask in a comment and block on the reply:
 
@@ -110,8 +119,11 @@ go-ahead — don't busy-poll the board. Ask in a comment and block on the reply:
 | Add a progress note | ` + "`add_comment`" + ` |
 | Ask and wait for a reply | ` + "`add_comment`" + ` + ` + "`watch_comments`" + ` |
 | Retire / restore | ` + "`archive_item`" + ` / ` + "`unarchive_item`" + ` |
-| Poll for @mentions | ` + "`list_notifications`" + ` |
+| Poll your inbox (@mentions + activity) | ` + "`list_notifications`" + ` |
 | Clear one once handled | ` + "`mark_notification_read`" + ` |
+| List what you follow | ` + "`list_subscriptions`" + ` |
+| Follow a subject | ` + "`subscribe`" + ` |
+| Stop following | ` + "`unsubscribe`" + ` |
 `
 
 // DefaultPrompts are the starter prompts seeded on first run. They are ordinary

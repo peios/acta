@@ -128,7 +128,7 @@ func (s *Service) CreateProject(ctx context.Context, workspaceID, name, brief, l
 	for _, p := range existing {
 		taken[p.Slug] = true
 	}
-	return s.store.CreateProject(ctx, store.Project{
+	pr, err := s.store.CreateProject(ctx, store.Project{
 		WorkspaceID: workspaceID,
 		Slug:        uniqueSlug(slugify(name), taken),
 		Name:        name,
@@ -139,6 +139,11 @@ func (s *Service) CreateProject(ctx context.Context, workspaceID, name, brief, l
 		Position:    len(existing),
 		CreatedBy:   createdBy,
 	})
+	if err != nil {
+		return store.Project{}, err
+	}
+	s.autoSubscribe(ctx, createdBy, store.SubjectProject, pr.ID) // creator follows their project
+	return pr, nil
 }
 
 // UpdateProject edits a project's mutable fields. The slug stays fixed (renaming

@@ -138,6 +138,21 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 	}, h.mcpSetItemProject)
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "list_subscriptions",
+		Description: "List your subscriptions — the standing interests that file activity notifications into your inbox. Each names a subject (type item/project/principal, addressed by ref: an item id, a project slug, or a username) and the category filter (comments, status, assignments, items_added, other). You auto-subscribe to items you create/comment on/are assigned, projects you create, and your own agents.",
+	}, h.mcpListSubscriptions)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "subscribe",
+		Description: "Follow a subject so its activity files notifications into your inbox (poll with list_notifications). type is item|project|principal; ref is the natural key — an item id, a project slug (pass workspace too), or a username (\"me\" for yourself). Optionally set events to choose categories (comments, status, assignments, items_added, other) — e.g. all five to watch everything a principal does; omit to use the type default (item: comments+status, project: items_added+status, principal: status) without disturbing an existing subscription. Idempotent.",
+	}, h.mcpSubscribe)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "unsubscribe",
+		Description: "Stop following a subject: type is item|project|principal and ref its natural key (item id, project slug with workspace, or username). Idempotent — removing a subscription you don't hold is a no-op.",
+	}, h.mcpUnsubscribe)
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "add_comment",
 		Description: "Append a comment to an item, authored by the calling principal. Comments are how agents record progress and coordinate. Returns the new comment, including its id (use it as the `after` cursor for watch_comments).",
 	}, h.mcpAddComment)
@@ -352,6 +367,27 @@ type setItemProjectInput struct {
 	Project string `json:"project,omitempty" jsonschema:"project slug (from list_projects) to file the item under; omit to remove it from its project"`
 }
 
+type subscribeInput struct {
+	Type      string   `json:"type" jsonschema:"what to follow: item, project, or principal"`
+	Ref       string   `json:"ref" jsonschema:"the subject's natural key: an item id, a project slug, or a username (\"me\" for yourself)"`
+	Workspace string   `json:"workspace,omitempty" jsonschema:"workspace slug — required when type is project (slugs are per-workspace)"`
+	Events    []string `json:"events,omitempty" jsonschema:"category filter to set: comments, status, assignments, items_added, other. Omit to use the type default on a new subscription and leave an existing one unchanged"`
+}
+
+type unsubscribeInput struct {
+	Type      string `json:"type" jsonschema:"item, project, or principal"`
+	Ref       string `json:"ref" jsonschema:"the subject's natural key: an item id, a project slug, or a username"`
+	Workspace string `json:"workspace,omitempty" jsonschema:"workspace slug — required when type is project"`
+}
+
+type subscriptionListOutput struct {
+	Subscriptions []subscriptionAPI `json:"subscriptions"`
+}
+
+type unsubscribeOutput struct {
+	OK bool `json:"ok"`
+}
+
 type setItemStatusInput struct {
 	ID     string `json:"id" jsonschema:"the item id"`
 	Status string `json:"status" jsonschema:"target status lane, by name"`
@@ -431,14 +467,16 @@ type markNotificationReadInput struct {
 // points at (with a permalink), an excerpt, and whether it is still unread.
 type mcpNotification struct {
 	ID        string `json:"id"`
-	Kind      string `json:"kind"`
+	Kind      string `json:"kind"` // "mention" or "activity" (a subscription matched)
 	Unread    bool   `json:"unread"`
 	Actor     string `json:"actor,omitempty"`
 	Workspace string `json:"workspace,omitempty"` // slug of the item's board
 	ItemID    string `json:"item_id,omitempty"`
 	ItemTitle string `json:"item_title,omitempty"`
-	Excerpt   string `json:"excerpt,omitempty"`
-	URL       string `json:"url,omitempty"` // permalink to open the item on the board
+	Verb      string `json:"verb,omitempty"`    // activity rows: the raw event verb, e.g. item.status_changed
+	Summary   string `json:"summary,omitempty"` // activity rows: the rendered phrase, e.g. "moved to Done"
+	Excerpt   string `json:"excerpt,omitempty"` // mention rows: the comment excerpt
+	URL       string `json:"url,omitempty"`     // permalink to open the item on the board
 	At        string `json:"at"`
 }
 
@@ -803,6 +841,64 @@ func mcpProjectErr(err error) error {
 	}
 }
 
+func (h *handlers) mcpListSubscriptions(ctx context.Context, _ *mcp.CallToolRequest, _ emptyInput) (*mcp.CallToolResult, subscriptionListOutput, error) {
+	p := principalFrom(ctx)
+	if p == nil {
+		return nil, subscriptionListOutput{}, errors.New("not authenticated")
+	}
+	subs, err := h.board.Subscriptions(ctx, p.ID, "")
+	if err != nil {
+		return nil, subscriptionListOutput{}, mcpErr(err)
+	}
+	out := subscriptionListOutput{Subscriptions: make([]subscriptionAPI, 0, len(subs))}
+	for _, s := range subs {
+		out.Subscriptions = append(out.Subscriptions, h.toSubscriptionAPI(ctx, s))
+	}
+	return &mcp.CallToolResult{}, out, nil
+}
+
+func (h *handlers) mcpSubscribe(ctx context.Context, _ *mcp.CallToolRequest, in subscribeInput) (*mcp.CallToolResult, subscriptionAPI, error) {
+	p := principalFrom(ctx)
+	if p == nil {
+		return nil, subscriptionAPI{}, errors.New("not authenticated")
+	}
+	if !validSubjectType(in.Type) {
+		return nil, subscriptionAPI{}, errUnknownSubjectType
+	}
+	id, err := h.resolveSubjectRef(ctx, in.Type, in.Ref, in.Workspace)
+	if err != nil {
+		return nil, subscriptionAPI{}, mcpErr(err)
+	}
+	var sub store.Subscription
+	if len(in.Events) > 0 {
+		sub, err = h.board.SetSubscription(ctx, p.ID, in.Type, id, in.Events)
+	} else {
+		sub, err = h.board.Subscribe(ctx, p.ID, in.Type, id)
+	}
+	if err != nil {
+		return nil, subscriptionAPI{}, mcpErr(err)
+	}
+	return &mcp.CallToolResult{}, h.toSubscriptionAPI(ctx, sub), nil
+}
+
+func (h *handlers) mcpUnsubscribe(ctx context.Context, _ *mcp.CallToolRequest, in unsubscribeInput) (*mcp.CallToolResult, unsubscribeOutput, error) {
+	p := principalFrom(ctx)
+	if p == nil {
+		return nil, unsubscribeOutput{}, errors.New("not authenticated")
+	}
+	if !validSubjectType(in.Type) {
+		return nil, unsubscribeOutput{}, errUnknownSubjectType
+	}
+	id, err := h.resolveSubjectRef(ctx, in.Type, in.Ref, in.Workspace)
+	if err != nil {
+		return nil, unsubscribeOutput{}, mcpErr(err)
+	}
+	if err := h.board.Unsubscribe(ctx, p.ID, in.Type, id); err != nil {
+		return nil, unsubscribeOutput{}, mcpErr(err)
+	}
+	return &mcp.CallToolResult{}, unsubscribeOutput{OK: true}, nil
+}
+
 func (h *handlers) mcpSetItemStatus(ctx context.Context, _ *mcp.CallToolRequest, in setItemStatusInput) (*mcp.CallToolResult, mcpItem, error) {
 	item, err := h.mcpItem(ctx, in.ID, "")
 	if err != nil {
@@ -1134,6 +1230,8 @@ func (h *handlers) mcpListNotifications(ctx context.Context, _ *mcp.CallToolRequ
 			Workspace: n.WorkspaceSlug,
 			ItemID:    n.ItemID,
 			ItemTitle: n.ItemTitle,
+			Verb:      n.Verb,
+			Summary:   n.Summary,
 			Excerpt:   n.Excerpt,
 			URL:       h.itemURL(n.WorkspaceSlug, n.ItemID),
 			At:        n.CreatedAt.Format(time.RFC3339),
@@ -1255,7 +1353,9 @@ func mcpErr(err error) error {
 		return errors.New("would create a cycle: an item can't be parented under itself or a descendant")
 	case errors.Is(err, board.ErrNoStatus):
 		return errors.New("workspace has no statuses")
-	case errors.Is(err, errUnknownStatus), errors.Is(err, errUnknownUser):
+	case errors.Is(err, errUnknownStatus), errors.Is(err, errUnknownUser),
+		errors.Is(err, errUnknownProject), errors.Is(err, errUnknownSubjectType),
+		errors.Is(err, errProjectNeedsWS):
 		return err
 	default:
 		slog.Error("mcp tool error", "err", err)

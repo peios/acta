@@ -14,8 +14,17 @@ import (
 type agentsData struct {
 	chrome
 	Principal *identity.Principal
-	Agents    []store.User
+	Agents    []agentRow
 	Err       string
+}
+
+// agentRow is one of the owner's agents plus the owner's watch on it (the
+// principal subscription): whether they watch it and the category filter, for
+// the inline Watch control.
+type agentRow struct {
+	store.User
+	Watching  bool
+	WatchCats []catToggle
 }
 
 func (h *handlers) accountAgents(w http.ResponseWriter, r *http.Request) {
@@ -30,12 +39,23 @@ func (h *handlers) accountAgents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	rows := make([]agentRow, 0, len(agents))
+	for _, a := range agents {
+		sub, ok, _ := h.board.SubscriptionFor(r.Context(), p.ID, store.SubjectPrincipal, a.ID)
+		rows = append(rows, agentRow{User: a, Watching: ok, WatchCats: catToggles(sub.Events)})
+	}
 	render(w, http.StatusOK, "agents.html", agentsData{
 		chrome:    ch,
 		Principal: p,
-		Agents:    agents,
+		Agents:    rows,
 		Err:       agentError(r.URL.Query().Get("err")),
 	})
+}
+
+// agentSubscribe drives the Watch control on the agents page — the owner's
+// principal subscription to one of their agents.
+func (h *handlers) agentSubscribe(w http.ResponseWriter, r *http.Request) {
+	h.handleSubscribeJSON(w, r, store.SubjectPrincipal, r.PathValue("id"))
 }
 
 func (h *handlers) agentCreate(w http.ResponseWriter, r *http.Request) {
@@ -54,6 +74,9 @@ func (h *handlers) agentCreate(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/account/agents?err="+code, http.StatusSeeOther)
 		return
 	}
+	// Owners watch their own agents (status changes by default; tune or mute with
+	// the Watch control on the agents page). Best-effort — never fails create.
+	_, _ = h.board.Subscribe(r.Context(), p.ID, store.SubjectPrincipal, a.ID)
 	// Land on the new agent's page so the owner can mint its first token.
 	http.Redirect(w, r, "/account/agents/"+a.ID, http.StatusSeeOther)
 }

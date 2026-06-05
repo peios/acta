@@ -64,15 +64,22 @@
     line.className = 'notif-line';
     const actor = document.createElement('b');
     actor.textContent = msg.actor || 'Someone';
-    const title = document.createElement('b');
-    title.textContent = msg.title || '';
-    line.append(actor, document.createTextNode(' mentioned you on '), title);
+    if (msg.nkind === 'activity') {
+      // "<actor> moved to Doing" — the phrase is already rendered server-side.
+      line.append(actor, document.createTextNode(' ' + (msg.summary || '')));
+    } else {
+      const title = document.createElement('b');
+      title.textContent = msg.title || '';
+      line.append(actor, document.createTextNode(' mentioned you on '), title);
+    }
     main.appendChild(line);
 
-    if (msg.excerpt) {
+    // Sub-line: the item title for an activity row, the comment excerpt for a mention.
+    const sub = msg.nkind === 'activity' ? msg.title : msg.excerpt;
+    if (sub) {
       const ex = document.createElement('span');
       ex.className = 'notif-ex';
-      ex.textContent = msg.excerpt;
+      ex.textContent = sub;
       main.appendChild(ex);
     }
     const when = document.createElement('span');

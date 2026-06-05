@@ -88,12 +88,16 @@ type boardNav struct {
 }
 
 // notifView is one row in the notification bell dropdown. URL points at the
-// open-and-redirect endpoint, which marks the row read on click-through.
+// open-and-redirect endpoint, which marks the row read on click-through. Kind is
+// the notification kind ("mention" | "activity") that selects how the line
+// reads; Summary is the rendered phrase an activity row shows ("moved to Doing").
 type notifView struct {
 	ID      string
 	Unread  bool
+	Kind    string
 	Actor   string
 	Title   string
+	Summary string
 	Excerpt string
 	When    string
 	URL     string
@@ -111,8 +115,10 @@ func buildNotifViews(notes []store.Notification) []notifView {
 		out = append(out, notifView{
 			ID:      n.ID,
 			Unread:  n.ReadAt == nil,
+			Kind:    n.Kind,
 			Actor:   n.ActorName,
 			Title:   n.ItemTitle,
+			Summary: n.Summary,
 			Excerpt: n.Excerpt,
 			When:    formatWhen(n.CreatedAt),
 			URL:     "/notifications/" + n.ID + "/open?to=" + url.QueryEscape(to),

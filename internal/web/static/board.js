@@ -1010,6 +1010,44 @@
       }
     });
 
+    // Watch: a YouTube-style notification button. Clicking it while off subscribes
+    // (item default) and opens the dropdown; while on it just opens it. The
+    // dropdown carries the category toggles and an Unsubscribe to turn it back
+    // off. Everything posts to /subscribe and repaints from the server's
+    // canonical {watching, events} reply, so the button's filled state, the
+    // hidden checkbox and the category ticks always agree.
+    const watchControl = el.querySelector('[data-watch-control]');
+    if (watchControl) {
+      const trigger = watchControl.querySelector('[data-pill-trigger]');
+      const menu = watchControl.querySelector('[data-pill-menu]');
+      const hidden = watchControl.querySelector('.modal-watch-toggle');
+      const cats = Array.from(watchControl.querySelectorAll('[data-watch-cat]'));
+      const offBtn = watchControl.querySelector('[data-watch-off]');
+      const paintWatch = (state) => {
+        const on = !!state.watching;
+        watchControl.classList.toggle('is-on', on);
+        trigger.setAttribute('aria-pressed', on ? 'true' : 'false');
+        trigger.title = on ? "You're watching this item" : 'Watch this item for activity';
+        if (hidden) hidden.checked = on;
+        const ev = state.events || [];
+        cats.forEach((c) => { c.checked = ev.includes(c.value); });
+      };
+      const postWatch = async (body) => {
+        try { paintWatch(await api('/items/' + id + '/subscribe', body) || {}); }
+        catch (e) { fail(e); }
+      };
+      // First click while off subscribes; registered before side.wire so it reads
+      // the pre-open state. side.wire then opens (or toggles) the dropdown.
+      trigger.addEventListener('click', () => {
+        if (menu.hidden && !(hidden && hidden.checked)) postWatch({ watching: true });
+      });
+      side.wire(watchControl);
+      cats.forEach((c) => c.addEventListener('change', () => {
+        postWatch({ watching: true, events: cats.filter((x) => x.checked).map((x) => x.value) });
+      }));
+      if (offBtn) offBtn.addEventListener('click', () => { side.closeAll(); postWatch({ watching: false }); });
+    }
+
     const archive = el.querySelector('.modal-archive');
     if (archive) archive.addEventListener('click', async () => {
       try { await api('/items/' + id + '/archive'); const c = cardOf(id); if (c) c.remove(); closeModal(); }

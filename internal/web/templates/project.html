@@ -21,23 +21,43 @@
       </div>
     </div>
     <div class="proj-page-actions">
+      <div class="watch-control{{if .Watching}} is-on{{end}}" data-watch-control data-subscribe="/{{.Workspace.Slug}}/projects/{{.Project.ID}}/subscribe">
+        <button class="watch-btn" type="button" data-pill-trigger aria-pressed="{{if .Watching}}true{{else}}false{{end}}" aria-label="Watch this project" title="{{if .Watching}}You're watching this project{{else}}Watch this project for activity{{end}}">
+          <svg class="ico" viewBox="0 0 16 16"><path d="M1.5 8s2.4-4 6.5-4 6.5 4 6.5 4-2.4 4-6.5 4-6.5-4-6.5-4Z"/><circle cx="8" cy="8" r="1.8"/></svg>
+        </button>
+        <div class="popover watch-pop" data-pill-menu hidden>
+          <p class="watch-pop-head">Notify me about</p>
+          {{range .WatchCats}}
+          <label class="watch-cat"><input type="checkbox" data-watch-cat value="{{.Key}}"{{if .Checked}} checked{{end}}><span>{{.Label}}</span></label>
+          {{end}}
+          <button class="watch-off" type="button" data-watch-off>Unsubscribe</button>
+        </div>
+        <input type="checkbox" class="modal-watch-toggle" hidden {{if .Watching}}checked{{end}}>
+      </div>
+
+      <button class="tool-pill" type="button" data-edit-toggle aria-expanded="false" aria-label="Edit project" title="Edit project">
+        <svg class="ico" viewBox="0 0 16 16"><path d="M3 13l.5-2.7 7-7 2.2 2.2-7 7z"/><path d="M9.8 3.4l2.2 2.2"/></svg>
+      </button>
+
       {{if .Archived}}
       <form method="post" action="/{{.Workspace.Slug}}/projects/{{.Project.ID}}/unarchive">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <button class="btn-secondary" type="submit">Unarchive</button>
+        <button class="tool-pill" type="submit" aria-label="Unarchive" title="Restore from archive">
+          <svg class="ico" viewBox="0 0 16 16"><path d="M3.5 8a4.5 4.5 0 1 0 1.5-3.35"/><path d="M2.6 3.2v2.6h2.6"/></svg>
+        </button>
       </form>
       {{else}}
       <form method="post" action="/{{.Workspace.Slug}}/projects/{{.Project.ID}}/archive">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <button class="btn-secondary" type="submit">Archive</button>
+        <button class="tool-pill pill-archive" type="submit" aria-label="Archive" title="Archive this project">
+          <svg class="ico" viewBox="0 0 16 16"><path d="M2.6 4.2h10.8"/><path d="M5.6 4.2V3a1 1 0 0 1 1-1h2.8a1 1 0 0 1 1 1v1.2"/><path d="M4 4.2l.6 8.1a1.1 1.1 0 0 0 1.1 1h4.6a1.1 1.1 0 0 0 1.1-1l.6-8.1"/><path d="M6.7 6.7v4M9.3 6.7v4"/></svg>
+        </button>
       </form>
       {{end}}
     </div>
   </div>
 
-  <details class="proj-new proj-edit">
-    <summary class="btn-secondary">Edit project</summary>
-    <div class="panel proj-form-card">
+  <div class="panel proj-form-card proj-edit-panel"{{if not .Err}} hidden{{end}} data-edit-panel>
       <form class="proj-form" method="post" action="/{{.Workspace.Slug}}/projects/{{.Project.ID}}/edit">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <div class="field">
@@ -74,8 +94,7 @@
           <button class="btn-primary" type="submit">Save changes</button>
         </div>
       </form>
-    </div>
-  </details>
+  </div>
 
   <p class="proj-section-title">Brief</p>
   {{if .HasBrief}}
@@ -100,4 +119,6 @@
   <div class="proj-empty">No items yet. Open any item and pick this project from the side panel to file it here.</div>
   {{end}}
 </div>
+<script src="{{asset "/static/watch.js"}}"></script>
+<script src="{{asset "/static/project.js"}}"></script>
 {{end}}

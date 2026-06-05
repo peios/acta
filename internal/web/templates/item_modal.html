@@ -126,6 +126,35 @@
       </div>
 
       <aside class="modal-side">
+        {{/* Quick actions as icon pills: watch (toggles in place) and archive /
+             unarchive. The hidden .modal-watch-toggle checkbox stays the source
+             of truth the change handler reads; the archive buttons keep their
+             .modal-archive / .modal-unarchive classes so their wiring is unchanged. */}}
+        <div class="side-tools">
+          <div class="watch-control{{if .Watching}} is-on{{end}}" data-watch-control>
+            <button class="watch-btn" type="button" data-pill-trigger aria-pressed="{{if .Watching}}true{{else}}false{{end}}" aria-label="Watch this item" title="{{if .Watching}}You're watching this item{{else}}Watch this item for activity{{end}}">
+              <svg class="ico" viewBox="0 0 16 16"><path d="M1.5 8s2.4-4 6.5-4 6.5 4 6.5 4-2.4 4-6.5 4-6.5-4-6.5-4Z"/><circle cx="8" cy="8" r="1.8"/></svg>
+            </button>
+            <div class="popover watch-pop" data-pill-menu hidden>
+              <p class="watch-pop-head">Notify me about</p>
+              {{range .WatchCats}}
+              <label class="watch-cat"><input type="checkbox" data-watch-cat value="{{.Key}}"{{if .Checked}} checked{{end}}><span>{{.Label}}</span></label>
+              {{end}}
+              <button class="watch-off" type="button" data-watch-off>Unsubscribe</button>
+            </div>
+            <input type="checkbox" class="modal-watch-toggle" hidden {{if .Watching}}checked{{end}}>
+          </div>
+          {{if .Archived}}
+          <button class="tool-pill modal-unarchive" type="button" aria-label="Unarchive" title="Restore from archive">
+            <svg class="ico" viewBox="0 0 16 16"><path d="M3.5 8a4.5 4.5 0 1 0 1.5-3.35"/><path d="M2.6 3.2v2.6h2.6"/></svg>
+          </button>
+          {{else}}
+          <button class="tool-pill modal-archive pill-archive" type="button" aria-label="Archive" title="Archive this item">
+            <svg class="ico" viewBox="0 0 16 16"><path d="M2.6 4.2h10.8"/><path d="M5.6 4.2V3a1 1 0 0 1 1-1h2.8a1 1 0 0 1 1 1v1.2"/><path d="M4 4.2l.6 8.1a1.1 1.1 0 0 0 1.1 1h4.6a1.1 1.1 0 0 0 1.1-1l.6-8.1"/><path d="M6.7 6.7v4M9.3 6.7v4"/></svg>
+          </button>
+          {{end}}
+        </div>
+
         {{/* Each field is a full-width "pill" trigger opening a custom popover —
              the same dropdown machinery as the mobile status bar. The hidden
              <select> beside each one stays the source of truth the change
@@ -208,19 +237,13 @@
           </div>
           <input type="checkbox" class="modal-ms-toggle" hidden {{if .Item.IsMilestone}}checked{{end}}>
         </div>
+
         {{if .CreatedBy}}
         <div class="side-field">
           <span class="modal-label">Created by</span>
           <span class="side-value">{{.CreatedBy}}{{if .CreatedByAgent}} <span class="badge-agent">agent</span>{{end}}</span>
         </div>
         {{end}}
-        <div class="side-foot">
-          {{if .Archived}}
-          <button class="btn-secondary modal-unarchive" type="button">Unarchive</button>
-          {{else}}
-          <button class="btn-secondary modal-archive" type="button">Archive</button>
-          {{end}}
-        </div>
         <p class="alert" role="alert" data-modal-error></p>
       </aside>
     </div>

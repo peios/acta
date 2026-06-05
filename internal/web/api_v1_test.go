@@ -205,3 +205,50 @@ func TestAPIAgentCreatesAttributed(t *testing.T) {
 		t.Fatalf("created_by = %q, want jack/deploybot", created.CreatedBy)
 	}
 }
+
+func TestAPISubscriptions(t *testing.T) {
+	base, client := newTestServer(t)
+	csrf := signIn(t, client, base)
+	token := mintToken(t, client, base, csrf)
+
+	// Create a project to follow.
+	cp := bearerJSON(t, base, "POST", "/api/v1/w/general/projects", token, map[string]string{"name": "Peinit"})
+	var pr struct{ Slug string }
+	if err := json.NewDecoder(cp.Body).Decode(&pr); err != nil {
+		t.Fatal(err)
+	}
+	cp.Body.Close()
+
+	// Subscribe to it (no events -> the project default filter).
+	subResp := bearerJSON(t, base, "POST", "/api/v1/subscriptions", token,
+		map[string]any{"type": "project", "ref": pr.Slug, "workspace": "general"})
+	if subResp.StatusCode != http.StatusOK {
+		t.Fatalf("subscribe: want 200, got %d", subResp.StatusCode)
+	}
+	subResp.Body.Close()
+
+	// List shows it, addressed by slug.
+	listBody := readBody(t, bearerJSON(t, base, "GET", "/api/v1/subscriptions", token, nil))
+	if !strings.Contains(listBody, pr.Slug) || !strings.Contains(listBody, "items_added") {
+		t.Fatalf("subscription listing missing the project:\n%s", listBody)
+	}
+
+	// A project ref without a workspace is a 400.
+	bad := bearerJSON(t, base, "POST", "/api/v1/subscriptions", token,
+		map[string]any{"type": "project", "ref": pr.Slug})
+	bad.Body.Close()
+	if bad.StatusCode != http.StatusBadRequest {
+		t.Fatalf("missing workspace: want 400, got %d", bad.StatusCode)
+	}
+
+	// Unsubscribe (DELETE with a body) -> 204, and the list no longer has it.
+	del := bearerJSON(t, base, "DELETE", "/api/v1/subscriptions", token,
+		map[string]any{"type": "project", "ref": pr.Slug, "workspace": "general"})
+	del.Body.Close()
+	if del.StatusCode != http.StatusNoContent {
+		t.Fatalf("unsubscribe: want 204, got %d", del.StatusCode)
+	}
+	if after := readBody(t, bearerJSON(t, base, "GET", "/api/v1/subscriptions", token, nil)); strings.Contains(after, pr.Slug) {
+		t.Fatalf("project still listed after unsubscribe:\n%s", after)
+	}
+}

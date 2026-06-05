@@ -34,6 +34,7 @@ type Store struct {
 	notifs      map[string]store.Notification
 	pushSubs    map[string]store.PushSubscription // keyed by endpoint
 	projects    map[string]store.Project
+	subs        map[string]store.Subscription // keyed by id
 }
 
 func New() *Store {
@@ -55,6 +56,7 @@ func New() *Store {
 		notifs:      map[string]store.Notification{},
 		pushSubs:    map[string]store.PushSubscription{},
 		projects:    map[string]store.Project{},
+		subs:        map[string]store.Subscription{},
 	}
 }
 
@@ -1320,6 +1322,100 @@ func (s *Store) MarkAllNotificationsRead(_ context.Context, recipientID string) 
 		}
 	}
 	return nil
+}
+
+// --- subscriptions ---
+
+// findSub returns the subscription matching the unique triple, if present. The
+// caller holds s.mu.
+func (s *Store) findSub(subscriberID, subjectType, subjectID string) (store.Subscription, bool) {
+	for _, sub := range s.subs {
+		if sub.SubscriberID == subscriberID && sub.SubjectType == subjectType && sub.SubjectID == subjectID {
+			return sub, true
+		}
+	}
+	return store.Subscription{}, false
+}
+
+func (s *Store) EnsureSubscription(_ context.Context, sub store.Subscription) (store.Subscription, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if existing, ok := s.findSub(sub.SubscriberID, sub.SubjectType, sub.SubjectID); ok {
+		return existing, nil // sticky: keep the existing filter untouched
+	}
+	if sub.ID == "" {
+		sub.ID = newID()
+	}
+	if sub.CreatedAt.IsZero() {
+		sub.CreatedAt = time.Now()
+	}
+	s.subs[sub.ID] = sub
+	return sub, nil
+}
+
+func (s *Store) SetSubscriptionEvents(_ context.Context, subscriberID, subjectType, subjectID string, events []string) (store.Subscription, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if existing, ok := s.findSub(subscriberID, subjectType, subjectID); ok {
+		existing.Events = events
+		s.subs[existing.ID] = existing
+		return existing, nil
+	}
+	sub := store.Subscription{
+		ID: newID(), SubscriberID: subscriberID, SubjectType: subjectType,
+		SubjectID: subjectID, Events: events, CreatedAt: time.Now(),
+	}
+	s.subs[sub.ID] = sub
+	return sub, nil
+}
+
+func (s *Store) DeleteSubscription(_ context.Context, subscriberID, subjectType, subjectID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if existing, ok := s.findSub(subscriberID, subjectType, subjectID); ok {
+		delete(s.subs, existing.ID)
+	}
+	return nil
+}
+
+func (s *Store) SubscriptionFor(_ context.Context, subscriberID, subjectType, subjectID string) (store.Subscription, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sub, ok := s.findSub(subscriberID, subjectType, subjectID)
+	return sub, ok, nil
+}
+
+func (s *Store) SubscriptionsBySubscriber(_ context.Context, subscriberID, subjectType string) ([]store.Subscription, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.Subscription
+	for _, sub := range s.subs {
+		if sub.SubscriberID == subscriberID && (subjectType == "" || sub.SubjectType == subjectType) {
+			out = append(out, sub)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].ID > out[j].ID
+		}
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	return out, nil
+}
+
+func (s *Store) SubscribersForEvent(_ context.Context, itemID, projectID, actorID string) ([]store.Subscription, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.Subscription
+	for _, sub := range s.subs {
+		match := (sub.SubjectType == store.SubjectItem && sub.SubjectID == itemID) ||
+			(sub.SubjectType == store.SubjectProject && projectID != "" && sub.SubjectID == projectID) ||
+			(sub.SubjectType == store.SubjectPrincipal && actorID != "" && sub.SubjectID == actorID)
+		if match {
+			out = append(out, sub)
+		}
+	}
+	return out, nil
 }
 
 // --- web push subscriptions ---

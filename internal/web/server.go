@@ -43,6 +43,10 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 		secure:     cfg.CookieSecure(),
 		publicURL:  strings.TrimRight(cfg.RPOrigin, "/"),
 	}
+	// Attach the live bell as a board notifier now that the hub exists, so
+	// subscription notifications (filed deep in the board) reach the bell over
+	// SSE the same way Web Push reaches it out of band.
+	boards.AddNotifier(newLiveNotifier(h.live, boards))
 	mux := http.NewServeMux()
 
 	// Public routes.
@@ -84,6 +88,7 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("POST /{slug}/projects/{id}/edit", protected(h.projectUpdate))
 	mux.Handle("POST /{slug}/projects/{id}/archive", protected(h.projectArchive))
 	mux.Handle("POST /{slug}/projects/{id}/unarchive", protected(h.projectUnarchive))
+	mux.Handle("POST /{slug}/projects/{id}/subscribe", protected(h.projectSubscribe))
 	// A second path segment selects a non-default board (e.g. /{slug}/backlog);
 	// the literal sub-routes above are more specific, so they always win.
 	mux.Handle("GET /{slug}/{board}", protected(h.boardPage))
@@ -107,6 +112,7 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("POST /{slug}/items/{id}/comment/{cid}/delete", protected(h.itemCommentDelete))
 	mux.Handle("POST /{slug}/items/{id}/parent", protected(h.itemParent))
 	mux.Handle("POST /{slug}/items/{id}/project", protected(h.itemSetProject))
+	mux.Handle("POST /{slug}/items/{id}/subscribe", protected(h.itemSubscribe))
 	mux.Handle("POST /{slug}/items/{id}/milestone", protected(h.itemMilestone))
 	mux.Handle("POST /{slug}/items/{id}/subtasks", protected(h.subtaskCreate))
 	mux.Handle("POST /{slug}/items/{id}/subtasks/reorder", protected(h.subtaskReorder))
@@ -137,6 +143,7 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("GET /account/agents", protected(h.accountAgents))
 	mux.Handle("POST /account/agents", protected(h.agentCreate))
 	mux.Handle("GET /account/agents/{id}", protected(h.agentDetail))
+	mux.Handle("POST /account/agents/{id}/subscribe", protected(h.agentSubscribe))
 	mux.Handle("POST /account/agents/{id}/delete", protected(h.agentDelete))
 	mux.Handle("POST /account/agents/{id}/tokens", protected(h.agentTokenCreate))
 	mux.Handle("POST /account/agents/{id}/tokens/{tokenID}/delete", protected(h.agentTokenDelete))
@@ -181,6 +188,9 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	api.HandleFunc("POST /api/v1/w/{slug}/items/{id}/project", h.apiSetItemProject)
 	api.HandleFunc("GET /api/v1/w/{slug}/projects", h.apiListProjects)
 	api.HandleFunc("POST /api/v1/w/{slug}/projects", h.apiCreateProject)
+	api.HandleFunc("GET /api/v1/subscriptions", h.apiListSubscriptions)
+	api.HandleFunc("POST /api/v1/subscriptions", h.apiSubscribe)
+	api.HandleFunc("DELETE /api/v1/subscriptions", h.apiUnsubscribe)
 	// Agent + token management, so the CLI can provision an MCP integration.
 	api.HandleFunc("GET /api/v1/agents", h.apiListAgents)
 	api.HandleFunc("POST /api/v1/agents", h.apiCreateAgent)

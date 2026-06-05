@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -746,5 +747,91 @@ func TestMCPItemHumanID(t *testing.T) {
 		if got.ID != created.ID || got.Ref != "GEN-1" {
 			t.Errorf("get_item(%q) = id %q ref %q, want the GEN-1 item", ref, got.ID, got.Ref)
 		}
+	}
+}
+
+type subscriptionT struct {
+	Type   string   `json:"type"`
+	Ref    string   `json:"ref"`
+	Label  string   `json:"label"`
+	Events []string `json:"events"`
+}
+
+type subscriptionsT struct {
+	Subscriptions []subscriptionT `json:"subscriptions"`
+}
+
+func hasSub(s subscriptionsT, typ, ref string) (subscriptionT, bool) {
+	for _, x := range s.Subscriptions {
+		if x.Type == typ && x.Ref == ref {
+			return x, true
+		}
+	}
+	return subscriptionT{}, false
+}
+
+func TestMCPSubscriptions(t *testing.T) {
+	base, client := newTestServer(t)
+	csrf := signIn(t, client, base)
+	token := mintToken(t, client, base, csrf)
+	sess := mcpConnect(t, base, token)
+
+	// The subscription tools are advertised.
+	tools, err := sess.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("list tools: %v", err)
+	}
+	advertised := map[string]bool{}
+	for _, tl := range tools.Tools {
+		advertised[tl.Name] = true
+	}
+	for _, want := range []string{"list_subscriptions", "subscribe", "unsubscribe"} {
+		if !advertised[want] {
+			t.Errorf("tool %q not advertised", want)
+		}
+	}
+
+	// Seed a project to follow.
+	pr := callTool[mcpProjectT](t, sess, "create_project", map[string]any{"workspace": "general", "name": "Peinit"})
+
+	// subscribe (no events) → the project default filter (items_added + status).
+	sub := callTool[subscriptionT](t, sess, "subscribe", map[string]any{
+		"type": "project", "ref": pr.Slug, "workspace": "general",
+	})
+	if sub.Ref != pr.Slug || !slices.Equal(sub.Events, []string{"items_added", "status"}) {
+		t.Fatalf("subscribe project = %+v, want ref=%s events=[items_added status]", sub, pr.Slug)
+	}
+
+	// subscribe again with explicit events → the filter is replaced (firehose).
+	all := []any{"comments", "status", "assignments", "items_added", "other"}
+	sub = callTool[subscriptionT](t, sess, "subscribe", map[string]any{
+		"type": "project", "ref": pr.Slug, "workspace": "general", "events": all,
+	})
+	if len(sub.Events) != 5 {
+		t.Fatalf("after explicit events, filter = %v, want all five", sub.Events)
+	}
+
+	// list_subscriptions surfaces it (the caller also auto-subscribed to the
+	// project as its creator — same row, configured above).
+	list := callTool[subscriptionsT](t, sess, "list_subscriptions", struct{}{})
+	if got, ok := hasSub(list, "project", pr.Slug); !ok || len(got.Events) != 5 {
+		t.Fatalf("list_subscriptions missing the configured project sub: %+v", list)
+	}
+
+	// unsubscribe → it's gone.
+	callTool[struct {
+		OK bool `json:"ok"`
+	}](t, sess, "unsubscribe", map[string]any{"type": "project", "ref": pr.Slug, "workspace": "general"})
+	if _, ok := hasSub(callTool[subscriptionsT](t, sess, "list_subscriptions", struct{}{}), "project", pr.Slug); ok {
+		t.Fatal("project subscription should be gone after unsubscribe")
+	}
+
+	// A project ref without a workspace is a clean error.
+	if msg := toolErr(t, sess, "subscribe", map[string]any{"type": "project", "ref": pr.Slug}); !strings.Contains(msg, "workspace") {
+		t.Errorf("missing-workspace error = %q, want it to mention workspace", msg)
+	}
+	// An unknown subject type is a clean error.
+	if msg := toolErr(t, sess, "subscribe", map[string]any{"type": "nonsense", "ref": "x"}); !strings.Contains(msg, "subject type") {
+		t.Errorf("bad-type error = %q, want it to mention subject type", msg)
 	}
 }

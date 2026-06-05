@@ -1333,18 +1333,18 @@ func clampEventLimit(limit int) int {
 
 const notifCols = `id::text, recipient_id::text, kind, workspace_id, workspace_slug,
                    item_id, item_title, actor_id, actor_name, comment_id, excerpt,
-                   created_at, read_at`
+                   verb, summary, created_at, read_at`
 
 func (p *Postgres) CreateNotification(ctx context.Context, n store.Notification) (store.Notification, error) {
 	return createWithRetry(func() (store.Notification, error) {
 		const q = `INSERT INTO notifications
 		             (recipient_id, kind, workspace_id, workspace_slug, item_id,
-		              item_title, actor_id, actor_name, comment_id, excerpt)
-		           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		              item_title, actor_id, actor_name, comment_id, excerpt, verb, summary)
+		           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		           RETURNING ` + notifCols
 		row := p.pool.QueryRow(ctx, q,
 			n.RecipientID, n.Kind, n.WorkspaceID, n.WorkspaceSlug, n.ItemID,
-			n.ItemTitle, n.ActorID, n.ActorName, n.CommentID, n.Excerpt)
+			n.ItemTitle, n.ActorID, n.ActorName, n.CommentID, n.Excerpt, n.Verb, n.Summary)
 		return scanNotification(row)
 	})
 }
@@ -1410,6 +1410,113 @@ func (p *Postgres) MarkAllNotificationsRead(ctx context.Context, recipientID str
 	return err
 }
 
+// --- subscriptions ---
+
+const subCols = `id::text, subscriber_id::text, subject_type, subject_id, events, created_at`
+
+// splitEvents / joinEvents serialise the category-key set to/from the
+// comma-joined events column. Empty string ↔ empty set.
+func splitEvents(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, ",")
+}
+
+func joinEvents(events []string) string { return strings.Join(events, ",") }
+
+func scanSubscription(row pgx.Row) (store.Subscription, error) {
+	var s store.Subscription
+	var events string
+	if err := row.Scan(&s.ID, &s.SubscriberID, &s.SubjectType, &s.SubjectID, &events, &s.CreatedAt); err != nil {
+		return store.Subscription{}, err
+	}
+	s.Events = splitEvents(events)
+	return s, nil
+}
+
+func (p *Postgres) EnsureSubscription(ctx context.Context, s store.Subscription) (store.Subscription, error) {
+	// Insert if absent; on conflict leave the existing row — and its configured
+	// filter — untouched. The no-op DO UPDATE makes RETURNING yield the surviving
+	// row either way, so a sticky auto-subscribe never clobbers a tuned filter.
+	return createWithRetry(func() (store.Subscription, error) {
+		const q = `INSERT INTO subscriptions (subscriber_id, subject_type, subject_id, events)
+		           VALUES ($1, $2, $3, $4)
+		           ON CONFLICT (subscriber_id, subject_type, subject_id)
+		             DO UPDATE SET subscriber_id = subscriptions.subscriber_id
+		           RETURNING ` + subCols
+		return scanSubscription(p.pool.QueryRow(ctx, q, s.SubscriberID, s.SubjectType, s.SubjectID, joinEvents(s.Events)))
+	})
+}
+
+func (p *Postgres) SetSubscriptionEvents(ctx context.Context, subscriberID, subjectType, subjectID string, events []string) (store.Subscription, error) {
+	return createWithRetry(func() (store.Subscription, error) {
+		const q = `INSERT INTO subscriptions (subscriber_id, subject_type, subject_id, events)
+		           VALUES ($1, $2, $3, $4)
+		           ON CONFLICT (subscriber_id, subject_type, subject_id)
+		             DO UPDATE SET events = EXCLUDED.events
+		           RETURNING ` + subCols
+		return scanSubscription(p.pool.QueryRow(ctx, q, subscriberID, subjectType, subjectID, joinEvents(events)))
+	})
+}
+
+func (p *Postgres) DeleteSubscription(ctx context.Context, subscriberID, subjectType, subjectID string) error {
+	const q = `DELETE FROM subscriptions WHERE subscriber_id = $1 AND subject_type = $2 AND subject_id = $3`
+	_, err := p.pool.Exec(ctx, q, subscriberID, subjectType, subjectID)
+	return err
+}
+
+func (p *Postgres) SubscriptionFor(ctx context.Context, subscriberID, subjectType, subjectID string) (store.Subscription, bool, error) {
+	const q = `SELECT ` + subCols + ` FROM subscriptions
+	           WHERE subscriber_id = $1 AND subject_type = $2 AND subject_id = $3`
+	s, err := scanSubscription(p.pool.QueryRow(ctx, q, subscriberID, subjectType, subjectID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.Subscription{}, false, nil
+	}
+	if err != nil {
+		return store.Subscription{}, false, err
+	}
+	return s, true, nil
+}
+
+func (p *Postgres) SubscriptionsBySubscriber(ctx context.Context, subscriberID, subjectType string) ([]store.Subscription, error) {
+	q := `SELECT ` + subCols + ` FROM subscriptions WHERE subscriber_id = $1`
+	args := []any{subscriberID}
+	if subjectType != "" {
+		q += ` AND subject_type = $2`
+		args = append(args, subjectType)
+	}
+	q += ` ORDER BY created_at DESC, id DESC`
+	return p.querySubscriptions(ctx, q, args...)
+}
+
+func (p *Postgres) SubscribersForEvent(ctx context.Context, itemID, projectID, actorID string) ([]store.Subscription, error) {
+	// Empty project/actor ids match nothing — subject_id is never "" — so an event
+	// with no project (or no actor) simply skips that arm.
+	const q = `SELECT ` + subCols + ` FROM subscriptions
+	           WHERE (subject_type = 'item' AND subject_id = $1)
+	              OR (subject_type = 'project' AND subject_id = $2)
+	              OR (subject_type = 'principal' AND subject_id = $3)`
+	return p.querySubscriptions(ctx, q, itemID, projectID, actorID)
+}
+
+func (p *Postgres) querySubscriptions(ctx context.Context, q string, args ...any) ([]store.Subscription, error) {
+	rows, err := p.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Subscription
+	for rows.Next() {
+		s, err := scanSubscription(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 // --- web push subscriptions ---
 
 func (p *Postgres) CreatePushSubscription(ctx context.Context, sub store.PushSubscription) error {
@@ -1453,7 +1560,7 @@ func scanNotification(row pgx.Row) (store.Notification, error) {
 	var n store.Notification
 	if err := row.Scan(&n.ID, &n.RecipientID, &n.Kind, &n.WorkspaceID, &n.WorkspaceSlug,
 		&n.ItemID, &n.ItemTitle, &n.ActorID, &n.ActorName, &n.CommentID, &n.Excerpt,
-		&n.CreatedAt, &n.ReadAt); err != nil {
+		&n.Verb, &n.Summary, &n.CreatedAt, &n.ReadAt); err != nil {
 		return store.Notification{}, err
 	}
 	return n, nil

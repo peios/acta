@@ -69,6 +69,12 @@ func run(cmd string, args []string) error {
 		return cmdProject(args)
 	case "item":
 		return cmdItem(args)
+	case "subscriptions", "subs":
+		return cmdSubscriptions(args)
+	case "subscribe", "watch":
+		return cmdSubscribe(args)
+	case "unsubscribe", "unwatch":
+		return cmdUnsubscribe(args)
 	case "mcp":
 		return cmdMCP(args)
 	case "version", "--version", "-v":
@@ -97,6 +103,10 @@ Usage:
   acta item <id>                  show an item and its subtasks
   acta item <id> status <name>    set the item's status
   acta item <id> project <slug>   file under a project ("none" to clear)
+  acta subscriptions              list your subscriptions (alias: subs)
+  acta subscribe <type> <ref>     follow item|project|principal (alias: watch)
+                                  [--workspace slug] [--events c1,c2,...]
+  acta unsubscribe <type> <ref>   stop following (alias: unwatch) [--workspace slug]
   acta mcp install                wire an MCP client (Claude Code) to Acta
 
 Environment (override the stored login):
@@ -298,6 +308,137 @@ func cmdProjectNew(args []string) error {
 	_ = json.Unmarshal(data, &p)
 	fmt.Printf("created project %s  [%s]  %s\n", p.Slug, p.Status, p.Name)
 	return nil
+}
+
+// subscription mirrors the API's subscriptionAPI: a subject by natural-key ref
+// plus the category filter.
+type subscription struct {
+	Type   string   `json:"type"`
+	Ref    string   `json:"ref"`
+	Label  string   `json:"label"`
+	Events []string `json:"events"`
+}
+
+// cmdSubscriptions lists the caller's subscriptions.
+func cmdSubscriptions(args []string) error {
+	fs := flag.NewFlagSet("subscriptions", flag.ContinueOnError)
+	asJSON := fs.Bool("json", false, "output raw JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	c, err := newClient()
+	if err != nil {
+		return err
+	}
+	data, err := c.do("GET", "/api/v1/subscriptions", nil)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(data)
+	}
+	var out struct {
+		Subscriptions []subscription `json:"subscriptions"`
+	}
+	if err := json.Unmarshal(data, &out); err != nil {
+		return err
+	}
+	tw := newTable("TYPE", "REF", "EVENTS", "SUBJECT")
+	for _, s := range out.Subscriptions {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", s.Type, s.Ref, dash(strings.Join(s.Events, ",")), s.Label)
+	}
+	return tw.Flush()
+}
+
+// cmdSubscribe follows a subject. `subscribe <type> <ref>` uses the type default
+// filter; `--events` sets an explicit one (e.g. all five for a principal
+// firehose). Projects need a workspace (defaulted like the other commands).
+func cmdSubscribe(args []string) error {
+	fs := flag.NewFlagSet("subscribe", flag.ContinueOnError)
+	ws := fs.String("workspace", "", "workspace slug (for a project ref)")
+	events := fs.String("events", "", "categories to set: comments,status,assignments,items_added,other")
+	asJSON := fs.Bool("json", false, "output raw JSON")
+	pos, err := parseArgs(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) < 2 {
+		return fmt.Errorf("subscribe: need <type> <ref> (type is item|project|principal)")
+	}
+	stype, ref := pos[0], pos[1]
+	c, err := newClient()
+	if err != nil {
+		return err
+	}
+	body := map[string]any{"type": stype, "ref": ref}
+	if w, err := subWorkspace(c, stype, *ws); err != nil {
+		return err
+	} else if w != "" {
+		body["workspace"] = w
+	}
+	if cats := splitCSV(*events); len(cats) > 0 {
+		body["events"] = cats
+	}
+	data, err := c.do("POST", "/api/v1/subscriptions", body)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(data)
+	}
+	var s subscription
+	_ = json.Unmarshal(data, &s)
+	fmt.Printf("watching %s %s  [%s]\n", s.Type, s.Ref, strings.Join(s.Events, ","))
+	return nil
+}
+
+// cmdUnsubscribe stops following a subject.
+func cmdUnsubscribe(args []string) error {
+	fs := flag.NewFlagSet("unsubscribe", flag.ContinueOnError)
+	ws := fs.String("workspace", "", "workspace slug (for a project ref)")
+	pos, err := parseArgs(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) < 2 {
+		return fmt.Errorf("unsubscribe: need <type> <ref>")
+	}
+	c, err := newClient()
+	if err != nil {
+		return err
+	}
+	body := map[string]any{"type": pos[0], "ref": pos[1]}
+	if w, err := subWorkspace(c, pos[0], *ws); err != nil {
+		return err
+	} else if w != "" {
+		body["workspace"] = w
+	}
+	if _, err := c.do("DELETE", "/api/v1/subscriptions", body); err != nil {
+		return err
+	}
+	fmt.Printf("unwatched %s %s\n", pos[0], pos[1])
+	return nil
+}
+
+// subWorkspace resolves the workspace to send for a project subject (a slug is
+// per-workspace); other subject types need none.
+func subWorkspace(c *client, subjectType, flagVal string) (string, error) {
+	if subjectType != "project" {
+		return flagVal, nil
+	}
+	return c.workspaceSlug(flagVal)
+}
+
+// splitCSV splits a comma list into trimmed, non-empty parts.
+func splitCSV(s string) []string {
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // cmdItemProject files an item under a project by slug, or clears it when the

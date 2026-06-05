@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/peios/acta/internal/board"
+	"github.com/peios/acta/internal/live"
 	"github.com/peios/acta/internal/store"
 )
 
@@ -118,7 +119,13 @@ func writeSSE(w http.ResponseWriter, data []byte) bool {
 // event name; origin is the originating tab's client id; fields carries the
 // kind-specific payload. A nil broker (live updates disabled) is a no-op.
 func (h *handlers) publishLive(topic, kind, origin string, fields map[string]any) {
-	if h.live == nil {
+	publishLiveTo(h.live, topic, kind, origin, fields)
+}
+
+// publishLiveTo is publishLive against an explicit broker, for callers that
+// aren't handler methods (the live bell notifier, wired behind the board).
+func publishLiveTo(hub live.Broker, topic, kind, origin string, fields map[string]any) {
+	if hub == nil {
 		return
 	}
 	env := make(map[string]any, len(fields)+2)
@@ -129,7 +136,7 @@ func (h *handlers) publishLive(topic, kind, origin string, fields map[string]any
 	if err != nil {
 		return
 	}
-	h.live.Publish(topic, data)
+	hub.Publish(topic, data)
 }
 
 // cardFields builds the payload the client needs to create-or-update a board

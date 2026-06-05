@@ -24,62 +24,12 @@ type eventView struct {
 	Dashed    bool         // the dot is a Backlog-board status — render it as a dashed ring
 }
 
-// humanizeEvent turns a stored event into the verb phrase shown to people. It
-// reads the same denormalised Data the board service wrote, so it never needs
-// to resolve ids — and stays correct after the referenced rows change.
+// humanizeEvent turns a stored event into the verb phrase shown to people. The
+// mapping is domain logic shared with the subscription fanout (which snapshots
+// the phrase onto each notification), so it lives in the board package; this is
+// the web-package alias the feed renderers call.
 func humanizeEvent(e store.Event) string {
-	d := e.Data
-	switch e.Verb {
-	case store.EventItemCreated:
-		if s := d["status"]; s != "" {
-			return "created this in " + s
-		}
-		return "created this"
-	case store.EventItemRenamed:
-		return "renamed “" + d["from"] + "” → “" + d["to"] + "”"
-	case store.EventItemStatusChange:
-		if b := d["toBoard"]; b != "" {
-			return "moved to the " + b + " board"
-		}
-		return "moved from " + d["from"] + " to " + d["to"]
-	case store.EventItemAssigned:
-		switch {
-		case d["to"] == "":
-			return "unassigned this"
-		case d["from"] == "":
-			return "assigned this to " + d["to"]
-		default:
-			return "reassigned this from " + d["from"] + " to " + d["to"]
-		}
-	case store.EventItemDescribed:
-		return "updated the description"
-	case store.EventItemArchived:
-		return "archived this"
-	case store.EventItemUnarchived:
-		return "restored this"
-	case store.EventItemMilestone:
-		if d["on"] == "true" {
-			return "marked this as a milestone"
-		}
-		return "removed the milestone mark"
-	case store.EventItemReparented:
-		if d["to"] == "" {
-			return "moved this to the top level"
-		}
-		return "moved this under " + d["to"]
-	case store.EventItemProject:
-		if d["to"] == "" {
-			return "removed this from its project"
-		}
-		return "filed this under " + d["to"]
-	case store.EventCommentAdded:
-		if x := d["excerpt"]; x != "" {
-			return "commented: “" + x + "”"
-		}
-		return "added a comment"
-	default:
-		return e.Verb
-	}
+	return board.HumanizeEvent(e)
 }
 
 // kindForVerb maps a stored verb to the feed glyph it renders with.

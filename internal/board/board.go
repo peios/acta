@@ -107,18 +107,27 @@ func mergeCoalesced(verb string, prev, next map[string]string) map[string]string
 }
 
 type Service struct {
-	store    store.Store
-	now      func() time.Time
-	notifier Notifier
+	store     store.Store
+	now       func() time.Time
+	notifiers []Notifier
 }
 
-// Notifier is an out-of-band delivery channel for notifications (e.g. Web
-// Push). The board calls it as a best-effort side-effect when it files a
-// notification — the inbox row is the durable record, so a nil Notifier (the
-// default) simply means no push. Implementations must not block: NotifyUser is
-// invoked on the request path.
+// Notifier is an out-of-band delivery channel for notifications (e.g. Web Push,
+// the live SSE bell). The board calls every attached channel as a best-effort
+// side-effect when it files a notification — the inbox row is the durable
+// record, so with no Notifier attached (the default) notifications are simply
+// in-app only. Implementations must not block: NotifyUser is invoked on the
+// request path.
 type Notifier interface {
 	NotifyUser(ctx context.Context, userID string, n store.Notification)
+}
+
+// notify delivers n to every attached channel, best-effort. This is the single
+// fan-out point for out-of-band delivery, shared by mentions and subscriptions.
+func (s *Service) notify(ctx context.Context, userID string, n store.Notification) {
+	for _, nf := range s.notifiers {
+		nf.NotifyUser(ctx, userID, n)
+	}
 }
 
 // Option configures a Service.
@@ -130,10 +139,19 @@ func WithClock(now func() time.Time) Option {
 	return func(s *Service) { s.now = now }
 }
 
-// WithNotifier attaches an out-of-band notification channel (Web Push). Omit it
-// and notifications are only delivered in-app.
+// WithNotifier attaches an out-of-band notification channel (Web Push, live
+// SSE). It may be passed more than once to attach several; with none,
+// notifications are delivered in-app only.
 func WithNotifier(n Notifier) Option {
-	return func(s *Service) { s.notifier = n }
+	return func(s *Service) { s.notifiers = append(s.notifiers, n) }
+}
+
+// AddNotifier attaches a Notifier after construction — for a channel that only
+// exists once a later layer is built (the web SSE bell, whose hub the handler
+// owns). Call it during startup, before serving; it is not safe against a
+// concurrent notify.
+func (s *Service) AddNotifier(n Notifier) {
+	s.notifiers = append(s.notifiers, n)
 }
 
 func New(st store.Store, opts ...Option) *Service {
@@ -150,6 +168,13 @@ func New(st store.Store, opts ...Option) *Service {
 // the mutation it describes, and it is intentionally a separate write — the log
 // is history, not part of the operation's consistency.
 func (s *Service) recordEvent(ctx context.Context, item store.Item, verb string, data map[string]string) {
+	s.recordEventExcluding(ctx, item, verb, data, nil)
+}
+
+// recordEventExcluding is recordEvent with a set of subscriber ids to skip in the
+// fanout — used by AddComment so an @mention (filed separately, more specific)
+// wins over the generic comment-activity notification for the same recipient.
+func (s *Service) recordEventExcluding(ctx context.Context, item store.Item, verb string, data map[string]string, exclude map[string]bool) {
 	ev := store.Event{
 		WorkspaceID: item.WorkspaceID,
 		ItemID:      item.ID,
@@ -191,7 +216,12 @@ func (s *Service) recordEvent(ctx context.Context, item store.Item, verb string,
 	}
 	if _, err := s.store.RecordEvent(ctx, ev); err != nil {
 		slog.Error("record activity event", "verb", verb, "item", item.ID, "err", err)
+		return
 	}
+	// Fan the freshly-logged event out to its subscribers. Deliberately only on
+	// the RecordEvent path, not the coalesce fold above — a burst of autosave
+	// edits notifies once (when it opens an entry), not per keystroke.
+	s.notifySubscribers(ctx, ev, item, exclude)
 }
 
 func principalName(p *identity.Principal) string {
@@ -405,6 +435,7 @@ func (s *Service) createItem(ctx context.Context, workspaceID, statusID, title, 
 	}
 	status, _ := s.store.StatusByID(ctx, statusID)
 	s.recordEvent(ctx, it, store.EventItemCreated, map[string]string{"status": status.Name})
+	s.autoSubscribe(ctx, createdBy, store.SubjectItem, it.ID) // author watches what they create
 	return it, nil
 }
 
@@ -609,6 +640,7 @@ func (s *Service) SetAssignee(ctx context.Context, id, assigneeID string) error 
 		return err
 	}
 	s.recordEvent(ctx, item, store.EventItemAssigned, map[string]string{"from": from, "to": to})
+	s.autoSubscribeAssignee(ctx, assigneeID, id) // assignee (and an agent's owner) watch the item
 	return nil
 }
 
@@ -822,6 +854,7 @@ func (s *Service) CreateSubtaskAs(ctx context.Context, parentID, title, createdB
 		it.ProjectID = parent.ProjectID
 	}
 	s.recordEvent(ctx, it, store.EventItemCreated, map[string]string{"status": statuses[0].Name})
+	s.autoSubscribe(ctx, createdBy, store.SubjectItem, it.ID) // author watches what they create
 	return it, nil
 }
 
@@ -1107,8 +1140,12 @@ func (s *Service) AddComment(ctx context.Context, itemID, authorID, body string)
 	}
 	var notified []store.Notification
 	if item, ierr := s.store.ItemByID(ctx, itemID); ierr == nil {
-		s.recordEvent(ctx, item, store.EventCommentAdded, map[string]string{"excerpt": excerpt(body, 100)})
+		// Mentions first: they're the more specific delivery, so anyone @mentioned
+		// is excluded from the comment's generic activity fanout (no double-ping).
 		notified = s.notifyMentions(ctx, item, c, body)
+		s.recordEventExcluding(ctx, item, store.EventCommentAdded,
+			map[string]string{"excerpt": excerpt(body, 100)}, recipientSet(notified))
+		s.autoSubscribe(ctx, authorID, store.SubjectItem, itemID) // commenting follows the thread
 	}
 	return c, notified, nil
 }
@@ -1205,9 +1242,7 @@ func (s *Service) notifyHandles(ctx context.Context, item store.Item, c store.Co
 			continue
 		}
 		notified = append(notified, n)
-		if s.notifier != nil {
-			s.notifier.NotifyUser(ctx, u.ID, n) // best-effort push; must not block
-		}
+		s.notify(ctx, u.ID, n) // best-effort push + live bell; must not block
 	}
 	return notified
 }

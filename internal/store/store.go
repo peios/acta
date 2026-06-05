@@ -309,7 +309,18 @@ type Comment struct {
 // Notification kinds. Each names why a principal was notified; the row's
 // snapshot fields carry the already-resolved context to render it.
 const (
-	NotificationMention = "mention" // someone @mentioned the recipient in a comment
+	NotificationMention  = "mention"  // someone @mentioned the recipient in a comment
+	NotificationActivity = "activity" // a subscription the recipient holds matched an event
+)
+
+// Subscription subject types — the kind of thing a principal can subscribe to.
+// A subscription matches an event when its subject is the event's item
+// (SubjectItem), the event item's project (SubjectProject), or the event's
+// actor (SubjectPrincipal). Persisted as the subject_type column.
+const (
+	SubjectItem      = "item"
+	SubjectProject   = "project"
+	SubjectPrincipal = "principal"
 )
 
 // Notification is one entry in a principal's inbox: a per-recipient delivery
@@ -330,8 +341,28 @@ type Notification struct {
 	ActorName     string
 	CommentID     string
 	Excerpt       string
-	CreatedAt     time.Time
-	ReadAt        *time.Time
+	// Verb and Summary carry an activity notification's payload: the event verb
+	// (drives the glyph/semantics) and the already-rendered phrase ("moved from
+	// To do to Doing"), snapshotted so the bell renders without re-resolving the
+	// event. Both are "" for a mention.
+	Verb      string
+	Summary   string
+	CreatedAt time.Time
+	ReadAt    *time.Time
+}
+
+// Subscription is one principal's standing interest in a subject: when a
+// matching event fires, the subscriber gets an activity notification. Events
+// holds the category keys (see internal/board) the subscriber wants delivered —
+// the configurable filter, seeded from a per-subject-type default. The triple
+// (SubscriberID, SubjectType, SubjectID) is unique.
+type Subscription struct {
+	ID           string
+	SubscriberID string
+	SubjectType  string
+	SubjectID    string
+	Events       []string
+	CreatedAt    time.Time
 }
 
 // PushSubscription is one browser's Web Push registration for a user: the push
@@ -541,6 +572,24 @@ type Store interface {
 	UnreadNotificationCount(ctx context.Context, recipientID string) (int, error)
 	MarkNotificationRead(ctx context.Context, id, recipientID string) error
 	MarkAllNotificationsRead(ctx context.Context, recipientID string) error
+
+	// Subscriptions: a principal's standing interests, keyed by the unique triple
+	// (subscriber, subject_type, subject_id). EnsureSubscription inserts with the
+	// given Events if the triple is absent and otherwise leaves the existing row
+	// untouched (the idempotent, sticky auto-subscribe — it never clobbers a
+	// configured filter). SetSubscriptionEvents upserts with an explicit Events
+	// filter (the manual subscribe/configure). DeleteSubscription removes one (a
+	// missing row is not an error). SubscriptionFor returns one and whether it
+	// exists. SubscriptionsBySubscriber lists a principal's subscriptions,
+	// optionally filtered to a subject_type ("" = all), newest-first.
+	// SubscribersForEvent returns every subscription matching an event by its
+	// item, project, or actor — the fanout query (empty ids match nothing).
+	EnsureSubscription(ctx context.Context, s Subscription) (Subscription, error)
+	SetSubscriptionEvents(ctx context.Context, subscriberID, subjectType, subjectID string, events []string) (Subscription, error)
+	DeleteSubscription(ctx context.Context, subscriberID, subjectType, subjectID string) error
+	SubscriptionFor(ctx context.Context, subscriberID, subjectType, subjectID string) (Subscription, bool, error)
+	SubscriptionsBySubscriber(ctx context.Context, subscriberID, subjectType string) ([]Subscription, error)
+	SubscribersForEvent(ctx context.Context, itemID, projectID, actorID string) ([]Subscription, error)
 
 	// Web Push subscriptions, keyed by endpoint. CreatePushSubscription upserts
 	// (re-subscribing a browser refreshes its keys and owner rather than

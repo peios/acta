@@ -320,10 +320,85 @@ func (h *handlers) apiWorkspace(w http.ResponseWriter, r *http.Request) (store.W
 // bad name (client error) from an internal failure. The wrapped message is
 // already human-readable, so the MCP surface returns it verbatim.
 var (
-	errUnknownStatus  = errors.New("unknown status")
-	errUnknownUser    = errors.New("unknown user")
-	errUnknownProject = errors.New("unknown project")
+	errUnknownStatus      = errors.New("unknown status")
+	errUnknownUser        = errors.New("unknown user")
+	errUnknownProject     = errors.New("unknown project")
+	errUnknownSubjectType = errors.New("unknown subject type (use item, project, or principal)")
+	errProjectNeedsWS     = errors.New("a workspace is required to address a project by slug")
 )
+
+// subscriptionAPI is a subscription as rendered to API and MCP clients: the
+// subject addressed by its natural key (item id, project slug, principal
+// username), a human label, and the category filter.
+type subscriptionAPI struct {
+	Type   string   `json:"type"`            // item | project | principal
+	Ref    string   `json:"ref"`             // natural key: item id, project slug, username
+	Label  string   `json:"label,omitempty"` // human title/name of the subject
+	Events []string `json:"events"`          // categories: comments, status, assignments, items_added, other
+}
+
+// resolveSubjectRef turns an API subject reference (type + natural key) into the
+// stored subject id, addressing each the documented way: items by id (a human
+// ref is accepted too), projects by slug within a workspace, principals by
+// username ("me" = the caller).
+func (h *handlers) resolveSubjectRef(ctx context.Context, subjectType, ref, workspace string) (string, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", errors.New("ref is required")
+	}
+	switch subjectType {
+	case store.SubjectItem:
+		it, err := h.mcpItem(ctx, ref, "")
+		if err != nil {
+			return "", err
+		}
+		return it.ID, nil
+	case store.SubjectProject:
+		if strings.TrimSpace(workspace) == "" {
+			return "", errProjectNeedsWS
+		}
+		ws, err := h.mcpWorkspace(ctx, workspace)
+		if err != nil {
+			return "", err
+		}
+		return h.projectIDBySlug(ctx, ws.ID, ref)
+	case store.SubjectPrincipal:
+		if strings.EqualFold(ref, "me") {
+			if p := principalFrom(ctx); p != nil {
+				return p.ID, nil
+			}
+		}
+		return h.userIDByName(ctx, ref)
+	default:
+		return "", errUnknownSubjectType
+	}
+}
+
+// toSubscriptionAPI renders a stored subscription for API/MCP, resolving the
+// subject to its natural-key ref and a label. A subject that no longer resolves
+// keeps its stored id as the ref and an empty label (the row is inert but can
+// still be removed).
+func (h *handlers) toSubscriptionAPI(ctx context.Context, sub store.Subscription) subscriptionAPI {
+	out := subscriptionAPI{Type: sub.SubjectType, Ref: sub.SubjectID, Events: sub.Events}
+	if out.Events == nil {
+		out.Events = []string{}
+	}
+	switch sub.SubjectType {
+	case store.SubjectItem:
+		if it, err := h.board.Item(ctx, sub.SubjectID); err == nil {
+			out.Label = it.Title
+		}
+	case store.SubjectProject:
+		if pr, err := h.board.Project(ctx, sub.SubjectID); err == nil {
+			out.Ref, out.Label = pr.Slug, pr.Name
+		}
+	case store.SubjectPrincipal:
+		if u, err := h.board.User(ctx, sub.SubjectID); err == nil {
+			out.Ref, out.Label = u.Username, displayName(u)
+		}
+	}
+	return out
+}
 
 // projectIDBySlug resolves a project slug to its id within a workspace,
 // case-insensitively. Unknown slugs wrap errUnknownProject.

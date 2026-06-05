@@ -46,6 +46,8 @@ type modalView struct {
 	SubTotal        int
 	CreatedBy       string // display name of the creator, "" if unrecorded
 	CreatedByAgent  bool
+	Watching        bool            // the viewer is subscribed to this item
+	WatchCats       []catToggle     // the five category toggles for the Watch dropdown, ticked per the filter
 	Timeline        []timelineGroup // unified activity feed: comments + system events, oldest first
 }
 
@@ -402,6 +404,10 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 	}
 	timeline := buildTimeline(comments, history, nameByID, colorByStatus, viewerID, backlogID)
 
+	// The Watch control reflects the viewer's item subscription: whether they
+	// watch it, and which categories its filter delivers (for the dropdown).
+	watchSub, watching, _ := h.board.SubscriptionFor(ctx, viewerID, store.SubjectItem, itemID)
+
 	return modalView{
 		Slug:            ws.Slug,
 		CSRFToken:       csrfTokenFrom(ctx),
@@ -426,6 +432,8 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		SubTotal:        len(children),
 		CreatedBy:       createdBy,
 		CreatedByAgent:  isAgent[item.CreatedBy],
+		Watching:        watching,
+		WatchCats:       catToggles(watchSub.Events),
 		Timeline:        timeline,
 	}, true, nil
 }
