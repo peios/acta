@@ -196,7 +196,8 @@
         <div class="lane-swatch">
           <button class="lane-dot{{if $.LanesDashed}} dashed{{end}}" type="button" style="{{.ColorVar}}" title="Lane colour" aria-label="Lane colour"></button>
           <div class="lane-palette" hidden>
-            {{range $.Palette}}<button class="swatch" type="button" data-color="{{.Hex}}" style="{{.Style}}" aria-label="Set lane colour"></button>{{end}}
+            <div class="palette-swatches">{{range $.Palette}}<button class="swatch" type="button" data-color="{{.Hex}}" style="{{.Style}}" aria-label="Set lane colour"></button>{{end}}</div>
+            <button class="palette-action" type="button" data-manage-checklist><svg class="ico" viewBox="0 0 16 16"><path d="M2.6 4.4 3.7 5.5 5.6 3.3"/><path d="M2.6 9.4 3.7 10.5 5.6 8.3"/><path d="M8 4.4h5.4M8 9.4h5.4"/></svg>Checklists</button>
           </div>
         </div>
         <input class="lane-name" value="{{.Status.Name}}" maxlength="40" aria-label="Status name">
@@ -237,7 +238,8 @@
       <div class="lane-swatch">
         <button class="lane-dot" type="button" title="Lane colour" aria-label="Lane colour"></button>
         <div class="lane-palette" hidden>
-          {{range $.Palette}}<button class="swatch" type="button" data-color="{{.Hex}}" style="{{.Style}}" aria-label="Set lane colour"></button>{{end}}
+          <div class="palette-swatches">{{range $.Palette}}<button class="swatch" type="button" data-color="{{.Hex}}" style="{{.Style}}" aria-label="Set lane colour"></button>{{end}}</div>
+          <button class="palette-action" type="button" data-manage-checklist><svg class="ico" viewBox="0 0 16 16"><path d="M2.6 4.4 3.7 5.5 5.6 3.3"/><path d="M2.6 9.4 3.7 10.5 5.6 8.3"/><path d="M8 4.4h5.4M8 9.4h5.4"/></svg>Checklists</button>
         </div>
       </div>
       <input class="lane-name" maxlength="40" aria-label="Status name">
@@ -248,6 +250,40 @@
       <input class="item-add-input" placeholder="+ Add item" maxlength="200" aria-label="New item title">
     </form>
   </section>
+</template>
+
+<template id="gate-modal-tmpl">
+  <div class="modal-backdrop gate-backdrop" data-gate-modal>
+    <div class="modal gate-modal" role="dialog" aria-modal="true" aria-label="Status checklist">
+      <header class="gate-head">
+        <span class="gate-title">Checklist to enter <b data-gate-status></b></span>
+        <button class="modal-close" type="button" data-gate-close aria-label="Close">×</button>
+      </header>
+      <div class="gate-checklist" data-gate-list></div>
+      <p class="gate-hint">Tick everything to move now — or close, and it waits as a pending status on the item.</p>
+    </div>
+  </div>
+</template>
+
+<template id="manage-checklist-tmpl">
+  <div class="modal-backdrop gate-backdrop" data-manage-modal>
+    <div class="modal gate-modal" role="dialog" aria-modal="true" aria-label="Manage checklist">
+      <header class="gate-head">
+        <span class="gate-title">Checklist for <b data-manage-status></b></span>
+        <button class="modal-close" type="button" data-manage-close aria-label="Close">×</button>
+      </header>
+      <p class="gate-sub">Tick the facts that must hold before an item can enter this lane. Facts are shared across the workspace — reuse one and a tick on an item satisfies every lane that needs it.</p>
+      <div class="manage-list" data-manage-list></div>
+      <form class="manage-add" data-manage-add>
+        <input class="input manage-add-input" placeholder="+ New fact" maxlength="80" aria-label="New fact">
+      </form>
+      <p class="alert manage-err" role="alert" data-manage-err hidden></p>
+      <div class="gate-actions">
+        <button class="btn-secondary" type="button" data-manage-cancel>Cancel</button>
+        <button class="btn-primary" type="button" data-manage-save>Save</button>
+      </div>
+    </div>
+  </div>
 </template>
 {{end}}
 {{define "scripts"}}

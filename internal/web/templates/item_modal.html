@@ -8,6 +8,23 @@
       <a class="modal-close" href="/{{.Slug}}" data-modal-close aria-label="Close">×</a>
     </header>
 
+    {{if .Pending}}
+    <div class="pending-band" data-pending-band data-status-id="{{.Pending.StatusID}}">
+      <div class="pending-band-head">
+        <span class="pending-band-label">Pending status</span>
+        <span class="pending-band-target"><span class="status-dot" style="{{.Pending.StatusColorVar}}"></span>{{.Pending.StatusName}}</span>
+        <span class="pending-band-spacer"></span>
+        <button class="pending-btn" type="button" data-pending-cancel>Cancel</button>
+        <button class="pending-btn pending-force" type="button" data-pending-force>Force</button>
+      </div>
+      <div class="pending-checklist" data-pending-checklist>
+        {{range .Pending.Facts}}
+        <label class="fact-row"><input type="checkbox" data-fact="{{.ID}}"{{if .Checked}} checked{{end}}><span class="fact-title">{{.Title}}</span></label>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+
     <div class="modal-status-bar">
       <div class="status-pill-wrap" data-status-pill>
         <button class="status-pill" type="button" data-pill-trigger aria-label="Change status">

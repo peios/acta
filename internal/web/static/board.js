@@ -18,6 +18,9 @@
     invalid_comment: 'Enter a comment.',
     invalid_description: 'That description is too long.',
     user_not_found: 'That user no longer exists.',
+    invalid_fact: 'Enter a fact (1–80 characters).',
+    fact_title_taken: 'A fact with that name already exists.',
+    no_pending: 'This item has no pending status.',
   };
   const msg = (e) => MESSAGES[e.message] || 'Something went wrong — reload and try again.';
 
@@ -382,6 +385,14 @@
       catch (e) { if (boardErr) boardErr.textContent = msg(e); }
     });
 
+    const manageBtn = lane.querySelector('[data-manage-checklist]');
+    if (manageBtn) {
+      manageBtn.addEventListener('click', () => {
+        closePalettes();
+        openManageModal(statusId(), nameInput.value.trim() || 'this lane');
+      });
+    }
+
     lane.querySelector('.item-add').addEventListener('submit', async (e) => {
       e.preventDefault();
       const input = e.target.querySelector('.item-add-input');
@@ -428,6 +439,16 @@
         const destLane = evt.to.closest('.lane');
         evt.item.style.setProperty('--lane-color', destLane.dataset.color || '');
         api('/items/' + id + '/move', { status_id: destLane.dataset.statusId, index: evt.newIndex })
+          .then((res) => {
+            if (res && res.moved === false && res.gate) {
+              // Gated lane, checklist unmet: snap the card back to where it was
+              // and surface the checklist to tick (or leave pending on close).
+              evt.from.insertBefore(evt.item, evt.from.children[evt.oldIndex] || null);
+              const srcLane = evt.from.closest('.lane');
+              if (srcLane) evt.item.style.setProperty('--lane-color', srcLane.dataset.color || '');
+              openGateModal(id, res.gate);
+            }
+          })
           .catch((e) => { if (boardErr) boardErr.textContent = msg(e); location.reload(); });
       },
     });
@@ -507,6 +528,8 @@
 
   let modalEl = null;
   let opener = null; // card to restore focus to on close
+  let gateEl = null; // the status-checklist gating modal, when open
+  let manageEl = null; // the Manage Checklist editor, when open
 
   // URL helpers that preserve other params (notably ?mode=).
   const urlWithItem = (id) => {
@@ -547,6 +570,192 @@
     if (modalEl) { modalEl.remove(); modalEl = null; }
     if (push) history.pushState({}, '', urlWithoutItem());
     if (opener) { opener.focus(); opener = null; }
+  }
+
+  // --- status checklists (gating modal, Manage Checklist editor) ---------
+
+  // reflectStatus repaints a card into the lane of statusId after the item
+  // actually moved (a satisfied/forced gate). Mirrors the modal status-change
+  // repaint; in Milestone mode (no lanes) it's a no-op beyond the dataset.
+  function reflectStatus(id, statusId) {
+    const c = cardOf(id);
+    if (!c) return;
+    c.dataset.statusId = statusId;
+    const laneEl = board.querySelector('.lane[data-status-id="' + CSS.escape(statusId) + '"]');
+    if (laneEl) {
+      laneEl.querySelector('.lane-items').append(c);
+      c.style.setProperty('--lane-color', laneEl.dataset.color || '');
+      reapplyFilters();
+    } else if (board.querySelector('.lane')) {
+      c.remove(); // moved to a status on another board — leaves this one
+    }
+  }
+
+  // postFact ticks/unticks one of an item's facts, returning {moved, gate}.
+  const postFact = (id, factId, checked) => api('/items/' + id + '/facts/' + factId, { checked });
+
+  // If the modal for id is open, re-fetch it so its Pending band reflects a
+  // move/tick that happened from the gating modal or a drag.
+  function refreshModalIfOpen(id) {
+    if (modalEl && modalEl.dataset.itemId === id) openModal(id, false);
+  }
+
+  function closeGateModal() { if (gateEl) { gateEl.remove(); gateEl = null; } }
+
+  // openGateModal shows the checklist that gates entry into a lane. Ticking the
+  // last fact moves the item and closes the modal; closing early leaves the
+  // transition pending (the band on the item modal).
+  function openGateModal(id, gate) {
+    closeGateModal();
+    const tmpl = document.getElementById('gate-modal-tmpl');
+    if (!tmpl) return;
+    const node = tmpl.content.firstElementChild.cloneNode(true);
+    node.querySelector('[data-gate-status]').textContent = gate.status_name;
+    renderFactList(node.querySelector('[data-gate-list]'), id, gate.facts, () => {
+      closeGateModal();
+      reflectStatus(id, gate.status_id);
+      refreshModalIfOpen(id);
+    });
+    node.addEventListener('mousedown', (e) => { if (e.target === node) { closeGateModal(); refreshModalIfOpen(id); } });
+    node.querySelector('[data-gate-close]').addEventListener('click', () => { closeGateModal(); refreshModalIfOpen(id); });
+    document.body.appendChild(node);
+    gateEl = node;
+  }
+
+  // renderFactList fills a container with one checkbox per fact; each posts a
+  // tick and, if it completes the pending checklist, calls onMoved. Shared by the
+  // gating modal and the item-modal Pending band.
+  function renderFactList(list, id, facts, onMoved) {
+    list.innerHTML = '';
+    facts.forEach((f) => {
+      const label = document.createElement('label');
+      label.className = 'fact-row';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!f.checked;
+      const span = document.createElement('span');
+      span.className = 'fact-title';
+      span.textContent = f.title;
+      cb.addEventListener('change', async () => {
+        cb.disabled = true;
+        try {
+          const res = await postFact(id, f.id, cb.checked);
+          if (res && res.moved) { onMoved(); return; }
+        } catch (e) {
+          cb.checked = !cb.checked;
+          if (boardErr) boardErr.textContent = msg(e);
+        }
+        cb.disabled = false;
+      });
+      label.append(cb, span);
+      list.append(label);
+    });
+  }
+
+  function closeManageModal() { if (manageEl) { manageEl.remove(); manageEl = null; } }
+
+  // openManageModal is the Manage Checklist editor for a lane: tick which
+  // workspace facts gate it, add new facts inline, Save to persist the set.
+  async function openManageModal(statusId, statusName) {
+    closeManageModal();
+    let data;
+    try {
+      const res = await fetch(base + '/statuses/' + statusId + '/checklist', { headers: { 'X-CSRF-Token': csrf } });
+      if (!res.ok) throw new Error(res.status);
+      data = await res.json();
+    } catch (_) {
+      if (boardErr) boardErr.textContent = 'Could not load the checklist.';
+      return;
+    }
+    const tmpl = document.getElementById('manage-checklist-tmpl');
+    if (!tmpl) return;
+    const node = tmpl.content.firstElementChild.cloneNode(true);
+    node.querySelector('[data-manage-status]').textContent = statusName;
+    const list = node.querySelector('[data-manage-list]');
+    const errEl = node.querySelector('[data-manage-err]');
+
+    const addRow = (id, title, gates) => {
+      const label = document.createElement('label');
+      label.className = 'fact-row';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = gates;
+      if (id != null) cb.dataset.factId = String(id);
+      const span = document.createElement('span');
+      span.className = 'fact-title';
+      span.textContent = title;
+      label.append(cb, span);
+      list.append(label);
+      return cb;
+    };
+    (data.facts || []).forEach((f) => addRow(f.id, f.title, f.gates));
+
+    node.querySelector('[data-manage-add]').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const input = e.target.querySelector('.manage-add-input');
+      const t = input.value.trim();
+      if (!t) return;
+      addRow(null, t, true).checked = true;
+      input.value = '';
+      input.focus();
+    });
+
+    const close = () => closeManageModal();
+    node.addEventListener('mousedown', (e) => { if (e.target === node) close(); });
+    node.querySelector('[data-manage-close]').addEventListener('click', close);
+    node.querySelector('[data-manage-cancel]').addEventListener('click', close);
+    node.querySelector('[data-manage-save]').addEventListener('click', async () => {
+      const gateIds = [];
+      list.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+        if (cb.checked && cb.dataset.factId) gateIds.push(Number(cb.dataset.factId));
+      });
+      // New facts that were left ticked become part of the gate; unticked new
+      // ones are dropped (never created).
+      const keepNew = [];
+      list.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+        if (cb.checked && !cb.dataset.factId) keepNew.push(cb.nextElementSibling.textContent);
+      });
+      try {
+        await api('/statuses/' + statusId + '/checklist', { gate_ids: gateIds, new_titles: keepNew });
+        close();
+      } catch (e) {
+        if (errEl) { errEl.hidden = false; errEl.textContent = msg(e); }
+      }
+    });
+
+    document.body.appendChild(node);
+    manageEl = node;
+    const first = node.querySelector('.manage-add-input');
+    if (first) first.focus();
+  }
+
+  // wirePendingBand drives the "Pending status" band on the item modal: tick a
+  // fact (auto-moves when the last one lands), Cancel the transition, or Force it
+  // through. Each action re-opens the modal so the band/pill reflect the result.
+  function wirePendingBand(el, id) {
+    const band = el.querySelector('[data-pending-band]');
+    if (!band) return;
+    const target = band.dataset.statusId;
+    band.querySelectorAll('.pending-checklist input[type="checkbox"]').forEach((cb) => {
+      cb.addEventListener('change', async () => {
+        cb.disabled = true;
+        try {
+          const res = await postFact(id, Number(cb.dataset.fact), cb.checked);
+          if (res && res.moved) { reflectStatus(id, target); openModal(id, false); return; }
+        } catch (e) { cb.checked = !cb.checked; if (boardErr) boardErr.textContent = msg(e); }
+        cb.disabled = false;
+      });
+    });
+    const cancel = band.querySelector('[data-pending-cancel]');
+    if (cancel) cancel.addEventListener('click', async () => {
+      try { await api('/items/' + id + '/pending/cancel'); openModal(id, false); }
+      catch (e) { if (boardErr) boardErr.textContent = msg(e); }
+    });
+    const force = band.querySelector('[data-pending-force]');
+    if (force) force.addEventListener('click', async () => {
+      try { await api('/items/' + id + '/pending/force'); reflectStatus(id, target); openModal(id, false); }
+      catch (e) { if (boardErr) boardErr.textContent = msg(e); }
+    });
   }
 
   // saveDescription posts the raw markdown and returns the server-rendered,
@@ -638,26 +847,32 @@
     }, 500);
     title.addEventListener('input', saveTitle);
 
-    el.querySelector('.modal-status').addEventListener('change', async (e) => {
-      const statusId = e.target.value;
-      try {
-        await api('/items/' + id + '/status', { status_id: statusId });
-        const c = cardOf(id);
-        const laneEl = board.querySelector('.lane[data-status-id="' + CSS.escape(statusId) + '"]');
-        if (c) {
-          c.dataset.statusId = statusId;
-          if (laneEl) {
-            laneEl.querySelector('.lane-items').append(c);
-            c.style.setProperty('--lane-color', laneEl.dataset.color || '');
-            reapplyFilters();
-          } else if (board.querySelector('.lane')) {
-            // Status mode, but no lane here for the new status — the item took a
-            // status on another board, so it leaves this one.
-            c.remove();
+    // The hidden <select> is the source of truth the pills drive. curStatus
+    // tracks the last *committed* status so a gated pick can revert; statusSyncs
+    // holds each visible pill's repaint fn (run after a revert).
+    const statusSelect = el.querySelector('.modal-status');
+    let curStatus = statusSelect ? statusSelect.value : '';
+    const statusSyncs = [];
+    if (statusSelect) {
+      statusSelect.addEventListener('change', async (e) => {
+        const statusId = e.target.value;
+        try {
+          const res = await api('/items/' + id + '/status', { status_id: statusId });
+          if (res && res.moved === false && res.gate) {
+            // Gated: revert the picker to the committed status, repaint the
+            // pills, and surface the checklist (or leave it pending on close).
+            statusSelect.value = curStatus;
+            statusSyncs.forEach((fn) => fn());
+            openGateModal(id, res.gate);
+            return;
           }
-        }
-      } catch (err2) { fail(err2); }
-    });
+          curStatus = statusId;
+          reflectStatus(id, statusId);
+        } catch (err2) { fail(err2); }
+      });
+    }
+
+    wirePendingBand(el, id);
 
     // --- modal pills (status / assignee) ----------------------------------
     // Each pill is a styled trigger + dropdown that drives the matching hidden
@@ -694,7 +909,6 @@
       if (side.pops.length && !side.pops.some((p) => p.wrap.contains(e.target))) side.closeAll();
     });
 
-    const statusSelect = el.querySelector('.modal-status');
     const statusPill = el.querySelector('[data-status-pill]');
     if (statusPill && statusSelect) {
       wirePill(statusPill);
@@ -711,6 +925,7 @@
         dot.style.setProperty('--lane-color', d.color);
         dot.classList.toggle('dashed', d.dashed); // Backlog statuses render dashed
       };
+      statusSyncs.push(syncStatus);
       statusPill.querySelectorAll('[data-status-opt]').forEach((o) => {
         o.addEventListener('click', () => {
           closeModalPops();
@@ -778,6 +993,7 @@
         dot.style.setProperty('--lane-color', d.color);
         dot.classList.toggle('dashed', d.dashed);
       };
+      statusSyncs.push(syncSideStatus);
       sideStatusPill.querySelectorAll('[data-status-opt]').forEach((o) => {
         o.addEventListener('click', () => {
           side.closeAll();
@@ -1475,6 +1691,9 @@
     if (e.key !== 'Escape') return;
     closePalettes();
     closePops();
+    // A gate/manage modal sits above the item modal — Escape dismisses it first.
+    if (manageEl) { closeManageModal(); return; }
+    if (gateEl) { const it = modalEl && modalEl.dataset.itemId; closeGateModal(); if (it) refreshModalIfOpen(it); return; }
     if (modalEl) closeModal();
   });
   window.addEventListener('popstate', () => {

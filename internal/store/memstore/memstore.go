@@ -35,6 +35,10 @@ type Store struct {
 	pushSubs    map[string]store.PushSubscription // keyed by endpoint
 	projects    map[string]store.Project
 	subs        map[string]store.Subscription // keyed by id
+	facts       map[int64]store.Fact
+	factSeq     int64
+	statusFacts map[string][]int64                  // status id -> ordered gating fact ids
+	itemFacts   map[string]map[int64]store.FactTick // item id -> fact id -> tick
 }
 
 func New() *Store {
@@ -57,6 +61,9 @@ func New() *Store {
 		pushSubs:    map[string]store.PushSubscription{},
 		projects:    map[string]store.Project{},
 		subs:        map[string]store.Subscription{},
+		facts:       map[int64]store.Fact{},
+		statusFacts: map[string][]int64{},
+		itemFacts:   map[string]map[int64]store.FactTick{},
 	}
 }
 
@@ -1416,6 +1423,150 @@ func (s *Store) SubscribersForEvent(_ context.Context, itemID, projectID, actorI
 		}
 	}
 	return out, nil
+}
+
+// --- status checklists ---
+
+func (s *Store) CreateFact(_ context.Context, workspaceID, title string) (store.Fact, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	pos := 0
+	for _, f := range s.facts {
+		if f.WorkspaceID != workspaceID {
+			continue
+		}
+		if strings.EqualFold(f.Title, title) {
+			return store.Fact{}, store.ErrFactTitleTaken
+		}
+		pos++
+	}
+	s.factSeq++
+	f := store.Fact{ID: s.factSeq, WorkspaceID: workspaceID, Title: title, Position: pos, CreatedAt: time.Now()}
+	s.facts[f.ID] = f
+	return f, nil
+}
+
+func (s *Store) FactsByWorkspace(_ context.Context, workspaceID string) ([]store.Fact, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.Fact
+	for _, f := range s.facts {
+		if f.WorkspaceID == workspaceID {
+			out = append(out, f)
+		}
+	}
+	sortFacts(out)
+	return out, nil
+}
+
+func (s *Store) FactByID(_ context.Context, id int64) (store.Fact, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, ok := s.facts[id]
+	if !ok {
+		return store.Fact{}, store.ErrFactNotFound
+	}
+	return f, nil
+}
+
+func (s *Store) RenameFact(_ context.Context, id int64, title string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, ok := s.facts[id]
+	if !ok {
+		return store.ErrFactNotFound
+	}
+	for _, o := range s.facts {
+		if o.ID != id && o.WorkspaceID == f.WorkspaceID && strings.EqualFold(o.Title, title) {
+			return store.ErrFactTitleTaken
+		}
+	}
+	f.Title = title
+	s.facts[id] = f
+	return nil
+}
+
+func (s *Store) DeleteFact(_ context.Context, id int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.facts, id)
+	for sid, ids := range s.statusFacts {
+		s.statusFacts[sid] = removeInt64(ids, id)
+	}
+	for _, ticks := range s.itemFacts {
+		delete(ticks, id)
+	}
+	return nil
+}
+
+func (s *Store) FactsByStatus(_ context.Context, statusID string) ([]store.Fact, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.Fact
+	for _, id := range s.statusFacts[statusID] {
+		if f, ok := s.facts[id]; ok {
+			out = append(out, f)
+		}
+	}
+	return out, nil
+}
+
+func (s *Store) SetStatusFacts(_ context.Context, statusID string, factIDs []int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cp := make([]int64, len(factIDs))
+	copy(cp, factIDs)
+	s.statusFacts[statusID] = cp
+	return nil
+}
+
+func (s *Store) TicksByItem(_ context.Context, itemID string) ([]store.FactTick, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.FactTick
+	for _, t := range s.itemFacts[itemID] {
+		out = append(out, t)
+	}
+	return out, nil
+}
+
+func (s *Store) SetItemFact(_ context.Context, itemID string, factID int64, checked bool, by string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !checked {
+		if ticks, ok := s.itemFacts[itemID]; ok {
+			delete(ticks, factID)
+		}
+		return nil
+	}
+	if s.itemFacts[itemID] == nil {
+		s.itemFacts[itemID] = map[int64]store.FactTick{}
+	}
+	s.itemFacts[itemID][factID] = store.FactTick{FactID: factID, CheckedBy: by, CheckedAt: time.Now()}
+	return nil
+}
+
+func (s *Store) SetItemPending(_ context.Context, itemID, statusID string) error {
+	return s.mutateItem(itemID, func(it *store.Item) { it.PendingStatusID = statusID })
+}
+
+func sortFacts(fs []store.Fact) {
+	sort.Slice(fs, func(i, j int) bool {
+		if fs[i].Position != fs[j].Position {
+			return fs[i].Position < fs[j].Position
+		}
+		return strings.ToLower(fs[i].Title) < strings.ToLower(fs[j].Title)
+	})
+}
+
+func removeInt64(xs []int64, x int64) []int64 {
+	out := xs[:0]
+	for _, v := range xs {
+		if v != x {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // --- web push subscriptions ---

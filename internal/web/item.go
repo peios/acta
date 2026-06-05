@@ -46,9 +46,40 @@ type modalView struct {
 	SubTotal        int
 	CreatedBy       string // display name of the creator, "" if unrecorded
 	CreatedByAgent  bool
-	Watching        bool            // the viewer is subscribed to this item
-	WatchCats       []catToggle     // the five category toggles for the Watch dropdown, ticked per the filter
-	Timeline        []timelineGroup // unified activity feed: comments + system events, oldest first
+	Watching        bool             // the viewer is subscribed to this item
+	WatchCats       []catToggle      // the five category toggles for the Watch dropdown, ticked per the filter
+	Pending         *pendingBandView // a pending gated transition (the band atop the modal), or nil
+	Timeline        []timelineGroup  // unified activity feed: comments + system events, oldest first
+}
+
+// pendingBandView renders the "Pending Status" band: the gated lane an item is
+// waiting to enter and its checklist, each fact tickable in place.
+type pendingBandView struct {
+	StatusID       string
+	StatusName     string
+	StatusColorVar template.CSS
+	Facts          []factToggleView
+}
+
+// factToggleView is one checkbox in the Pending band (or gating modal).
+type factToggleView struct {
+	ID      int64
+	Title   string
+	Checked bool
+}
+
+// pendingBand builds the modal's Pending band from an item's pending gate, or
+// returns nil when the item has no pending transition.
+func (h *handlers) pendingBand(ctx context.Context, item store.Item) (*pendingBandView, error) {
+	g, err := h.board.PendingFor(ctx, item)
+	if err != nil || g == nil {
+		return nil, err
+	}
+	out := &pendingBandView{StatusID: g.StatusID, StatusName: g.StatusName, StatusColorVar: colorVar(g.StatusColor)}
+	for _, f := range g.Facts {
+		out.Facts = append(out.Facts, factToggleView{ID: f.ID, Title: f.Title, Checked: f.Checked})
+	}
+	return out, nil
 }
 
 // statusChoice is one option in the modal's status pickers (the side <select>
@@ -408,6 +439,11 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 	// watch it, and which categories its filter delivers (for the dropdown).
 	watchSub, watching, _ := h.board.SubscriptionFor(ctx, viewerID, store.SubjectItem, itemID)
 
+	pending, err := h.pendingBand(ctx, item)
+	if err != nil {
+		return modalView{}, false, err
+	}
+
 	return modalView{
 		Slug:            ws.Slug,
 		CSRFToken:       csrfTokenFrom(ctx),
@@ -434,6 +470,7 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		CreatedByAgent:  isAgent[item.CreatedBy],
 		Watching:        watching,
 		WatchCats:       catToggles(watchSub.Events),
+		Pending:         pending,
 		Timeline:        timeline,
 	}, true, nil
 }
@@ -506,8 +543,14 @@ func (h *handlers) itemSetStatus(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if err := h.board.SetStatus(r.Context(), r.PathValue("id"), req.StatusID); err != nil {
+	out, err := h.board.SetStatusGated(r.Context(), r.PathValue("id"), req.StatusID)
+	if err != nil {
 		writeBoardErr(w, err)
+		return
+	}
+	// A pending (gated) move returns the checklist; a real move stays a 204.
+	if !out.Moved {
+		writeJSON(w, http.StatusOK, moveResultFrom(out))
 		return
 	}
 	h.liveUpsert(r, r.PathValue("id"))

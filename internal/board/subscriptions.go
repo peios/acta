@@ -63,7 +63,10 @@ func categoryForVerb(verb string) string {
 	case store.EventItemCreated, store.EventItemProject:
 		return CatItemsAdded
 	case store.EventItemRenamed, store.EventItemDescribed, store.EventItemArchived,
-		store.EventItemUnarchived, store.EventItemMilestone, store.EventItemReparented:
+		store.EventItemUnarchived, store.EventItemMilestone, store.EventItemReparented,
+		// A forced move already emits a status-change event (which status watchers
+		// get); this audit note rides "other" so they aren't notified twice.
+		store.EventItemStatusForced:
 		return CatOther
 	default:
 		return ""
@@ -259,6 +262,11 @@ func HumanizeEvent(e store.Event) string {
 			return "moved to the " + b + " board"
 		}
 		return "moved from " + d["from"] + " to " + d["to"]
+	case store.EventItemStatusForced:
+		if u := d["unmet"]; u != "" {
+			return "forced into " + d["to"] + " past unmet: " + u
+		}
+		return "forced into " + d["to"]
 	case store.EventItemAssigned:
 		switch {
 		case d["to"] == "":

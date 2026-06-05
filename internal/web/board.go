@@ -650,8 +650,15 @@ func (h *handlers) itemMove(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if err := h.board.MoveItem(r.Context(), r.PathValue("id"), req.StatusID, req.Index); err != nil {
+	out, err := h.board.MoveItemGated(r.Context(), r.PathValue("id"), req.StatusID, req.Index)
+	if err != nil {
 		writeBoardErr(w, err)
+		return
+	}
+	// Gated and unmet: no move happened — return the checklist so the client can
+	// surface it. An actual move stays a 204 (the historical contract).
+	if !out.Moved {
+		writeJSON(w, http.StatusOK, moveResultFrom(out))
 		return
 	}
 	h.liveUpsert(r, r.PathValue("id"))
@@ -776,6 +783,14 @@ func writeBoardErr(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusNotFound, body{"item_not_found"})
 	case errors.Is(err, store.ErrUserNotFound):
 		writeJSON(w, http.StatusBadRequest, body{"user_not_found"})
+	case errors.Is(err, board.ErrInvalidFact):
+		writeJSON(w, http.StatusBadRequest, body{"invalid_fact"})
+	case errors.Is(err, store.ErrFactTitleTaken):
+		writeJSON(w, http.StatusConflict, body{"fact_title_taken"})
+	case errors.Is(err, store.ErrFactNotFound):
+		writeJSON(w, http.StatusNotFound, body{"fact_not_found"})
+	case errors.Is(err, board.ErrNoPending):
+		writeJSON(w, http.StatusConflict, body{"no_pending"})
 	default:
 		writeJSON(w, http.StatusInternalServerError, body{"internal"})
 	}

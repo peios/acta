@@ -724,13 +724,13 @@ func (p *Postgres) DeleteStatus(ctx context.Context, id string) error {
 const itemCols = `id::text, ref_num, workspace_id::text, status_id::text, COALESCE(parent_id::text, ''),
                   title, description, COALESCE(assignee_id::text, ''), position, is_milestone,
                   ms_position, archived_at, created_at, COALESCE(created_by::text, ''),
-                  COALESCE(project_id::text, '')`
+                  COALESCE(project_id::text, ''), COALESCE(pending_status_id::text, '')`
 
 func scanItem(row pgx.Row) (store.Item, error) {
 	var i store.Item
 	err := row.Scan(&i.ID, &i.RefNum, &i.WorkspaceID, &i.StatusID, &i.ParentID, &i.Title, &i.Description,
 		&i.AssigneeID, &i.Position, &i.IsMilestone, &i.MSPosition, &i.ArchivedAt, &i.CreatedAt, &i.CreatedBy,
-		&i.ProjectID)
+		&i.ProjectID, &i.PendingStatusID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.Item{}, store.ErrItemNotFound
 	}
@@ -1513,6 +1513,154 @@ func (p *Postgres) querySubscriptions(ctx context.Context, q string, args ...any
 			return nil, err
 		}
 		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// --- status checklists ---
+
+const factCols = `id, workspace_id::text, title, position, created_at`
+
+// factColsF is factCols qualified to the checklist_facts alias "f", for joins.
+const factColsF = `f.id, f.workspace_id::text, f.title, f.position, f.created_at`
+
+func scanFact(row pgx.Row) (store.Fact, error) {
+	var f store.Fact
+	err := row.Scan(&f.ID, &f.WorkspaceID, &f.Title, &f.Position, &f.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.Fact{}, store.ErrFactNotFound
+	}
+	return f, err
+}
+
+func (p *Postgres) CreateFact(ctx context.Context, workspaceID, title string) (store.Fact, error) {
+	const q = `INSERT INTO checklist_facts (workspace_id, title, position)
+	           VALUES ($1, $2, COALESCE((SELECT MAX(position)+1 FROM checklist_facts WHERE workspace_id = $1), 0))
+	           RETURNING ` + factCols
+	f, err := scanFact(p.pool.QueryRow(ctx, q, workspaceID, title))
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return store.Fact{}, store.ErrFactTitleTaken
+		}
+		return store.Fact{}, err
+	}
+	return f, nil
+}
+
+func (p *Postgres) FactsByWorkspace(ctx context.Context, workspaceID string) ([]store.Fact, error) {
+	q := `SELECT ` + factCols + ` FROM checklist_facts WHERE workspace_id = $1 ORDER BY position, lower(title)`
+	return p.queryFacts(ctx, q, workspaceID)
+}
+
+func (p *Postgres) FactByID(ctx context.Context, id int64) (store.Fact, error) {
+	q := `SELECT ` + factCols + ` FROM checklist_facts WHERE id = $1`
+	return scanFact(p.pool.QueryRow(ctx, q, id))
+}
+
+func (p *Postgres) RenameFact(ctx context.Context, id int64, title string) error {
+	ct, err := p.pool.Exec(ctx, `UPDATE checklist_facts SET title = $2 WHERE id = $1`, id, title)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return store.ErrFactTitleTaken
+		}
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrFactNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) DeleteFact(ctx context.Context, id int64) error {
+	_, err := p.pool.Exec(ctx, `DELETE FROM checklist_facts WHERE id = $1`, id)
+	return err
+}
+
+func (p *Postgres) FactsByStatus(ctx context.Context, statusID string) ([]store.Fact, error) {
+	q := `SELECT ` + factColsF + `
+	      FROM status_facts sf JOIN checklist_facts f ON f.id = sf.fact_id
+	      WHERE sf.status_id = $1 ORDER BY sf.position, lower(f.title)`
+	return p.queryFacts(ctx, q, statusID)
+}
+
+func (p *Postgres) SetStatusFacts(ctx context.Context, statusID string, factIDs []int64) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `DELETE FROM status_facts WHERE status_id = $1`, statusID); err != nil {
+		return err
+	}
+	for i, fid := range factIDs {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO status_facts (status_id, fact_id, position) VALUES ($1, $2, $3)
+			 ON CONFLICT (status_id, fact_id) DO UPDATE SET position = EXCLUDED.position`,
+			statusID, fid, i); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+func (p *Postgres) TicksByItem(ctx context.Context, itemID string) ([]store.FactTick, error) {
+	rows, err := p.pool.Query(ctx,
+		`SELECT fact_id, COALESCE(checked_by::text, ''), checked_at FROM item_facts WHERE item_id = $1`, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.FactTick
+	for rows.Next() {
+		var t store.FactTick
+		if err := rows.Scan(&t.FactID, &t.CheckedBy, &t.CheckedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) SetItemFact(ctx context.Context, itemID string, factID int64, checked bool, by string) error {
+	if !checked {
+		_, err := p.pool.Exec(ctx, `DELETE FROM item_facts WHERE item_id = $1 AND fact_id = $2`, itemID, factID)
+		return err
+	}
+	var who any
+	if by != "" {
+		who = by
+	}
+	_, err := p.pool.Exec(ctx,
+		`INSERT INTO item_facts (item_id, fact_id, checked_by, checked_at) VALUES ($1, $2, $3, now())
+		 ON CONFLICT (item_id, fact_id) DO UPDATE SET checked_by = EXCLUDED.checked_by, checked_at = now()`,
+		itemID, factID, who)
+	return err
+}
+
+func (p *Postgres) SetItemPending(ctx context.Context, itemID, statusID string) error {
+	var pending any
+	if statusID != "" {
+		pending = statusID
+	}
+	_, err := p.pool.Exec(ctx, `UPDATE items SET pending_status_id = $2 WHERE id = $1`, itemID, pending)
+	return err
+}
+
+func (p *Postgres) queryFacts(ctx context.Context, q string, args ...any) ([]store.Fact, error) {
+	rows, err := p.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Fact
+	for rows.Next() {
+		f, err := scanFact(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, f)
 	}
 	return out, rows.Err()
 }

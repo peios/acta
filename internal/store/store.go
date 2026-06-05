@@ -28,6 +28,8 @@ var (
 	ErrCommentNotFound      = errors.New("store: comment not found")
 	ErrProjectNotFound      = errors.New("store: project not found")
 	ErrProjectSlugTaken     = errors.New("store: project slug already taken")
+	ErrFactNotFound         = errors.New("store: fact not found")
+	ErrFactTitleTaken       = errors.New("store: fact title already taken")
 )
 
 // MCPPrompt is a user-defined Model Context Protocol prompt: a named, optionally
@@ -63,6 +65,7 @@ const (
 	EventItemCreated      = "item.created"        // data: status
 	EventItemRenamed      = "item.renamed"        // data: from, to
 	EventItemStatusChange = "item.status_changed" // data: from, to
+	EventItemStatusForced = "item.status_forced"  // data: to, unmet (forced past an unmet checklist)
 	EventItemAssigned     = "item.assigned"       // data: from, to ("" = unassigned)
 	EventItemDescribed    = "item.described"      // (no data)
 	EventItemArchived     = "item.archived"       // (no data)
@@ -260,6 +263,10 @@ type Item struct {
 	// a new subtask defaults to its parent's project at creation. Cleared to "" if
 	// the project is deleted (ON DELETE SET NULL).
 	ProjectID string
+	// PendingStatusID is a gated status the item is trying to enter but whose
+	// checklist isn't satisfied yet — "" for no pending transition. The item stays
+	// in StatusID until the gate is met (auto-move), forced, or cancelled.
+	PendingStatusID string
 }
 
 // SubtaskCount is a parent's direct-child progress: Total active children and
@@ -267,6 +274,27 @@ type Item struct {
 type SubtaskCount struct {
 	Done  int
 	Total int
+}
+
+// Fact is one entry in a workspace's checklist vocabulary: a named truth an item
+// can carry ("Provium tests pass"). A status may require a set of facts to gate
+// entry, and an item carries each fact as ticked or not (see FactTick). Facts are
+// identified by Title (unique, case-insensitively, per workspace); ID is an
+// internal integer handle the join rows reference so a rename never breaks them.
+type Fact struct {
+	ID          int64
+	WorkspaceID string
+	Title       string
+	Position    int
+	CreatedAt   time.Time
+}
+
+// FactTick is an item's assertion that a fact holds for it. The row's existence
+// is the tick; CheckedBy/CheckedAt are the audit trail (who asserted it, when).
+type FactTick struct {
+	FactID    int64
+	CheckedBy string
+	CheckedAt time.Time
 }
 
 // Project is a cross-cutting initiative within a workspace: a long-lived area
@@ -590,6 +618,26 @@ type Store interface {
 	SubscriptionFor(ctx context.Context, subscriberID, subjectType, subjectID string) (Subscription, bool, error)
 	SubscriptionsBySubscriber(ctx context.Context, subscriberID, subjectType string) ([]Subscription, error)
 	SubscribersForEvent(ctx context.Context, itemID, projectID, actorID string) ([]Subscription, error)
+
+	// Status checklists. A workspace owns a vocabulary of facts (CreateFact, with
+	// ErrFactTitleTaken on a case-insensitive per-workspace title collision;
+	// FactsByWorkspace ordered by position; RenameFact/DeleteFact by id). A status
+	// declares which facts gate it: FactsByStatus returns its gating facts ordered,
+	// SetStatusFacts replaces the whole set atomically (the Manage Checklist
+	// editor). An item carries ticks: TicksByItem returns its asserted facts;
+	// SetItemFact ticks (insert, refreshing checked_by/at) or unticks (delete) one.
+	// SetItemPending records (or clears, with "") the gated status an item is
+	// waiting to enter.
+	CreateFact(ctx context.Context, workspaceID, title string) (Fact, error)
+	FactsByWorkspace(ctx context.Context, workspaceID string) ([]Fact, error)
+	FactByID(ctx context.Context, id int64) (Fact, error)
+	RenameFact(ctx context.Context, id int64, title string) error
+	DeleteFact(ctx context.Context, id int64) error
+	FactsByStatus(ctx context.Context, statusID string) ([]Fact, error)
+	SetStatusFacts(ctx context.Context, statusID string, factIDs []int64) error
+	TicksByItem(ctx context.Context, itemID string) ([]FactTick, error)
+	SetItemFact(ctx context.Context, itemID string, factID int64, checked bool, by string) error
+	SetItemPending(ctx context.Context, itemID, statusID string) error
 
 	// Web Push subscriptions, keyed by endpoint. CreatePushSubscription upserts
 	// (re-subscribing a browser refreshes its keys and owner rather than

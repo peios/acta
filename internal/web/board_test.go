@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -120,6 +121,83 @@ func TestMoveItemAcrossLanes(t *testing.T) {
 	movIdx := strings.Index(board, "Movable")
 	if movIdx < doingIdx || movIdx > doneIdx {
 		t.Fatalf("moved item not in the Doing lane (doing=%d item=%d done=%d)", doingIdx, movIdx, doneIdx)
+	}
+}
+
+// TestGatedMoveFlow drives the checklist gate over HTTP: gate a lane, attempt a
+// move (blocked → 200 with the gate, item stays put + pending), then tick the
+// fact (→ moved, item now in the lane).
+func TestGatedMoveFlow(t *testing.T) {
+	base, client := newTestServer(t)
+	token := csrfToken(t, client, base)
+	login(t, client, base, token)
+
+	todo := statusID(t, client, base, "To do")
+	doing := statusID(t, client, base, "Doing")
+	id := decodeID(t, postJSON(t, client, base+"/general/items", token, map[string]any{
+		"status_id": todo, "title": "Gated",
+	}))
+
+	// Add a fact and gate the Doing lane with it.
+	var fact struct {
+		Facts []struct {
+			ID    int64 `json:"id"`
+			Gates bool  `json:"gates"`
+		} `json:"facts"`
+	}
+	resp := postJSON(t, client, base+"/general/statuses/"+doing+"/checklist", token, map[string]any{
+		"gate_ids": []int64{}, "new_titles": []string{"Provium tests"},
+	})
+	if err := json.NewDecoder(resp.Body).Decode(&fact); err != nil {
+		t.Fatalf("decode checklist save: %v", err)
+	}
+	resp.Body.Close()
+	if len(fact.Facts) != 1 || !fact.Facts[0].Gates {
+		t.Fatalf("expected one gating fact, got %+v", fact.Facts)
+	}
+	factID := fact.Facts[0].ID
+
+	// Attempt the move — blocked: 200 with the unmet gate, no 204.
+	resp = postJSON(t, client, base+"/general/items/"+id+"/move", token, map[string]any{
+		"status_id": doing, "index": 0,
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("gated move: want 200, got %d", resp.StatusCode)
+	}
+	var mv struct {
+		Moved bool `json:"moved"`
+		Gate  *struct {
+			Facts []struct {
+				ID      int64 `json:"id"`
+				Checked bool  `json:"checked"`
+			} `json:"facts"`
+		} `json:"gate"`
+	}
+	json.NewDecoder(resp.Body).Decode(&mv)
+	resp.Body.Close()
+	if mv.Moved || mv.Gate == nil || len(mv.Gate.Facts) != 1 || mv.Gate.Facts[0].Checked {
+		t.Fatalf("expected a blocked move with one unticked fact, got %+v", mv)
+	}
+
+	// Tick the fact — completes the checklist, so the item moves.
+	resp = postJSON(t, client, base+"/general/items/"+id+"/facts/"+strconv.FormatInt(factID, 10), token, map[string]any{
+		"checked": true,
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("fact toggle: want 200, got %d", resp.StatusCode)
+	}
+	json.NewDecoder(resp.Body).Decode(&mv)
+	resp.Body.Close()
+	if !mv.Moved {
+		t.Fatalf("ticking the last fact should move the item, got %+v", mv)
+	}
+
+	board := getBody(t, client, base+"/general", http.StatusOK)
+	doingIdx := strings.Index(board, `value="Doing"`)
+	doneIdx := strings.Index(board, `value="Done"`)
+	movIdx := strings.Index(board, "Gated")
+	if movIdx < doingIdx || movIdx > doneIdx {
+		t.Fatalf("gated item not in the Doing lane after ticking (doing=%d item=%d done=%d)", doingIdx, movIdx, doneIdx)
 	}
 }
 
