@@ -1,0 +1,79 @@
+{{define "title"}}Projects · {{.Workspace.Name}} · Acta{{end}}
+
+{{define "content"}}
+<div class="proj">
+  <div class="proj-head">
+    <h1 class="title">Projects</h1>
+    <span class="proj-head-spacer"></span>
+  </div>
+
+  {{if .Err}}<p class="alert" role="alert">{{.Err}}</p>{{end}}
+
+  <details class="proj-new"{{if .Err}} open{{end}}>
+    <summary class="btn-secondary">+ New project</summary>
+    <div class="panel proj-form-card">
+      <form class="proj-form" method="post" action="/{{.Workspace.Slug}}/projects">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <div class="field">
+          <span class="lbl">Name</span>
+          <div class="input-wrap"><input class="input" name="name" maxlength="80" placeholder="e.g. Peinit" required></div>
+        </div>
+        <div class="field">
+          <span class="lbl">Brief</span>
+          <textarea class="modal-desc" name="brief" rows="3" placeholder="What is this project about? (markdown supported)"></textarea>
+        </div>
+        <div class="proj-form-row">
+          <div class="field">
+            <span class="lbl">Lead</span>
+            <select class="proj-select" name="lead_id">
+              <option value="">No lead</option>
+              {{range .Form.Leads}}<option value="{{.ID}}">{{.Display}}{{if .AgentOfID}} · agent{{end}}</option>{{end}}
+            </select>
+          </div>
+          <div class="field">
+            <span class="lbl">Status</span>
+            <select class="proj-select" name="status">
+              {{range .Form.Statuses}}<option value="{{.}}"{{if eq . "active"}} selected{{end}}>{{.}}</option>{{end}}
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <span class="lbl">Colour</span>
+          <div class="swatch-pick">
+            <label><input type="radio" name="color" value="" checked><span class="sw auto" title="Auto colour">A</span></label>
+            {{range .Form.Palette}}<label><input type="radio" name="color" value="{{.Hex}}"><span class="sw" style="{{.Style}}"></span></label>{{end}}
+          </div>
+        </div>
+        <div class="proj-form-actions">
+          <button class="btn-primary" type="submit">Create project</button>
+        </div>
+      </form>
+    </div>
+  </details>
+
+  {{if .Projects}}
+  <div class="proj-grid">
+    {{range .Projects}}
+    <a class="proj-card" href="{{.Href}}" style="{{.ColorVar}}">
+      <span class="proj-dot"></span>
+      <span class="proj-card-main">
+        <span class="proj-card-name">{{.Name}}</span>
+        <span class="proj-card-sub">
+          <span class="proj-status" data-status="{{.Status}}">{{.Status}}</span>
+          {{if .Lead}}<span class="proj-lead">{{.Lead}}{{if .LeadAgent}} · agent{{end}}</span>{{end}}
+        </span>
+      </span>
+      <span class="proj-card-side">
+        <span class="proj-progress">
+          <span class="proj-bar"><i style="width: {{.Pct}}%"></i></span>
+          <span class="proj-count">{{.Done}}/{{.Total}}</span>
+        </span>
+      </span>
+    </a>
+    {{end}}
+  </div>
+  {{else}}
+  <div class="proj-empty">No projects yet. Create one to group related work into an initiative.</div>
+  {{end}}
+</div>
+{{end}}

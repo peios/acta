@@ -821,6 +821,55 @@
       syncSideAssignee();
     }
 
+    // Project pill (side panel only — a secondary field like milestone; it rides
+    // into the "more" kebab on mobile with the rest of .modal-side). Drives the
+    // hidden .modal-project select, whose change handler posts and repaints.
+    const projectSelect = el.querySelector('.modal-project');
+    const sideProjectPill = el.querySelector('[data-project-pill-side]');
+    if (sideProjectPill && projectSelect) {
+      const { trigger } = side.wire(sideProjectPill);
+      const dot = sideProjectPill.querySelector('[data-side-project-dot]');
+      const nameEl = sideProjectPill.querySelector('[data-side-project-name]');
+      const opts = {};
+      sideProjectPill.querySelectorAll('[data-project-opt]').forEach((o) => {
+        opts[o.dataset.projectOpt] = { color: o.dataset.color || '', name: o.querySelector('.status-opt-name').textContent };
+      });
+      const syncProject = () => {
+        const d = opts[projectSelect.value] || { color: '', name: 'No project' };
+        const set = !!projectSelect.value;
+        nameEl.textContent = d.name;
+        trigger.classList.toggle('unset', !set);
+        dot.hidden = !set;
+        dot.style.setProperty('--lane-color', d.color);
+      };
+      sideProjectPill.querySelectorAll('[data-project-opt]').forEach((o) => {
+        o.addEventListener('click', () => {
+          side.closeAll();
+          if (o.dataset.projectOpt !== projectSelect.value) {
+            projectSelect.value = o.dataset.projectOpt;
+            projectSelect.dispatchEvent(new Event('change'));
+          }
+          syncProject();
+        });
+      });
+      syncProject();
+    }
+    if (projectSelect) {
+      projectSelect.addEventListener('change', async (e) => {
+        const pid = e.target.value;
+        const opt = e.target.options[e.target.selectedIndex];
+        try {
+          await api('/items/' + id + '/project', { project_id: pid });
+          const c = cardOf(id);
+          if (c) {
+            c.dataset.projectId = pid;
+            setCardProject(c, pid ? (opt ? opt.textContent : '') : '', opt ? (opt.dataset.color || '') : '');
+            reapplyFilters(); // the project facet may now hide/show this card
+          }
+        } catch (err2) { fail(err2); }
+      });
+    }
+
     // "More" kebab (mobile): relocate the whole side panel into a dropdown so
     // its remaining fields (parent, milestone, created, archive) live behind the
     // kebab. The hidden status/assignee selects ride along, still pill-driven, so
@@ -981,8 +1030,8 @@
     return [...form.querySelectorAll('input[name="' + name + '"]:checked')].map((c) => c.value);
   }
 
-  function filterBoard(statuses, assignees) {
-    const sSet = new Set(statuses), aSet = new Set(assignees);
+  function filterBoard(statuses, assignees, projects) {
+    const sSet = new Set(statuses), aSet = new Set(assignees), pSet = new Set(projects);
     const wrap = document.querySelector('.board-wrap');
     const me = wrap ? (wrap.dataset.me || '') : '';
     const statusOK = (id) => sSet.size === 0 || sSet.has(id);
@@ -992,8 +1041,14 @@
       if (aSet.has(aid)) return true;
       return aSet.has('me') && aid === me;
     };
+    const projectOK = (pid) => {
+      if (pSet.size === 0) return true;
+      if (!pid) return pSet.has('none');
+      return pSet.has(pid);
+    };
     board.querySelectorAll('.item').forEach((card) => {
-      const hide = !statusOK(card.dataset.statusId) || !assigneeOK(card.dataset.assigneeId || '');
+      const hide = !statusOK(card.dataset.statusId) || !assigneeOK(card.dataset.assigneeId || '') ||
+        !projectOK(card.dataset.projectId || '');
       card.classList.toggle('is-filtered', hide);
     });
     board.querySelectorAll('.lane[data-status-id]').forEach((lane) => {
@@ -1006,11 +1061,12 @@
     if (summary) summary.innerHTML = label + (n ? ' <span class="facet-count">' + n + '</span>' : '');
   }
 
-  function syncFilterURL(statuses, assignees) {
+  function syncFilterURL(statuses, assignees, projects) {
     const p = new URLSearchParams(location.search);
-    p.delete('status'); p.delete('assignee');
+    p.delete('status'); p.delete('assignee'); p.delete('project');
     statuses.forEach((v) => p.append('status', v));
     assignees.forEach((v) => p.append('assignee', v));
+    projects.forEach((v) => p.append('project', v));
     const q = p.toString();
     history.replaceState(null, '', location.pathname + (q ? '?' + q : ''));
   }
@@ -1018,15 +1074,18 @@
   function applyFilters(form) {
     const statuses = facetValues(form, 'status');
     const assignees = facetValues(form, 'assignee');
-    filterBoard(statuses, assignees);
+    const projects = facetValues(form, 'project');
+    filterBoard(statuses, assignees, projects);
     setFacetCount(form, 'status', statuses.length, 'Status');
     setFacetCount(form, 'assignee', assignees.length, 'Assignee');
-    syncFilterURL(statuses, assignees);
+    setFacetCount(form, 'project', projects.length, 'Project');
+    syncFilterURL(statuses, assignees, projects);
     if (window.__actaBoardPrefs) window.__actaBoardPrefs.save(); // remember filters per workspace
+    const total = statuses.length + assignees.length + projects.length;
     const clear = form.querySelector('.facet-clear');
-    if (clear) clear.hidden = statuses.length + assignees.length === 0;
+    if (clear) clear.hidden = total === 0;
     const badge = document.querySelector('[data-filter-badge]');
-    if (badge) { const n = statuses.length + assignees.length; badge.textContent = n; badge.hidden = n === 0; }
+    if (badge) { badge.textContent = total; badge.hidden = total === 0; }
   }
 
   // reapplyFilters re-evaluates visibility after a card's status/assignee changes.
@@ -1058,7 +1117,7 @@
 
     form.addEventListener('submit', (e) => { e.preventDefault(); applyFilters(form); });
 
-    form.querySelectorAll('input[name="status"], input[value="me"], input[value="unassigned"]').forEach((c) => {
+    form.querySelectorAll('input[name="status"], input[name="project"], input[value="me"], input[value="unassigned"]').forEach((c) => {
       c.addEventListener('change', () => applyFilters(form));
     });
 
@@ -1127,7 +1186,7 @@
 
   // --- display properties (which fields/empty lanes show; per-workspace pref) ---
   const DISP_KEY = 'acta:disp:' + wrap.dataset.slug;
-  const DISP_KEYS = ['empty', 'assignee', 'sub', 'milestone'];
+  const DISP_KEYS = ['empty', 'assignee', 'sub', 'milestone', 'project'];
   const loadDisp = () => { try { return JSON.parse(localStorage.getItem(DISP_KEY)) || {}; } catch (_) { return {}; } };
   const saveDisp = (d) => { try { localStorage.setItem(DISP_KEY, JSON.stringify(d)); } catch (_) {} };
   function applyDisp() {
@@ -1428,6 +1487,25 @@
     av.textContent = a.initials || avatarInitials(a.name || '');
   }
 
+  // setCardProject creates/updates/removes a card's project chip in the meta row.
+  // Shared by the modal change handler (own edit) and the live SSE path (remote).
+  function setCardProject(card, name, color) {
+    let chip = card.querySelector('.item-project');
+    if (!name) { if (chip) chip.remove(); return; }
+    const meta = card.querySelector('.item-meta');
+    if (!meta) return;
+    if (!chip) {
+      chip = document.createElement('span');
+      chip.className = 'item-project';
+      chip.innerHTML = '<span class="item-project-dot"></span><span class="item-project-name"></span>';
+      const spacer = meta.querySelector('.meta-spacer');
+      if (spacer) meta.insertBefore(chip, spacer); else meta.appendChild(chip);
+    }
+    chip.title = 'Project: ' + name;
+    chip.style.setProperty('--lane-color', color || '');
+    chip.querySelector('.item-project-name').textContent = name;
+  }
+
   function applyUpsert(msg) {
     let card = cardOf(msg.id);
     // A non-root item (e.g. just reparented under another) has no board card; if
@@ -1452,6 +1530,8 @@
     liveCardMilestone(card, !!msg.milestone);
     card.dataset.assigneeId = msg.assignee ? msg.assignee.id : '';
     liveCardAvatar(card, msg.assignee);
+    card.dataset.projectId = msg.project ? msg.project.id : '';
+    setCardProject(card, msg.project ? msg.project.name : '', msg.project ? msg.project.color : '');
     if (msg.color) card.style.setProperty('--lane-color', msg.color);
     // Only re-home the card when it isn't already in the target lane, so a field
     // change never yanks it to the bottom of its column.

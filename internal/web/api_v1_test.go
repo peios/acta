@@ -15,6 +15,7 @@ type apiItem struct {
 	Title     string `json:"title"`
 	Status    string `json:"status"`
 	Assignee  string `json:"assignee"`
+	Project   string `json:"project"`
 	CreatedBy string `json:"created_by"`
 }
 
@@ -120,6 +121,63 @@ func TestAPIListCreateTransition(t *testing.T) {
 		map[string]string{"title": "Already done", "status": "Done"}), http.StatusCreated)
 	if done.Status != "Done" {
 		t.Fatalf("explicit status = %q, want Done", done.Status)
+	}
+}
+
+func TestAPIProjects(t *testing.T) {
+	base, client := newTestServer(t)
+	csrf := signIn(t, client, base)
+	token := mintToken(t, client, base, csrf)
+
+	// Create a project; lead "me" resolves to the caller, status defaults active.
+	resp := bearerJSON(t, base, "POST", "/api/v1/w/general/projects", token,
+		map[string]string{"name": "Peinit", "brief": "boot", "lead": "me"})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("create project: want 201, got %d: %s", resp.StatusCode, b)
+	}
+	var pr struct{ Slug, Status, Lead string }
+	if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {
+		t.Fatal(err)
+	}
+	if pr.Slug != "peinit" || pr.Status != "active" || pr.Lead != "jack" {
+		t.Fatalf("project = %+v, want peinit/active/jack", pr)
+	}
+
+	// It lists.
+	if lb := readBody(t, bearerJSON(t, base, "GET", "/api/v1/w/general/projects", token, nil)); !strings.Contains(lb, `"slug":"peinit"`) {
+		t.Fatalf("project list missing peinit:\n%s", lb)
+	}
+
+	// Create an item filed under the project at creation.
+	filed := decodeItem(t, bearerJSON(t, base, "POST", "/api/v1/w/general/items", token,
+		map[string]string{"title": "write spec", "project": "peinit"}), http.StatusCreated)
+	if filed.Project != "peinit" {
+		t.Fatalf("created item project = %q, want peinit", filed.Project)
+	}
+	loose := decodeItem(t, bearerJSON(t, base, "POST", "/api/v1/w/general/items", token,
+		map[string]string{"title": "unfiled"}), http.StatusCreated)
+
+	// The ?project filter narrows the listing.
+	fb := readBody(t, bearerJSON(t, base, "GET", "/api/v1/w/general/items?project=peinit", token, nil))
+	if !strings.Contains(fb, filed.ID) || strings.Contains(fb, loose.ID) {
+		t.Fatalf("?project filter wrong:\n%s", fb)
+	}
+
+	// The set-project endpoint clears it.
+	cleared := decodeItem(t, bearerJSON(t, base, "POST", "/api/v1/w/general/items/"+filed.ID+"/project", token,
+		map[string]string{"project": ""}), http.StatusOK)
+	if cleared.Project != "" {
+		t.Fatalf("cleared project = %q, want empty", cleared.Project)
+	}
+
+	// An unknown project slug is a 400.
+	bad := bearerJSON(t, base, "POST", "/api/v1/w/general/items/"+filed.ID+"/project", token,
+		map[string]string{"project": "nope"})
+	bad.Body.Close()
+	if bad.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unknown project: want 400, got %d", bad.StatusCode)
 	}
 }
 

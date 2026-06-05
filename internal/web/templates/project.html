@@ -1,0 +1,103 @@
+{{define "title"}}{{.Project.Name}} · Projects · Acta{{end}}
+
+{{define "content"}}
+<div class="proj" style="{{.ColorVar}}">
+  <a class="toplink" href="/{{.Workspace.Slug}}/projects">&lsaquo; Projects</a>
+
+  {{if .Err}}<p class="alert" role="alert">{{.Err}}</p>{{end}}
+
+  <div class="proj-page-head">
+    <span class="proj-page-dot"></span>
+    <div>
+      <h1 class="proj-page-title">{{.Project.Name}}</h1>
+      <div class="proj-page-meta">
+        <span class="proj-status" data-status="{{.Project.Status}}">{{.Project.Status}}</span>
+        {{if .Lead}}<span class="proj-lead">Lead: {{.Lead}}{{if .LeadAgent}} · agent{{end}}</span>{{end}}
+        <span class="proj-progress" style="min-width: 8rem">
+          <span class="proj-bar"><i style="width: {{.Pct}}%"></i></span>
+          <span class="proj-count">{{.Done}}/{{.Total}} done</span>
+        </span>
+        {{if .Archived}}<span class="proj-status" data-status="paused">archived</span>{{end}}
+      </div>
+    </div>
+    <div class="proj-page-actions">
+      {{if .Archived}}
+      <form method="post" action="/{{.Workspace.Slug}}/projects/{{.Project.ID}}/unarchive">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button class="btn-secondary" type="submit">Unarchive</button>
+      </form>
+      {{else}}
+      <form method="post" action="/{{.Workspace.Slug}}/projects/{{.Project.ID}}/archive">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button class="btn-secondary" type="submit">Archive</button>
+      </form>
+      {{end}}
+    </div>
+  </div>
+
+  <details class="proj-new proj-edit">
+    <summary class="btn-secondary">Edit project</summary>
+    <div class="panel proj-form-card">
+      <form class="proj-form" method="post" action="/{{.Workspace.Slug}}/projects/{{.Project.ID}}/edit">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <div class="field">
+          <span class="lbl">Name</span>
+          <div class="input-wrap"><input class="input" name="name" maxlength="80" value="{{.Project.Name}}" required></div>
+        </div>
+        <div class="field">
+          <span class="lbl">Brief</span>
+          <textarea class="modal-desc" name="brief" rows="4" placeholder="What is this project about? (markdown supported)">{{.Project.Brief}}</textarea>
+        </div>
+        <div class="proj-form-row">
+          <div class="field">
+            <span class="lbl">Lead</span>
+            <select class="proj-select" name="lead_id">
+              <option value="">No lead</option>
+              {{range .Form.Leads}}<option value="{{.ID}}"{{if eq .ID $.Project.LeadID}} selected{{end}}>{{.Display}}{{if .AgentOfID}} · agent{{end}}</option>{{end}}
+            </select>
+          </div>
+          <div class="field">
+            <span class="lbl">Status</span>
+            <select class="proj-select" name="status">
+              {{range .Form.Statuses}}<option value="{{.}}"{{if eq . $.Project.Status}} selected{{end}}>{{.}}</option>{{end}}
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <span class="lbl">Colour</span>
+          <div class="swatch-pick">
+            <label><input type="radio" name="color" value=""{{if not .Project.Color}} checked{{end}}><span class="sw auto" title="Auto colour">A</span></label>
+            {{range .Form.Palette}}<label><input type="radio" name="color" value="{{.Hex}}"{{if eq .Hex $.Project.Color}} checked{{end}}><span class="sw" style="{{.Style}}"></span></label>{{end}}
+          </div>
+        </div>
+        <div class="proj-form-actions">
+          <button class="btn-primary" type="submit">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </details>
+
+  <p class="proj-section-title">Brief</p>
+  {{if .HasBrief}}
+  <div class="proj-brief md">{{.BriefHTML}}</div>
+  {{else}}
+  <p class="proj-brief-empty">No brief yet — open Edit project to add one.</p>
+  {{end}}
+
+  <p class="proj-section-title">Items · {{.Total}}</p>
+  {{if .Items}}
+  <div class="proj-items">
+    {{range .Items}}
+    <a class="proj-item" href="{{.Href}}">
+      <span class="proj-item-ref">{{.RefID}}</span>
+      <span class="proj-item-title">{{.Title}}</span>
+      <span class="proj-chip" style="{{.StatusColorVar}}"><span class="proj-dot"></span>{{.StatusName}}</span>
+      {{if .HasAssignee}}<span class="avatar sm{{if .IsAgent}} bot{{end}}" style="{{.AvatarStyle}}" title="{{.AssigneeName}}">{{.AvatarText}}</span>{{end}}
+    </a>
+    {{end}}
+  </div>
+  {{else}}
+  <div class="proj-empty">No items yet. Open any item and pick this project from the side panel to file it here.</div>
+  {{end}}
+</div>
+{{end}}

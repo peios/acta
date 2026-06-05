@@ -67,6 +67,11 @@ func humanizeEvent(e store.Event) string {
 			return "moved this to the top level"
 		}
 		return "moved this under " + d["to"]
+	case store.EventItemProject:
+		if d["to"] == "" {
+			return "removed this from its project"
+		}
+		return "filed this under " + d["to"]
 	case store.EventCommentAdded:
 		if x := d["excerpt"]; x != "" {
 			return "commented: “" + x + "”"
@@ -96,6 +101,8 @@ func kindForVerb(verb string) string {
 		return "milestone"
 	case store.EventItemReparented:
 		return "parent"
+	case store.EventItemProject:
+		return "project"
 	case store.EventCommentAdded:
 		return "comment"
 	default:

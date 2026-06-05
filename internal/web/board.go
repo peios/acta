@@ -25,23 +25,26 @@ type boardData struct {
 	// Board context. BoardID drives the add-lane target (data-board-id); BoardBase
 	// is the current board-view path (filters/mode links hang off it); Activity
 	// and Archive hrefs are this board's scoped feeds (the header toolbar).
-	BoardID      string
-	BoardBase    string
-	ActivityHref string
-	ArchiveHref  string
-	LanesDashed  bool // this is the Backlog board — its lane/facet dots render dashed
-	Mode         string // "status" or "milestone"
-	Lanes            []lane   // status mode
-	Palette          []swatch // lane-colour options for the header picker
-	MilestoneColumns []milestoneColumn
-	StatusFilter     []statusOpt   // the status facet options
-	StatusSelected   int           // count badge on the Status trigger
-	Assignees        assigneeFacet // the assignee facet (hierarchical)
-	AssigneeSelected int           // count badge on the Assignee trigger
-	FilterCount      int           // status + assignee selections, for the Filter button badge
-	FilterActive     bool          // any facet currently narrowing the board
-	ViewMine         bool          // the active view is "assigned to me" (My items tab)
-	Modal            *modalView    // set when ?item=<id> resolves within this workspace
+	BoardID           string
+	BoardBase         string
+	ActivityHref      string
+	ArchiveHref       string
+	LanesDashed       bool     // this is the Backlog board — its lane/facet dots render dashed
+	Mode              string   // "status" or "milestone"
+	Lanes             []lane   // status mode
+	Palette           []swatch // lane-colour options for the header picker
+	MilestoneColumns  []milestoneColumn
+	StatusFilter      []statusOpt   // the status facet options
+	StatusSelected    int           // count badge on the Status trigger
+	Assignees         assigneeFacet // the assignee facet (hierarchical)
+	AssigneeSelected  int           // count badge on the Assignee trigger
+	ProjectFilter     []projectOpt  // the project facet options (empty hides the facet)
+	ProjectSelected   int           // count badge on the Project trigger
+	NoProjectSelected bool          // the "No project" token is selected
+	FilterCount       int           // status + assignee + project selections, for the Filter button badge
+	FilterActive      bool          // any facet currently narrowing the board
+	ViewMine          bool          // the active view is "assigned to me" (My items tab)
+	Modal             *modalView    // set when ?item=<id> resolves within this workspace
 }
 
 // swatch is one option in the lane-colour picker: its hex (sent back on pick)
@@ -99,11 +102,21 @@ type cardView struct {
 	AssigneeName string
 	AvatarText   string
 	AvatarStyle  template.CSS
+
+	// Project chip (resolved from the item's ProjectID). HasProject gates it.
+	HasProject   bool
+	ProjectName  string
+	ProjectColor string
 }
 
+// ProjectColorVar is the chip's project colour as a template-safe `--lane-color`
+// declaration. The value is always a palette hex, so it's safe to emit verbatim.
+func (c cardView) ProjectColorVar() template.CSS { return colorVar(c.ProjectColor) }
+
 // buildCard assembles a card's view model, resolving its assignee (if any) to an
-// avatar. users maps principal id -> user for the avatar's name/initials/colour.
-func buildCard(it store.Item, counts map[string]store.SubtaskCount, st store.Status, f boardFilter, users map[string]store.User, prefix string) cardView {
+// avatar and its project (if any) to a chip. users maps principal id -> user for
+// the avatar; projects maps project id -> project for the chip.
+func buildCard(it store.Item, counts map[string]store.SubtaskCount, st store.Status, f boardFilter, users map[string]store.User, projects map[string]store.Project, prefix string) cardView {
 	cv := cardView{
 		Item: it, RefID: refID(prefix, it.RefNum), Subtasks: counts[it.ID], StatusName: st.Name,
 		Color: board.ColorFor(st), Hidden: f.cardHidden(it),
@@ -116,6 +129,13 @@ func buildCard(it store.Item, counts map[string]store.SubtaskCount, st store.Sta
 			cv.AssigneeName = name
 			cv.AvatarText = initials(name)
 			cv.AvatarStyle = avatarStyle(u.ID)
+		}
+	}
+	if it.ProjectID != "" {
+		if p, ok := projects[it.ProjectID]; ok {
+			cv.HasProject = true
+			cv.ProjectName = p.Name
+			cv.ProjectColor = board.ProjectColorFor(p)
 		}
 	}
 	return cv
@@ -306,10 +326,26 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 
 	me := principalFrom(r.Context())
 	filter := newBoardFilter(r.URL.Query()["status"], r.URL.Query()["assignee"], me.ID)
+	filter.projects = toSet(r.URL.Query()["project"])
 	users, err := h.board.Users(r.Context())
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
+	}
+	// Include archived projects so a card still shows its chip after the project
+	// is archived; the facet (below) takes only the active ones.
+	allProjects, err := h.board.Projects(r.Context(), ws.ID, true)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	projectByID := make(map[string]store.Project, len(allProjects))
+	var activeProjects []store.Project
+	for _, p := range allProjects {
+		projectByID[p.ID] = p
+		if p.ArchivedAt == nil {
+			activeProjects = append(activeProjects, p)
+		}
 	}
 	userByID := make(map[string]store.User, len(users))
 	for _, u := range users {
@@ -318,32 +354,35 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 
 	ch.ActiveBoard = bd.Slug
 	data := boardData{
-		chrome:           ch,
-		Principal:        me,
-		BoardID:          bd.ID,
-		BoardBase:        r.URL.Path,
-		ActivityHref:     "/" + ws.Slug + "/activity?board=" + bd.Slug,
-		ArchiveHref:      "/" + ws.Slug + "/archive?board=" + bd.Slug,
-		LanesDashed:      isBacklogBoard(bd),
-		Mode:             mode,
-		Palette:          palette(),
-		StatusFilter:     statusFacet(statuses, filter),
-		StatusSelected:   len(filter.statuses),
-		Assignees:        assigneeFacetFrom(users, filter),
-		AssigneeSelected: len(filter.assignees),
-		FilterCount:      len(filter.statuses) + len(filter.assignees),
-		FilterActive:     filter.active(),
-		ViewMine:         filter.assignees["me"] && len(filter.assignees) == 1 && len(filter.statuses) == 0,
+		chrome:            ch,
+		Principal:         me,
+		BoardID:           bd.ID,
+		BoardBase:         r.URL.Path,
+		ActivityHref:      "/" + ws.Slug + "/activity?board=" + bd.Slug,
+		ArchiveHref:       "/" + ws.Slug + "/archive?board=" + bd.Slug,
+		LanesDashed:       isBacklogBoard(bd),
+		Mode:              mode,
+		Palette:           palette(),
+		StatusFilter:      statusFacet(statuses, filter),
+		StatusSelected:    len(filter.statuses),
+		Assignees:         assigneeFacetFrom(users, filter),
+		AssigneeSelected:  len(filter.assignees),
+		ProjectFilter:     projectFacet(activeProjects, filter),
+		ProjectSelected:   len(filter.projects),
+		NoProjectSelected: filter.projects["none"],
+		FilterCount:       len(filter.statuses) + len(filter.assignees) + len(filter.projects),
+		FilterActive:      filter.active(),
+		ViewMine:          filter.assignees["me"] && len(filter.assignees) == 1 && len(filter.statuses) == 0,
 	}
 	if mode == "milestone" {
-		cols, err := h.milestoneColumns(r.Context(), items, statuses, counts, filter, userByID, ws.ItemPrefix)
+		cols, err := h.milestoneColumns(r.Context(), items, statuses, counts, filter, userByID, projectByID, ws.ItemPrefix)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 		data.MilestoneColumns = cols
 	} else {
-		data.Lanes = groupLanes(statuses, items, counts, filter, userByID, ws.ItemPrefix)
+		data.Lanes = groupLanes(statuses, items, counts, filter, userByID, projectByID, ws.ItemPrefix)
 	}
 	// A ?item=<id> deep link opens that item's modal (server-rendered, so it
 	// works on refresh and with JS off).
@@ -362,13 +401,13 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 
 // milestoneColumns builds Milestone mode: a Backlog column of root
 // non-milestones, then one column per root milestone holding its children.
-func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, statuses []store.Status, counts map[string]store.SubtaskCount, filter boardFilter, users map[string]store.User, prefix string) ([]milestoneColumn, error) {
+func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, statuses []store.Status, counts map[string]store.SubtaskCount, filter boardFilter, users map[string]store.User, projects map[string]store.Project, prefix string) ([]milestoneColumn, error) {
 	statusByID := make(map[string]store.Status, len(statuses))
 	for _, s := range statuses {
 		statusByID[s.ID] = s
 	}
 	card := func(it store.Item) cardView {
-		return buildCard(it, counts, statusByID[it.StatusID], filter, users, prefix)
+		return buildCard(it, counts, statusByID[it.StatusID], filter, users, projects, prefix)
 	}
 	// Root non-milestones gather in a leading column. It's titled "No milestone"
 	// (not "Backlog") so it doesn't read as the Backlog board, which is unrelated.
@@ -406,14 +445,14 @@ func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, sta
 
 // groupLanes buckets items under their status, attaching each item's subtask
 // progress. items arrives ordered by position, so each lane stays in order.
-func groupLanes(statuses []store.Status, items []store.Item, counts map[string]store.SubtaskCount, filter boardFilter, users map[string]store.User, prefix string) []lane {
+func groupLanes(statuses []store.Status, items []store.Item, counts map[string]store.SubtaskCount, filter boardFilter, users map[string]store.User, projects map[string]store.Project, prefix string) []lane {
 	byID := make(map[string]store.Status, len(statuses))
 	for _, st := range statuses {
 		byID[st.ID] = st
 	}
 	byStatus := map[string][]cardView{}
 	for _, it := range items {
-		byStatus[it.StatusID] = append(byStatus[it.StatusID], buildCard(it, counts, byID[it.StatusID], filter, users, prefix))
+		byStatus[it.StatusID] = append(byStatus[it.StatusID], buildCard(it, counts, byID[it.StatusID], filter, users, projects, prefix))
 	}
 	lanes := make([]lane, len(statuses))
 	for i, st := range statuses {
@@ -725,6 +764,10 @@ func writeBoardErr(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusConflict, body{"cycle"})
 	case errors.Is(err, board.ErrStatusMismatch):
 		writeJSON(w, http.StatusBadRequest, body{"status_mismatch"})
+	case errors.Is(err, board.ErrProjectMismatch):
+		writeJSON(w, http.StatusBadRequest, body{"project_mismatch"})
+	case errors.Is(err, store.ErrProjectNotFound):
+		writeJSON(w, http.StatusNotFound, body{"project_not_found"})
 	case errors.Is(err, board.ErrInvalidColor):
 		writeJSON(w, http.StatusBadRequest, body{"invalid_color"})
 	case errors.Is(err, store.ErrStatusNotFound):

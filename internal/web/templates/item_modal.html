@@ -177,6 +177,30 @@
           </select>
         </div>
 
+        <div class="side-field side-project">
+          <span class="modal-label">Project</span>
+          <div class="side-pick" data-project-pill-side>
+            <button class="side-pill{{if not .Item.ProjectID}} unset{{end}}" type="button" data-pill-trigger aria-label="Change project">
+              <span class="status-dot" data-side-project-dot style="{{.ProjectColorVar}}"{{if not .Item.ProjectID}} hidden{{end}}></span>
+              <span class="side-pill-name" data-side-project-name>{{if .ProjectName}}{{.ProjectName}}{{else}}No project{{end}}</span>
+              <span class="chev">&#9662;</span>
+            </button>
+            <div class="popover side-pop" data-pill-menu hidden>
+              <button class="status-opt" type="button" data-project-opt=""><span class="status-dot" style="--lane-color:var(--dim)"></span><span class="status-opt-name">No project</span></button>
+              {{range .Projects}}
+              <button class="status-opt" type="button" data-project-opt="{{.ID}}" data-color="{{.Color}}">
+                <span class="status-dot" style="{{.ColorVar}}"></span>
+                <span class="status-opt-name">{{.Name}}</span>
+              </button>
+              {{end}}
+            </div>
+          </div>
+          <select class="modal-project" hidden aria-hidden="true">
+            <option value="">No project</option>
+            {{range .Projects}}<option value="{{.ID}}" data-color="{{.Color}}" {{if eq .ID $.Item.ProjectID}}selected{{end}}>{{.Name}}</option>{{end}}
+          </select>
+        </div>
+
         <div class="side-field side-milestone">
           <div class="side-toggle-row">
             <span class="modal-label">Milestone</span>
@@ -260,6 +284,7 @@
 {{- else if eq .Kind "rename"}}<svg class="evt-ico" viewBox="0 0 16 16"><path d="M10.8 3.3 12.7 5.2 6 11.9l-2.5.6.6-2.5z"/></svg>
 {{- else if eq .Kind "describe"}}<svg class="evt-ico" viewBox="0 0 16 16"><path d="M3.5 4.5h9M3.5 8h9M3.5 11.5h6"/></svg>
 {{- else if eq .Kind "archive"}}<svg class="evt-ico" viewBox="0 0 16 16"><rect x="2.6" y="3.8" width="10.8" height="2.6" rx=".4"/><path d="M3.6 6.4v6h8.8v-6M6.4 8.8h3.2"/></svg>
+{{- else if eq .Kind "project"}}<svg class="evt-ico" viewBox="0 0 16 16"><rect x="2.6" y="2.6" width="4.6" height="4.6" rx="1"/><rect x="8.8" y="2.6" width="4.6" height="4.6" rx="1"/><rect x="2.6" y="8.8" width="4.6" height="4.6" rx="1"/><rect x="8.8" y="8.8" width="4.6" height="4.6" rx="1"/></svg>
 {{- else}}<span class="evt-bullet"></span>
 {{- end}}
 {{end}}

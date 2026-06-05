@@ -83,7 +83,7 @@ func (h *handlers) mcpWorkspaceSnapshot(ctx context.Context, slug string) (strin
 	if err != nil {
 		return "", err
 	}
-	_, userName, err := h.nameMaps(ctx, ws.ID)
+	_, userName, _, err := h.nameMaps(ctx, ws.ID)
 	if err != nil {
 		return "", err
 	}

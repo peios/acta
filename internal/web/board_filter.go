@@ -8,16 +8,20 @@ import (
 	"github.com/peios/acta/internal/store"
 )
 
-// boardFilter narrows the board by status and assignee. A facet with no
-// selections imposes no constraint (shows all); you only narrow by selecting.
+// boardFilter narrows the board by status, assignee, and project. A facet with
+// no selections imposes no constraint (shows all); you only narrow by selecting.
 // The hierarchy/cascade in the picker is pure UI — what reaches here is a flat
-// set of ids plus the tokens "me" and "unassigned".
+// set of ids plus the tokens "me"/"unassigned" (assignees) and "none" (project).
 type boardFilter struct {
 	statuses  map[string]bool // selected status ids
 	assignees map[string]bool // selected principal ids plus tokens "me"/"unassigned"
+	projects  map[string]bool // selected project ids plus the token "none" (no project)
 	me        string          // current principal id, resolving the "me" token
 }
 
+// newBoardFilter builds the status+assignee filter. The project selection is set
+// separately (filter.projects = toSet(...)) so this constructor — and its test
+// call sites — stay unchanged; an unset projects map imposes no constraint.
 func newBoardFilter(statusSel, assigneeSel []string, me string) boardFilter {
 	return boardFilter{statuses: toSet(statusSel), assignees: toSet(assigneeSel), me: me}
 }
@@ -35,10 +39,24 @@ func toSet(vals []string) map[string]bool {
 	return m
 }
 
-func (f boardFilter) active() bool { return len(f.statuses) > 0 || len(f.assignees) > 0 }
+func (f boardFilter) active() bool {
+	return len(f.statuses) > 0 || len(f.assignees) > 0 || len(f.projects) > 0
+}
 
 func (f boardFilter) statusVisible(id string) bool {
 	return len(f.statuses) == 0 || f.statuses[id]
+}
+
+// projectVisible reports whether an item in project projectID ("" = no project)
+// passes the project facet. No selections means no constraint.
+func (f boardFilter) projectVisible(projectID string) bool {
+	if len(f.projects) == 0 {
+		return true
+	}
+	if projectID == "" {
+		return f.projects["none"]
+	}
+	return f.projects[projectID]
 }
 
 func (f boardFilter) assigneeVisible(assigneeID string) bool {
@@ -56,7 +74,7 @@ func (f boardFilter) assigneeVisible(assigneeID string) bool {
 
 // cardHidden reports whether an item is filtered out of view.
 func (f boardFilter) cardHidden(it store.Item) bool {
-	return !f.statusVisible(it.StatusID) || !f.assigneeVisible(it.AssigneeID)
+	return !f.statusVisible(it.StatusID) || !f.assigneeVisible(it.AssigneeID) || !f.projectVisible(it.ProjectID)
 }
 
 // --- facet view models (the picker UI) ---
@@ -74,6 +92,23 @@ func statusFacet(statuses []store.Status, f boardFilter) []statusOpt {
 	out := make([]statusOpt, len(statuses))
 	for i, s := range statuses {
 		out[i] = statusOpt{ID: s.ID, Name: s.Name, Color: board.ColorFor(s), Selected: f.statuses[s.ID]}
+	}
+	return out
+}
+
+type projectOpt struct {
+	ID       string
+	Name     string
+	Color    string
+	Selected bool
+}
+
+func (o projectOpt) ColorVar() template.CSS { return colorVar(o.Color) }
+
+func projectFacet(projects []store.Project, f boardFilter) []projectOpt {
+	out := make([]projectOpt, len(projects))
+	for i, p := range projects {
+		out[i] = projectOpt{ID: p.ID, Name: p.Name, Color: board.ProjectColorFor(p), Selected: f.projects[p.ID]}
 	}
 	return out
 }

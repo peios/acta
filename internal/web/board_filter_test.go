@@ -62,6 +62,43 @@ func TestCardHiddenCombinesFacets(t *testing.T) {
 	}
 }
 
+func TestBoardFilterProjectVisibility(t *testing.T) {
+	// No project selection imposes no constraint.
+	if !(boardFilter{}).projectVisible("p1") || !(boardFilter{}).projectVisible("") {
+		t.Fatal("empty project facet should show everything")
+	}
+	f := boardFilter{projects: toSet([]string{"p1", "none"})}
+	if !f.projectVisible("p1") {
+		t.Error("selected project should be visible")
+	}
+	if !f.projectVisible("") {
+		t.Error(`"none" token should keep unfiled items visible`)
+	}
+	if f.projectVisible("p2") {
+		t.Error("unselected project should be hidden")
+	}
+
+	// Selecting only a real project hides the unfiled ones.
+	only := boardFilter{projects: toSet([]string{"p1"})}
+	if only.projectVisible("") {
+		t.Error("unfiled item should be hidden when only a project is selected")
+	}
+	if !only.active() {
+		t.Error("a project selection should make the filter active")
+	}
+}
+
+func TestCardHiddenIncludesProject(t *testing.T) {
+	f := newBoardFilter([]string{"s1"}, nil, "uMe")
+	f.projects = toSet([]string{"p1"})
+	if f.cardHidden(store.Item{StatusID: "s1", ProjectID: "p1"}) {
+		t.Fatal("card matching status and project should be visible")
+	}
+	if !f.cardHidden(store.Item{StatusID: "s1", ProjectID: "p2"}) {
+		t.Fatal("card in the wrong project should be hidden")
+	}
+}
+
 func TestAssigneeFacetHierarchy(t *testing.T) {
 	now := time.Now()
 	users := []store.User{

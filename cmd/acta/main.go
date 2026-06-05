@@ -14,9 +14,12 @@
 //	acta whoami
 //	acta workspaces
 //	acta board   [--workspace slug] [--json]
+//	acta projects [--workspace slug] [--json]
+//	acta project new [--workspace slug] [--status s] [--lead u] [--brief b] <name>
 //	acta item new  [--workspace slug] [--status name | --parent id] <title>
 //	acta item <id>                 show an item and its subtasks
 //	acta item <id> status <name>   set the item's status
+//	acta item <id> project <slug>  file under a project ("none" to clear)
 //
 // Flags may appear before, after, or among the positional arguments.
 package main
@@ -60,6 +63,10 @@ func run(cmd string, args []string) error {
 		return cmdWorkspaces(args)
 	case "board":
 		return cmdBoard(args)
+	case "projects":
+		return cmdProjects(args)
+	case "project":
+		return cmdProject(args)
 	case "item":
 		return cmdItem(args)
 	case "mcp":
@@ -84,9 +91,12 @@ Usage:
   acta whoami
   acta workspaces
   acta board   [--workspace slug] [--json]
+  acta projects [--workspace slug] [--json]
+  acta project new [--workspace slug] [--status s] [--lead u] [--brief b] <name>
   acta item new  [--workspace slug] [--status name | --parent id] <title>
   acta item <id>                  show an item and its subtasks
   acta item <id> status <name>    set the item's status
+  acta item <id> project <slug>   file under a project ("none" to clear)
   acta mcp install                wire an MCP client (Claude Code) to Acta
 
 Environment (override the stored login):
@@ -175,7 +185,7 @@ func cmdBoard(args []string) error {
 	if err := json.Unmarshal(data, &items); err != nil {
 		return err
 	}
-	tw := newTable("ID", "STATUS", "SUBS", "TITLE", "ASSIGNEE", "CREATED BY")
+	tw := newTable("ID", "STATUS", "PROJECT", "SUBS", "TITLE", "ASSIGNEE")
 	for _, it := range items {
 		title := it.Title
 		if it.Milestone {
@@ -185,7 +195,7 @@ func cmdBoard(args []string) error {
 		if it.SubtasksTotal > 0 {
 			subs = fmt.Sprintf("%d/%d", it.SubtasksDone, it.SubtasksTotal)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", it.ID, it.Status, subs, title, dash(it.Assignee), dash(it.CreatedBy))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", it.ID, it.Status, dash(it.Project), subs, title, dash(it.Assignee))
 	}
 	return tw.Flush()
 }
@@ -204,7 +214,129 @@ func cmdItem(args []string) error {
 	if len(rest) > 0 && rest[0] == "status" {
 		return cmdItemStatus(id, rest[1:])
 	}
+	if len(rest) > 0 && rest[0] == "project" {
+		return cmdItemProject(id, rest[1:])
+	}
 	return cmdItemShow(id, rest)
+}
+
+// cmdProjects lists a workspace's projects (like `workspaces`, but scoped).
+func cmdProjects(args []string) error {
+	fs := flag.NewFlagSet("projects", flag.ContinueOnError)
+	ws := fs.String("workspace", "", "workspace slug")
+	asJSON := fs.Bool("json", false, "output raw JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	c, err := newClient()
+	if err != nil {
+		return err
+	}
+	slug, err := c.workspaceSlug(*ws)
+	if err != nil {
+		return err
+	}
+	data, err := c.do("GET", "/api/v1/w/"+slug+"/projects", nil)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(data)
+	}
+	var list []project
+	if err := json.Unmarshal(data, &list); err != nil {
+		return err
+	}
+	tw := newTable("SLUG", "STATUS", "PROGRESS", "LEAD", "NAME")
+	for _, p := range list {
+		fmt.Fprintf(tw, "%s\t%s\t%d/%d\t%s\t%s\n", p.Slug, p.Status, p.Done, p.Total, dash(p.Lead), p.Name)
+	}
+	return tw.Flush()
+}
+
+// cmdProject is the singular form: `project new …` creates one.
+func cmdProject(args []string) error {
+	if len(args) > 0 && args[0] == "new" {
+		return cmdProjectNew(args[1:])
+	}
+	return fmt.Errorf("project: need 'new' (use `acta projects` to list)")
+}
+
+func cmdProjectNew(args []string) error {
+	fs := flag.NewFlagSet("project new", flag.ContinueOnError)
+	ws := fs.String("workspace", "", "workspace slug")
+	status := fs.String("status", "", "lifecycle: planned/active/paused/done (default active)")
+	lead := fs.String("lead", "", `username of the lead ("me" for yourself)`)
+	brief := fs.String("brief", "", "short description")
+	asJSON := fs.Bool("json", false, "output raw JSON")
+	pos, err := parseArgs(fs, args)
+	if err != nil {
+		return err
+	}
+	name := strings.TrimSpace(strings.Join(pos, " "))
+	if name == "" {
+		return fmt.Errorf("project new: a name is required")
+	}
+	c, err := newClient()
+	if err != nil {
+		return err
+	}
+	slug, err := c.workspaceSlug(*ws)
+	if err != nil {
+		return err
+	}
+	data, err := c.do("POST", "/api/v1/w/"+slug+"/projects", map[string]string{
+		"name": name, "status": *status, "lead": *lead, "brief": *brief,
+	})
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(data)
+	}
+	var p project
+	_ = json.Unmarshal(data, &p)
+	fmt.Printf("created project %s  [%s]  %s\n", p.Slug, p.Status, p.Name)
+	return nil
+}
+
+// cmdItemProject files an item under a project by slug, or clears it when the
+// slug is omitted (or given as "none"/"-").
+func cmdItemProject(id string, args []string) error {
+	fs := flag.NewFlagSet("item project", flag.ContinueOnError)
+	ws := fs.String("workspace", "", "workspace slug")
+	asJSON := fs.Bool("json", false, "output raw JSON")
+	pos, err := parseArgs(fs, args)
+	if err != nil {
+		return err
+	}
+	slug := strings.TrimSpace(strings.Join(pos, " "))
+	if slug == "none" || slug == "-" {
+		slug = ""
+	}
+	c, err := newClient()
+	if err != nil {
+		return err
+	}
+	wsSlug, err := c.workspaceSlug(*ws)
+	if err != nil {
+		return err
+	}
+	data, err := c.do("POST", "/api/v1/w/"+wsSlug+"/items/"+id+"/project", map[string]string{"project": slug})
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(data)
+	}
+	var it item
+	_ = json.Unmarshal(data, &it)
+	if it.Project == "" {
+		fmt.Printf("%s removed from its project\n", it.ID)
+	} else {
+		fmt.Printf("%s filed under %s\n", it.ID, it.Project)
+	}
+	return nil
 }
 
 func cmdItemNew(args []string) error {
@@ -292,6 +424,9 @@ func printItem(it item) {
 	fmt.Fprintf(tw, "  id\t%s\n", it.ID)
 	fmt.Fprintf(tw, "  status\t%s\n", it.Status)
 	fmt.Fprintf(tw, "  assignee\t%s\n", dash(it.Assignee))
+	if it.Project != "" {
+		fmt.Fprintf(tw, "  project\t%s\n", it.Project)
+	}
 	fmt.Fprintf(tw, "  created by\t%s\n", dash(it.CreatedBy))
 	if it.Milestone {
 		fmt.Fprintf(tw, "  milestone\tyes\n")
@@ -354,12 +489,23 @@ type item struct {
 	Title         string `json:"title"`
 	Status        string `json:"status"`
 	Assignee      string `json:"assignee"`
+	Project       string `json:"project"`
 	Milestone     bool   `json:"milestone"`
 	CreatedBy     string `json:"created_by"`
 	ParentID      string `json:"parent_id"`
 	Subtasks      []item `json:"subtasks"`
 	SubtasksDone  int    `json:"subtasks_done"`
 	SubtasksTotal int    `json:"subtasks_total"`
+}
+
+type project struct {
+	Slug   string `json:"slug"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Lead   string `json:"lead"`
+	Brief  string `json:"brief"`
+	Done   int    `json:"done"`
+	Total  int    `json:"total"`
 }
 
 type client struct {

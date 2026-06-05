@@ -20,6 +20,7 @@ type mcpItemT struct {
 	Title       string        `json:"title"`
 	Status      string        `json:"status"`
 	Assignee    string        `json:"assignee"`
+	Project     string        `json:"project"`
 	Milestone   bool          `json:"milestone"`
 	Archived    bool          `json:"archived"`
 	CreatedBy   string        `json:"created_by"`
@@ -72,6 +73,20 @@ type mcpBoardsT struct {
 		Slug string `json:"slug"`
 		Name string `json:"name"`
 	} `json:"boards"`
+}
+
+type mcpProjectT struct {
+	Slug   string `json:"slug"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Lead   string `json:"lead"`
+	Brief  string `json:"brief"`
+	Done   int    `json:"done"`
+	Total  int    `json:"total"`
+}
+
+type mcpProjectsT struct {
+	Projects []mcpProjectT `json:"projects"`
 }
 
 type mcpEventT struct {
@@ -580,6 +595,78 @@ func hasItem(l mcpItemsT, id string) bool {
 		}
 	}
 	return false
+}
+
+func hasProject(p mcpProjectsT, slug string) bool {
+	for _, x := range p.Projects {
+		if x.Slug == slug {
+			return true
+		}
+	}
+	return false
+}
+
+func TestMCPProjects(t *testing.T) {
+	base, client := newTestServer(t)
+	csrf := signIn(t, client, base)
+	token := mintToken(t, client, base, csrf)
+	sess := mcpConnect(t, base, token)
+
+	// The project tools are advertised.
+	tools, err := sess.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("list tools: %v", err)
+	}
+	advertised := map[string]bool{}
+	for _, tl := range tools.Tools {
+		advertised[tl.Name] = true
+	}
+	for _, want := range []string{"list_projects", "create_project", "set_item_project"} {
+		if !advertised[want] {
+			t.Errorf("tool %q not advertised", want)
+		}
+	}
+
+	// create_project: defaults to active, lead resolves "me" to the caller.
+	pr := callTool[mcpProjectT](t, sess, "create_project", map[string]any{
+		"workspace": "general", "name": "Peinit", "lead": "me", "brief": "boot work",
+	})
+	if pr.Slug != "peinit" || pr.Status != "active" || pr.Lead != "jack" {
+		t.Fatalf("create_project = %+v, want peinit/active/jack", pr)
+	}
+
+	// list_projects surfaces it.
+	if pl := callTool[mcpProjectsT](t, sess, "list_projects", map[string]any{"workspace": "general"}); !hasProject(pl, "peinit") {
+		t.Fatalf("list_projects missing peinit: %+v", pl)
+	}
+
+	// create_item with project files it; the item reports its project slug.
+	it := callTool[mcpItemT](t, sess, "create_item", map[string]any{
+		"workspace": "general", "title": "write spec", "project": "peinit",
+	})
+	if it.Project != "peinit" {
+		t.Fatalf("create_item project = %q, want peinit", it.Project)
+	}
+
+	// The list_items project filter narrows to that project's items.
+	loose := callTool[mcpItemT](t, sess, "create_item", map[string]any{"workspace": "general", "title": "unfiled"})
+	filtered := callTool[mcpItemsT](t, sess, "list_items", map[string]any{"workspace": "general", "project": "peinit"})
+	if !hasItem(filtered, it.ID) || hasItem(filtered, loose.ID) {
+		t.Fatalf("list_items project filter wrong: has filed=%v has loose=%v", hasItem(filtered, it.ID), hasItem(filtered, loose.ID))
+	}
+
+	// get_item carries the project; set_item_project clears it.
+	if got := callTool[mcpItemT](t, sess, "get_item", map[string]any{"id": it.ID}); got.Project != "peinit" {
+		t.Errorf("get_item project = %q, want peinit", got.Project)
+	}
+	if cleared := callTool[mcpItemT](t, sess, "set_item_project", map[string]any{"id": it.ID}); cleared.Project != "" {
+		t.Errorf("cleared project = %q, want empty", cleared.Project)
+	}
+
+	// An unknown project slug is a clean tool error.
+	if msg := toolErr(t, sess, "set_item_project", map[string]any{"id": it.ID, "project": "nope"}); !strings.Contains(msg, "unknown project") {
+		t.Errorf("unknown project error = %q, want it to mention unknown project", msg)
+	}
 }
 
 func TestMCPNotifications(t *testing.T) {

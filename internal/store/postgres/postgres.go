@@ -723,12 +723,14 @@ func (p *Postgres) DeleteStatus(ctx context.Context, id string) error {
 
 const itemCols = `id::text, ref_num, workspace_id::text, status_id::text, COALESCE(parent_id::text, ''),
                   title, description, COALESCE(assignee_id::text, ''), position, is_milestone,
-                  ms_position, archived_at, created_at, COALESCE(created_by::text, '')`
+                  ms_position, archived_at, created_at, COALESCE(created_by::text, ''),
+                  COALESCE(project_id::text, '')`
 
 func scanItem(row pgx.Row) (store.Item, error) {
 	var i store.Item
 	err := row.Scan(&i.ID, &i.RefNum, &i.WorkspaceID, &i.StatusID, &i.ParentID, &i.Title, &i.Description,
-		&i.AssigneeID, &i.Position, &i.IsMilestone, &i.MSPosition, &i.ArchivedAt, &i.CreatedAt, &i.CreatedBy)
+		&i.AssigneeID, &i.Position, &i.IsMilestone, &i.MSPosition, &i.ArchivedAt, &i.CreatedAt, &i.CreatedBy,
+		&i.ProjectID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.Item{}, store.ErrItemNotFound
 	}
@@ -976,6 +978,166 @@ func (p *Postgres) DeleteItem(ctx context.Context, id string) error {
 		return store.ErrItemNotFound
 	}
 	return nil
+}
+
+// --- projects ---
+
+const projectCols = `id::text, workspace_id::text, slug, name, brief,
+                     COALESCE(lead_id::text, ''), status, color, position,
+                     archived_at, created_at, COALESCE(created_by::text, '')`
+
+func scanProject(row pgx.Row) (store.Project, error) {
+	var p store.Project
+	err := row.Scan(&p.ID, &p.WorkspaceID, &p.Slug, &p.Name, &p.Brief,
+		&p.LeadID, &p.Status, &p.Color, &p.Position, &p.ArchivedAt, &p.CreatedAt, &p.CreatedBy)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.Project{}, store.ErrProjectNotFound
+	}
+	return p, err
+}
+
+// mapProjectConflict turns the per-workspace slug unique-violation into the
+// matching sentinel; other errors pass through.
+func mapProjectConflict(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "slug") {
+		return store.ErrProjectSlugTaken
+	}
+	return err
+}
+
+func (p *Postgres) CreateProject(ctx context.Context, pr store.Project) (store.Project, error) {
+	out, err := createWithRetry(func() (store.Project, error) {
+		const q = `INSERT INTO projects
+		             (workspace_id, slug, name, brief, lead_id, status, color, position, created_by)
+		           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		           RETURNING ` + projectCols
+		var lead, creator any
+		if pr.LeadID != "" {
+			lead = pr.LeadID
+		}
+		if pr.CreatedBy != "" {
+			creator = pr.CreatedBy
+		}
+		return scanProject(p.pool.QueryRow(ctx, q,
+			pr.WorkspaceID, pr.Slug, pr.Name, pr.Brief, lead, pr.Status, pr.Color, pr.Position, creator))
+	})
+	if err != nil {
+		return store.Project{}, mapProjectConflict(err)
+	}
+	return out, nil
+}
+
+func (p *Postgres) ProjectsByWorkspace(ctx context.Context, workspaceID string, includeArchived bool) ([]store.Project, error) {
+	q := `SELECT ` + projectCols + ` FROM projects WHERE workspace_id = $1`
+	if !includeArchived {
+		q += ` AND archived_at IS NULL`
+	}
+	q += ` ORDER BY position, created_at`
+	rows, err := p.pool.Query(ctx, q, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Project
+	for rows.Next() {
+		pr, err := scanProject(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, pr)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) ProjectByID(ctx context.Context, id string) (store.Project, error) {
+	const q = `SELECT ` + projectCols + ` FROM projects WHERE id = $1`
+	return scanProject(p.pool.QueryRow(ctx, q, id))
+}
+
+func (p *Postgres) ProjectBySlug(ctx context.Context, workspaceID, slug string) (store.Project, error) {
+	const q = `SELECT ` + projectCols + ` FROM projects WHERE workspace_id = $1 AND slug = $2`
+	return scanProject(p.pool.QueryRow(ctx, q, workspaceID, slug))
+}
+
+func (p *Postgres) UpdateProject(ctx context.Context, pr store.Project) error {
+	const q = `UPDATE projects
+	           SET slug = $2, name = $3, brief = $4, lead_id = $5, status = $6, color = $7
+	           WHERE id = $1`
+	var lead any
+	if pr.LeadID != "" {
+		lead = pr.LeadID
+	}
+	ct, err := p.pool.Exec(ctx, q, pr.ID, pr.Slug, pr.Name, pr.Brief, lead, pr.Status, pr.Color)
+	if err != nil {
+		return mapProjectConflict(err)
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrProjectNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) SetProjectArchived(ctx context.Context, id string, archived bool) error {
+	const q = `UPDATE projects SET archived_at = CASE WHEN $2 THEN now() ELSE NULL END WHERE id = $1`
+	ct, err := p.pool.Exec(ctx, q, id, archived)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrProjectNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) SetItemProject(ctx context.Context, id, projectID string) error {
+	// $2 is always present; nil becomes SQL NULL (no project).
+	var proj any
+	if projectID != "" {
+		proj = projectID
+	}
+	ct, err := p.pool.Exec(ctx, `UPDATE items SET project_id = $2 WHERE id = $1`, id, proj)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrItemNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) ItemsByProject(ctx context.Context, projectID string) ([]store.Item, error) {
+	q := `SELECT ` + itemCols + ` FROM items
+	      WHERE project_id = $1 AND parent_id IS NULL AND archived_at IS NULL ORDER BY created_at DESC`
+	return p.queryItems(ctx, q, projectID)
+}
+
+func (p *Postgres) ProjectItemCounts(ctx context.Context, workspaceID string, doneStatusIDs []string) (map[string]store.SubtaskCount, error) {
+	const q = `SELECT project_id::text,
+	                  count(*) AS total,
+	                  count(*) FILTER (WHERE status_id = ANY($2)) AS done
+	           FROM items
+	           WHERE workspace_id = $1 AND parent_id IS NULL AND archived_at IS NULL
+	             AND project_id IS NOT NULL
+	           GROUP BY project_id`
+	if doneStatusIDs == nil {
+		doneStatusIDs = []string{}
+	}
+	rows, err := p.pool.Query(ctx, q, workspaceID, doneStatusIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]store.SubtaskCount{}
+	for rows.Next() {
+		var pid string
+		var total, done int
+		if err := rows.Scan(&pid, &total, &done); err != nil {
+			return nil, err
+		}
+		out[pid] = store.SubtaskCount{Done: done, Total: total}
+	}
+	return out, rows.Err()
 }
 
 // --- comments ---

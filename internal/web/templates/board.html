@@ -3,13 +3,14 @@
 {{define "head"}}<script src="{{asset "/static/board-prefs.js"}}"></script>{{end}}
 
 {{define "card"}}
-<article class="item{{if .Hidden}} is-filtered{{end}}" data-item-id="{{.Item.ID}}" data-status-id="{{.Item.StatusID}}" data-assignee-id="{{.Item.AssigneeID}}" style="{{.ColorVar}}"{{if .StatusName}} title="{{.StatusName}}"{{end}}>
+<article class="item{{if .Hidden}} is-filtered{{end}}" data-item-id="{{.Item.ID}}" data-status-id="{{.Item.StatusID}}" data-assignee-id="{{.Item.AssigneeID}}" data-project-id="{{.Item.ProjectID}}" style="{{.ColorVar}}"{{if .StatusName}} title="{{.StatusName}}"{{end}}>
   <span class="item-title">{{.Item.Title}}</span>
   {{if .Item.IsMilestone}}<span class="item-ms" title="Milestone">◆</span>{{end}}
   <button class="item-del" type="button" title="Archive" aria-label="Archive item">×</button>
   <div class="item-meta">
     <span class="item-ref">{{.RefID}}</span>
     {{if .Subtasks.Total}}<span class="item-sub" title="Subtasks done">{{.Subtasks.Done}}/{{.Subtasks.Total}}</span>{{end}}
+    {{if .HasProject}}<span class="item-project" style="{{.ProjectColorVar}}" title="Project: {{.ProjectName}}"><span class="item-project-dot"></span><span class="item-project-name">{{.ProjectName}}</span></span>{{end}}
     <span class="meta-spacer"></span>
     {{if .HasAssignee}}<span class="avatar sm{{if .IsAgent}} bot{{end}}" style="{{.AvatarStyle}}" title="{{.AssigneeName}}">{{.AvatarText}}</span>{{end}}
   </div>
@@ -101,6 +102,25 @@
               </div>
             </details>
 
+            {{if .ProjectFilter}}
+            <details class="facet" data-facet="project" open>
+              <summary class="facet-trigger">Project{{if .ProjectSelected}} <span class="facet-count">{{.ProjectSelected}}</span>{{end}}</summary>
+              <div class="facet-panel">
+                <label class="facet-row">
+                  <input type="checkbox" name="project" value="none"{{if .NoProjectSelected}} checked{{end}}>
+                  <span class="facet-label">No project</span>
+                </label>
+                {{range .ProjectFilter}}
+                <label class="facet-row">
+                  <input type="checkbox" name="project" value="{{.ID}}"{{if .Selected}} checked{{end}}>
+                  <span class="facet-dot" style="{{.ColorVar}}"></span>
+                  <span class="facet-label">{{.Name}}</span>
+                </label>
+                {{end}}
+              </div>
+            </details>
+            {{end}}
+
             <div class="filter-foot">
               <button type="submit" class="facet-apply">Apply</button>
               <a class="facet-clear" href="{{.BoardBase}}?mode={{.Mode}}"{{if not .FilterActive}} hidden{{end}}>Clear</a>
@@ -141,6 +161,7 @@
             <button class="dp" type="button" aria-pressed="true" data-display="assignee">Assignee</button>
             <button class="dp" type="button" aria-pressed="true" data-display="sub">Sub-tasks</button>
             <button class="dp" type="button" aria-pressed="true" data-display="milestone">Milestone</button>
+            <button class="dp" type="button" aria-pressed="true" data-display="project">Project</button>
           </div>
           <div class="pop-foot"><button class="pop-reset" type="button" data-display-reset>Reset</button></div>
         </div>

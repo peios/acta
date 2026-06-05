@@ -20,30 +20,33 @@ import (
 // --- the item modal ---
 
 type modalView struct {
-	Slug           string
-	CSRFToken      string
-	Item           store.Item
-	RefID          string   // human id, e.g. "ACTA-12"
-	Desc           descView // the rendered, collapsible description
+	Slug      string
+	CSRFToken string
+	Item      store.Item
+	RefID     string   // human id, e.g. "ACTA-12"
+	Desc      descView // the rendered, collapsible description
 	// StatusGroups are the picker's options, grouped by board. Picking a status
 	// on another board *is* how an item moves boards (promote/demote), so the
 	// picker spans every board, not just the item's current one.
-	StatusGroups   []statusGroup
-	StatusName     string       // current status's display name (for the pill)
-	StatusBoard    string       // current status's board name (shown beside the pill)
-	StatusDashed   bool         // current status is a Backlog lane (dashed pill dot)
-	StatusColorVar template.CSS // current status's --lane-color (for the pill dot)
-	Assignables    []store.User // assignee-picker options: humans + your agents (+ current assignee)
-	Assignee       string       // display name of the assignee, "" if unassigned
-	Archived       bool
-	ParentID       string // "" if this is a top-level item
-	ParentTitle    string
-	Children       []childView
-	SubDone        int
-	SubTotal       int
-	CreatedBy      string // display name of the creator, "" if unrecorded
-	CreatedByAgent bool
-	Timeline       []timelineGroup // unified activity feed: comments + system events, oldest first
+	StatusGroups    []statusGroup
+	StatusName      string         // current status's display name (for the pill)
+	StatusBoard     string         // current status's board name (shown beside the pill)
+	StatusDashed    bool           // current status is a Backlog lane (dashed pill dot)
+	StatusColorVar  template.CSS   // current status's --lane-color (for the pill dot)
+	Assignables     []store.User   // assignee-picker options: humans + your agents (+ current assignee)
+	Assignee        string         // display name of the assignee, "" if unassigned
+	Projects        []modalProject // project-picker options (the workspace's active projects)
+	ProjectName     string         // current project's name, "" if none
+	ProjectColorVar template.CSS   // current project's --lane-color (for the pill dot)
+	Archived        bool
+	ParentID        string // "" if this is a top-level item
+	ParentTitle     string
+	Children        []childView
+	SubDone         int
+	SubTotal        int
+	CreatedBy       string // display name of the creator, "" if unrecorded
+	CreatedByAgent  bool
+	Timeline        []timelineGroup // unified activity feed: comments + system events, oldest first
 }
 
 // statusChoice is one option in the modal's status pickers (the side <select>
@@ -64,6 +67,16 @@ type statusGroup struct {
 	Board   string
 	Choices []statusChoice
 }
+
+// modalProject is one option in the modal's project picker: its id, name, and
+// resolved colour (for the dropdown dot).
+type modalProject struct {
+	ID    string
+	Name  string
+	Color string
+}
+
+func (p modalProject) ColorVar() template.CSS { return colorVar(p.Color) }
 
 // containsUser reports whether a user with the given id is in us.
 func containsUser(us []store.User, id string) bool {
@@ -352,6 +365,30 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		}
 	}
 
+	// Project picker: the workspace's active projects, plus the item's own project
+	// when it's archived (so it stays shown/selectable rather than silently
+	// reading as "No project").
+	projects, err := h.board.Projects(ctx, ws.ID, false)
+	if err != nil {
+		return modalView{}, false, err
+	}
+	var mprojects []modalProject
+	var curProjectName, curProjectColor string
+	for _, pr := range projects {
+		c := board.ProjectColorFor(pr)
+		mprojects = append(mprojects, modalProject{ID: pr.ID, Name: pr.Name, Color: c})
+		if pr.ID == item.ProjectID {
+			curProjectName, curProjectColor = pr.Name, c
+		}
+	}
+	if item.ProjectID != "" && curProjectName == "" {
+		if pr, perr := h.board.Project(ctx, item.ProjectID); perr == nil {
+			c := board.ProjectColorFor(pr)
+			mprojects = append(mprojects, modalProject{ID: pr.ID, Name: pr.Name, Color: c})
+			curProjectName, curProjectColor = pr.Name, c
+		}
+	}
+
 	viewerID := ""
 	if p := principalFrom(ctx); p != nil {
 		viewerID = p.ID
@@ -366,27 +403,30 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 	timeline := buildTimeline(comments, history, nameByID, colorByStatus, viewerID, backlogID)
 
 	return modalView{
-		Slug:           ws.Slug,
-		CSRFToken:      csrfTokenFrom(ctx),
-		Item:           item,
-		RefID:          refID(ws.ItemPrefix, item.RefNum),
-		Desc:           renderDescription(item.Description),
-		StatusGroups:   statusGroups,
-		StatusName:     curStatusName,
-		StatusBoard:    curStatusBoard,
-		StatusDashed:   curStatusDashed,
-		StatusColorVar: colorVar(curStatusColor),
-		Assignables:    assignables,
-		Assignee:       nameByID[item.AssigneeID],
-		Archived:       item.ArchivedAt != nil,
-		ParentID:       item.ParentID,
-		ParentTitle:    parentTitle,
-		Children:       kids,
-		SubDone:        done,
-		SubTotal:       len(children),
-		CreatedBy:      createdBy,
-		CreatedByAgent: isAgent[item.CreatedBy],
-		Timeline:       timeline,
+		Slug:            ws.Slug,
+		CSRFToken:       csrfTokenFrom(ctx),
+		Item:            item,
+		RefID:           refID(ws.ItemPrefix, item.RefNum),
+		Desc:            renderDescription(item.Description),
+		StatusGroups:    statusGroups,
+		StatusName:      curStatusName,
+		StatusBoard:     curStatusBoard,
+		StatusDashed:    curStatusDashed,
+		StatusColorVar:  colorVar(curStatusColor),
+		Assignables:     assignables,
+		Assignee:        nameByID[item.AssigneeID],
+		Projects:        mprojects,
+		ProjectName:     curProjectName,
+		ProjectColorVar: colorVar(curProjectColor),
+		Archived:        item.ArchivedAt != nil,
+		ParentID:        item.ParentID,
+		ParentTitle:     parentTitle,
+		Children:        kids,
+		SubDone:         done,
+		SubTotal:        len(children),
+		CreatedBy:       createdBy,
+		CreatedByAgent:  isAgent[item.CreatedBy],
+		Timeline:        timeline,
 	}, true, nil
 }
 

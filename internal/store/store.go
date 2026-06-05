@@ -26,6 +26,8 @@ var (
 	ErrMCPPromptNotFound    = errors.New("store: mcp prompt not found")
 	ErrMCPPromptNameTaken   = errors.New("store: mcp prompt name already taken")
 	ErrCommentNotFound      = errors.New("store: comment not found")
+	ErrProjectNotFound      = errors.New("store: project not found")
+	ErrProjectSlugTaken     = errors.New("store: project slug already taken")
 )
 
 // MCPPrompt is a user-defined Model Context Protocol prompt: a named, optionally
@@ -67,6 +69,7 @@ const (
 	EventItemUnarchived   = "item.unarchived"     // (no data)
 	EventItemMilestone    = "item.milestone"      // data: on ("true"/"false")
 	EventItemReparented   = "item.reparented"     // data: to ("" = top level)
+	EventItemProject      = "item.project"        // data: to (project name, "" = cleared)
 	EventCommentAdded     = "comment.added"       // data: excerpt
 )
 
@@ -80,14 +83,14 @@ type Event struct {
 	// (like the rest of this row) so each board has its own activity feed. An
 	// item's board is derived from its status, so this is resolved when the
 	// event is recorded. Empty only for events that predate boards.
-	BoardID     string
-	ItemID      string
-	ItemTitle   string
-	ActorID     string
-	ActorName   string
-	Verb        string
-	Data        map[string]string
-	CreatedAt   time.Time
+	BoardID   string
+	ItemID    string
+	ItemTitle string
+	ActorID   string
+	ActorName string
+	Verb      string
+	Data      map[string]string
+	CreatedAt time.Time
 }
 
 // User is the persisted account record.
@@ -213,8 +216,8 @@ type Status struct {
 	WorkspaceID string
 	// BoardID is the board this lane belongs to. An item's board is read off its
 	// status's BoardID — board membership lives here, never on the item.
-	BoardID string
-	Name    string
+	BoardID  string
+	Name     string
 	Position int
 	// Color is an explicit lane colour (a hex string from the board palette),
 	// or "" to fall back to a palette colour derived from Position.
@@ -252,6 +255,11 @@ type Item struct {
 	// CreatedBy is the principal (human or agent) that created the item, or ""
 	// if unrecorded (items predating authorship, or a since-deleted creator).
 	CreatedBy string
+	// ProjectID is the item's project (its initiative/area), or "" for none.
+	// Flat and orthogonal to ParentID — it doesn't follow the parent tree, though
+	// a new subtask defaults to its parent's project at creation. Cleared to "" if
+	// the project is deleted (ON DELETE SET NULL).
+	ProjectID string
 }
 
 // SubtaskCount is a parent's direct-child progress: Total active children and
@@ -259,6 +267,29 @@ type Item struct {
 type SubtaskCount struct {
 	Done  int
 	Total int
+}
+
+// Project is a cross-cutting initiative within a workspace: a long-lived area
+// that groups items (e.g. all "Peinit" work) without needing its own workspace.
+// It is orthogonal to boards and the parent/child tree — an item carries an
+// optional ProjectID regardless of which board, lane, or parent it sits under.
+// Slug is the URL segment, unique within the workspace. Status is the project's
+// lifecycle (planned / active / paused / done). Color is "" for an auto palette
+// colour (by Position) or an explicit palette hex. LeadID and CreatedBy may be
+// "". ArchivedAt is nil for an active project, set when archived (a soft delete).
+type Project struct {
+	ID          string
+	WorkspaceID string
+	Slug        string
+	Name        string
+	Brief       string
+	LeadID      string
+	Status      string
+	Color       string
+	Position    int
+	ArchivedAt  *time.Time
+	CreatedAt   time.Time
+	CreatedBy   string
 }
 
 // Comment is a note by a user on an item. AuthorID may be empty if the author's
@@ -447,6 +478,26 @@ type Store interface {
 	ReorderItems(ctx context.Context, statusID string, orderedIDs []string) error
 	SetItemPositions(ctx context.Context, orderedIDs []string) error
 	DeleteItem(ctx context.Context, id string) error
+
+	// Projects. A project is a workspace-scoped initiative that items may belong
+	// to (Item.ProjectID). CreateProject returns ErrProjectSlugTaken on a
+	// per-workspace slug collision. ProjectsByWorkspace lists them ordered by
+	// position; includeArchived false omits archived projects. UpdateProject sets
+	// p's mutable fields (slug, name, brief, lead, status, color) by p.ID and also
+	// returns ErrProjectSlugTaken. SetProjectArchived toggles the soft-delete.
+	// SetItemProject sets (or clears, with "") an item's project. ItemsByProject
+	// returns a project's active top-level items, newest first. ProjectItemCounts
+	// returns per-project top-level progress (Total, and Done = items whose status
+	// is in doneStatusIDs) for the overview bars and a single project's rollup.
+	CreateProject(ctx context.Context, p Project) (Project, error)
+	ProjectsByWorkspace(ctx context.Context, workspaceID string, includeArchived bool) ([]Project, error)
+	ProjectByID(ctx context.Context, id string) (Project, error)
+	ProjectBySlug(ctx context.Context, workspaceID, slug string) (Project, error)
+	UpdateProject(ctx context.Context, p Project) error
+	SetProjectArchived(ctx context.Context, id string, archived bool) error
+	SetItemProject(ctx context.Context, id, projectID string) error
+	ItemsByProject(ctx context.Context, projectID string) ([]Item, error)
+	ProjectItemCounts(ctx context.Context, workspaceID string, doneStatusIDs []string) (map[string]SubtaskCount, error)
 
 	// Comments on an item, returned oldest-first (including soft-deleted ones;
 	// callers filter as they need). CommentByID returns ErrCommentNotFound when

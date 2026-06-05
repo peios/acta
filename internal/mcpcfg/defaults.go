@@ -15,8 +15,8 @@ create or change anything.
 
 - Call ` + "`whoami`" + ` to learn who you're acting as. You may be a **human** principal
   or an **agent** principal that belongs to a human (your "owner").
-- Call ` + "`list_workspaces`" + ` to see the projects available. Items always live in one
-  workspace, addressed by its ` + "`slug`" + `.
+- Call ` + "`list_workspaces`" + ` to see the workspaces available. Items always live in
+  one workspace, addressed by its ` + "`slug`" + `.
 - Call ` + "`list_items`" + ` to read the board before you change it. Don't re-create work
   that's already tracked.
 
@@ -36,6 +36,12 @@ create or change anything.
   children.
 - **Assignee** — the principal responsible. Both humans and agents can be
   assignees. Set with ` + "`set_item_assignee`" + `.
+- **Project** — a cross-cutting initiative within a workspace that groups related
+  items (e.g. all "Peinit" work), independent of their board, status, or parent.
+  Addressed by ` + "`slug`" + `; list them with ` + "`list_projects`" + `, and file an item under
+  one with ` + "`set_item_project`" + ` (or ` + "`create_item`" + `'s ` + "`project`" + ` argument). A project
+  is narrower than a workspace (which is the whole board) and longer-lived than a
+  milestone.
 
 ## Humans and agents
 
@@ -88,7 +94,8 @@ go-ahead — don't busy-poll the board. Ask in a comment and block on the reply:
 | Goal | Tool |
 | --- | --- |
 | Who am I? | ` + "`whoami`" + ` |
-| What projects exist? | ` + "`list_workspaces`" + ` |
+| What workspaces exist? | ` + "`list_workspaces`" + ` |
+| What projects exist? | ` + "`list_projects`" + ` |
 | What columns exist? | ` + "`list_statuses`" + ` |
 | Read the board | ` + "`list_items`" + ` |
 | Read one item in full | ` + "`get_item`" + ` |
@@ -98,6 +105,8 @@ go-ahead — don't busy-poll the board. Ask in a comment and block on the reply:
 | Edit the description | ` + "`set_item_description`" + ` |
 | Flag / unflag a milestone | ` + "`set_item_milestone`" + ` |
 | Nest under a parent | ` + "`set_item_parent`" + ` |
+| Start a project | ` + "`create_project`" + ` |
+| File an item under a project | ` + "`set_item_project`" + ` |
 | Add a progress note | ` + "`add_comment`" + ` |
 | Ask and wait for a reply | ` + "`add_comment`" + ` + ` + "`watch_comments`" + ` |
 | Retire / restore | ` + "`archive_item`" + ` / ` + "`unarchive_item`" + ` |

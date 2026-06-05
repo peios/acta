@@ -123,6 +123,21 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 	}, h.mcpSetItemParent)
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "list_projects",
+		Description: "List a workspace's projects: cross-cutting initiatives that group items (e.g. all \"Peinit\" work). Each has a slug (used to address it in create_item, set_item_project, and the list_items project filter), a name, a lifecycle status (planned/active/paused/done), an optional lead, and progress (done/total top-level items).",
+	}, h.mcpListProjects)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "create_project",
+		Description: "Create a project in a workspace to group related items. Provide a name; optionally a brief (markdown), a status (defaults to active), and a lead (a username, or \"me\"). Returns the new project, including its slug. File items under it with set_item_project (or create_item's project argument).",
+	}, h.mcpCreateProject)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "set_item_project",
+		Description: "File an item under a project, by project slug (from list_projects). Omit project to remove the item from its project. A project groups an item's work independently of its board, lane, and parent.",
+	}, h.mcpSetItemProject)
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "add_comment",
 		Description: "Append a comment to an item, authored by the calling principal. Comments are how agents record progress and coordinate. Returns the new comment, including its id (use it as the `after` cursor for watch_comments).",
 	}, h.mcpAddComment)
@@ -179,6 +194,7 @@ type mcpItem struct {
 	Title         string `json:"title"`
 	Status        string `json:"status"`
 	Assignee      string `json:"assignee,omitempty"`
+	Project       string `json:"project,omitempty"` // project slug, "" if unfiled
 	Milestone     bool   `json:"milestone,omitempty"`
 	Archived      bool   `json:"archived,omitempty"`
 	CreatedBy     string `json:"created_by,omitempty"`
@@ -242,13 +258,14 @@ type itemListOutput struct {
 	Items []mcpItem `json:"items"`
 }
 
-func toMCPItem(it store.Item, statusName, userName map[string]string, prefix string) mcpItem {
+func toMCPItem(it store.Item, statusName, userName, projectSlug map[string]string, prefix string) mcpItem {
 	return mcpItem{
 		ID:        it.ID,
 		Ref:       refID(prefix, it.RefNum),
 		Title:     it.Title,
 		Status:    statusName[it.StatusID],
 		Assignee:  userName[it.AssigneeID],
+		Project:   projectSlug[it.ProjectID],
 		Milestone: it.IsMilestone,
 		Archived:  it.ArchivedAt != nil,
 		CreatedBy: userName[it.CreatedBy],
@@ -296,6 +313,7 @@ type listItemsInput struct {
 	Board     string `json:"board,omitempty" jsonschema:"board slug (from list_boards); defaults to the primary board. Ignored when parent is set"`
 	Status    string `json:"status,omitempty" jsonschema:"only items in this status lane, by name"`
 	Assignee  string `json:"assignee,omitempty" jsonschema:"only items assigned to this username; use \"me\" for the caller"`
+	Project   string `json:"project,omitempty" jsonschema:"only items filed under this project (a slug from list_projects)"`
 	Parent    string `json:"parent,omitempty" jsonschema:"list the direct subtasks of this item id instead of the board's top-level items"`
 	Mine      bool   `json:"mine,omitempty" jsonschema:"only items assigned to the calling principal (shorthand for assignee=me)"`
 }
@@ -310,6 +328,28 @@ type createItemInput struct {
 	Board     string `json:"board,omitempty" jsonschema:"board slug (from list_boards); defaults to the primary board. Ignored when parent is set"`
 	Status    string `json:"status,omitempty" jsonschema:"status lane by name (on the chosen board); defaults to the board's entry lane. Ignored when parent is set"`
 	Parent    string `json:"parent,omitempty" jsonschema:"parent item id; when set, create this as a subtask of that item"`
+	Project   string `json:"project,omitempty" jsonschema:"file the new item under this project (a slug from list_projects)"`
+}
+
+type listProjectsInput struct {
+	Workspace string `json:"workspace" jsonschema:"slug of the workspace whose projects to list"`
+}
+
+type projectListOutput struct {
+	Projects []projectAPI `json:"projects"`
+}
+
+type createProjectInput struct {
+	Workspace string `json:"workspace" jsonschema:"slug of the workspace to create the project in"`
+	Name      string `json:"name" jsonschema:"the project name"`
+	Brief     string `json:"brief,omitempty" jsonschema:"a short description of the project (markdown)"`
+	Status    string `json:"status,omitempty" jsonschema:"lifecycle: planned, active (default), paused, or done"`
+	Lead      string `json:"lead,omitempty" jsonschema:"username of the project lead; \"me\" for the caller"`
+}
+
+type setItemProjectInput struct {
+	ID      string `json:"id" jsonschema:"the item id"`
+	Project string `json:"project,omitempty" jsonschema:"project slug (from list_projects) to file the item under; omit to remove it from its project"`
 }
 
 type setItemStatusInput struct {
@@ -557,6 +597,17 @@ func (h *handlers) mcpListItems(ctx context.Context, _ *mcp.CallToolRequest, in 
 	for _, u := range users {
 		userName[u.ID] = u.Username
 	}
+	projectSlug, err := h.projectSlugs(ctx, ws.ID)
+	if err != nil {
+		return nil, itemListOutput{}, mcpErr(err)
+	}
+	// An optional project slug narrows to one project's items.
+	projectID := ""
+	if s := strings.TrimSpace(in.Project); s != "" {
+		if projectID, err = h.projectIDBySlug(ctx, ws.ID, s); err != nil {
+			return nil, itemListOutput{}, mcpErr(err)
+		}
+	}
 	doneStatusID := ""
 	if n := len(boardStatuses); n > 0 {
 		doneStatusID = boardStatuses[n-1].ID
@@ -574,7 +625,10 @@ func (h *handlers) mcpListItems(ctx context.Context, _ *mcp.CallToolRequest, in 
 		if filterAssignee && it.AssigneeID != assigneeID {
 			continue
 		}
-		v := toMCPItem(it, statusName, userName, ws.ItemPrefix)
+		if projectID != "" && it.ProjectID != projectID {
+			continue
+		}
+		v := toMCPItem(it, statusName, userName, projectSlug, ws.ItemPrefix)
 		v.URL = h.itemURL(ws.Slug, it.ID)
 		if c, ok := counts[it.ID]; ok && c.Total > 0 {
 			v.SubtasksDone, v.SubtasksTotal = c.Done, c.Total
@@ -589,13 +643,13 @@ func (h *handlers) mcpGetItem(ctx context.Context, _ *mcp.CallToolRequest, in it
 	if err != nil {
 		return nil, mcpItemDetail{}, err
 	}
-	statusName, userName, err := h.nameMaps(ctx, item.WorkspaceID)
+	statusName, userName, projectSlug, err := h.nameMaps(ctx, item.WorkspaceID)
 	if err != nil {
 		return nil, mcpItemDetail{}, mcpErr(err)
 	}
 	slug := h.slugFor(ctx, item.WorkspaceID)
 	prefix := h.prefixFor(ctx, item.WorkspaceID)
-	root := toMCPItem(item, statusName, userName, prefix)
+	root := toMCPItem(item, statusName, userName, projectSlug, prefix)
 	root.URL = h.itemURL(slug, item.ID)
 	detail := mcpItemDetail{
 		mcpItem:     root,
@@ -609,7 +663,7 @@ func (h *handlers) mcpGetItem(ctx context.Context, _ *mcp.CallToolRequest, in it
 		return nil, mcpItemDetail{}, mcpErr(err)
 	}
 	for _, c := range children {
-		cv := toMCPItem(c, statusName, userName, prefix)
+		cv := toMCPItem(c, statusName, userName, projectSlug, prefix)
 		cv.URL = h.itemURL(slug, c.ID)
 		detail.Subtasks = append(detail.Subtasks, cv)
 	}
@@ -668,12 +722,85 @@ func (h *handlers) mcpCreateItem(ctx context.Context, _ *mcp.CallToolRequest, in
 	if err != nil {
 		return nil, mcpItem{}, mcpErr(err)
 	}
+	// Optionally file the new item under a project (subtasks otherwise inherit
+	// their parent's project; an explicit project overrides that).
+	if s := strings.TrimSpace(in.Project); s != "" {
+		projectID, perr := h.projectIDBySlug(ctx, ws.ID, s)
+		if perr != nil {
+			return nil, mcpItem{}, mcpErr(perr)
+		}
+		if perr := h.board.SetItemProject(ctx, it.ID, projectID); perr != nil {
+			return nil, mcpItem{}, mcpErr(perr)
+		}
+		it.ProjectID = projectID
+	}
 	if it.ParentID != "" {
 		h.publishSubtaskAdd("", it.WorkspaceID, it)
 	} else {
 		h.publishItemUpsert(ctx, "", it.WorkspaceID, it)
 	}
 	return h.mcpItemResult(ctx, it)
+}
+
+func (h *handlers) mcpListProjects(ctx context.Context, _ *mcp.CallToolRequest, in listProjectsInput) (*mcp.CallToolResult, projectListOutput, error) {
+	ws, err := h.mcpWorkspace(ctx, in.Workspace)
+	if err != nil {
+		return nil, projectListOutput{}, err
+	}
+	list, err := h.listProjectsAPI(ctx, ws.ID)
+	if err != nil {
+		return nil, projectListOutput{}, mcpErr(err)
+	}
+	return &mcp.CallToolResult{}, projectListOutput{Projects: list}, nil
+}
+
+func (h *handlers) mcpCreateProject(ctx context.Context, _ *mcp.CallToolRequest, in createProjectInput) (*mcp.CallToolResult, projectAPI, error) {
+	ws, err := h.mcpWorkspace(ctx, in.Workspace)
+	if err != nil {
+		return nil, projectAPI{}, err
+	}
+	p, err := h.createProjectShared(ctx, ws, in.Name, in.Brief, in.Status, in.Lead)
+	if err != nil {
+		return nil, projectAPI{}, mcpProjectErr(err)
+	}
+	return &mcp.CallToolResult{}, h.projectAPIFor(ctx, p, store.SubtaskCount{}), nil
+}
+
+func (h *handlers) mcpSetItemProject(ctx context.Context, _ *mcp.CallToolRequest, in setItemProjectInput) (*mcp.CallToolResult, mcpItem, error) {
+	item, err := h.mcpItem(ctx, in.ID, "")
+	if err != nil {
+		return nil, mcpItem{}, err
+	}
+	projectID := ""
+	if s := strings.TrimSpace(in.Project); s != "" {
+		if projectID, err = h.projectIDBySlug(ctx, item.WorkspaceID, s); err != nil {
+			return nil, mcpItem{}, mcpProjectErr(err)
+		}
+	}
+	if err := h.board.SetItemProject(ctx, item.ID, projectID); err != nil {
+		return nil, mcpItem{}, mcpProjectErr(err)
+	}
+	h.liveUpsertOrigin(ctx, "", item.ID)
+	return h.mcpReloadResult(ctx, item.ID)
+}
+
+// mcpProjectErr adds the project-specific sentinels to mcpErr's mapping (the
+// name-lookup errors are already human-readable and pass through).
+func mcpProjectErr(err error) error {
+	switch {
+	case errors.Is(err, errUnknownProject):
+		return err
+	case errors.Is(err, board.ErrInvalidProjectName):
+		return errors.New("invalid project name (1–80 characters)")
+	case errors.Is(err, board.ErrInvalidProjectStatus):
+		return errors.New("invalid status (use planned/active/paused/done)")
+	case errors.Is(err, board.ErrInvalidProjectBrief):
+		return errors.New("brief too long")
+	case errors.Is(err, board.ErrProjectMismatch):
+		return errors.New("project belongs to another workspace")
+	default:
+		return mcpErr(err)
+	}
 }
 
 func (h *handlers) mcpSetItemStatus(ctx context.Context, _ *mcp.CallToolRequest, in setItemStatusInput) (*mcp.CallToolResult, mcpItem, error) {
@@ -789,7 +916,7 @@ func (h *handlers) mcpWatchComments(ctx context.Context, _ *mcp.CallToolRequest,
 	if err != nil {
 		return nil, watchCommentsOutput{}, err
 	}
-	_, userName, err := h.nameMaps(ctx, item.WorkspaceID)
+	_, userName, _, err := h.nameMaps(ctx, item.WorkspaceID)
 	if err != nil {
 		return nil, watchCommentsOutput{}, mcpErr(err)
 	}
@@ -1087,11 +1214,11 @@ func (h *handlers) resolveAssignee(ctx context.Context, assignee string, mine bo
 
 // mcpItemResult renders a freshly returned item as a tool result.
 func (h *handlers) mcpItemResult(ctx context.Context, it store.Item) (*mcp.CallToolResult, mcpItem, error) {
-	statusName, userName, err := h.nameMaps(ctx, it.WorkspaceID)
+	statusName, userName, projectSlug, err := h.nameMaps(ctx, it.WorkspaceID)
 	if err != nil {
 		return nil, mcpItem{}, mcpErr(err)
 	}
-	v := toMCPItem(it, statusName, userName, h.prefixFor(ctx, it.WorkspaceID))
+	v := toMCPItem(it, statusName, userName, projectSlug, h.prefixFor(ctx, it.WorkspaceID))
 	v.URL = h.itemURL(h.slugFor(ctx, it.WorkspaceID), it.ID)
 	return &mcp.CallToolResult{}, v, nil
 }

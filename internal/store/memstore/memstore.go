@@ -33,6 +33,7 @@ type Store struct {
 	events      map[string]store.Event
 	notifs      map[string]store.Notification
 	pushSubs    map[string]store.PushSubscription // keyed by endpoint
+	projects    map[string]store.Project
 }
 
 func New() *Store {
@@ -53,6 +54,7 @@ func New() *Store {
 		events:      map[string]store.Event{},
 		notifs:      map[string]store.Notification{},
 		pushSubs:    map[string]store.PushSubscription{},
+		projects:    map[string]store.Project{},
 	}
 }
 
@@ -931,6 +933,144 @@ func (s *Store) DeleteItem(_ context.Context, id string) error {
 	}
 	delete(s.items, id)
 	return nil
+}
+
+// --- projects ---
+
+func (s *Store) CreateProject(_ context.Context, pr store.Project) (store.Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, ex := range s.projects {
+		if ex.WorkspaceID == pr.WorkspaceID && ex.Slug == pr.Slug {
+			return store.Project{}, store.ErrProjectSlugTaken
+		}
+	}
+	if pr.ID == "" {
+		pr.ID = newID()
+	}
+	if pr.CreatedAt.IsZero() {
+		pr.CreatedAt = time.Now()
+	}
+	s.projects[pr.ID] = pr
+	return pr, nil
+}
+
+func (s *Store) ProjectsByWorkspace(_ context.Context, workspaceID string, includeArchived bool) ([]store.Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.Project
+	for _, pr := range s.projects {
+		if pr.WorkspaceID != workspaceID {
+			continue
+		}
+		if !includeArchived && pr.ArchivedAt != nil {
+			continue
+		}
+		out = append(out, pr)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Position != out[j].Position {
+			return out[i].Position < out[j].Position
+		}
+		return out[i].CreatedAt.Before(out[j].CreatedAt)
+	})
+	return out, nil
+}
+
+func (s *Store) ProjectByID(_ context.Context, id string) (store.Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	pr, ok := s.projects[id]
+	if !ok {
+		return store.Project{}, store.ErrProjectNotFound
+	}
+	return pr, nil
+}
+
+func (s *Store) ProjectBySlug(_ context.Context, workspaceID, slug string) (store.Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, pr := range s.projects {
+		if pr.WorkspaceID == workspaceID && pr.Slug == slug {
+			return pr, nil
+		}
+	}
+	return store.Project{}, store.ErrProjectNotFound
+}
+
+func (s *Store) UpdateProject(_ context.Context, pr store.Project) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur, ok := s.projects[pr.ID]
+	if !ok {
+		return store.ErrProjectNotFound
+	}
+	for oid, ex := range s.projects {
+		if oid != pr.ID && ex.WorkspaceID == cur.WorkspaceID && ex.Slug == pr.Slug {
+			return store.ErrProjectSlugTaken
+		}
+	}
+	cur.Slug = pr.Slug
+	cur.Name = pr.Name
+	cur.Brief = pr.Brief
+	cur.LeadID = pr.LeadID
+	cur.Status = pr.Status
+	cur.Color = pr.Color
+	s.projects[pr.ID] = cur
+	return nil
+}
+
+func (s *Store) SetProjectArchived(_ context.Context, id string, archived bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	pr, ok := s.projects[id]
+	if !ok {
+		return store.ErrProjectNotFound
+	}
+	if archived {
+		now := time.Now()
+		pr.ArchivedAt = &now
+	} else {
+		pr.ArchivedAt = nil
+	}
+	s.projects[id] = pr
+	return nil
+}
+
+func (s *Store) SetItemProject(_ context.Context, id, projectID string) error {
+	return s.mutateItem(id, func(it *store.Item) { it.ProjectID = projectID })
+}
+
+func (s *Store) ItemsByProject(_ context.Context, projectID string) ([]store.Item, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := s.filterItems(func(it store.Item) bool {
+		return it.ProjectID == projectID && it.ParentID == "" && it.ArchivedAt == nil
+	})
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out, nil
+}
+
+func (s *Store) ProjectItemCounts(_ context.Context, workspaceID string, doneStatusIDs []string) (map[string]store.SubtaskCount, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	done := make(map[string]bool, len(doneStatusIDs))
+	for _, id := range doneStatusIDs {
+		done[id] = true
+	}
+	out := map[string]store.SubtaskCount{}
+	for _, it := range s.items {
+		if it.WorkspaceID != workspaceID || it.ParentID != "" || it.ArchivedAt != nil || it.ProjectID == "" {
+			continue
+		}
+		c := out[it.ProjectID]
+		c.Total++
+		if done[it.StatusID] {
+			c.Done++
+		}
+		out[it.ProjectID] = c
+	}
+	return out, nil
 }
 
 // --- comments ---

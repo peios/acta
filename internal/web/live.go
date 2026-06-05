@@ -150,6 +150,15 @@ func (h *handlers) cardFields(ctx context.Context, it store.Item) map[string]any
 	if st, err := h.board.StatusByID(ctx, it.StatusID); err == nil {
 		f["color"] = board.ColorFor(st)
 	}
+	if it.ProjectID != "" {
+		if p, err := h.board.Project(ctx, it.ProjectID); err == nil {
+			f["project"] = map[string]any{
+				"id":    p.ID,
+				"name":  p.Name,
+				"color": board.ProjectColorFor(p),
+			}
+		}
+	}
 	if it.AssigneeID != "" {
 		if u, err := h.board.User(ctx, it.AssigneeID); err == nil {
 			name := displayName(u)

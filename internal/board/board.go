@@ -813,6 +813,14 @@ func (s *Service) CreateSubtaskAs(ctx context.Context, parentID, title, createdB
 	if err != nil {
 		return store.Item{}, err
 	}
+	// A new subtask inherits its parent's project (its area), so work filed under
+	// a project keeps its children there by default. Overridable afterwards.
+	if parent.ProjectID != "" {
+		if err := s.store.SetItemProject(ctx, it.ID, parent.ProjectID); err != nil {
+			return store.Item{}, err
+		}
+		it.ProjectID = parent.ProjectID
+	}
 	s.recordEvent(ctx, it, store.EventItemCreated, map[string]string{"status": statuses[0].Name})
 	return it, nil
 }

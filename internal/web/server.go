@@ -72,6 +72,18 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	// trees (Go's mux can't rank them).
 	mux.Handle("GET /{slug}/archive", protected(h.archivePage))
 	mux.Handle("GET /{slug}/activity", protected(h.activityPage))
+	// Projects: a workspace's cross-cutting initiatives. The literal
+	// /{slug}/projects is more specific than the /{slug}/{board} board view, so it
+	// wins. The single-project view rides a ?p=<slug> query rather than a third
+	// path segment: a /{slug}/projects/{project} pattern would be ambiguous with
+	// /notifications/{id}/open (both match /notifications/projects/open) — the same
+	// reason the activity/archive feeds use ?board=. Mutations keep the id in the
+	// path (a 4-segment POST collides with nothing).
+	mux.Handle("GET /{slug}/projects", protected(h.projects))
+	mux.Handle("POST /{slug}/projects", protected(h.projectCreate))
+	mux.Handle("POST /{slug}/projects/{id}/edit", protected(h.projectUpdate))
+	mux.Handle("POST /{slug}/projects/{id}/archive", protected(h.projectArchive))
+	mux.Handle("POST /{slug}/projects/{id}/unarchive", protected(h.projectUnarchive))
 	// A second path segment selects a non-default board (e.g. /{slug}/backlog);
 	// the literal sub-routes above are more specific, so they always win.
 	mux.Handle("GET /{slug}/{board}", protected(h.boardPage))
@@ -94,6 +106,7 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("POST /{slug}/items/{id}/comment/{cid}/edit", protected(h.itemCommentEdit))
 	mux.Handle("POST /{slug}/items/{id}/comment/{cid}/delete", protected(h.itemCommentDelete))
 	mux.Handle("POST /{slug}/items/{id}/parent", protected(h.itemParent))
+	mux.Handle("POST /{slug}/items/{id}/project", protected(h.itemSetProject))
 	mux.Handle("POST /{slug}/items/{id}/milestone", protected(h.itemMilestone))
 	mux.Handle("POST /{slug}/items/{id}/subtasks", protected(h.subtaskCreate))
 	mux.Handle("POST /{slug}/items/{id}/subtasks/reorder", protected(h.subtaskReorder))
@@ -165,6 +178,9 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	api.HandleFunc("GET /api/v1/w/{slug}/items/{id}", h.apiItem)
 	api.HandleFunc("POST /api/v1/w/{slug}/items/{id}/subtasks", h.apiCreateSubtask)
 	api.HandleFunc("POST /api/v1/w/{slug}/items/{id}/transition", h.apiTransition)
+	api.HandleFunc("POST /api/v1/w/{slug}/items/{id}/project", h.apiSetItemProject)
+	api.HandleFunc("GET /api/v1/w/{slug}/projects", h.apiListProjects)
+	api.HandleFunc("POST /api/v1/w/{slug}/projects", h.apiCreateProject)
 	// Agent + token management, so the CLI can provision an MCP integration.
 	api.HandleFunc("GET /api/v1/agents", h.apiListAgents)
 	api.HandleFunc("POST /api/v1/agents", h.apiCreateAgent)

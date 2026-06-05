@@ -23,7 +23,7 @@
   function canon(params) {
     const parts = [];
     if (params.get('mode') === 'milestone') parts.push('mode=milestone');
-    for (const name of ['status', 'assignee']) {
+    for (const name of ['status', 'assignee', 'project']) {
       params.getAll(name).map(encodeURIComponent).sort().forEach((v) => parts.push(name + '=' + v));
     }
     return parts.join('&');
@@ -35,7 +35,7 @@
   window.__actaBoardPrefs = { save };
 
   const params = new URLSearchParams(location.search);
-  const hasView = params.has('mode') || params.has('status') || params.has('assignee');
+  const hasView = params.has('mode') || params.has('status') || params.has('assignee') || params.has('project');
 
   if (!hasView) {
     // Bare visit — replay the saved view if there's a non-default one. Any
