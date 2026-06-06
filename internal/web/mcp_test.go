@@ -22,6 +22,7 @@ type mcpItemT struct {
 	Status      string        `json:"status"`
 	Assignee    string        `json:"assignee"`
 	Project     string        `json:"project"`
+	Release     string        `json:"release"`
 	Milestone   bool          `json:"milestone"`
 	Archived    bool          `json:"archived"`
 	CreatedBy   string        `json:"created_by"`
@@ -88,6 +89,18 @@ type mcpProjectT struct {
 
 type mcpProjectsT struct {
 	Projects []mcpProjectT `json:"projects"`
+}
+
+type mcpReleaseT struct {
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	ShippedAt string `json:"shipped_at"`
+	Done      int    `json:"done"`
+	Total     int    `json:"total"`
+}
+
+type mcpReleasesT struct {
+	Releases []mcpReleaseT `json:"releases"`
 }
 
 type mcpEventT struct {
@@ -890,5 +903,56 @@ func TestMCPSubscriptions(t *testing.T) {
 	// An unknown subject type is a clean error.
 	if msg := toolErr(t, sess, "subscribe", map[string]any{"type": "nonsense", "ref": "x"}); !strings.Contains(msg, "subject type") {
 		t.Errorf("bad-type error = %q, want it to mention subject type", msg)
+	}
+}
+
+func TestMCPReleases(t *testing.T) {
+	base, client := newTestServer(t)
+	csrf := signIn(t, client, base)
+	token := mintToken(t, client, base, csrf)
+	sess := mcpConnect(t, base, token)
+
+	// Create a release (planned) and list it.
+	created := callTool[mcpReleaseT](t, sess, "create_release", map[string]any{
+		"workspace": "general", "name": "v0.27.0", "description": "the cut", "status": "planned",
+	})
+	if created.Name != "v0.27.0" || created.Status != "planned" {
+		t.Fatalf("create_release = %+v, want v0.27.0/planned", created)
+	}
+	if rels := callTool[mcpReleasesT](t, sess, "list_releases", map[string]any{"workspace": "general"}); len(rels.Releases) != 1 || rels.Releases[0].Name != "v0.27.0" {
+		t.Fatalf("list_releases = %+v", rels)
+	}
+
+	// Create an item and add it to the release; the item reflects its release.
+	it := callTool[mcpItemT](t, sess, "create_item", map[string]any{"workspace": "general", "title": "ship it"})
+	tagged := callTool[mcpItemT](t, sess, "set_item_release", map[string]any{"id": it.ID, "release": "v0.27.0"})
+	if tagged.Release != "v0.27.0" {
+		t.Fatalf("set_item_release: item release = %q, want v0.27.0", tagged.Release)
+	}
+
+	// The release filter on list_items narrows to that release.
+	items := callTool[mcpItemsT](t, sess, "list_items", map[string]any{"workspace": "general", "release": "v0.27.0"})
+	if len(items.Items) != 1 || items.Items[0].ID != it.ID {
+		t.Fatalf("list_items?release = %+v, want just the tagged item", items)
+	}
+
+	// Lifecycle: activate then ship (which stamps shipped_at).
+	callTool[mcpReleaseT](t, sess, "set_release_status", map[string]any{"workspace": "general", "release": "v0.27.0", "status": "active"})
+	shipped := callTool[mcpReleaseT](t, sess, "set_release_status", map[string]any{"workspace": "general", "release": "v0.27.0", "status": "shipped"})
+	if shipped.Status != "shipped" || shipped.ShippedAt == "" {
+		t.Fatalf("set_release_status shipped = %+v, want shipped + stamp", shipped)
+	}
+
+	// Errors: unknown release, and create-as-shipped is rejected.
+	if msg := toolErr(t, sess, "set_item_release", map[string]any{"id": it.ID, "release": "nope"}); !strings.Contains(msg, "unknown release") {
+		t.Errorf("unknown release error = %q", msg)
+	}
+	if msg := toolErr(t, sess, "create_release", map[string]any{"workspace": "general", "name": "v9", "status": "shipped"}); !strings.Contains(msg, "invalid status") {
+		t.Errorf("create-as-shipped error = %q", msg)
+	}
+
+	// Clearing the release.
+	if cleared := callTool[mcpItemT](t, sess, "set_item_release", map[string]any{"id": it.ID}); cleared.Release != "" {
+		t.Errorf("cleared item still has release %q", cleared.Release)
 	}
 }

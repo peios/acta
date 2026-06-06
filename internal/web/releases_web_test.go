@@ -299,6 +299,49 @@ func TestItemOverflowAndConvert(t *testing.T) {
 	}
 }
 
+func TestCurrentReleaseView(t *testing.T) {
+	base, client := newTestServer(t)
+	token := csrfToken(t, client, base)
+	login(t, client, base, token)
+
+	// No active release -> no Current Release tab.
+	if body := getBody(t, client, base+"/general", http.StatusOK); strings.Contains(body, "release=active") {
+		t.Error("Current Release tab should be hidden with no active release")
+	}
+
+	active := createRelease(t, client, base, token, "v0.28.0", "")
+	todo := statusID(t, client, base, "To do")
+	inRel := createItem(t, client, base, token, todo, "released work")
+	createItem(t, client, base, token, todo, "loose work")
+	postJSON(t, client, base+"/general/items/"+inRel+"/release", token, map[string]any{"release_id": active}).Body.Close()
+
+	// The tab now shows, links to the status-mode + release=active preset.
+	if body := getBody(t, client, base+"/general", http.StatusOK); !strings.Contains(body, "mode=status&amp;release=active") {
+		t.Error("Current Release tab missing once a release is active")
+	}
+
+	// On that view: it's a status-mode board (lanes present) filtered to the active
+	// release — the released item shows, the loose one is filtered out, and the tab
+	// reads as active.
+	view := getBody(t, client, base+"/general?mode=status&release=active", http.StatusOK)
+	if !strings.Contains(view, `data-mode="status"`) {
+		t.Error("Current Release view should be status mode")
+	}
+	if !strings.Contains(view, `class="view-tab active"`) {
+		t.Error("Current Release tab should read as active on its own URL")
+	}
+	for _, m := range cardRe.FindAllStringSubmatch(view, -1) {
+		classes, cid := m[1], m[2]
+		hidden := strings.Contains(classes, "is-filtered")
+		if cid == inRel && hidden {
+			t.Error("released item should be visible in Current Release view")
+		}
+		if cid != inRel && !hidden {
+			t.Error("loose item should be filtered out of Current Release view")
+		}
+	}
+}
+
 func TestReleaseBoardMode(t *testing.T) {
 	base, client := newTestServer(t)
 	token := csrfToken(t, client, base)

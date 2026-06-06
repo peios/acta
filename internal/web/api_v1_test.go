@@ -16,6 +16,7 @@ type apiItem struct {
 	Status    string `json:"status"`
 	Assignee  string `json:"assignee"`
 	Project   string `json:"project"`
+	Release   string `json:"release"`
 	CreatedBy string `json:"created_by"`
 }
 
@@ -178,6 +179,70 @@ func TestAPIProjects(t *testing.T) {
 	bad.Body.Close()
 	if bad.StatusCode != http.StatusBadRequest {
 		t.Fatalf("unknown project: want 400, got %d", bad.StatusCode)
+	}
+}
+
+func TestAPIReleases(t *testing.T) {
+	base, client := newTestServer(t)
+	csrf := signIn(t, client, base)
+	token := mintToken(t, client, base, csrf)
+
+	// Create a release as planned.
+	resp := bearerJSON(t, base, "POST", "/api/v1/w/general/releases", token,
+		map[string]string{"name": "v0.27.0", "description": "the cut", "status": "planned"})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("create release: want 201, got %d: %s", resp.StatusCode, b)
+	}
+	var rel struct{ Name, Status string }
+	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+		t.Fatal(err)
+	}
+	if rel.Name != "v0.27.0" || rel.Status != "planned" {
+		t.Fatalf("release = %+v, want v0.27.0/planned", rel)
+	}
+
+	// It lists.
+	if lb := readBody(t, bearerJSON(t, base, "GET", "/api/v1/w/general/releases", token, nil)); !strings.Contains(lb, `"name":"v0.27.0"`) {
+		t.Fatalf("release list missing v0.27.0:\n%s", lb)
+	}
+
+	// Create an item added to the release at creation; the item reflects it.
+	in := decodeItem(t, bearerJSON(t, base, "POST", "/api/v1/w/general/items", token,
+		map[string]string{"title": "ship it", "release": "v0.27.0"}), http.StatusCreated)
+	if in.Release != "v0.27.0" {
+		t.Fatalf("created item release = %q, want v0.27.0", in.Release)
+	}
+	loose := decodeItem(t, bearerJSON(t, base, "POST", "/api/v1/w/general/items", token,
+		map[string]string{"title": "unfiled"}), http.StatusCreated)
+
+	// The ?release filter narrows the listing.
+	fb := readBody(t, bearerJSON(t, base, "GET", "/api/v1/w/general/items?release=v0.27.0", token, nil))
+	if !strings.Contains(fb, in.ID) || strings.Contains(fb, loose.ID) {
+		t.Fatalf("?release filter wrong:\n%s", fb)
+	}
+
+	// Lifecycle: activate then ship.
+	st := bearerJSON(t, base, "POST", "/api/v1/w/general/releases/v0.27.0/status", token, map[string]string{"status": "active"})
+	st.Body.Close()
+	shipped := readBody(t, bearerJSON(t, base, "POST", "/api/v1/w/general/releases/v0.27.0/status", token, map[string]string{"status": "shipped"}))
+	if !strings.Contains(shipped, `"status":"shipped"`) || !strings.Contains(shipped, `"shipped_at"`) {
+		t.Fatalf("ship response wrong:\n%s", shipped)
+	}
+
+	// Clearing the item's release.
+	cleared := decodeItem(t, bearerJSON(t, base, "POST", "/api/v1/w/general/items/"+in.ID+"/release", token,
+		map[string]string{"release": ""}), http.StatusOK)
+	if cleared.Release != "" {
+		t.Fatalf("cleared release = %q, want empty", cleared.Release)
+	}
+
+	// Unknown release names are rejected.
+	if bad := bearerJSON(t, base, "POST", "/api/v1/w/general/items/"+in.ID+"/release", token,
+		map[string]string{"release": "nope"}); bad.StatusCode != http.StatusNotFound {
+		bad.Body.Close()
+		t.Fatalf("unknown release: want 404, got %d", bad.StatusCode)
 	}
 }
 

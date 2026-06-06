@@ -36,6 +36,7 @@ type boardData struct {
 	MilestoneColumns   []milestoneColumn
 	ReleaseColumns     []releaseColumn // release mode: a column per release (+ "No release")
 	HasReleases        bool            // the workspace has ≥1 release (gates the Releases view tab)
+	HasActiveRelease   bool            // the workspace has ≥1 active release (gates the Current Release tab)
 	StatusFilter       []statusOpt     // the status facet options
 	StatusSelected     int             // count badge on the Status trigger
 	Assignees          assigneeFacet   // the assignee facet (hierarchical)
@@ -50,6 +51,7 @@ type boardData struct {
 	FilterCount        int             // status + assignee + project + release selections, for the Filter button badge
 	FilterActive       bool            // any facet currently narrowing the board
 	ViewMine           bool            // the active view is "assigned to me" (My items tab)
+	ViewCurrentRelease bool            // the active view is status-mode filtered to active releases (Current Release tab)
 	Modal              *modalView      // set when ?item=<id> resolves within this workspace
 }
 
@@ -473,6 +475,11 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 		FilterActive:       filter.active(),
 		ViewMine:           filter.assignees["me"] && len(filter.assignees) == 1 && len(filter.statuses) == 0,
 		HasReleases:        len(releases) > 0,
+		HasActiveRelease:   len(activeReleaseIDs) > 0,
+		// "Current Release" is status mode narrowed to active releases and nothing
+		// else — the preset the dedicated tab links to.
+		ViewCurrentRelease: mode == "status" && filter.releases["active"] && len(filter.releases) == 1 &&
+			len(filter.statuses) == 0 && len(filter.assignees) == 0 && len(filter.projects) == 0,
 	}
 	switch mode {
 	case "milestone":

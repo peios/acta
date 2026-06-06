@@ -138,6 +138,26 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 	}, h.mcpSetItemProject)
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "list_releases",
+		Description: "List a workspace's releases: versioned cut-lines items ship in (e.g. \"v0.27.0\"). Each has a name (used to address it in create_item, set_item_release, set_release_status, and the list_items release filter), a lifecycle status (planned/active/shipped), a ship time once shipped, and progress (done/total top-level items). A release differs from a project: it's a point the project ships at, not an open-ended theme.",
+	}, h.mcpListReleases)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "create_release",
+		Description: "Create a release in a workspace — a versioned cut-line to gather work toward. Provide a name (unique in the workspace); optionally a description (markdown) and a status (planned, or active by default). Returns the new release. Add items with set_item_release (or create_item's release argument); ship it later with set_release_status.",
+	}, h.mcpCreateRelease)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "set_item_release",
+		Description: "Add an item to a release, by release name (from list_releases). Omit release to remove the item from its release. An item belongs to one release at a time.",
+	}, h.mcpSetItemRelease)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "set_release_status",
+		Description: "Move a release along its lifecycle: planned → active → shipped, and back. \"shipped\" stamps the ship time and freezes it as a changelog entry; moving away from shipped clears that stamp. Addressed by release name.",
+	}, h.mcpSetReleaseStatus)
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_subscriptions",
 		Description: "List your subscriptions — the standing interests that file activity notifications into your inbox. Each names a subject (type item/project/principal, addressed by ref: an item id, a project slug, or a username) and the category filter (comments, status, assignments, items_added, other). You auto-subscribe to items you create/comment on/are assigned, projects you create, and your own agents.",
 	}, h.mcpListSubscriptions)
@@ -210,6 +230,7 @@ type mcpItem struct {
 	Status        string `json:"status"`
 	Assignee      string `json:"assignee,omitempty"`
 	Project       string `json:"project,omitempty"` // project slug, "" if unfiled
+	Release       string `json:"release,omitempty"` // release name, "" if in none
 	Milestone     bool   `json:"milestone,omitempty"`
 	Archived      bool   `json:"archived,omitempty"`
 	CreatedBy     string `json:"created_by,omitempty"`
@@ -332,6 +353,7 @@ type listItemsInput struct {
 	Status    string `json:"status,omitempty" jsonschema:"only items in this status lane, by name"`
 	Assignee  string `json:"assignee,omitempty" jsonschema:"only items assigned to this username; use \"me\" for the caller"`
 	Project   string `json:"project,omitempty" jsonschema:"only items filed under this project (a slug from list_projects)"`
+	Release   string `json:"release,omitempty" jsonschema:"only items in this release (a name from list_releases)"`
 	Parent    string `json:"parent,omitempty" jsonschema:"list the direct subtasks of this item id instead of the board's top-level items"`
 	Mine      bool   `json:"mine,omitempty" jsonschema:"only items assigned to the calling principal (shorthand for assignee=me)"`
 }
@@ -347,6 +369,7 @@ type createItemInput struct {
 	Status    string `json:"status,omitempty" jsonschema:"status lane by name (on the chosen board); defaults to the board's entry lane. Ignored when parent is set"`
 	Parent    string `json:"parent,omitempty" jsonschema:"parent item id; when set, create this as a subtask of that item"`
 	Project   string `json:"project,omitempty" jsonschema:"file the new item under this project (a slug from list_projects)"`
+	Release   string `json:"release,omitempty" jsonschema:"add the new item to this release (a name from list_releases)"`
 }
 
 type listProjectsInput struct {
@@ -368,6 +391,32 @@ type createProjectInput struct {
 type setItemProjectInput struct {
 	ID      string `json:"id" jsonschema:"the item id"`
 	Project string `json:"project,omitempty" jsonschema:"project slug (from list_projects) to file the item under; omit to remove it from its project"`
+}
+
+type listReleasesInput struct {
+	Workspace string `json:"workspace" jsonschema:"slug of the workspace whose releases to list"`
+}
+
+type releaseListOutput struct {
+	Releases []releaseAPI `json:"releases"`
+}
+
+type createReleaseInput struct {
+	Workspace   string `json:"workspace" jsonschema:"slug of the workspace to create the release in"`
+	Name        string `json:"name" jsonschema:"the release name (e.g. \"v0.27.0\"), unique within the workspace"`
+	Description string `json:"description,omitempty" jsonschema:"notes about the release (markdown)"`
+	Status      string `json:"status,omitempty" jsonschema:"lifecycle to create it in: planned, or active (default). shipped is reached later via set_release_status"`
+}
+
+type setItemReleaseInput struct {
+	ID      string `json:"id" jsonschema:"the item id"`
+	Release string `json:"release,omitempty" jsonschema:"release name (from list_releases) to add the item to; omit to remove it from its release"`
+}
+
+type setReleaseStatusInput struct {
+	Workspace string `json:"workspace" jsonschema:"slug of the workspace the release is in"`
+	Release   string `json:"release" jsonschema:"the release name (from list_releases)"`
+	Status    string `json:"status" jsonschema:"new lifecycle state: planned, active, or shipped (shipping stamps the ship time and freezes it)"`
 }
 
 type subscribeInput struct {
@@ -657,6 +706,17 @@ func (h *handlers) mcpListItems(ctx context.Context, _ *mcp.CallToolRequest, in 
 			return nil, itemListOutput{}, mcpErr(err)
 		}
 	}
+	releaseIDByItem, releaseNameByItem, err := h.itemReleaseMaps(ctx, ws.ID)
+	if err != nil {
+		return nil, itemListOutput{}, mcpErr(err)
+	}
+	// An optional release name narrows to one release's items.
+	releaseID := ""
+	if s := strings.TrimSpace(in.Release); s != "" {
+		if releaseID, err = h.releaseIDByName(ctx, ws.ID, s); err != nil {
+			return nil, itemListOutput{}, mcpErr(err)
+		}
+	}
 	doneStatusID := ""
 	if n := len(boardStatuses); n > 0 {
 		doneStatusID = boardStatuses[n-1].ID
@@ -677,7 +737,11 @@ func (h *handlers) mcpListItems(ctx context.Context, _ *mcp.CallToolRequest, in 
 		if projectID != "" && it.ProjectID != projectID {
 			continue
 		}
+		if releaseID != "" && releaseIDByItem[it.ID] != releaseID {
+			continue
+		}
 		v := toMCPItem(it, statusName, userName, projectSlug, ws.ItemPrefix)
+		v.Release = releaseNameByItem[it.ID]
 		v.URL = h.itemURL(ws.Slug, it.ID)
 		if c, ok := counts[it.ID]; ok && c.Total > 0 {
 			v.SubtasksDone, v.SubtasksTotal = c.Done, c.Total
@@ -696,9 +760,14 @@ func (h *handlers) mcpGetItem(ctx context.Context, _ *mcp.CallToolRequest, in it
 	if err != nil {
 		return nil, mcpItemDetail{}, mcpErr(err)
 	}
+	_, releaseName, err := h.itemReleaseMaps(ctx, item.WorkspaceID)
+	if err != nil {
+		return nil, mcpItemDetail{}, mcpErr(err)
+	}
 	slug := h.slugFor(ctx, item.WorkspaceID)
 	prefix := h.prefixFor(ctx, item.WorkspaceID)
 	root := toMCPItem(item, statusName, userName, projectSlug, prefix)
+	root.Release = releaseName[item.ID]
 	root.URL = h.itemURL(slug, item.ID)
 	detail := mcpItemDetail{
 		mcpItem:     root,
@@ -713,6 +782,7 @@ func (h *handlers) mcpGetItem(ctx context.Context, _ *mcp.CallToolRequest, in it
 	}
 	for _, c := range children {
 		cv := toMCPItem(c, statusName, userName, projectSlug, prefix)
+		cv.Release = releaseName[c.ID]
 		cv.URL = h.itemURL(slug, c.ID)
 		detail.Subtasks = append(detail.Subtasks, cv)
 	}
@@ -783,6 +853,16 @@ func (h *handlers) mcpCreateItem(ctx context.Context, _ *mcp.CallToolRequest, in
 		}
 		it.ProjectID = projectID
 	}
+	// Optionally add the new item to a release (by name).
+	if s := strings.TrimSpace(in.Release); s != "" {
+		releaseID, rerr := h.releaseIDByName(ctx, ws.ID, s)
+		if rerr != nil {
+			return nil, mcpItem{}, mcpReleaseErr(rerr)
+		}
+		if rerr := h.board.SetItemRelease(ctx, it.ID, releaseID); rerr != nil {
+			return nil, mcpItem{}, mcpReleaseErr(rerr)
+		}
+	}
 	if it.ParentID != "" {
 		h.publishSubtaskAdd("", it.WorkspaceID, it)
 	} else {
@@ -847,6 +927,88 @@ func mcpProjectErr(err error) error {
 		return errors.New("brief too long")
 	case errors.Is(err, board.ErrProjectMismatch):
 		return errors.New("project belongs to another workspace")
+	default:
+		return mcpErr(err)
+	}
+}
+
+func (h *handlers) mcpListReleases(ctx context.Context, _ *mcp.CallToolRequest, in listReleasesInput) (*mcp.CallToolResult, releaseListOutput, error) {
+	ws, err := h.mcpWorkspace(ctx, in.Workspace)
+	if err != nil {
+		return nil, releaseListOutput{}, err
+	}
+	list, err := h.listReleasesAPI(ctx, ws.ID)
+	if err != nil {
+		return nil, releaseListOutput{}, mcpErr(err)
+	}
+	return &mcp.CallToolResult{}, releaseListOutput{Releases: list}, nil
+}
+
+func (h *handlers) mcpCreateRelease(ctx context.Context, _ *mcp.CallToolRequest, in createReleaseInput) (*mcp.CallToolResult, releaseAPI, error) {
+	ws, err := h.mcpWorkspace(ctx, in.Workspace)
+	if err != nil {
+		return nil, releaseAPI{}, err
+	}
+	rel, err := h.createReleaseShared(ctx, ws, in.Name, in.Description, in.Status)
+	if err != nil {
+		return nil, releaseAPI{}, mcpReleaseErr(err)
+	}
+	return &mcp.CallToolResult{}, toReleaseAPI(rel, store.SubtaskCount{}), nil
+}
+
+func (h *handlers) mcpSetItemRelease(ctx context.Context, _ *mcp.CallToolRequest, in setItemReleaseInput) (*mcp.CallToolResult, mcpItem, error) {
+	item, err := h.mcpItem(ctx, in.ID, "")
+	if err != nil {
+		return nil, mcpItem{}, err
+	}
+	releaseID := ""
+	if s := strings.TrimSpace(in.Release); s != "" {
+		if releaseID, err = h.releaseIDByName(ctx, item.WorkspaceID, s); err != nil {
+			return nil, mcpItem{}, mcpReleaseErr(err)
+		}
+	}
+	if err := h.board.SetItemRelease(ctx, item.ID, releaseID); err != nil {
+		return nil, mcpItem{}, mcpReleaseErr(err)
+	}
+	h.liveUpsertOrigin(ctx, "", item.ID)
+	return h.mcpReloadResult(ctx, item.ID)
+}
+
+func (h *handlers) mcpSetReleaseStatus(ctx context.Context, _ *mcp.CallToolRequest, in setReleaseStatusInput) (*mcp.CallToolResult, releaseAPI, error) {
+	ws, err := h.mcpWorkspace(ctx, in.Workspace)
+	if err != nil {
+		return nil, releaseAPI{}, err
+	}
+	id, err := h.releaseIDByName(ctx, ws.ID, in.Release)
+	if err != nil {
+		return nil, releaseAPI{}, mcpReleaseErr(err)
+	}
+	if err := h.board.SetReleaseStatus(ctx, id, strings.TrimSpace(in.Status)); err != nil {
+		return nil, releaseAPI{}, mcpReleaseErr(err)
+	}
+	rel, err := h.board.Release(ctx, id)
+	if err != nil {
+		return nil, releaseAPI{}, mcpErr(err)
+	}
+	return &mcp.CallToolResult{}, toReleaseAPI(rel, store.SubtaskCount{}), nil
+}
+
+// mcpReleaseErr adds the release-specific sentinels to mcpErr's mapping (the
+// name-lookup errors are already human-readable and pass through).
+func mcpReleaseErr(err error) error {
+	switch {
+	case errors.Is(err, errUnknownRelease):
+		return err
+	case errors.Is(err, board.ErrInvalidReleaseName):
+		return errors.New("invalid release name (1–80 characters)")
+	case errors.Is(err, board.ErrInvalidReleaseStatus):
+		return errors.New("invalid status (use planned/active/shipped; create accepts only planned/active)")
+	case errors.Is(err, board.ErrInvalidReleaseDesc):
+		return errors.New("release description too long")
+	case errors.Is(err, board.ErrReleaseMismatch):
+		return errors.New("release belongs to another workspace")
+	case errors.Is(err, store.ErrReleaseNameTaken):
+		return errors.New("a release with that name already exists")
 	default:
 		return mcpErr(err)
 	}
@@ -1328,6 +1490,7 @@ func (h *handlers) mcpItemResult(ctx context.Context, it store.Item) (*mcp.CallT
 		return nil, mcpItem{}, mcpErr(err)
 	}
 	v := toMCPItem(it, statusName, userName, projectSlug, h.prefixFor(ctx, it.WorkspaceID))
+	v.Release = h.releaseNameFor(ctx, it.ID)
 	v.URL = h.itemURL(h.slugFor(ctx, it.WorkspaceID), it.ID)
 	return &mcp.CallToolResult{}, v, nil
 }

@@ -48,6 +48,12 @@ create or change anything.
   one with ` + "`set_item_project`" + ` (or ` + "`create_item`" + `'s ` + "`project`" + ` argument). A project
   is narrower than a workspace (which is the whole board) and longer-lived than a
   milestone.
+- **Release** — a versioned cut-line a workspace ships at (e.g. "v0.27.0"),
+  addressed by ` + "`name`" + `. Unlike a project (an open-ended theme), a release is
+  stateful: **planned → active → shipped**. List them with ` + "`list_releases`" + `, add an
+  item with ` + "`set_item_release`" + ` (or ` + "`create_item`" + `'s ` + "`release`" + ` argument), and advance
+  the lifecycle with ` + "`set_release_status`" + ` — shipping freezes it as a changelog
+  entry. An item belongs to one release at a time.
 
 ## Humans and agents
 
@@ -111,6 +117,7 @@ go-ahead — don't busy-poll the board. Ask in a comment and block on the reply:
 | Who am I? | ` + "`whoami`" + ` |
 | What workspaces exist? | ` + "`list_workspaces`" + ` |
 | What projects exist? | ` + "`list_projects`" + ` |
+| What releases exist? | ` + "`list_releases`" + ` |
 | What columns exist? | ` + "`list_statuses`" + ` |
 | Read the board | ` + "`list_items`" + ` |
 | Read one item in full | ` + "`get_item`" + ` |
@@ -122,6 +129,9 @@ go-ahead — don't busy-poll the board. Ask in a comment and block on the reply:
 | Nest under a parent | ` + "`set_item_parent`" + ` |
 | Start a project | ` + "`create_project`" + ` |
 | File an item under a project | ` + "`set_item_project`" + ` |
+| Start a release | ` + "`create_release`" + ` |
+| Add an item to a release | ` + "`set_item_release`" + ` |
+| Ship / advance a release | ` + "`set_release_status`" + ` |
 | Add a progress note | ` + "`add_comment`" + ` |
 | Ask and wait for a reply | ` + "`add_comment`" + ` + ` + "`watch_comments`" + ` |
 | Retire / restore | ` + "`archive_item`" + ` / ` + "`unarchive_item`" + ` |

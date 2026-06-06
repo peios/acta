@@ -4,12 +4,14 @@
 
 {{define "card"}}
 <article class="item{{if .Hidden}} is-filtered{{end}}" data-item-id="{{.Item.ID}}" data-status-id="{{.Item.StatusID}}" data-assignee-id="{{.Item.AssigneeID}}" data-project-id="{{.Item.ProjectID}}" data-release-id="{{.ReleaseID}}" data-release-active="{{if and .HasRelease (not .ReleaseShipped)}}1{{end}}" style="{{.ColorVar}}"{{if .StatusName}} title="{{.StatusName}}"{{end}}>
+  <div class="item-top">
+    <span class="item-ref">{{.RefID}}</span>
+    {{if .Subtasks.Total}}<span class="item-sub" title="Subtasks done">{{.Subtasks.Done}}/{{.Subtasks.Total}}</span>{{end}}
+  </div>
   <span class="item-title">{{.Item.Title}}</span>
   {{if .Item.IsMilestone}}<span class="item-ms" title="Milestone">◆</span>{{end}}
   <button class="item-del" type="button" title="Archive" aria-label="Archive item">×</button>
   <div class="item-meta">
-    <span class="item-ref">{{.RefID}}</span>
-    {{if .Subtasks.Total}}<span class="item-sub" title="Subtasks done">{{.Subtasks.Done}}/{{.Subtasks.Total}}</span>{{end}}
     {{if .HasProject}}<span class="item-project" style="{{.ProjectColorVar}}" title="Project: {{.ProjectName}}"><span class="item-project-dot"></span><span class="item-project-name">{{.ProjectName}}</span></span>{{end}}
     {{if .HasRelease}}<span class="item-release{{if .ReleaseShipped}} shipped{{end}}" style="{{.ReleaseColorVar}}" title="Release: {{.ReleaseName}}"><span class="item-release-dot"></span><span class="item-release-name">{{.ReleaseName}}</span></span>{{end}}
     <span class="meta-spacer"></span>
@@ -22,12 +24,17 @@
 <main class="board-wrap" data-slug="{{.Workspace.Slug}}" data-board-id="{{.BoardID}}" data-lanes-dashed="{{if .LanesDashed}}1{{end}}" data-me="{{with .Principal}}{{.ID}}{{end}}">
   <div class="board-bar">
     <div class="views">
-      <a class="view-tab{{if and (eq .Mode "status") (not .ViewMine)}} active{{end}}" href="{{.BoardBase}}?mode=status">
+      <a class="view-tab{{if and (eq .Mode "status") (not .ViewMine) (not .ViewCurrentRelease)}} active{{end}}" href="{{.BoardBase}}?mode=status">
         <svg class="ico" viewBox="0 0 16 16"><rect x="2.5" y="3" width="4" height="10" rx="1"/><rect x="9.5" y="3" width="4" height="6.5" rx="1"/></svg>All items
       </a>
       <a class="view-tab{{if .ViewMine}} active{{end}}" href="{{.BoardBase}}?mode=status&amp;assignee=me">
         <svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"/><path d="M3.5 13a4.5 4.5 0 0 1 9 0"/></svg>My items
       </a>
+      {{if .HasActiveRelease}}
+      <a class="view-tab{{if .ViewCurrentRelease}} active{{end}}" href="{{.BoardBase}}?mode=status&amp;release=active">
+        <svg class="ico" viewBox="0 0 16 16"><path d="M8 1.7 13.3 4.6v6.8L8 14.3 2.7 11.4V4.6z"/></svg>Current Release
+      </a>
+      {{end}}
       <a class="view-tab{{if eq .Mode "milestone"}} active{{end}}" href="{{.BoardBase}}?mode=milestone">
         <svg class="ico" viewBox="0 0 16 16"><path d="M8 2.4 13.6 8 8 13.6 2.4 8z"/></svg>Milestones
       </a>
@@ -276,6 +283,7 @@
 
 <template id="item-tmpl">
   <article class="item">
+    <div class="item-top"><span class="item-ref"></span></div>
     <span class="item-title"></span>
     <button class="item-del" type="button" title="Archive" aria-label="Archive item">×</button>
   </article>

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/store"
@@ -23,6 +24,7 @@ type itemAPI struct {
 	Status    string    `json:"status"`
 	Assignee  string    `json:"assignee,omitempty"`
 	Project   string    `json:"project,omitempty"` // project slug, "" if unfiled (set via the project endpoint)
+	Release   string    `json:"release,omitempty"` // release name, "" if in none (set via the release endpoint)
 	Milestone bool      `json:"milestone,omitempty"`
 	CreatedBy string    `json:"created_by,omitempty"`
 	ParentID  string    `json:"parent_id,omitempty"`
@@ -121,12 +123,30 @@ func (h *handlers) apiListItems(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	releaseIDByItem, releaseNameByItem, err := h.itemReleaseMaps(ctx, ws.ID)
+	if err != nil {
+		apiError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	// An optional ?project=<slug> narrows to one project's items.
 	projectFilter := ""
 	if s := strings.TrimSpace(r.URL.Query().Get("project")); s != "" {
 		projectFilter, err = h.projectIDBySlug(ctx, ws.ID, s)
 		if errors.Is(err, errUnknownProject) {
 			apiError(w, http.StatusBadRequest, "unknown project: "+s)
+			return
+		}
+		if err != nil {
+			apiError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+	}
+	// An optional ?release=<name> narrows to one release's items.
+	releaseFilter := ""
+	if s := strings.TrimSpace(r.URL.Query().Get("release")); s != "" {
+		releaseFilter, err = h.releaseIDByName(ctx, ws.ID, s)
+		if errors.Is(err, errUnknownRelease) {
+			apiError(w, http.StatusBadRequest, "unknown release: "+s)
 			return
 		}
 		if err != nil {
@@ -149,7 +169,11 @@ func (h *handlers) apiListItems(w http.ResponseWriter, r *http.Request) {
 		if projectFilter != "" && it.ProjectID != projectFilter {
 			continue
 		}
+		if releaseFilter != "" && releaseIDByItem[it.ID] != releaseFilter {
+			continue
+		}
 		v := toItemAPI(it, statusName, userName, projectSlug, ws.ItemPrefix)
+		v.Release = releaseNameByItem[it.ID]
 		if c, ok := counts[it.ID]; ok && c.Total > 0 {
 			v.SubtasksDone, v.SubtasksTotal = c.Done, c.Total
 		}
@@ -167,6 +191,7 @@ func (h *handlers) apiCreateItem(w http.ResponseWriter, r *http.Request) {
 		Title   string `json:"title"`
 		Status  string `json:"status"`
 		Project string `json:"project"` // optional project slug to file it under
+		Release string `json:"release"` // optional release name to add it to
 	}
 	if !readAPIJSON(w, r, &req) {
 		return
@@ -175,12 +200,20 @@ func (h *handlers) apiCreateItem(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// Resolve any project before creating, so a bad slug fails cleanly.
+	// Resolve any project/release before creating, so a bad name fails cleanly.
 	projectID := ""
 	if s := strings.TrimSpace(req.Project); s != "" {
 		var err error
 		if projectID, err = h.projectIDBySlug(r.Context(), ws.ID, s); err != nil {
 			apiProjectErr(w, err)
+			return
+		}
+	}
+	releaseID := ""
+	if s := strings.TrimSpace(req.Release); s != "" {
+		var err error
+		if releaseID, err = h.releaseIDByName(r.Context(), ws.ID, s); err != nil {
+			apiReleaseErr(w, err)
 			return
 		}
 	}
@@ -196,6 +229,12 @@ func (h *handlers) apiCreateItem(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		it.ProjectID = projectID
+	}
+	if releaseID != "" {
+		if err := h.board.SetItemRelease(r.Context(), it.ID, releaseID); err != nil {
+			apiReleaseErr(w, err)
+			return
+		}
 	}
 	h.writeItem(w, r.Context(), ws, it, http.StatusCreated)
 }
@@ -224,9 +263,17 @@ func (h *handlers) apiItem(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	_, releaseName, err := h.itemReleaseMaps(r.Context(), ws.ID)
+	if err != nil {
+		apiError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	view := toItemAPI(item, statusName, userName, projectSlug, ws.ItemPrefix)
+	view.Release = releaseName[item.ID]
 	for _, c := range children {
-		view.Subtasks = append(view.Subtasks, toItemAPI(c, statusName, userName, projectSlug, ws.ItemPrefix))
+		cv := toItemAPI(c, statusName, userName, projectSlug, ws.ItemPrefix)
+		cv.Release = releaseName[c.ID]
+		view.Subtasks = append(view.Subtasks, cv)
 	}
 	writeJSON(w, http.StatusOK, view)
 }
@@ -323,6 +370,7 @@ var (
 	errUnknownStatus      = errors.New("unknown status")
 	errUnknownUser        = errors.New("unknown user")
 	errUnknownProject     = errors.New("unknown project")
+	errUnknownRelease     = errors.New("unknown release")
 	errUnknownSubjectType = errors.New("unknown subject type (use item, project, or principal)")
 	errProjectNeedsWS     = errors.New("a workspace is required to address a project by slug")
 )
@@ -460,6 +508,231 @@ func (h *handlers) createProjectShared(ctx context.Context, ws store.Workspace, 
 		createdBy = p.ID
 	}
 	return h.board.CreateProject(ctx, ws.ID, name, brief, leadID, strings.TrimSpace(statusStr), "", createdBy)
+}
+
+// releaseAPI is a release as the JSON API / MCP surface presents it: addressed
+// by name (unique per workspace, case-insensitively — there's no slug), with its
+// lifecycle status, ship time, and top-level item progress. Shared by REST and MCP.
+type releaseAPI struct {
+	Name      string `json:"name"`
+	Status    string `json:"status"`               // planned | active | shipped
+	ShippedAt string `json:"shipped_at,omitempty"` // RFC3339, "" unless shipped
+	Done      int    `json:"done"`                 // top-level items in a "done" lane
+	Total     int    `json:"total"`                // top-level items in the release
+}
+
+func toReleaseAPI(r store.Release, c store.SubtaskCount) releaseAPI {
+	out := releaseAPI{Name: r.Name, Status: r.Status, Done: c.Done, Total: c.Total}
+	if r.ShippedAt != nil {
+		out.ShippedAt = r.ShippedAt.Format(time.RFC3339)
+	}
+	return out
+}
+
+// releaseIDByName resolves a release name to its id within a workspace,
+// case-insensitively. Unknown names wrap errUnknownRelease.
+func (h *handlers) releaseIDByName(ctx context.Context, workspaceID, name string) (string, error) {
+	releases, err := h.board.Releases(ctx, workspaceID)
+	if err != nil {
+		return "", err
+	}
+	for _, r := range releases {
+		if strings.EqualFold(r.Name, strings.TrimSpace(name)) {
+			return r.ID, nil
+		}
+	}
+	return "", fmt.Errorf("%w: %s", errUnknownRelease, name)
+}
+
+// listReleasesAPI builds a workspace's releases with their progress, shared by
+// the REST endpoint and the MCP list_releases tool.
+func (h *handlers) listReleasesAPI(ctx context.Context, workspaceID string) ([]releaseAPI, error) {
+	releases, err := h.board.Releases(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	progress, err := h.board.ReleaseProgress(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]releaseAPI, len(releases))
+	for i, r := range releases {
+		out[i] = toReleaseAPI(r, progress[r.ID])
+	}
+	return out, nil
+}
+
+// createReleaseShared creates a release attributed to the caller, shared by REST
+// and MCP. status is "" (defaults to active), "planned", or "active".
+func (h *handlers) createReleaseShared(ctx context.Context, ws store.Workspace, name, description, status string) (store.Release, error) {
+	createdBy := ""
+	if p := principalFrom(ctx); p != nil {
+		createdBy = p.ID
+	}
+	return h.board.CreateRelease(ctx, ws.ID, name, description, strings.TrimSpace(status), createdBy)
+}
+
+// itemReleaseMaps returns, for a workspace, item id -> its release id and item id
+// -> its release name (the UI's single release: the first of the M2M join). Both
+// omit items in no release. Backs the release column on item reads and the
+// ?release= list filter.
+func (h *handlers) itemReleaseMaps(ctx context.Context, workspaceID string) (idByItem, nameByItem map[string]string, err error) {
+	releases, err := h.board.Releases(ctx, workspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	relName := make(map[string]string, len(releases))
+	for _, r := range releases {
+		relName[r.ID] = r.Name
+	}
+	links, err := h.board.ReleaseLinks(ctx, workspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	idByItem = make(map[string]string, len(links))
+	nameByItem = make(map[string]string, len(links))
+	for itemID, rids := range links {
+		if len(rids) == 0 {
+			continue
+		}
+		idByItem[itemID] = rids[0]
+		nameByItem[itemID] = relName[rids[0]]
+	}
+	return idByItem, nameByItem, nil
+}
+
+// releaseNameFor resolves a single item's release name (its first, "" if none) —
+// for single-item responses that don't build the workspace-wide map.
+func (h *handlers) releaseNameFor(ctx context.Context, itemID string) string {
+	rels, err := h.board.ReleasesForItem(ctx, itemID)
+	if err != nil || len(rels) == 0 {
+		return ""
+	}
+	return rels[0].Name
+}
+
+// apiReleaseErr maps a release create/transition error to a JSON response.
+func apiReleaseErr(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, board.ErrInvalidReleaseName):
+		apiError(w, http.StatusBadRequest, "invalid release name (1–80 characters)")
+	case errors.Is(err, board.ErrInvalidReleaseDesc):
+		apiError(w, http.StatusBadRequest, "release description too long")
+	case errors.Is(err, board.ErrInvalidReleaseStatus):
+		apiError(w, http.StatusBadRequest, "invalid status (use planned/active/shipped; create accepts only planned/active)")
+	case errors.Is(err, board.ErrReleaseMismatch):
+		apiError(w, http.StatusBadRequest, "release belongs to another workspace")
+	case errors.Is(err, store.ErrReleaseNameTaken):
+		apiError(w, http.StatusConflict, "a release with that name already exists")
+	case errors.Is(err, store.ErrReleaseNotFound), errors.Is(err, errUnknownRelease):
+		apiError(w, http.StatusNotFound, err.Error())
+	default:
+		apiError(w, http.StatusInternalServerError, "internal error")
+	}
+}
+
+func (h *handlers) apiListReleases(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.apiWorkspace(w, r)
+	if !ok {
+		return
+	}
+	out, err := h.listReleasesAPI(r.Context(), ws.ID)
+	if err != nil {
+		apiError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (h *handlers) apiCreateRelease(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.apiWorkspace(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Status      string `json:"status"`
+	}
+	if !readAPIJSON(w, r, &req) {
+		return
+	}
+	rel, err := h.createReleaseShared(r.Context(), ws, req.Name, req.Description, req.Status)
+	if err != nil {
+		apiReleaseErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, toReleaseAPI(rel, store.SubtaskCount{}))
+}
+
+// apiSetItemRelease puts an item in a release (by name) or, with an empty
+// release, removes it from its release.
+func (h *handlers) apiSetItemRelease(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.apiWorkspace(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Release string `json:"release"`
+	}
+	if !readAPIJSON(w, r, &req) {
+		return
+	}
+	item, err := h.resolveItem(r.Context(), ws, r.PathValue("id"))
+	if errors.Is(err, store.ErrItemNotFound) || (err == nil && item.WorkspaceID != ws.ID) {
+		apiError(w, http.StatusNotFound, "item not found")
+		return
+	}
+	if err != nil {
+		apiError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	releaseID := ""
+	if s := strings.TrimSpace(req.Release); s != "" {
+		if releaseID, err = h.releaseIDByName(r.Context(), ws.ID, s); err != nil {
+			apiReleaseErr(w, err)
+			return
+		}
+	}
+	if err := h.board.SetItemRelease(r.Context(), item.ID, releaseID); err != nil {
+		apiReleaseErr(w, err)
+		return
+	}
+	updated, err := h.board.Item(r.Context(), item.ID)
+	if err != nil {
+		apiError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	h.writeItem(w, r.Context(), ws, updated, http.StatusOK)
+}
+
+// apiSetReleaseStatus moves a release along its lifecycle (planned/active/shipped).
+func (h *handlers) apiSetReleaseStatus(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.apiWorkspace(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Status string `json:"status"`
+	}
+	if !readAPIJSON(w, r, &req) {
+		return
+	}
+	id, err := h.releaseIDByName(r.Context(), ws.ID, r.PathValue("name"))
+	if err != nil {
+		apiReleaseErr(w, err)
+		return
+	}
+	if err := h.board.SetReleaseStatus(r.Context(), id, strings.TrimSpace(req.Status)); err != nil {
+		apiReleaseErr(w, err)
+		return
+	}
+	rel, err := h.board.Release(r.Context(), id)
+	if err != nil {
+		apiError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, toReleaseAPI(rel, store.SubtaskCount{}))
 }
 
 // apiProjectErr maps a project create/update error to a JSON response.
@@ -662,7 +935,9 @@ func (h *handlers) writeItem(w http.ResponseWriter, ctx context.Context, ws stor
 		apiError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	writeJSON(w, status, toItemAPI(it, statusName, userName, projectSlug, ws.ItemPrefix))
+	v := toItemAPI(it, statusName, userName, projectSlug, ws.ItemPrefix)
+	v.Release = h.releaseNameFor(ctx, it.ID)
+	writeJSON(w, status, v)
 }
 
 func toItemAPI(it store.Item, statusName, userName, projectSlug map[string]string, prefix string) itemAPI {

@@ -472,10 +472,16 @@
   .item:hover .item-del { opacity: 1; }
   .item:hover .item-ms { opacity: 0; }
   .item-ms { position: absolute; top: .5rem; right: .5rem; color: var(--lane-color, var(--accent)); font-size: .72rem; line-height: 1; transition: opacity .12s; }
-  .item-meta { display: flex; align-items: center; gap: 8px; margin-top: 9px; }
+  .item-meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  /* the ref + subtask count moved above the title, so the meta row can be empty
+     (just the spacer); collapse it then so cards stay tight. It still exists in
+     the DOM for board.js to drop a chip/avatar into, which reveals it via :has(). */
+  .item-meta:not(:has(.item-project, .item-release, .avatar)) { display: none; }
   .meta-spacer { flex: 1; }
-  .item-ref { font-family: var(--mono); font-size: 10.5px; letter-spacing: .02em; color: var(--faint); }
-  .item-sub { font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  /* top line: human id + subtask count, sitting tight above the title */
+  .item-top { display: flex; align-items: baseline; gap: 7px; margin-bottom: 2px; padding-right: 1rem; }
+  .item-ref { font-family: var(--mono); font-size: 10px; letter-spacing: .02em; color: var(--faint); }
+  .item-sub { font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
   /* project chip: a small tinted pill naming the card's project, on the meta row */
   .item-project { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 9rem; padding: 1px 7px 1px 5px; border-radius: 999px; font-size: 11px; line-height: 1.5; color: var(--muted); background: color-mix(in srgb, var(--lane-color, var(--faint)) 13%, transparent); border: 1px solid color-mix(in srgb, var(--lane-color, var(--faint)) 30%, transparent); }
   .item-project-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--lane-color, var(--faint)); }

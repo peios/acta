@@ -284,17 +284,15 @@
     el.dataset.statusId = it.status_id || '';
     el.dataset.assigneeId = '';
     el.querySelector('.item-title').textContent = it.title;
-    if (it.ref) {
-      const meta = document.createElement('div');
-      meta.className = 'item-meta';
-      const ref = document.createElement('span');
-      ref.className = 'item-ref';
-      ref.textContent = it.ref;
-      const sp = document.createElement('span');
-      sp.className = 'meta-spacer';
-      meta.append(ref, sp);
-      el.appendChild(meta);
-    }
+    const ref = el.querySelector('.item-ref'); // sits above the title
+    if (ref) ref.textContent = it.ref || '';
+    // An (empty, CSS-collapsed) meta row so chips/avatar added later have a home.
+    const meta = document.createElement('div');
+    meta.className = 'item-meta';
+    const sp = document.createElement('span');
+    sp.className = 'meta-spacer';
+    meta.appendChild(sp);
+    el.appendChild(meta);
     wireItem(el);
     return el;
   }
@@ -1727,13 +1725,13 @@
       sub.textContent = done + '/' + (total + 1);
       return;
     }
-    const meta = card.querySelector('.item-meta');
-    if (!meta) return;
+    const top = card.querySelector('.item-top');
+    if (!top) return;
     const badge = document.createElement('span');
     badge.className = 'item-sub';
     badge.title = 'Subtasks done';
     badge.textContent = '0/1';
-    meta.insertBefore(badge, meta.querySelector('.meta-spacer'));
+    top.appendChild(badge); // next to the ref, above the title
   }
 
   // --- wire the server-rendered board ---
@@ -1840,14 +1838,19 @@
   // here is a remote change to apply to the board or the open modal.
 
   function liveCardRef(card, ref) {
-    let meta = card.querySelector('.item-meta');
-    if (!meta) { meta = document.createElement('div'); meta.className = 'item-meta'; card.appendChild(meta); }
-    let el = meta.querySelector('.item-ref');
-    if (!el) { el = document.createElement('span'); el.className = 'item-ref'; meta.insertBefore(el, meta.firstChild); }
-    el.textContent = ref || '';
-    if (!meta.querySelector('.meta-spacer')) {
-      const sp = document.createElement('span'); sp.className = 'meta-spacer'; meta.appendChild(sp);
+    let el = card.querySelector('.item-ref');
+    if (!el) { // sits in the top line, above the title
+      let top = card.querySelector('.item-top');
+      if (!top) {
+        top = document.createElement('div');
+        top.className = 'item-top';
+        card.insertBefore(top, card.querySelector('.item-title') || card.firstChild);
+      }
+      el = document.createElement('span');
+      el.className = 'item-ref';
+      top.insertBefore(el, top.firstChild);
     }
+    el.textContent = ref || '';
   }
 
   function liveCardMilestone(card, on) {
