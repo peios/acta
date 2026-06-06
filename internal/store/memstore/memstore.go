@@ -805,6 +805,37 @@ func (s *Store) ArchivedItemsByWorkspace(_ context.Context, workspaceID string) 
 	return out, nil
 }
 
+func (s *Store) SearchItems(_ context.Context, workspaceID, boardID, query string, includeArchived bool) ([]store.Item, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	q := strings.ToLower(query)
+	titleHit := func(it store.Item) bool { return strings.Contains(strings.ToLower(it.Title), q) }
+	out := s.filterItems(func(it store.Item) bool {
+		if it.WorkspaceID != workspaceID {
+			return false
+		}
+		if !includeArchived && it.ArchivedAt != nil {
+			return false
+		}
+		if boardID != "" {
+			// An item's board is its status's board.
+			if st, ok := s.statuses[it.StatusID]; !ok || st.BoardID != boardID {
+				return false
+			}
+		}
+		return titleHit(it) || strings.Contains(strings.ToLower(it.Description), q)
+	})
+	// Title matches before body-only matches, then newest first — mirrors the
+	// Postgres ordering.
+	sort.Slice(out, func(i, j int) bool {
+		if ti, tj := titleHit(out[i]), titleHit(out[j]); ti != tj {
+			return ti
+		}
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	return out, nil
+}
+
 func (s *Store) ChildrenByParent(_ context.Context, parentID string, includeArchived bool) ([]store.Item, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

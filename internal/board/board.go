@@ -405,6 +405,15 @@ func (s *Service) Items(ctx context.Context, workspaceID string) ([]store.Item, 
 	return s.store.ItemsByWorkspace(ctx, workspaceID)
 }
 
+// SearchItems returns items whose title or description contains query
+// (case-insensitive substring) at every nesting depth, ranked title-matches-first
+// then newest. boardID scopes to one board (an item's board is its status's);
+// "" searches every board. includeArchived false omits archived items. It backs
+// list_items' free-text `q`.
+func (s *Service) SearchItems(ctx context.Context, workspaceID, boardID, query string, includeArchived bool) ([]store.Item, error) {
+	return s.store.SearchItems(ctx, workspaceID, boardID, query, includeArchived)
+}
+
 func (s *Service) CreateItem(ctx context.Context, workspaceID, statusID, title string) (store.Item, error) {
 	return s.createItem(ctx, workspaceID, statusID, title, "")
 }

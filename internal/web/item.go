@@ -284,6 +284,66 @@ func (h *handlers) resolveItem(ctx context.Context, ws store.Workspace, ref stri
 	return store.Item{}, store.ErrItemNotFound
 }
 
+// floatRefMatch moves an exact human-ref hit (e.g. "ACTA-12") to the front of a
+// search result set, so typing an item's id surfaces it first even when its
+// title/description don't contain the literal ref. A query that isn't a ref, a
+// prefix that names another workspace, a miss, or (with includeArchived false)
+// an archived hit all leave items unchanged.
+func (h *handlers) floatRefMatch(ctx context.Context, ws store.Workspace, query string, items []store.Item, includeArchived bool) []store.Item {
+	prefix, num, ok := parseItemRef(strings.TrimSpace(query))
+	if !ok || (prefix != "" && !strings.EqualFold(prefix, ws.ItemPrefix)) {
+		return items
+	}
+	hit, err := h.board.ItemByRef(ctx, ws.ID, num)
+	if err != nil || hit.WorkspaceID != ws.ID || (!includeArchived && hit.ArchivedAt != nil) {
+		return items
+	}
+	out := make([]store.Item, 0, len(items)+1)
+	out = append(out, hit)
+	for _, it := range items {
+		if it.ID != hit.ID {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+// apiSearchBoardID resolves a search's board scope from a ?board= value: "*"
+// spans every board (""), "" (absent) is the primary board so Backlog is
+// skipped, and a slug names one board (ErrBoardNotFound if unknown).
+func (h *handlers) apiSearchBoardID(ctx context.Context, ws store.Workspace, board string) (string, error) {
+	switch board = strings.TrimSpace(board); board {
+	case "*":
+		return "", nil
+	case "":
+		bd, err := h.board.DefaultBoard(ctx, ws.ID)
+		if err != nil {
+			return "", err
+		}
+		return bd.ID, nil
+	default:
+		bd, err := h.board.BoardBySlug(ctx, ws.ID, strings.ToLower(board))
+		if err != nil {
+			return "", err
+		}
+		return bd.ID, nil
+	}
+}
+
+// narrowByQuery keeps items whose title or description contains query
+// (case-insensitive substring) — the in-memory equivalent of SearchItems for an
+// already-scoped, already-loaded set, e.g. a parent's children.
+func narrowByQuery(items []store.Item, query string) []store.Item {
+	q := strings.ToLower(strings.TrimSpace(query))
+	out := items[:0]
+	for _, it := range items {
+		if strings.Contains(strings.ToLower(it.Title), q) || strings.Contains(strings.ToLower(it.Description), q) {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
 // buildModal assembles the modal view for an item, resolving the assignee and
 // comment authors to display names. found is false (no error) when the item
 // doesn't exist or belongs to another workspace — ?item= is scoped to the

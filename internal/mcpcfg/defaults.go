@@ -120,6 +120,7 @@ go-ahead — don't busy-poll the board. Ask in a comment and block on the reply:
 | What releases exist? | ` + "`list_releases`" + ` |
 | What columns exist? | ` + "`list_statuses`" + ` |
 | Read the board | ` + "`list_items`" + ` |
+| Search items by text | ` + "`list_items`" + ` with ` + "`q`" + ` |
 | Read one item in full | ` + "`get_item`" + ` |
 | Create an item | ` + "`create_item`" + ` |
 | Move its column | ` + "`set_item_status`" + ` |

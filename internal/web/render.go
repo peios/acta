@@ -127,6 +127,23 @@ func renderDescView(w http.ResponseWriter, dv descView) {
 	_, _ = buf.WriteTo(w)
 }
 
+// searchResultsTmpl renders the Cmd-K quick-switcher's result fragment, which
+// search.js fetches and injects as you type.
+var searchResultsTmpl = template.Must(
+	template.New("search_results.html").Funcs(funcMap).ParseFS(templatesFS, "templates/search_results.html"),
+)
+
+func renderSearchResults(w http.ResponseWriter, data any) {
+	var buf bytes.Buffer
+	if err := searchResultsTmpl.ExecuteTemplate(&buf, "search-results", data); err != nil {
+		slog.Error("render search", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = buf.WriteTo(w)
+}
+
 func renderItemModal(w http.ResponseWriter, data any) {
 	var buf bytes.Buffer
 	if err := itemModalTmpl.ExecuteTemplate(&buf, "item-modal", data); err != nil {

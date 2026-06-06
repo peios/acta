@@ -97,6 +97,9 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("POST /{slug}/releases/{id}/edit", protected(h.releaseUpdate))
 	mux.Handle("POST /{slug}/releases/{id}/status", protected(h.releaseSetStatus))
 	mux.Handle("POST /{slug}/releases/{id}/delete", protected(h.releaseDelete))
+	// Cmd-K quick-switcher results fragment. Literal segment, matched ahead of
+	// /{slug}/{board} so it never shadows a board.
+	mux.Handle("GET /{slug}/search", protected(h.searchResults))
 	// A second path segment selects a non-default board (e.g. /{slug}/backlog);
 	// the literal sub-routes above are more specific, so they always win.
 	mux.Handle("GET /{slug}/{board}", protected(h.boardPage))

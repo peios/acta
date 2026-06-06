@@ -1,0 +1,15 @@
+{{define "search-results"}}
+{{if .Items}}
+<ul class="cmdk-list" role="listbox">
+  {{range .Items}}
+  <li role="option"><a class="cmdk-hit" href="{{.URL}}" data-hit>
+    <span class="cmdk-ref">{{.Ref}}</span>
+    <span class="cmdk-title">{{.Title}}</span>
+    {{if .Board}}<span class="cmdk-board">{{.Board}}</span>{{end}}
+  </a></li>
+  {{end}}
+</ul>
+{{else if .Query}}
+<div class="cmdk-empty">No matches for &ldquo;{{.Query}}&rdquo;</div>
+{{end}}
+{{end}}

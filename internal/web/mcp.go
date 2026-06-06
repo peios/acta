@@ -349,13 +349,15 @@ type listStatusesInput struct {
 
 type listItemsInput struct {
 	Workspace string `json:"workspace" jsonschema:"slug of the workspace to list"`
-	Board     string `json:"board,omitempty" jsonschema:"board slug (from list_boards); defaults to the primary board. Ignored when parent is set"`
+	Board     string `json:"board,omitempty" jsonschema:"board slug (from list_boards); defaults to the primary board. Pass * to span every board, including a Backlog that an unscoped search would otherwise skip. Ignored when parent is set"`
 	Status    string `json:"status,omitempty" jsonschema:"only items in this status lane, by name"`
 	Assignee  string `json:"assignee,omitempty" jsonschema:"only items assigned to this username; use \"me\" for the caller"`
 	Project   string `json:"project,omitempty" jsonschema:"only items filed under this project (a slug from list_projects)"`
 	Release   string `json:"release,omitempty" jsonschema:"only items in this release (a name from list_releases)"`
 	Parent    string `json:"parent,omitempty" jsonschema:"list the direct subtasks of this item id instead of the board's top-level items"`
 	Mine      bool   `json:"mine,omitempty" jsonschema:"only items assigned to the calling principal (shorthand for assignee=me)"`
+	Query     string `json:"q,omitempty" jsonschema:"free-text search: a case-insensitive substring of the title or description, matched at every subtask depth within the scope. The scope is the board (default: your primary board, so Backlog is skipped; a named board; or * for every board) or, with parent set, that item's children. Results rank by relevance and an exact human id like ACTA-12 floats to the top. The status/assignee/project/release filters still narrow"`
+	IncludeArchived bool `json:"include_archived,omitempty" jsonschema:"include archived items (only applies together with q)"`
 }
 
 type itemIDInput struct {
@@ -637,9 +639,18 @@ func (h *handlers) mcpListItems(ctx context.Context, _ *mcp.CallToolRequest, in 
 		return nil, itemListOutput{}, err
 	}
 
-	bd, err := h.mcpBoard(ctx, ws, in.Board)
+	// board=* spans every board (Backlog included); otherwise the named board, or
+	// the primary board by default. bd is the reference board for the status
+	// filter and the done lane even when spanning — those stay scoped to it.
+	allBoards := strings.TrimSpace(in.Board) == "*"
+	var bd store.Board
+	if allBoards {
+		bd, err = h.board.DefaultBoard(ctx, ws.ID)
+	} else {
+		bd, err = h.mcpBoard(ctx, ws, in.Board)
+	}
 	if err != nil {
-		return nil, itemListOutput{}, err
+		return nil, itemListOutput{}, mcpErr(err)
 	}
 	boardStatuses, err := h.board.BoardStatuses(ctx, bd.ID)
 	if err != nil {
@@ -647,7 +658,7 @@ func (h *handlers) mcpListItems(ctx context.Context, _ *mcp.CallToolRequest, in 
 	}
 
 	// Resolve filters up front so a bad name fails before we list. The status
-	// filter is scoped to the chosen board.
+	// filter is scoped to the reference board.
 	statusID := ""
 	if s := strings.TrimSpace(in.Status); s != "" {
 		if statusID, err = statusIDInList(boardStatuses, s); err != nil {
@@ -659,22 +670,49 @@ func (h *handlers) mcpListItems(ctx context.Context, _ *mcp.CallToolRequest, in 
 		return nil, itemListOutput{}, mcpErr(err)
 	}
 
-	// Base set: a parent's direct subtasks (board-agnostic), or the chosen
-	// board's top-level items.
+	// Base set. q narrows within the scope at every depth: a parent's children, a
+	// single board, or — board=* — every board; default scope is the primary
+	// board, so an unscoped search never reaches Backlog. Without q it's the
+	// scope's top-level cards, as before.
+	parent := strings.ToLower(strings.TrimSpace(in.Parent))
+	query := strings.TrimSpace(in.Query)
 	var items []store.Item
-	if parent := strings.ToLower(strings.TrimSpace(in.Parent)); parent != "" {
+	switch {
+	case query != "" && parent != "":
+		if _, err := h.mcpItem(ctx, parent, ws.ID); err != nil {
+			return nil, itemListOutput{}, err
+		}
+		kids, kerr := h.board.Children(ctx, parent)
+		if kerr != nil {
+			return nil, itemListOutput{}, mcpErr(kerr)
+		}
+		items = narrowByQuery(kids, query)
+	case query != "":
+		boardID := bd.ID
+		if allBoards {
+			boardID = ""
+		}
+		if items, err = h.board.SearchItems(ctx, ws.ID, boardID, query, in.IncludeArchived); err != nil {
+			return nil, itemListOutput{}, mcpErr(err)
+		}
+		items = h.floatRefMatch(ctx, ws, query, items, in.IncludeArchived)
+	case parent != "":
 		if _, err := h.mcpItem(ctx, parent, ws.ID); err != nil {
 			return nil, itemListOutput{}, err
 		}
 		if items, err = h.board.Children(ctx, parent); err != nil {
 			return nil, itemListOutput{}, mcpErr(err)
 		}
-	} else {
+	default:
 		all, ierr := h.board.Items(ctx, ws.ID)
 		if ierr != nil {
 			return nil, itemListOutput{}, mcpErr(ierr)
 		}
-		items = itemsOnBoard(all, boardStatuses)
+		if allBoards {
+			items = all
+		} else {
+			items = itemsOnBoard(all, boardStatuses)
+		}
 	}
 
 	// Labels cover every board (a subtask may sit on another); the done lane for

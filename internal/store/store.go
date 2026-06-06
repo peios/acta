@@ -534,6 +534,14 @@ type Store interface {
 	AllItemsByWorkspace(ctx context.Context, workspaceID string) ([]Item, error)
 	ItemsByStatus(ctx context.Context, statusID string) ([]Item, error)
 	ArchivedItemsByWorkspace(ctx context.Context, workspaceID string) ([]Item, error)
+	// SearchItems returns items whose title or description contains query as a
+	// case-insensitive substring (LIKE wildcards in query are matched literally),
+	// at every nesting depth. boardID scopes to one board (membership read off an
+	// item's status); "" searches every board. Results are ordered by relevance —
+	// title matches before body-only matches, then newest first. includeArchived
+	// false (the common case) omits archived items. The pg_trgm GIN indexes on
+	// title/description back the scan.
+	SearchItems(ctx context.Context, workspaceID, boardID, query string, includeArchived bool) ([]Item, error)
 	ItemByID(ctx context.Context, id string) (Item, error)
 	// ItemByRef resolves an item by its per-workspace ref number (the N in a
 	// human id like ACTA-12); returns ErrItemNotFound if none matches.

@@ -95,8 +95,30 @@ func (h *handlers) apiListItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	items, err := h.board.Items(ctx, ws.ID)
-	if err != nil {
+	// ?q= searches title/description at all subtask depths within a scope:
+	// ?board=<slug> for one board, ?board=* for every board (Backlog included),
+	// or the primary board by default — so an unscoped search skips Backlog.
+	// ?include_archived=true reaches archived items; an exact ref floats to the
+	// top. Without q it's the workspace's top-level items, as before.
+	var items []store.Item
+	var err error
+	if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" {
+		boardID, berr := h.apiSearchBoardID(ctx, ws, r.URL.Query().Get("board"))
+		if errors.Is(berr, store.ErrBoardNotFound) {
+			apiError(w, http.StatusBadRequest, "unknown board: "+r.URL.Query().Get("board"))
+			return
+		}
+		if berr != nil {
+			apiError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		includeArchived := r.URL.Query().Get("include_archived") == "true"
+		if items, err = h.board.SearchItems(ctx, ws.ID, boardID, q, includeArchived); err != nil {
+			apiError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		items = h.floatRefMatch(ctx, ws, q, items, includeArchived)
+	} else if items, err = h.board.Items(ctx, ws.ID); err != nil {
 		apiError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

@@ -793,6 +793,46 @@ func (p *Postgres) ArchivedItemsByWorkspace(ctx context.Context, workspaceID str
 	return p.queryItems(ctx, q, workspaceID)
 }
 
+// likeEscape neutralises the LIKE wildcards in s so a search term is matched as
+// literal text: backslash, percent and underscore lose their special meaning
+// (a search for "a_b" matches the literal text, not "a<any>b"). The default
+// backslash escape character applies in the ILIKE below.
+func likeEscape(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+}
+
+func (p *Postgres) SearchItems(ctx context.Context, workspaceID, boardID, query string, includeArchived bool) ([]store.Item, error) {
+	pattern := "%" + likeEscape(query) + "%"
+	args := []any{workspaceID, pattern}
+	q := `SELECT ` + itemCols + ` FROM items WHERE workspace_id = $1`
+	if !includeArchived {
+		q += ` AND archived_at IS NULL`
+	}
+	if boardID != "" {
+		args = append(args, boardID)
+		// An item's board is its status's board; scope via the lane set.
+		q += fmt.Sprintf(` AND status_id IN (SELECT id FROM statuses WHERE board_id = $%d)`, len(args))
+	}
+	// $2 (the pattern) drives both the filter and the relevance order, so the
+	// trigram index can serve either ILIKE.
+	q += ` AND (title ILIKE $2 OR description ILIKE $2)
+	       ORDER BY (CASE WHEN title ILIKE $2 THEN 0 ELSE 1 END), created_at DESC`
+	rows, err := p.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Item
+	for rows.Next() {
+		i, err := scanItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, i)
+	}
+	return out, rows.Err()
+}
+
 func (p *Postgres) ChildrenByParent(ctx context.Context, parentID string, includeArchived bool) ([]store.Item, error) {
 	q := `SELECT ` + itemCols + ` FROM items WHERE parent_id = $1`
 	if !includeArchived {
