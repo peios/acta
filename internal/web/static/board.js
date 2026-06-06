@@ -10,6 +10,10 @@
   const boardId = wrap.dataset.boardId || ''; // which board new lanes join
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
   const boardErr = document.querySelector('[data-board-error]');
+  // The saved-view tab you're filtering within (its .view-tab-wrap), or null.
+  // Tracked across live filter changes so the "modified / Save" state can update
+  // without a page reload. Seeded from the active tab in wireViews.
+  let viewAnchor = null;
 
   const MESSAGES = {
     status_not_empty: 'Empty the lane before deleting it.',
@@ -21,6 +25,7 @@
     invalid_fact: 'Enter a fact (1–80 characters).',
     fact_title_taken: 'A fact with that name already exists.',
     no_pending: 'This item has no pending status.',
+    view_not_found: 'That view no longer exists.',
   };
   const msg = (e) => MESSAGES[e.message] || 'Something went wrong — reload and try again.';
 
@@ -1460,6 +1465,7 @@
     setFacetCount(form, 'project', projects.length, 'Project');
     setFacetCount(form, 'release', releases.length, 'Release');
     syncFilterURL(statuses, assignees, projects, releases);
+    refreshViewState(); // update the dirty / Save state for the current view
     if (window.__actaBoardPrefs) window.__actaBoardPrefs.save(); // remember filters per workspace
     const total = statuses.length + assignees.length + projects.length + releases.length;
     const clear = form.querySelector('.facet-clear');
@@ -1607,6 +1613,236 @@
     update();
   }
 
+  // viewCanonQuery reduces the current URL to the same canonical filter string the
+  // server stores per view (see board.NormalizeViewQuery): mode only when it isn't
+  // the default, the facet keys with sorted/deduped values, keys alphabetised.
+  // This is what a tab's data-view-query is compared against to detect "dirty".
+  function viewCanonQuery() {
+    const cur = new URLSearchParams(location.search);
+    const out = new URLSearchParams();
+    const mode = cur.get('mode');
+    if (mode === 'milestone' || mode === 'release') out.set('mode', mode);
+    ['status', 'assignee', 'project', 'release'].forEach((k) => {
+      [...new Set(cur.getAll(k))].sort().forEach((v) => out.append(k, v));
+    });
+    out.sort();
+    return out.toString();
+  }
+
+  // refreshViewState reconciles the strip with the live filter: if the current
+  // filter exactly equals a view, that view becomes the (clean) anchor; otherwise
+  // the anchor stays put and shows as modified (dot + Save button). The anchor's
+  // slug is kept in the URL while dirty so a reload still knows which view you're
+  // editing. Called on load and after every filter change.
+  function refreshViewState() {
+    const strip = document.querySelector('[data-views]');
+    if (!strip) return;
+    const currentQ = viewCanonQuery();
+    let match = null;
+    strip.querySelectorAll('.view-tab-wrap').forEach((w) => {
+      if (w.dataset.viewQuery === currentQ) match = w;
+    });
+    if (match) viewAnchor = match;
+    const dirty = !!viewAnchor && viewAnchor.dataset.viewQuery !== currentQ;
+
+    strip.querySelectorAll('.view-tab.active').forEach((a) => a.classList.remove('active'));
+    if (viewAnchor) {
+      const a = viewAnchor.querySelector('.view-tab');
+      if (a) a.classList.add('active');
+    }
+    strip.querySelectorAll('.view-dot').forEach((d) => { d.hidden = true; });
+    const upd = strip.querySelector('[data-view-update]');
+    if (dirty) {
+      const dot = viewAnchor.querySelector('.view-dot');
+      if (dot) dot.hidden = false;
+      if (upd) {
+        upd.dataset.viewId = viewAnchor.dataset.viewId;
+        upd.title = 'Save filter changes to "' + viewAnchor.querySelector('.view-name').textContent + '"';
+        upd.hidden = false;
+      }
+    } else if (upd) {
+      upd.hidden = true;
+    }
+
+    // Carry the anchor through a reload only while dirty (clean views match by
+    // query, so they don't need it).
+    const p = new URLSearchParams(location.search);
+    if (dirty) p.set('view', viewAnchor.dataset.viewSlug);
+    else p.delete('view');
+    const q = p.toString();
+    history.replaceState(null, '', location.pathname + (q ? '?' + q : ''));
+    syncModeLinks();
+  }
+
+  // syncModeLinks keeps the Display dropdown's grouping links pointed at the
+  // *current* filter, so grouping behaves like any other view axis: switching it
+  // preserves your filter and keeps you on your view (carrying the anchor), where
+  // it shows as a modification you can Save. The links navigate because mode is
+  // server-rendered (the board regroups), but the view/dirty semantics match the
+  // facets'. An open modal is dropped (a regroup shouldn't reopen it).
+  function syncModeLinks() {
+    document.querySelectorAll('.grp-opt').forEach((a) => {
+      const m = a.dataset.mode;
+      const p = new URLSearchParams(location.search);
+      ['mode', 'item', 'view'].forEach((k) => p.delete(k));
+      if (m && m !== 'status') p.set('mode', m);
+      if (viewAnchor) p.set('view', viewAnchor.dataset.viewSlug);
+      const q = p.toString();
+      a.setAttribute('href', location.pathname + (q ? '?' + q : ''));
+    });
+  }
+
+  // --- saved views (the tab strip): reorder, save, rename, delete -----------
+  // A view is a stored query string; its tab is just a link. These controls keep
+  // the strip's rows in sync with the server. The whole strip lives in every
+  // board mode, so this wires unconditionally (unlike the lane drag below).
+  function wireViews() {
+    const strip = document.querySelector('[data-views]');
+    if (!strip) return;
+    const saveBtn = strip.querySelector('[data-view-save]');
+    const saveForm = strip.querySelector('[data-view-save-form]');
+    const saveInput = saveForm && saveForm.querySelector('.view-save-input');
+    const updateBtn = strip.querySelector('[data-view-update]');
+
+    strip.querySelectorAll('.view-tab-wrap').forEach(wireViewTab);
+
+    // Seed the anchor from the server-rendered active tab (the view you loaded on),
+    // then reconcile the dirty/Save state against the live filter.
+    const initialActive = strip.querySelector('.view-tab.active');
+    viewAnchor = initialActive ? initialActive.closest('.view-tab-wrap') : null;
+    refreshViewState();
+
+    // "Save" on a modified view writes the current filter back onto it. Reloading
+    // lands on the now-clean view (its query matches the URL again).
+    if (updateBtn) {
+      updateBtn.addEventListener('click', async () => {
+        try {
+          await api('/views/' + updateBtn.dataset.viewId + '/save', { query: location.search });
+          location.reload();
+        } catch (e) { if (boardErr) boardErr.textContent = msg(e); }
+      });
+    }
+
+    const nonDraggable = (el) => el.classList.contains('view-save') || el.classList.contains('view-save-form') || el.classList.contains('view-update');
+    new Sortable(strip, {
+      draggable: '.view-tab-wrap',
+      filter: '.view-ctl, .view-save, .view-save-form, .view-update, .view-rename-input',
+      preventOnFilter: false,
+      delay: 150,
+      delayOnTouchOnly: false,
+      animation: 150,
+      ghostClass: 'sortable-ghost',
+      chosenClass: 'sortable-chosen',
+      onMove: (evt) => !nonDraggable(evt.related),
+      onEnd: () => {
+        const ids = [...strip.querySelectorAll('.view-tab-wrap')].map((w) => w.dataset.viewId);
+        api('/views/reorder', { board_id: boardId, ids }).catch((e) => { if (boardErr) boardErr.textContent = msg(e); });
+      },
+    });
+
+    function closeSave() { if (saveForm) { saveForm.hidden = true; } if (saveBtn) { saveBtn.hidden = false; } }
+    if (saveBtn && saveForm && saveInput) {
+      saveBtn.addEventListener('click', () => {
+        saveBtn.hidden = true; saveForm.hidden = false; saveInput.value = ''; saveInput.focus();
+      });
+      saveInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeSave(); } });
+      saveForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = saveInput.value.trim();
+        if (!name) return;
+        try {
+          // location.search is the current filter; the server normalises it.
+          const v = await api('/views', { name, query: location.search, board_id: boardId });
+          addViewTab(v);
+          closeSave();
+        } catch (err) { if (boardErr) boardErr.textContent = msg(err); }
+      });
+    }
+
+    // addViewTab inserts a freshly-saved view before the save control and marks
+    // it active — saving captures the current filter, so it's now the open view.
+    function addViewTab(v) {
+      const tmpl = document.getElementById('view-tmpl');
+      if (!tmpl) return;
+      const wrap = tmpl.content.firstElementChild.cloneNode(true);
+      wrap.dataset.viewId = v.id;
+      wrap.dataset.viewSlug = v.slug;
+      const a = wrap.querySelector('.view-tab');
+      a.href = location.pathname + (v.query ? '?' + v.query : '');
+      wrap.querySelector('.view-name').textContent = v.name;
+      strip.querySelectorAll('.view-tab.active').forEach((el) => el.classList.remove('active'));
+      a.classList.add('active');
+      strip.insertBefore(wrap, saveBtn || null);
+      wireViewTab(wrap);
+    }
+
+    // rememberView makes the clicked view this board's remembered filter, so the
+    // prefs cache (board-prefs.js) won't replay a *different* saved filter on the
+    // next bare visit. Crucially this lets All items (empty query) clear the cache
+    // instead of having the old filter restored back onto /{slug}. Scoped to the
+    // default board — the only board board-prefs.js manages (single-segment path).
+    function rememberView(query) {
+      if (!/^\/[^/]+\/?$/.test(location.pathname)) return;
+      try { localStorage.setItem('acta:board:' + base.slice(1), query); } catch (_) {}
+    }
+
+    function wireViewTab(wrap) {
+      const a = wrap.querySelector('.view-tab');
+      const editBtn = wrap.querySelector('[data-view-edit]');
+      const delBtn = wrap.querySelector('[data-view-del]');
+      // While renaming, the tab's link is suppressed so a click commits the edit
+      // instead of navigating; otherwise the click records this view as remembered.
+      a.addEventListener('click', (e) => {
+        if (wrap.classList.contains('editing')) { e.preventDefault(); return; }
+        rememberView(wrap.dataset.viewQuery || '');
+      });
+      if (editBtn) editBtn.addEventListener('click', () => enterRename(wrap));
+      if (delBtn) delBtn.addEventListener('click', () => {
+        const name = wrap.querySelector('.view-name').textContent;
+        if (!window.confirm('Delete the "' + name + '" view?')) return;
+        api('/views/' + wrap.dataset.viewId + '/delete')
+          .then(() => wrap.remove())
+          .catch((e) => { if (boardErr) boardErr.textContent = msg(e); });
+      });
+    }
+
+    function enterRename(wrap) {
+      if (wrap.classList.contains('editing')) return;
+      const nameEl = wrap.querySelector('.view-name');
+      const orig = nameEl.textContent;
+      const input = document.createElement('input');
+      input.className = 'view-rename-input';
+      input.value = orig;
+      input.maxLength = 40;
+      nameEl.replaceWith(input);
+      wrap.classList.add('editing');
+      input.focus(); input.select();
+      let done = false;
+      const restore = (text) => {
+        const span = document.createElement('span');
+        span.className = 'view-name';
+        span.textContent = text;
+        input.replaceWith(span);
+        wrap.classList.remove('editing');
+      };
+      const commit = () => {
+        if (done) return; done = true;
+        const val = input.value.trim();
+        if (!val || val === orig) { restore(orig); return; }
+        restore(val);
+        api('/views/' + wrap.dataset.viewId + '/rename', { name: val })
+          .catch((e) => { if (boardErr) boardErr.textContent = msg(e); });
+      };
+      input.addEventListener('click', (e) => e.preventDefault());
+      input.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        else if (e.key === 'Escape') { e.preventDefault(); done = true; restore(orig); }
+      });
+      input.addEventListener('blur', commit);
+    }
+  }
+
   // --- card drag: snap the board to the lane the ghost enters (mobile) -------
   // On touch the board does NOT auto-scroll (scroll:false below). Instead, when
   // SortableJS moves the drag placeholder into a different lane (onChange fires),
@@ -1741,6 +1977,7 @@
   wirePopovers();
   wireDisplay();
   wireViewScroll();
+  wireViews();
 
   if (board.dataset.mode === 'milestone') {
     board.querySelectorAll('.mcol').forEach(wireColumn);

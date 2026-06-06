@@ -1361,7 +1361,7 @@ func (s *Service) seedBoard(ctx context.Context, workspaceID, name, slug string,
 			return err
 		}
 	}
-	return nil
+	return s.seedBoardViews(ctx, workspaceID, b.ID)
 }
 
 // requireStatusInWorkspace confirms a status exists and belongs to workspaceID.

@@ -315,8 +315,9 @@ func TestCurrentReleaseView(t *testing.T) {
 	createItem(t, client, base, token, todo, "loose work")
 	postJSON(t, client, base+"/general/items/"+inRel+"/release", token, map[string]any{"release_id": active}).Body.Close()
 
-	// The tab now shows, links to the status-mode + release=active preset.
-	if body := getBody(t, client, base+"/general", http.StatusOK); !strings.Contains(body, "mode=status&amp;release=active") {
+	// The tab now shows, linking to the canonical release=active preset (mode=status
+	// is the default, so it's dropped from the normalised query).
+	if body := getBody(t, client, base+"/general", http.StatusOK); !strings.Contains(body, "?release=active") {
 		t.Error("Current Release tab missing once a release is active")
 	}
 

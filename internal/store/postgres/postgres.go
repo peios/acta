@@ -719,6 +719,103 @@ func (p *Postgres) DeleteStatus(ctx context.Context, id string) error {
 	return nil
 }
 
+// --- board views (saved filters) ---
+
+const boardViewCols = `id::text, workspace_id::text, board_id::text, slug, name, icon, query, position, created_at, COALESCE(created_by::text, '')`
+
+func scanBoardView(row pgx.Row) (store.BoardView, error) {
+	var v store.BoardView
+	err := row.Scan(&v.ID, &v.WorkspaceID, &v.BoardID, &v.Slug, &v.Name, &v.Icon, &v.Query, &v.Position, &v.CreatedAt, &v.CreatedBy)
+	return v, err
+}
+
+func (p *Postgres) CreateBoardView(ctx context.Context, v store.BoardView) (store.BoardView, error) {
+	return createWithRetry(func() (store.BoardView, error) {
+		const q = `INSERT INTO board_views (workspace_id, board_id, slug, name, icon, query, position, created_by)
+		           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		           RETURNING ` + boardViewCols
+		var createdBy any
+		if v.CreatedBy != "" {
+			createdBy = v.CreatedBy
+		}
+		return scanBoardView(p.pool.QueryRow(ctx, q,
+			v.WorkspaceID, v.BoardID, v.Slug, v.Name, v.Icon, v.Query, v.Position, createdBy))
+	})
+}
+
+func (p *Postgres) BoardViewsByBoard(ctx context.Context, boardID string) ([]store.BoardView, error) {
+	const q = `SELECT ` + boardViewCols + ` FROM board_views WHERE board_id = $1 ORDER BY position, created_at`
+	rows, err := p.pool.Query(ctx, q, boardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.BoardView
+	for rows.Next() {
+		v, err := scanBoardView(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) BoardViewByID(ctx context.Context, id string) (store.BoardView, error) {
+	const q = `SELECT ` + boardViewCols + ` FROM board_views WHERE id = $1`
+	v, err := scanBoardView(p.pool.QueryRow(ctx, q, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.BoardView{}, store.ErrBoardViewNotFound
+	}
+	return v, err
+}
+
+func (p *Postgres) RenameBoardView(ctx context.Context, id, name string) error {
+	ct, err := p.pool.Exec(ctx, `UPDATE board_views SET name = $2 WHERE id = $1`, id, name)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrBoardViewNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) UpdateBoardViewQuery(ctx context.Context, id, query string) error {
+	ct, err := p.pool.Exec(ctx, `UPDATE board_views SET query = $2 WHERE id = $1`, id, query)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrBoardViewNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) ReorderBoardViews(ctx context.Context, boardID string, orderedIDs []string) error {
+	return p.inTx(ctx, func(tx pgx.Tx) error {
+		for i, id := range orderedIDs {
+			if _, err := tx.Exec(ctx,
+				`UPDATE board_views SET position = $1 WHERE id = $2 AND board_id = $3`,
+				i, id, boardID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (p *Postgres) DeleteBoardView(ctx context.Context, id string) error {
+	ct, err := p.pool.Exec(ctx, `DELETE FROM board_views WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrBoardViewNotFound
+	}
+	return nil
+}
+
 // --- board: items ---
 
 const itemCols = `id::text, ref_num, workspace_id::text, status_id::text, COALESCE(parent_id::text, ''),

@@ -2,6 +2,18 @@
 
 {{define "head"}}<script src="{{asset "/static/board-prefs.js"}}"></script>{{end}}
 
+{{/* view-icon renders a view tab's icon from its stored key. Custom views and
+     any unknown key fall back to the filter glyph. */}}
+{{define "view-icon"}}
+{{- if eq . "columns"}}<svg class="ico" viewBox="0 0 16 16"><rect x="2.5" y="3" width="4" height="10" rx="1"/><rect x="9.5" y="3" width="4" height="6.5" rx="1"/></svg>
+{{- else if eq . "person"}}<svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"/><path d="M3.5 13a4.5 4.5 0 0 1 9 0"/></svg>
+{{- else if eq . "hexagon"}}<svg class="ico" viewBox="0 0 16 16"><path d="M8 1.7 13.3 4.6v6.8L8 14.3 2.7 11.4V4.6z"/></svg>
+{{- else if eq . "diamond"}}<svg class="ico" viewBox="0 0 16 16"><path d="M8 2.4 13.6 8 8 13.6 2.4 8z"/></svg>
+{{- else if eq . "cube"}}<svg class="ico" viewBox="0 0 16 16"><path d="M8 1.5 13.5 4.5v7L8 14.5 2.5 11.5v-7z"/><path d="M2.5 4.5 8 7.5 13.5 4.5"/><path d="M8 7.5v7"/></svg>
+{{- else}}<svg class="ico" viewBox="0 0 16 16"><path d="M2.5 3.5h11l-4.2 5v4l-2.6-1.3v-2.7z"/></svg>
+{{- end}}
+{{- end}}
+
 {{define "card"}}
 <article class="item{{if .Hidden}} is-filtered{{end}}" data-item-id="{{.Item.ID}}" data-status-id="{{.Item.StatusID}}" data-assignee-id="{{.Item.AssigneeID}}" data-project-id="{{.Item.ProjectID}}" data-release-id="{{.ReleaseID}}" data-release-active="{{if and .HasRelease (not .ReleaseShipped)}}1{{end}}" style="{{.ColorVar}}"{{if .StatusName}} title="{{.StatusName}}"{{end}}>
   <div class="item-top">
@@ -23,26 +35,25 @@
 {{define "content"}}
 <main class="board-wrap" data-slug="{{.Workspace.Slug}}" data-board-id="{{.BoardID}}" data-lanes-dashed="{{if .LanesDashed}}1{{end}}" data-me="{{with .Principal}}{{.ID}}{{end}}">
   <div class="board-bar">
-    <div class="views">
-      <a class="view-tab{{if and (eq .Mode "status") (not .ViewMine) (not .ViewCurrentRelease)}} active{{end}}" href="{{.BoardBase}}?mode=status">
-        <svg class="ico" viewBox="0 0 16 16"><rect x="2.5" y="3" width="4" height="10" rx="1"/><rect x="9.5" y="3" width="4" height="6.5" rx="1"/></svg>All items
-      </a>
-      <a class="view-tab{{if .ViewMine}} active{{end}}" href="{{.BoardBase}}?mode=status&amp;assignee=me">
-        <svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"/><path d="M3.5 13a4.5 4.5 0 0 1 9 0"/></svg>My items
-      </a>
-      {{if .HasActiveRelease}}
-      <a class="view-tab{{if .ViewCurrentRelease}} active{{end}}" href="{{.BoardBase}}?mode=status&amp;release=active">
-        <svg class="ico" viewBox="0 0 16 16"><path d="M8 1.7 13.3 4.6v6.8L8 14.3 2.7 11.4V4.6z"/></svg>Current Release
-      </a>
+    <div class="views" data-views data-board-id="{{.BoardID}}">
+      {{range .Views}}
+      <div class="view-tab-wrap" data-view-id="{{.ID}}" data-view-slug="{{.Slug}}" data-view-query="{{.Query}}">
+        <a class="view-tab{{if .Active}} active{{end}}" href="{{.Href}}">{{template "view-icon" .Icon}}<span class="view-name">{{.Name}}</span><span class="view-dot" title="Unsaved filter changes"{{if not .Modified}} hidden{{end}}></span></a>
+        <button class="view-ctl view-edit" type="button" data-view-edit title="Rename view" aria-label="Rename view">
+          <svg class="ico" viewBox="0 0 16 16"><path d="M10.5 2.8 13.2 5.5 6 12.7l-3.2.5.5-3.2z"/></svg>
+        </button>
+        <button class="view-ctl view-del" type="button" data-view-del title="Delete view" aria-label="Delete view">
+          <svg class="ico" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+        </button>
+      </div>
       {{end}}
-      <a class="view-tab{{if eq .Mode "milestone"}} active{{end}}" href="{{.BoardBase}}?mode=milestone">
-        <svg class="ico" viewBox="0 0 16 16"><path d="M8 2.4 13.6 8 8 13.6 2.4 8z"/></svg>Milestones
-      </a>
-      {{if .HasReleases}}
-      <a class="view-tab{{if eq .Mode "release"}} active{{end}}" href="{{.BoardBase}}?mode=release">
-        <svg class="ico" viewBox="0 0 16 16"><path d="M8 1.5 13.5 4.5v7L8 14.5 2.5 11.5v-7z"/><path d="M2.5 4.5 8 7.5 13.5 4.5"/><path d="M8 7.5v7"/></svg>Releases
-      </a>
-      {{end}}
+      <button class="view-update" type="button" data-view-update data-view-id="{{.ActiveViewID}}"{{if not .ViewDirty}} hidden{{end}} title="Save filter changes to this view">Save</button>
+      <button class="view-save" type="button" data-view-save title="Save the current filter as a new view" aria-label="Save the current filter as a new view">
+        <svg class="ico" viewBox="0 0 16 16"><path d="M8 3.3v9.4M3.3 8h9.4"/></svg>
+      </button>
+      <form class="view-save-form" data-view-save-form hidden>
+        <input class="view-save-input" maxlength="40" placeholder="View name" aria-label="New view name">
+      </form>
     </div>
 
     <div class="bar-right">
@@ -68,6 +79,7 @@
         <div class="popover pop-filter" data-pop-menu hidden>
           <form class="board-filters" method="get" action="{{.BoardBase}}" data-filters>
             {{if ne .Mode "status"}}<input type="hidden" name="mode" value="{{.Mode}}">{{end}}
+            {{if .ActiveViewSlug}}<input type="hidden" name="view" value="{{.ActiveViewSlug}}">{{end}}
 
             <details class="facet" data-facet="status" open>
               <summary class="facet-trigger">Status{{if .StatusSelected}} <span class="facet-count">{{.StatusSelected}}</span>{{end}}</summary>
@@ -181,9 +193,9 @@
           <div class="pop-rows">
             <div class="pop-row grp-row"><span class="lbl">Grouping</span>
               <div class="grp">
-                <a class="grp-opt{{if eq .Mode "status"}} active{{end}}" href="{{.BoardBase}}?mode=status">Status</a>
-                <a class="grp-opt{{if eq .Mode "milestone"}} active{{end}}" href="{{.BoardBase}}?mode=milestone">Milestone</a>
-                {{if .HasReleases}}<a class="grp-opt{{if eq .Mode "release"}} active{{end}}" href="{{.BoardBase}}?mode=release">Release</a>{{end}}
+                <a class="grp-opt{{if eq .Mode "status"}} active{{end}}" href="{{.BoardBase}}?mode=status" data-mode="status">Status</a>
+                <a class="grp-opt{{if eq .Mode "milestone"}} active{{end}}" href="{{.BoardBase}}?mode=milestone" data-mode="milestone">Milestone</a>
+                {{if .HasReleases}}<a class="grp-opt{{if eq .Mode "release"}} active{{end}}" href="{{.BoardBase}}?mode=release" data-mode="release">Release</a>{{end}}
               </div>
             </div>
             <div class="pop-row"><span class="lbl">Ordering</span><span class="spacer"></span><button class="dd" type="button" disabled title="Sorting — coming soon"><span>Manual</span><span class="chev">&#9662;</span></button></div>
@@ -287,6 +299,13 @@
     <span class="item-title"></span>
     <button class="item-del" type="button" title="Archive" aria-label="Archive item">×</button>
   </article>
+</template>
+<template id="view-tmpl">
+  <div class="view-tab-wrap" data-view-id="" data-view-query="">
+    <a class="view-tab"><svg class="ico" viewBox="0 0 16 16"><path d="M2.5 3.5h11l-4.2 5v4l-2.6-1.3v-2.7z"/></svg><span class="view-name"></span><span class="view-dot" title="Unsaved filter changes" hidden></span></a>
+    <button class="view-ctl view-edit" type="button" data-view-edit title="Rename view" aria-label="Rename view"><svg class="ico" viewBox="0 0 16 16"><path d="M10.5 2.8 13.2 5.5 6 12.7l-3.2.5.5-3.2z"/></svg></button>
+    <button class="view-ctl view-del" type="button" data-view-del title="Delete view" aria-label="Delete view"><svg class="ico" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+  </div>
 </template>
 <template id="lane-tmpl">
   <section class="lane">

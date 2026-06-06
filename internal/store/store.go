@@ -21,6 +21,7 @@ var (
 	ErrWorkspaceSlugTaken   = errors.New("store: workspace slug already taken")
 	ErrWorkspacePrefixTaken = errors.New("store: workspace item prefix already taken")
 	ErrBoardNotFound        = errors.New("store: board not found")
+	ErrBoardViewNotFound    = errors.New("store: board view not found")
 	ErrStatusNotFound       = errors.New("store: status not found")
 	ErrItemNotFound         = errors.New("store: item not found")
 	ErrMCPPromptNotFound    = errors.New("store: mcp prompt not found")
@@ -213,6 +214,25 @@ type Board struct {
 	Slug        string
 	Position    int
 	CreatedAt   time.Time
+}
+
+// BoardView is a saved, named filter on a board: the filter-defining URL params
+// (mode, status[], assignee[], project[], release[], q) captured as a normalised
+// Query string, plus a display Name and Icon key. The five header tabs ship as
+// seeded defaults; users add their own. Query "" is the All-items view. Slug is
+// unique within the board; Position orders the strip. CreatedBy is "" for the
+// seeded defaults.
+type BoardView struct {
+	ID          string
+	WorkspaceID string
+	BoardID     string
+	Slug        string
+	Name        string
+	Icon        string
+	Query       string
+	Position    int
+	CreatedAt   time.Time
+	CreatedBy   string
 }
 
 // Status is a board lane: a named, ordered position within one board that items
@@ -521,6 +541,18 @@ type Store interface {
 	SetStatusColor(ctx context.Context, id, color string) error
 	ReorderStatuses(ctx context.Context, workspaceID string, orderedIDs []string) error
 	DeleteStatus(ctx context.Context, id string) error
+
+	// Board views (saved filters). BoardViewsByBoard returns one board's views in
+	// position order. ReorderBoardViews sets each id's position to its index in
+	// the slice, atomically. RenameBoardView/DeleteBoardView return
+	// ErrBoardViewNotFound when the id is unknown.
+	CreateBoardView(ctx context.Context, v BoardView) (BoardView, error)
+	BoardViewsByBoard(ctx context.Context, boardID string) ([]BoardView, error)
+	BoardViewByID(ctx context.Context, id string) (BoardView, error)
+	RenameBoardView(ctx context.Context, id, name string) error
+	UpdateBoardViewQuery(ctx context.Context, id, query string) error
+	ReorderBoardViews(ctx context.Context, boardID string, orderedIDs []string) error
+	DeleteBoardView(ctx context.Context, id string) error
 
 	// Items (board cards). ItemsByWorkspace and ItemsByStatus return only
 	// active (non-archived) items, ordered by position. ReorderItems sets each

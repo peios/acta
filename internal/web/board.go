@@ -35,8 +35,7 @@ type boardData struct {
 	Palette            []swatch // lane-colour options for the header picker
 	MilestoneColumns   []milestoneColumn
 	ReleaseColumns     []releaseColumn // release mode: a column per release (+ "No release")
-	HasReleases        bool            // the workspace has ≥1 release (gates the Releases view tab)
-	HasActiveRelease   bool            // the workspace has ≥1 active release (gates the Current Release tab)
+	HasReleases        bool            // the workspace has ≥1 release (gates the release group option)
 	StatusFilter       []statusOpt     // the status facet options
 	StatusSelected     int             // count badge on the Status trigger
 	Assignees          assigneeFacet   // the assignee facet (hierarchical)
@@ -50,9 +49,26 @@ type boardData struct {
 	CurrentRelSelected bool            // the "Current release" (any active) token is selected
 	FilterCount        int             // status + assignee + project + release selections, for the Filter button badge
 	FilterActive       bool            // any facet currently narrowing the board
-	ViewMine           bool            // the active view is "assigned to me" (My items tab)
-	ViewCurrentRelease bool            // the active view is status-mode filtered to active releases (Current Release tab)
+	Views              []viewTab       // the saved-view tab strip (seeded defaults + custom)
+	ViewDirty          bool            // on a view, but the current filter differs from its stored one
+	ActiveViewID       string          // the context view's id (for the "Save changes" target)
+	ActiveViewName     string          // the context view's name (for the Save button title)
+	ActiveViewSlug     string          // carried through the filter form so edits keep their provenance
 	Modal              *modalView      // set when ?item=<id> resolves within this workspace
+}
+
+// viewTab is one tab in the board's saved-view strip. Href is the board path
+// with the view's stored query; Active marks the tab whose query matches the
+// current URL. ID/Slug drive the rename/delete/reorder controls.
+type viewTab struct {
+	ID       string
+	Slug     string
+	Name     string
+	Icon     string
+	Query    string // normalised stored query — board.js writes it to the prefs cache on click
+	Href     string
+	Active   bool
+	Modified bool // this is the context view and the current filter has unsaved changes
 }
 
 // swatch is one option in the lane-colour picker: its hex (sent back on pick)
@@ -449,6 +465,56 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 		userByID[u.ID] = u
 	}
 
+	// The saved-view tab strip. Each view is a stored query; the active tab is the
+	// one whose normalised query matches the current URL. Release-oriented views
+	// hide when the workspace lacks the releases they reference (preserving the old
+	// Current Release / Releases tab visibility).
+	views, err := h.board.BoardViews(r.Context(), bd.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	hasReleases := len(releases) > 0
+	hasActiveRelease := len(activeReleaseIDs) > 0
+	currentView := board.NormalizeViewQuery(r.URL.Query())
+	// The "context" view is the one you're considered to be on: the explicit
+	// ?view=<slug> provenance (carried by the filter form once you start editing),
+	// else the view whose stored query exactly matches the current one. Dirty means
+	// you're on a view but have changed its filter without saving.
+	provSlug := strings.TrimSpace(r.URL.Query().Get("view"))
+	var ctxView *store.BoardView
+	for i := range views {
+		if provSlug != "" && views[i].Slug == provSlug {
+			ctxView = &views[i]
+			break
+		}
+	}
+	if ctxView == nil {
+		for i := range views {
+			if views[i].Query == currentView {
+				ctxView = &views[i]
+				break
+			}
+		}
+	}
+	viewDirty := ctxView != nil && ctxView.Query != currentView
+	viewTabs := make([]viewTab, 0, len(views))
+	for i := range views {
+		v := views[i]
+		if board.ViewQueryHiddenByReleases(v.Query, hasReleases, hasActiveRelease) {
+			continue
+		}
+		href := r.URL.Path
+		if v.Query != "" {
+			href += "?" + v.Query
+		}
+		active := ctxView != nil && v.ID == ctxView.ID
+		viewTabs = append(viewTabs, viewTab{
+			ID: v.ID, Slug: v.Slug, Name: v.Name, Icon: v.Icon, Query: v.Query,
+			Href: href, Active: active, Modified: active && viewDirty,
+		})
+	}
+
 	ch.ActiveBoard = bd.Slug
 	data := boardData{
 		chrome:             ch,
@@ -473,13 +539,14 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 		CurrentRelSelected: filter.releases["active"],
 		FilterCount:        len(filter.statuses) + len(filter.assignees) + len(filter.projects) + len(filter.releases),
 		FilterActive:       filter.active(),
-		ViewMine:           filter.assignees["me"] && len(filter.assignees) == 1 && len(filter.statuses) == 0,
-		HasReleases:        len(releases) > 0,
-		HasActiveRelease:   len(activeReleaseIDs) > 0,
-		// "Current Release" is status mode narrowed to active releases and nothing
-		// else — the preset the dedicated tab links to.
-		ViewCurrentRelease: mode == "status" && filter.releases["active"] && len(filter.releases) == 1 &&
-			len(filter.statuses) == 0 && len(filter.assignees) == 0 && len(filter.projects) == 0,
+		Views:              viewTabs,
+		ViewDirty:          viewDirty,
+		HasReleases:        hasReleases,
+	}
+	if ctxView != nil {
+		data.ActiveViewID = ctxView.ID
+		data.ActiveViewName = ctxView.Name
+		data.ActiveViewSlug = ctxView.Slug
 	}
 	switch mode {
 	case "milestone":
@@ -935,6 +1002,10 @@ func writeBoardErr(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusBadRequest, body{"invalid_color"})
 	case errors.Is(err, store.ErrStatusNotFound):
 		writeJSON(w, http.StatusNotFound, body{"status_not_found"})
+	case errors.Is(err, store.ErrBoardNotFound):
+		writeJSON(w, http.StatusNotFound, body{"board_not_found"})
+	case errors.Is(err, store.ErrBoardViewNotFound):
+		writeJSON(w, http.StatusNotFound, body{"view_not_found"})
 	case errors.Is(err, store.ErrItemNotFound):
 		writeJSON(w, http.StatusNotFound, body{"item_not_found"})
 	case errors.Is(err, store.ErrUserNotFound):

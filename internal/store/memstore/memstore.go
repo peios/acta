@@ -25,6 +25,7 @@ type Store struct {
 	itemSeq      map[string]int // per-workspace monotonic counter for item ref numbers
 	boards       map[string]store.Board
 	statuses     map[string]store.Status
+	boardViews   map[string]store.BoardView
 	items        map[string]store.Item
 	comments     map[string]store.Comment
 	apiTokens    map[string]store.APIToken
@@ -53,6 +54,7 @@ func New() *Store {
 		itemSeq:      map[string]int{},
 		boards:       map[string]store.Board{},
 		statuses:     map[string]store.Status{},
+		boardViews:   map[string]store.BoardView{},
 		items:        map[string]store.Item{},
 		comments:     map[string]store.Comment{},
 		apiTokens:    map[string]store.APIToken{},
@@ -725,6 +727,95 @@ func (s *Store) DeleteStatus(_ context.Context, id string) error {
 		return store.ErrStatusNotFound
 	}
 	delete(s.statuses, id)
+	return nil
+}
+
+// --- board views (saved filters) ---
+
+func (s *Store) CreateBoardView(_ context.Context, v store.BoardView) (store.BoardView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if v.ID == "" {
+		v.ID = newID()
+	}
+	if v.CreatedAt.IsZero() {
+		v.CreatedAt = time.Now()
+	}
+	s.boardViews[v.ID] = v
+	return v, nil
+}
+
+func (s *Store) BoardViewsByBoard(_ context.Context, boardID string) ([]store.BoardView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.BoardView
+	for _, v := range s.boardViews {
+		if v.BoardID == boardID {
+			out = append(out, v)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Position != out[j].Position {
+			return out[i].Position < out[j].Position
+		}
+		return out[i].CreatedAt.Before(out[j].CreatedAt)
+	})
+	return out, nil
+}
+
+func (s *Store) BoardViewByID(_ context.Context, id string) (store.BoardView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v, ok := s.boardViews[id]
+	if !ok {
+		return store.BoardView{}, store.ErrBoardViewNotFound
+	}
+	return v, nil
+}
+
+func (s *Store) RenameBoardView(_ context.Context, id, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v, ok := s.boardViews[id]
+	if !ok {
+		return store.ErrBoardViewNotFound
+	}
+	v.Name = name
+	s.boardViews[id] = v
+	return nil
+}
+
+func (s *Store) UpdateBoardViewQuery(_ context.Context, id, query string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v, ok := s.boardViews[id]
+	if !ok {
+		return store.ErrBoardViewNotFound
+	}
+	v.Query = query
+	s.boardViews[id] = v
+	return nil
+}
+
+func (s *Store) ReorderBoardViews(_ context.Context, boardID string, orderedIDs []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, id := range orderedIDs {
+		if v, ok := s.boardViews[id]; ok && v.BoardID == boardID {
+			v.Position = i
+			s.boardViews[id] = v
+		}
+	}
+	return nil
+}
+
+func (s *Store) DeleteBoardView(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.boardViews[id]; !ok {
+		return store.ErrBoardViewNotFound
+	}
+	delete(s.boardViews, id)
 	return nil
 }
 
