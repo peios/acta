@@ -477,6 +477,12 @@ func (s *Service) statusChangeData(ctx context.Context, from, to store.Status) m
 // MoveItem transitions an item into toStatusID at the given index, keeping both
 // the destination lane and (if it changed) the source lane densely ordered.
 func (s *Service) MoveItem(ctx context.Context, itemID, toStatusID string, index int) error {
+	return s.moveItem(ctx, itemID, toStatusID, index, nil)
+}
+
+// moveItem is MoveItem with extra key/values merged into the status-change
+// event's data (e.g. the facts confirmed to pass a checklist gate).
+func (s *Service) moveItem(ctx context.Context, itemID, toStatusID string, index int, extra map[string]string) error {
 	item, err := s.store.ItemByID(ctx, itemID)
 	if err != nil {
 		return err
@@ -528,7 +534,7 @@ func (s *Service) MoveItem(ctx context.Context, itemID, toStatusID string, index
 		to, _ := s.store.StatusByID(ctx, toStatusID)
 		item.StatusID = toStatusID
 		s.recordEvent(ctx, item, store.EventItemStatusChange,
-			s.statusChangeData(ctx, from, to))
+			mergeData(s.statusChangeData(ctx, from, to), extra))
 	}
 	return nil
 }
@@ -648,6 +654,12 @@ func (s *Service) SetAssignee(ctx context.Context, id, assigneeID string) error 
 // end of the target lane; a subtask (which isn't on the board) just takes the
 // new status, keeping its order within its parent.
 func (s *Service) SetStatus(ctx context.Context, id, statusID string) error {
+	return s.setStatus(ctx, id, statusID, nil)
+}
+
+// setStatus is SetStatus with extra key/values merged into the status-change
+// event's data (the confirmed-facts note on a checklist gate).
+func (s *Service) setStatus(ctx context.Context, id, statusID string, extra map[string]string) error {
 	item, err := s.store.ItemByID(ctx, id)
 	if err != nil {
 		return err
@@ -666,10 +678,20 @@ func (s *Service) SetStatus(ctx context.Context, id, statusID string) error {
 		}
 		item.StatusID = statusID
 		s.recordEvent(ctx, item, store.EventItemStatusChange,
-			s.statusChangeData(ctx, from, to))
+			mergeData(s.statusChangeData(ctx, from, to), extra))
 		return nil
 	}
-	return s.MoveItem(ctx, id, statusID, endOfLane)
+	return s.moveItem(ctx, id, statusID, endOfLane, extra)
+}
+
+// mergeData returns base with extra's non-empty entries merged in (extra wins).
+func mergeData(base, extra map[string]string) map[string]string {
+	for k, v := range extra {
+		if v != "" {
+			base[k] = v
+		}
+	}
+	return base
 }
 
 // Archive hides an item and its whole subtree, then re-densifies the container

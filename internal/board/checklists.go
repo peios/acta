@@ -188,12 +188,18 @@ func (s *Service) SetItemFact(ctx context.Context, itemID string, factID int64, 
 		gate, err := s.gateView(ctx, item.PendingStatusID, facts)
 		return MoveOutcome{Moved: false, Gate: gate}, err
 	}
-	// Checklist complete — promote the item into the lane it was waiting on.
+	// Checklist complete — promote the item into the lane it was waiting on,
+	// recording the confirmed facts on the move (every gate fact is ticked now).
 	target := item.PendingStatusID
 	if err := s.store.SetItemPending(ctx, itemID, ""); err != nil {
 		return MoveOutcome{}, err
 	}
-	if err := s.SetStatus(ctx, itemID, target); err != nil {
+	confirmed := make([]string, len(facts))
+	for i, f := range facts {
+		confirmed[i] = f.Title
+	}
+	extra := map[string]string{"confirmed": strings.Join(confirmed, ", ")}
+	if err := s.setStatus(ctx, itemID, target, extra); err != nil {
 		return MoveOutcome{}, err
 	}
 	return MoveOutcome{Moved: true}, nil
@@ -294,6 +300,125 @@ func (s *Service) ForceStatus(ctx context.Context, itemID string) (MoveOutcome, 
 // ticks themselves persist — they're durable facts about the item.
 func (s *Service) CancelPending(ctx context.Context, itemID string) error {
 	return s.store.SetItemPending(ctx, itemID, "")
+}
+
+// ChecklistError reports a gated move blocked by an unmet checklist: the target
+// lane and the facts still required (not yet true on the item).
+type ChecklistError struct {
+	Status string
+	Unmet  []string
+}
+
+func (e *ChecklistError) Error() string {
+	return "checklist incomplete for " + e.Status + " — still required: " + strings.Join(e.Unmet, ", ")
+}
+
+// UnknownFactError reports a checklist title absent from the workspace's fact
+// vocabulary (a typo, most likely).
+type UnknownFactError struct{ Title string }
+
+func (e *UnknownFactError) Error() string { return "unknown fact: " + e.Title }
+
+// ConfirmStatus moves an item into a (possibly gated) status, confirming the
+// named facts (by title) as part of the move — the agent (MCP) entry point. It
+// is atomic: if the target's checklist is met by the item's already-true facts
+// plus the ones named here, those are ticked (attributed to the actor), the item
+// moves, and the move event records what was confirmed. Otherwise nothing is
+// written and a *ChecklistError naming the still-unmet facts is returned; an
+// unrecognised title yields *UnknownFactError. Unlike the UI paths it never
+// records a pending transition and never forces.
+func (s *Service) ConfirmStatus(ctx context.Context, itemID, statusID string, confirm []string) (store.Item, error) {
+	item, err := s.store.ItemByID(ctx, itemID)
+	if err != nil {
+		return store.Item{}, err
+	}
+	if err := s.requireStatusInWorkspace(ctx, statusID, item.WorkspaceID); err != nil {
+		return store.Item{}, err
+	}
+	to, err := s.store.StatusByID(ctx, statusID)
+	if err != nil {
+		return store.Item{}, err
+	}
+	confirmIDs, err := s.resolveFactTitles(ctx, item.WorkspaceID, confirm)
+	if err != nil {
+		return store.Item{}, err
+	}
+	gate, err := s.store.FactsByStatus(ctx, statusID)
+	if err != nil {
+		return store.Item{}, err
+	}
+	ticks, err := s.store.TicksByItem(ctx, itemID)
+	if err != nil {
+		return store.Item{}, err
+	}
+	ticked := make(map[int64]bool, len(ticks))
+	for _, t := range ticks {
+		ticked[t.FactID] = true
+	}
+	// Partition the gate's facts: already true (carried), confirmed now, or still
+	// missing.
+	var unmet, confirmed []string
+	var toTick []store.Fact
+	for _, f := range gate {
+		switch {
+		case ticked[f.ID]:
+			// already true — nothing to do
+		case confirmIDs[f.ID]:
+			toTick = append(toTick, f)
+		default:
+			unmet = append(unmet, f.Title)
+		}
+	}
+	if len(unmet) > 0 {
+		return store.Item{}, &ChecklistError{Status: to.Name, Unmet: unmet}
+	}
+	by := actorID(ctx)
+	for _, f := range toTick {
+		if err := s.store.SetItemFact(ctx, itemID, f.ID, true, by); err != nil {
+			return store.Item{}, err
+		}
+		confirmed = append(confirmed, f.Title)
+	}
+	if item.PendingStatusID != "" {
+		_ = s.store.SetItemPending(ctx, itemID, "")
+	}
+	extra := map[string]string{}
+	if len(confirmed) > 0 {
+		extra["confirmed"] = strings.Join(confirmed, ", ")
+	}
+	if err := s.setStatus(ctx, itemID, statusID, extra); err != nil {
+		return store.Item{}, err
+	}
+	return s.store.ItemByID(ctx, itemID)
+}
+
+// resolveFactTitles maps fact titles (case-insensitive, trimmed) to a set of
+// fact ids, erroring on any title absent from the workspace vocabulary.
+func (s *Service) resolveFactTitles(ctx context.Context, workspaceID string, titles []string) (map[int64]bool, error) {
+	out := make(map[int64]bool, len(titles))
+	if len(titles) == 0 {
+		return out, nil
+	}
+	vocab, err := s.store.FactsByWorkspace(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	byTitle := make(map[string]int64, len(vocab))
+	for _, f := range vocab {
+		byTitle[strings.ToLower(f.Title)] = f.ID
+	}
+	for _, t := range titles {
+		key := strings.ToLower(strings.TrimSpace(t))
+		if key == "" {
+			continue
+		}
+		id, ok := byTitle[key]
+		if !ok {
+			return nil, &UnknownFactError{Title: strings.TrimSpace(t)}
+		}
+		out[id] = true
+	}
+	return out, nil
 }
 
 func cleanFactTitle(title string) (string, error) {

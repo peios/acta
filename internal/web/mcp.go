@@ -79,7 +79,7 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_statuses",
-		Description: "List a board's status lanes, in order. Statuses are addressed by name (in create_item, set_item_status, and the list_items status filter). Defaults to the primary board; pass board (a slug from list_boards) for another. The first lane is a board's entry lane (where new items land).",
+		Description: "List a board's status lanes, in order. Statuses are addressed by name (in create_item, set_item_status, and the list_items status filter). Defaults to the primary board; pass board (a slug from list_boards) for another. The first lane is a board's entry lane (where new items land). A lane may carry required_facts — a checklist you must confirm (via set_item_status's checklist) before an item can enter it.",
 	}, h.mcpListStatuses)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -99,7 +99,7 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "set_item_status",
-		Description: "Move an item to a different status lane, named (e.g. \"Doing\", \"Done\").",
+		Description: "Move an item to a different status lane, named (e.g. \"Doing\", \"Done\"). If the target lane has a checklist (see required_facts on list_statuses), pass the fact titles you confirm are true as `checklist` — the move is rejected, naming what's still required, until the checklist is satisfied (already-true facts carry over and needn't be repeated).",
 	}, h.mcpSetItemStatus)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -263,10 +263,13 @@ type boardListOutput struct {
 
 // statusAPI is a board lane as the MCP surface presents it: the name agents
 // address it by, and its zero-based board position (position 0 is the first
-// lane, the default for new items). Colour is omitted as UI-only.
+// lane, the default for new items). Colour is omitted as UI-only. RequiredFacts
+// are the checklist facts an item must have confirmed to enter this lane (empty
+// for an ungated lane) — pass them as set_item_status's `checklist`.
 type statusAPI struct {
-	Name     string `json:"name"`
-	Position int    `json:"position"`
+	Name          string   `json:"name"`
+	Position      int      `json:"position"`
+	RequiredFacts []string `json:"required_facts,omitempty"`
 }
 
 type itemListOutput struct {
@@ -389,8 +392,9 @@ type unsubscribeOutput struct {
 }
 
 type setItemStatusInput struct {
-	ID     string `json:"id" jsonschema:"the item id"`
-	Status string `json:"status" jsonschema:"target status lane, by name"`
+	ID        string   `json:"id" jsonschema:"the item id"`
+	Status    string   `json:"status" jsonschema:"target status lane, by name"`
+	Checklist []string `json:"checklist,omitempty" jsonschema:"fact titles you confirm are true, to pass the lane's checklist gate (see required_facts on list_statuses). Each is recorded as confirmed by you. Only needed when the target lane is gated; already-true facts needn't be repeated"`
 }
 
 type setItemAssigneeInput struct {
@@ -567,6 +571,13 @@ func (h *handlers) mcpListStatuses(ctx context.Context, _ *mcp.CallToolRequest, 
 	out := statusListOutput{Statuses: make([]statusAPI, len(list))}
 	for i, s := range list {
 		out.Statuses[i] = statusAPI{Name: s.Name, Position: s.Position}
+		facts, ferr := h.board.StatusFacts(ctx, s.ID)
+		if ferr != nil {
+			return nil, statusListOutput{}, mcpErr(ferr)
+		}
+		for _, f := range facts {
+			out.Statuses[i].RequiredFacts = append(out.Statuses[i].RequiredFacts, f.Title)
+		}
 	}
 	return &mcp.CallToolResult{}, out, nil
 }
@@ -908,7 +919,7 @@ func (h *handlers) mcpSetItemStatus(ctx context.Context, _ *mcp.CallToolRequest,
 	if err != nil {
 		return nil, mcpItem{}, mcpErr(err)
 	}
-	if err := h.board.SetStatus(ctx, item.ID, statusID); err != nil {
+	if _, err := h.board.ConfirmStatus(ctx, item.ID, statusID, in.Checklist); err != nil {
 		return nil, mcpItem{}, mcpErr(err)
 	}
 	h.liveUpsertOrigin(ctx, "", item.ID)
@@ -1333,6 +1344,14 @@ func (h *handlers) mcpReloadResult(ctx context.Context, id string) (*mcp.CallToo
 // mcpErr maps board/store errors to clean, agent-facing messages. Name-lookup
 // errors are already human-readable (and name the bad value), so they pass
 // through; unexpected errors are logged and reduced to a generic message.
+// isChecklistErr reports whether err is a checklist-gate failure whose message
+// is safe (and useful) to surface verbatim to the agent.
+func isChecklistErr(err error) bool {
+	var ce *board.ChecklistError
+	var ue *board.UnknownFactError
+	return errors.As(err, &ce) || errors.As(err, &ue)
+}
+
 func mcpErr(err error) error {
 	switch {
 	case err == nil:
@@ -1356,6 +1375,10 @@ func mcpErr(err error) error {
 	case errors.Is(err, errUnknownStatus), errors.Is(err, errUnknownUser),
 		errors.Is(err, errUnknownProject), errors.Is(err, errUnknownSubjectType),
 		errors.Is(err, errProjectNeedsWS):
+		return err
+	case isChecklistErr(err):
+		// The checklist messages name the lane and the still-required (or
+		// unknown) facts — pass them straight through for the agent to act on.
 		return err
 	default:
 		slog.Error("mcp tool error", "err", err)

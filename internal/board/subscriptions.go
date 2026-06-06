@@ -258,10 +258,14 @@ func HumanizeEvent(e store.Event) string {
 	case store.EventItemRenamed:
 		return "renamed “" + d["from"] + "” → “" + d["to"] + "”"
 	case store.EventItemStatusChange:
-		if b := d["toBoard"]; b != "" {
-			return "moved to the " + b + " board"
+		confirmed := ""
+		if c := d["confirmed"]; c != "" {
+			confirmed = " · confirmed " + c
 		}
-		return "moved from " + d["from"] + " to " + d["to"]
+		if b := d["toBoard"]; b != "" {
+			return "moved to the " + b + " board" + confirmed
+		}
+		return "moved from " + d["from"] + " to " + d["to"] + confirmed
 	case store.EventItemStatusForced:
 		if u := d["unmet"]; u != "" {
 			return "forced into " + d["to"] + " past unmet: " + u

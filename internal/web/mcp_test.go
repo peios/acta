@@ -369,6 +369,63 @@ func TestMCPListStatuses(t *testing.T) {
 	}
 }
 
+// mcpStatusReqT reads list_statuses including each lane's checklist requirements.
+type mcpStatusReqT struct {
+	Statuses []struct {
+		Name          string   `json:"name"`
+		RequiredFacts []string `json:"required_facts"`
+	} `json:"statuses"`
+}
+
+// TestMCPChecklist exercises the agent-facing gate: a lane gated (via the web
+// Manage-checklist endpoint, as a human would) shows required_facts; a move
+// without confirming them is rejected naming what's required; passing them as
+// `checklist` lets it through.
+func TestMCPChecklist(t *testing.T) {
+	base, client := newTestServer(t)
+	csrf := signIn(t, client, base)
+	token := mintToken(t, client, base, csrf)
+
+	// Gate the Done lane with one fact (the human/UI path).
+	doneID := statusID(t, client, base, "Done")
+	postJSON(t, client, base+"/general/statuses/"+doneID+"/checklist", csrf, map[string]any{
+		"gate_ids": []int64{}, "new_titles": []string{"Provium tests"},
+	}).Body.Close()
+
+	sess := mcpConnect(t, base, token)
+
+	// list_statuses surfaces the requirement on Done.
+	st := callTool[mcpStatusReqT](t, sess, "list_statuses", map[string]any{"workspace": "general"})
+	var doneFacts []string
+	for _, s := range st.Statuses {
+		if s.Name == "Done" {
+			doneFacts = s.RequiredFacts
+		}
+	}
+	if len(doneFacts) != 1 || doneFacts[0] != "Provium tests" {
+		t.Fatalf("Done required_facts = %v, want [Provium tests]", doneFacts)
+	}
+
+	it := callTool[mcpItemT](t, sess, "create_item", map[string]any{
+		"workspace": "general", "title": "Gated via MCP",
+	})
+
+	// Move with no checklist → rejected, naming the required fact.
+	if msg := toolErr(t, sess, "set_item_status", map[string]any{
+		"id": it.ID, "status": "Done",
+	}); !strings.Contains(msg, "Provium tests") {
+		t.Fatalf("blocked move error = %q, want it to name Provium tests", msg)
+	}
+
+	// Confirm the fact → the move goes through.
+	moved := callTool[mcpItemT](t, sess, "set_item_status", map[string]any{
+		"id": it.ID, "status": "Done", "checklist": []string{"Provium tests"},
+	})
+	if moved.Status != "Done" {
+		t.Fatalf("confirmed move = %q, want Done", moved.Status)
+	}
+}
+
 func TestMCPBoards(t *testing.T) {
 	base, client := newTestServer(t)
 	csrf := signIn(t, client, base)

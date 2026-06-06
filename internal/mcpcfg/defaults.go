@@ -27,7 +27,13 @@ create or change anything.
   an optional **parent**.
 - **Status** — which column an item sits in (e.g. To do / In progress / Done).
   Statuses are defined per workspace, so the names differ per board; read them
-  with ` + "`list_statuses`" + ` — don't guess the names.
+  with ` + "`list_statuses`" + ` — don't guess the names. A lane can carry a
+  **checklist**: facts (e.g. "Provium tests", "Learn docs") that must be confirmed
+  true before an item may enter it. ` + "`list_statuses`" + ` shows a lane's
+  ` + "`required_facts`" + `; to move there, pass the ones you confirm as
+  ` + "`set_item_status`" + `'s ` + "`checklist`" + `. The move is rejected, naming what's
+  still required, until the checklist is satisfied — only confirm facts you've
+  actually verified; the confirmation is recorded against you.
 - **Milestone** — an item flagged as a milestone: an anchor point the project is
   steering toward, with ordinary tasks hanging off it. Toggle with
   ` + "`set_item_milestone`" + `.
