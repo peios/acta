@@ -482,6 +482,9 @@
   .item-top { display: flex; align-items: baseline; gap: 7px; margin-bottom: 2px; padding-right: 1rem; }
   .item-ref { font-family: var(--mono); font-size: 10px; letter-spacing: .02em; color: var(--faint); }
   .item-sub { font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  /* parent reference on a sub-task card (Show sub-tasks view): a faint "↳ ACTA-7"
+     pushed to the right of the top line */
+  .item-parent { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--faint); white-space: nowrap; padding-left: .4rem; }
   /* project chip: a small tinted pill naming the card's project, on the meta row */
   .item-project { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 9rem; padding: 1px 7px 1px 5px; border-radius: 999px; font-size: 11px; line-height: 1.5; color: var(--muted); background: color-mix(in srgb, var(--lane-color, var(--faint)) 13%, transparent); border: 1px solid color-mix(in srgb, var(--lane-color, var(--faint)) 30%, transparent); }
   .item-project-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--lane-color, var(--faint)); }
@@ -557,6 +560,49 @@
   .board-wrap.hide-empty .lane[data-empty] { display: none; }
   .board-err { margin: 1rem 16px 0; max-width: 32rem; }
 
+  /* transient toast (e.g. "can't drag into a due bucket"): fixed, bottom-centre,
+     fades in/out, never intercepts clicks. */
+  .board-toast { position: fixed; left: 50%; bottom: 24px; z-index: 200; transform: translateX(-50%) translateY(8px); max-width: min(440px, calc(100vw - 32px)); padding: 10px 14px; border-radius: 10px; background: #20242c; border: 1px solid var(--border); color: var(--text); font-size: 13px; line-height: 1.4; box-shadow: 0 18px 40px -18px rgba(0,0,0,.85); opacity: 0; pointer-events: none; transition: opacity .16s ease, transform .16s ease; }
+  .board-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* --- list layout -------------------------------------------------------
+     The same lanes/cards as the board, reflowed: lanes become full-width
+     stacked sections and cards become single-line rows. The DOM is identical
+     to the column board, so drag, live updates, filtering and the modal all
+     keep working — only the painting changes. Scoped to [data-layout="list"]. */
+  .board[data-layout="list"] { flex-direction: column; align-items: stretch; gap: 0; overflow-x: hidden; overflow-y: auto; scroll-snap-type: none; padding: 0 16px 16px 0; }
+  .board[data-layout="list"] .lane { flex: none; width: auto; height: auto; }
+  .board[data-layout="list"] .lane + .lane,
+  .board[data-layout="list"] .lane-add { margin-top: 10px; }
+  /* a slim, sticky section header so the lane stays labelled while you scroll */
+  .board[data-layout="list"] .lane-head { position: sticky; top: 0; z-index: 3; padding: 7px 6px 6px 2px; margin: 0; background: var(--bg-elev); }
+  .board[data-layout="list"] .lane.is-filtered { display: none; }
+  /* rows stack flush; a hairline under the header opens the list */
+  .board[data-layout="list"] .lane-items { gap: 0; overflow: visible; min-height: 0; padding: 0; border-top: 1px solid var(--border-soft); }
+  .board[data-layout="list"] .lane[data-empty] .lane-items { border-top: 0; }
+  .board[data-layout="list"] .lane > .item-add { order: 2; margin: 2px 0 0; }
+  .board[data-layout="list"] .lane > .lane-items { order: 1; }
+  .board[data-layout="list"] .item-add-input { border-style: dashed; border-width: 0 0 1px; border-radius: 0; padding: 8px 12px; }
+  .board[data-layout="list"] .item-add-input:focus { border-style: solid; border-radius: 7px; }
+
+  /* the card, as a row: ref · title (grows) · meta cluster · archive */
+  .board[data-layout="list"] .item {
+    display: flex; align-items: center; gap: 12px;
+    background: transparent; border-radius: 0;
+    border-width: 0 0 1px; border-color: var(--border-soft);
+    padding: 7px 8px 7px 12px;
+    box-shadow: inset 2px 0 0 -1px var(--lane-color, transparent);
+  }
+  .board[data-layout="list"] .item:hover { background: var(--surface-h); border-color: var(--border-soft); transform: none; }
+  .board[data-layout="list"] .item:active { transform: none; }
+  .board[data-layout="list"] .item-top { order: 0; flex: none; margin: 0; padding: 0; min-width: 3.2rem; }
+  .board[data-layout="list"] .item-title { order: 1; flex: 1; min-width: 0; padding: 0; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .board[data-layout="list"] .item-ms { order: 2; position: static; opacity: 1; margin: 0; }
+  .board[data-layout="list"] .item:hover .item-ms { opacity: 1; }
+  .board[data-layout="list"] .item-meta { order: 3; flex: none; margin: 0; }
+  .board[data-layout="list"] .item-meta .meta-spacer { display: none; }
+  .board[data-layout="list"] .item-del { order: 4; position: static; top: auto; right: auto; margin-left: -4px; }
+
   /* milestone-mode columns */
   .mcol-head { padding: 2px 4px 9px; }
   .mcol-title { background: none; border: 0; color: var(--text); font: inherit; font-weight: 600; font-size: 13px; letter-spacing: -.01em; cursor: pointer; padding: 0; text-align: left; }
@@ -569,6 +615,30 @@
   .rcol-dot { width: 7px; height: 7px; flex: none; border-radius: 2px; background: var(--lane-color, var(--faint)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lane-color, var(--faint)) 15%, transparent); }
   .rcol-title { text-decoration: none; }
   .rcol-tag { font-size: 9.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); border: 1px solid var(--border-soft); border-radius: 4px; padding: 0 4px; }
+
+  /* generic grouping columns (priority/type/size/due/assignee/project): a round
+     dot — semantic colour by data-tone, or a project's own hex via --lane-color —
+     or the assignee's avatar, then a static title. */
+  .gcol-head { padding: 2px 4px 9px; }
+  .gcol-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 600; font-size: 13px; letter-spacing: -.01em; }
+  .gcol-head .avatar.sm { flex: none; }
+  .gcol-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--lane-color, var(--faint)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lane-color, var(--faint)) 15%, transparent); }
+  /* semantic tones, mirroring the card attribute glyph palette */
+  .gcol-dot[data-tone="urgent"], .gcol-dot[data-tone="overdue"], .gcol-dot[data-tone="bug"] { background: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent); }
+  .gcol-dot[data-tone="high"], .gcol-dot[data-tone="today"] { background: #e0a14a; box-shadow: 0 0 0 3px color-mix(in srgb, #e0a14a 18%, transparent); }
+  .gcol-dot[data-tone="medium"], .gcol-dot[data-tone="week"] { background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+  .gcol-dot[data-tone="feature"] { background: #74c98a; box-shadow: 0 0 0 3px color-mix(in srgb, #74c98a 18%, transparent); }
+  .gcol-dot[data-tone="low"], .gcol-dot[data-tone="chore"], .gcol-dot[data-tone="later"] { background: var(--muted); box-shadow: 0 0 0 3px color-mix(in srgb, var(--muted) 16%, transparent); }
+  .gcol-dot[data-tone="none"] { background: var(--faint); box-shadow: none; opacity: .55; }
+
+  /* sub-group section headers: small dividers inside a column/section, siblings of
+     the cards. Reuse the gcol dot/avatar marker, then a quiet title + count. */
+  .subgroup-head { display: flex; align-items: center; gap: 7px; padding: 9px 3px 5px; }
+  .subgroup-head:first-child { padding-top: 1px; }
+  .subgroup-head .gcol-dot { width: 7px; height: 7px; }
+  .subgroup-head .avatar.sm { flex: none; width: 16px; height: 16px; font-size: 8px; }
+  .subgroup-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 600; letter-spacing: .02em; color: var(--muted); }
+  .subgroup-count { margin-left: auto; color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; }
 
   /* ---- board filters ---- */
   .board-filters { display: inline-flex; align-items: center; gap: .4rem; margin: 0; }
@@ -671,30 +741,34 @@
 
   /* Display popover */
   .pop-seg { display: flex; gap: 5px; padding: 6px; }
-  .pop-seg button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; border-radius: 9px; font: inherit; font-size: 13px; font-weight: 500; color: var(--muted); background: var(--field); border: 1px solid var(--border-soft); cursor: pointer; }
-  .pop-seg button .ico { width: 15px; height: 15px; }
-  .pop-seg button.active { color: var(--text); background: var(--surface-h); border-color: var(--border); }
+  .pop-seg button, .pop-seg .seg-opt { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; border-radius: 9px; font: inherit; font-size: 13px; font-weight: 500; color: var(--muted); background: var(--field); border: 1px solid var(--border-soft); cursor: pointer; text-decoration: none; }
+  .pop-seg .seg-opt:hover { color: var(--text); }
+  .pop-seg button .ico, .pop-seg .seg-opt .ico { width: 15px; height: 15px; }
+  .pop-seg button.active, .pop-seg .seg-opt.active { color: var(--text); background: var(--surface-h); border-color: var(--border); }
   .pop-rows { padding: 8px 8px 6px; display: flex; flex-direction: column; gap: 9px; }
   .pop-row { display: flex; align-items: center; }
   .pop-row .lbl { color: var(--muted); font-size: 13px; }
   .pop-row .spacer { flex: 1; }
-  .grp { display: inline-flex; padding: 2px; gap: 2px; background: var(--field); border: 1px solid var(--border-soft); border-radius: 8px; }
-  .grp-opt { text-decoration: none; color: var(--muted); font-size: 12.5px; font-weight: 500; padding: 4px 10px; border-radius: 6px; text-align: center; white-space: nowrap; }
-  .grp-opt:hover { color: var(--text); }
-  .grp-opt.active { color: var(--text); background: var(--surface-h); box-shadow: inset 0 0 0 1px var(--border-soft); }
-  /* Grouping stacks: the segmented control sits full-width on its own line under
-     the label, splitting evenly — so it never overflows as options are added. */
-  .grp-row { flex-direction: column; align-items: stretch; gap: 7px; }
-  .grp-row .grp { display: flex; }
-  .grp-row .grp-opt { flex: 1; }
   .dd { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px 0 11px; border-radius: 7px; background: var(--field); border: 1px solid var(--border-soft); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
-  .dd .chev { color: var(--faint); font-size: 9px; }
+  .dd .chev { color: var(--faint); font-size: 9px; transition: transform .12s; }
+  /* grouping dropdown: a select-style trigger (matching Ordering) that opens a menu
+     of axes. A native <details>, so no JS — picking an option navigates (the board
+     regroups server-side). */
+  .dd-wrap { position: relative; }
+  .dd-wrap > summary.dd { list-style: none; user-select: none; }
+  .dd-wrap > summary.dd::-webkit-details-marker { display: none; }
+  .dd-wrap[open] > summary.dd { border-color: var(--border); background: var(--surface-h); }
+  .grp-dd[open] .chev { transform: rotate(180deg); }
+  .dd-menu { position: absolute; right: 0; top: calc(100% + 5px); z-index: 5; min-width: 162px; display: flex; flex-direction: column; gap: 1px; padding: 5px; background: #1d2026; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 18px 40px -18px rgba(0,0,0,.85); }
+  .grp-opt { display: block; text-decoration: none; color: var(--muted); font-size: 13px; font-weight: 500; padding: 6px 9px; border-radius: 6px; white-space: nowrap; }
+  .grp-opt:hover { color: var(--text); background: var(--surface-h); }
+  .grp-opt.active { color: var(--text); background: var(--surface-h); }
   .pop-div { height: 1px; background: var(--border-soft); margin: 6px 4px; }
   .pop-toggle-row { display: flex; align-items: center; padding: 8px; }
   .pop-toggle-row .lbl { font-size: 13.5px; color: var(--text); }
   .pop-toggle-row .lbl.muted { color: var(--muted); }
   .pop-toggle-row .spacer { flex: 1; }
-  .toggle { width: 34px; height: 20px; border-radius: 999px; background: #2c313a; border: 0; cursor: pointer; position: relative; padding: 0; transition: background .15s; flex: none; }
+  .toggle { display: inline-block; width: 34px; height: 20px; border-radius: 999px; background: #2c313a; border: 0; cursor: pointer; position: relative; padding: 0; transition: background .15s; flex: none; }
   .toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
   .toggle[aria-checked="true"] { background: var(--accent); }
   .toggle[aria-checked="true"]::after { transform: translateX(14px); }

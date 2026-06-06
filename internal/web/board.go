@@ -31,11 +31,19 @@ type boardData struct {
 	ActivityHref       string
 	ArchiveHref        string
 	LanesDashed        bool     // this is the Backlog board — its lane/facet dots render dashed
-	Mode               string   // "status", "milestone", or "release"
+	Mode               string   // grouping: status/milestone/release/priority/type/size/due/assignee/project
+	GroupLabel         string   // the current grouping's display name (the Display-menu dropdown trigger)
+	Subgroup           string   // secondary grouping axis ("" = none); splits each group into sub-sections
+	SubgroupLabel      string   // the sub-grouping's display name ("None" when off)
+	Order              string   // card sort within a group ("" = manual/stored position)
+	OrderLabel         string   // the ordering's display name ("Manual" when off)
+	ShowSubtasks       bool     // surface child items as their own cards (with a parent-ref chip)
+	Layout             string   // "board" (column lanes) or "list" (stacked rows) — a display lens over the same data
 	Lanes              []lane   // status mode
 	Palette            []swatch // lane-colour options for the header picker
 	MilestoneColumns   []milestoneColumn
 	ReleaseColumns     []releaseColumn // release mode: a column per release (+ "No release")
+	Columns            []groupColumn   // the "simple" groupings (priority/type/size/assignee/project/due)
 	HasReleases        bool            // the workspace has ≥1 release (gates the release group option)
 	StatusFilter       []statusOpt     // the status facet options
 	StatusSelected     int             // count badge on the Status trigger
@@ -95,10 +103,11 @@ func palette() []swatch {
 }
 
 type lane struct {
-	Status store.Status
-	Color  string
-	Hidden bool // filtered out (its status is deselected) — kept in the DOM, CSS-hidden
-	Cards  []cardView
+	Status    store.Status
+	Color     string
+	Hidden    bool // filtered out (its status is deselected) — kept in the DOM, CSS-hidden
+	Cards     []cardView
+	Subgroups []cardSubgroup // set when a sub-grouping is active; the template renders these instead of Cards
 }
 
 // ColorVar is the lane's colour as a template-safe `--lane-color` declaration
@@ -109,10 +118,11 @@ func (l lane) ColorVar() template.CSS { return colorVar(l.Color) }
 // milestoneColumn is one column of Milestone mode: the Backlog (ID "") or a
 // root milestone (ID = its item id) holding that milestone's children.
 type milestoneColumn struct {
-	ID    string
-	Title string
-	Color string // the milestone's own status colour, tinting its ◆ (Backlog: "")
-	Cards []cardView
+	ID        string
+	Title     string
+	Color     string // the milestone's own status colour, tinting its ◆ (Backlog: "")
+	Cards     []cardView
+	Subgroups []cardSubgroup
 }
 
 // ColorVar is the milestone's status colour as a template-safe `--lane-color`
@@ -124,11 +134,12 @@ func (m milestoneColumn) ColorVar() template.CSS { return colorVar(m.Color) }
 // the name for non-active releases ("planned"/"shipped"), "" for active and the
 // No-release bucket.
 type releaseColumn struct {
-	ID    string
-	Name  string
-	Color string
-	Tag   string
-	Cards []cardView
+	ID        string
+	Name      string
+	Color     string
+	Tag       string
+	Cards     []cardView
+	Subgroups []cardSubgroup
 }
 
 // ColorVar is the release's colour as a template-safe `--lane-color` declaration
@@ -155,6 +166,11 @@ type cardView struct {
 	HasProject   bool
 	ProjectName  string
 	ProjectColor string
+
+	// Parent reference (only in the Show-sub-tasks view, on child cards). HasParent
+	// gates the "↳ ACTA-7" chip; ParentRef is the parent's human id.
+	HasParent bool
+	ParentRef string
 
 	// Release chip (resolved from the item's release membership). HasRelease gates
 	// it; ReleaseID drives the filter's data attribute; ReleaseShipped dims the chip.
@@ -235,6 +251,114 @@ func buildCard(it store.Item, counts map[string]store.SubtaskCount, st store.Sta
 		cv.ReleaseShipped = rc.Shipped
 	}
 	return cv
+}
+
+// groupLabel is the human name of a grouping mode, shown on the Display menu's
+// grouping dropdown trigger. Unknown/"" falls back to Status (the default).
+func groupLabel(mode string) string {
+	switch mode {
+	case "milestone":
+		return "Milestone"
+	case "release":
+		return "Release"
+	case "priority":
+		return "Priority"
+	case "type":
+		return "Type"
+	case "size":
+		return "Size"
+	case "due":
+		return "Due"
+	case "assignee":
+		return "Assignee"
+	case "project":
+		return "Project"
+	default:
+		return "Status"
+	}
+}
+
+// subgroupLabel is the human name of a sub-grouping axis for the Display menu's
+// sub-group dropdown trigger; "" (off) reads as "None".
+func subgroupLabel(sub string) string {
+	if sub == "" {
+		return "None"
+	}
+	return groupLabel(sub)
+}
+
+// orderLabel is the human name of a card ordering for the Display menu's Ordering
+// dropdown trigger; "" (the stored drag order) reads as "Manual".
+func orderLabel(order string) string {
+	switch order {
+	case "priority":
+		return "Priority"
+	case "due":
+		return "Due date"
+	case "title":
+		return "Title"
+	case "created":
+		return "Created"
+	default:
+		return "Manual"
+	}
+}
+
+// orderCards sorts a group's cards in place by the chosen ordering (stable, so
+// equal keys keep their manual/position order). Manual ("") is a no-op handled by
+// applyOrdering. Directions are fixed: priority urgent-first with unset last, due
+// soonest-first with none last, title A–Z, created newest-first.
+func orderCards(cards []cardView, order string) {
+	switch order {
+	case "priority":
+		sort.SliceStable(cards, func(i, j int) bool {
+			ap, bp := cards[i].Item.Priority, cards[j].Item.Priority
+			if (ap == 0) != (bp == 0) {
+				return bp == 0 // a set priority sorts before unset
+			}
+			return ap > bp // higher value = more urgent, first
+		})
+	case "due":
+		sort.SliceStable(cards, func(i, j int) bool {
+			ad, bd := cards[i].Item.DueDate, cards[j].Item.DueDate
+			if (ad == nil) != (bd == nil) {
+				return bd == nil // a dated item sorts before no-due
+			}
+			if ad == nil {
+				return false
+			}
+			return ad.Before(*bd)
+		})
+	case "title":
+		sort.SliceStable(cards, func(i, j int) bool {
+			return strings.ToLower(cards[i].Item.Title) < strings.ToLower(cards[j].Item.Title)
+		})
+	case "created":
+		sort.SliceStable(cards, func(i, j int) bool {
+			return cards[i].Item.CreatedAt.After(cards[j].Item.CreatedAt)
+		})
+	}
+}
+
+// applyOrdering re-sorts every rendered column's cards by the chosen ordering. It
+// runs after the primary columns are built and before applySubgroups, so the
+// sub-sections inherit the ordering within each.
+func applyOrdering(data *boardData, order string) {
+	if order == "" {
+		return
+	}
+	for i := range data.Lanes {
+		orderCards(data.Lanes[i].Cards, order)
+	}
+	for i := range data.MilestoneColumns {
+		orderCards(data.MilestoneColumns[i].Cards, order)
+	}
+	for i := range data.ReleaseColumns {
+		orderCards(data.ReleaseColumns[i].Cards, order)
+	}
+	for i := range data.Columns {
+		orderCards(data.Columns[i].Cards, order)
+	}
 }
 
 // lastLaneID is the id of the board's final lane — the "done" equivalent used to
@@ -418,10 +542,23 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	allItems, err := h.board.Items(r.Context(), ws.ID)
+	// "Show sub-tasks" surfaces child items as their own cards; otherwise the
+	// board is root-only (children show as a count on their parent).
+	showSubtasks := r.URL.Query().Get("subtasks") == "1"
+	var allItems []store.Item
+	if showSubtasks {
+		allItems, err = h.board.ItemsWithSubtasks(r.Context(), ws.ID)
+	} else {
+		allItems, err = h.board.Items(r.Context(), ws.ID)
+	}
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
+	}
+	// Human ref per item, so child cards can name their parent ("↳ ACTA-7").
+	refByID := make(map[string]string, len(allItems))
+	for _, it := range allItems {
+		refByID[it.ID] = refID(ws.ItemPrefix, it.RefNum)
 	}
 	items := itemsOnBoard(allItems, statuses)
 	ch, err := h.chromeFor(r, "home", &ws)
@@ -439,11 +576,27 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mode := "status"
-	switch r.URL.Query().Get("mode") {
-	case "milestone":
-		mode = "milestone"
-	case "release":
-		mode = "release"
+	if m := r.URL.Query().Get("mode"); board.IsGroupMode(m) {
+		mode = m
+	}
+	// layout is a display lens orthogonal to grouping: the same lanes/items, drawn
+	// as columns ("board") or stacked rows ("list"). Kept out of the saved-view
+	// query (it's a personal preference, like the display props), persisted per
+	// workspace by board-prefs.js.
+	layout := "board"
+	if r.URL.Query().Get("layout") == "list" {
+		layout = "list"
+	}
+	// subgroup is a second grouping axis, rendered as sub-sections inside each
+	// primary group. It's ignored when it would match the primary (a no-op split).
+	subgroup := ""
+	if s := r.URL.Query().Get("subgroup"); board.IsSubgroupMode(s) && s != mode {
+		subgroup = s
+	}
+	// order is the sort within each group ("" = manual / stored drag position).
+	order := ""
+	if o := r.URL.Query().Get("order"); board.IsOrderMode(o) {
+		order = o
 	}
 
 	me := principalFrom(r.Context())
@@ -581,6 +734,13 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 		ArchiveHref:        "/" + ws.Slug + "/archive?board=" + bd.Slug,
 		LanesDashed:        isBacklogBoard(bd),
 		Mode:               mode,
+		GroupLabel:         groupLabel(mode),
+		Subgroup:           subgroup,
+		SubgroupLabel:      subgroupLabel(subgroup),
+		Order:              order,
+		OrderLabel:         orderLabel(order),
+		ShowSubtasks:       showSubtasks,
+		Layout:             layout,
 		Palette:            palette(),
 		StatusFilter:       statusFacet(statuses, filter),
 		StatusSelected:     len(filter.statuses),
@@ -622,9 +782,14 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 		data.MilestoneColumns = cols
 	case "release":
 		data.ReleaseColumns = releaseColumns(items, statuses, counts, filter, userByID, projectByID, releaseChips, releaseOf, releases, ws.ItemPrefix)
+	case "priority", "type", "size", "assignee", "project", "due":
+		data.Columns = h.groupColumns(mode, items, statuses, counts, filter, users, userByID, activeProjects, projectByID, releaseChips, ws.ItemPrefix, doneStatusID)
 	default:
 		data.Lanes = groupLanes(statuses, items, counts, filter, userByID, projectByID, releaseChips, ws.ItemPrefix)
 	}
+	applyParentRefs(&data, refByID)
+	applyOrdering(&data, order)
+	applySubgroups(&data, subgroup, statuses)
 	// A ?item=<id> deep link opens that item's modal (server-rendered, so it
 	// works on refresh and with JS off).
 	if itemID := r.URL.Query().Get("item"); itemID != "" {
@@ -656,6 +821,12 @@ func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, sta
 	noMilestone := milestoneColumn{Title: "No milestone"}
 	var milestones []store.Item
 	for _, it := range roots {
+		// Milestone mode is built from the parent tree (each milestone's Children),
+		// so children arriving via the Show-sub-tasks fetch are skipped here to
+		// avoid double-rendering — they already show under their milestone.
+		if it.ParentID != "" {
+			continue
+		}
 		if it.IsMilestone {
 			milestones = append(milestones, it)
 		} else {
@@ -720,6 +891,364 @@ func releaseColumns(items []store.Item, statuses []store.Status, counts map[stri
 		if rel.Status == "shipped" && len(byRelease[rel.ID]) > 0 {
 			cols = append(cols, col(rel, "shipped"))
 		}
+	}
+	return cols
+}
+
+// applyParentRefs marks each child card with its parent's human id, for the
+// "↳ ACTA-7" chip in the Show-sub-tasks view. refByID maps item id → human ref.
+// A no-op when no child cards are present (root cards have no ParentID). Runs
+// before applySubgroups so sub-section copies inherit the fields.
+func applyParentRefs(data *boardData, refByID map[string]string) {
+	mark := func(cards []cardView) {
+		for i := range cards {
+			pid := cards[i].Item.ParentID
+			if pid == "" {
+				continue
+			}
+			if ref, ok := refByID[pid]; ok {
+				cards[i].HasParent = true
+				cards[i].ParentRef = ref
+			}
+		}
+	}
+	for i := range data.Lanes {
+		mark(data.Lanes[i].Cards)
+	}
+	for i := range data.MilestoneColumns {
+		mark(data.MilestoneColumns[i].Cards)
+	}
+	for i := range data.ReleaseColumns {
+		mark(data.ReleaseColumns[i].Cards)
+	}
+	for i := range data.Columns {
+		mark(data.Columns[i].Cards)
+	}
+}
+
+// groupColumn is one column of a "simple" grouping (priority/type/size/assignee/
+// project/due): items bucketed by a single key. Key is the value a card dropped
+// into the column gets set to — an enum slug, a principal id, a project id, or ""
+// for the none/unassigned bucket (so a drop there clears the attribute). NoDrop
+// marks a bucket that can't be a drop target (the due buckets, which are too
+// coarse to pin a date). The header marker is the avatar (assignee), an explicit
+// hex dot (project colour), else a semantic dot keyed by Tone (styled in CSS).
+type groupColumn struct {
+	Key         string
+	Title       string
+	Tone        string // semantic dot hook (the enum/due slug), coloured in CSS
+	Color       string // explicit hex dot (project colour); wins over Tone
+	HasAvatar   bool   // assignee buckets show the person's avatar instead of a dot
+	IsAgent     bool
+	AvatarText  string
+	AvatarStyle template.CSS
+	NoDrop      bool
+	Cards       []cardView
+	Subgroups   []cardSubgroup
+}
+
+// ColorVar is the column's hex dot as a template-safe `--lane-color` declaration
+// (project grouping); see lane.ColorVar.
+func (c groupColumn) ColorVar() template.CSS { return colorVar(c.Color) }
+
+// cardSubgroup is one sub-section inside a primary group: the cards sharing a
+// secondary-axis value, under a small header. The header marker mirrors a primary
+// column — an avatar (assignee), a hex dot (project/status colour), or a semantic
+// tone dot (enum/due). Cards render with the same "card" template.
+type cardSubgroup struct {
+	Key         string
+	Title       string
+	Tone        string
+	Color       string
+	HasAvatar   bool
+	IsAgent     bool
+	AvatarText  string
+	AvatarStyle template.CSS
+	Cards       []cardView
+}
+
+// ColorVar is the sub-section's hex dot as a template-safe `--lane-color`
+// declaration (status/project sub-grouping).
+func (s cardSubgroup) ColorVar() template.CSS { return colorVar(s.Color) }
+
+// subgroupize splits a column's cards into sub-sections by the sub axis, in a
+// stable per-axis order, emitting only the sections that have cards. The header
+// for each section is derived from the cards themselves (cardView already carries
+// the resolved labels/colours/avatars), so no extra lookups are needed; statuses
+// is consulted only to order status sub-sections by board position.
+func subgroupize(cards []cardView, sub string, statuses []store.Status) []cardSubgroup {
+	if sub == "" || len(cards) == 0 {
+		return nil
+	}
+	headers := map[string]cardSubgroup{}
+	byKey := map[string][]cardView{}
+	for _, cv := range cards {
+		h := subHeaderOf(cv, sub)
+		if _, ok := headers[h.Key]; !ok {
+			headers[h.Key] = h
+		}
+		byKey[h.Key] = append(byKey[h.Key], cv)
+	}
+	out := make([]cardSubgroup, 0, len(headers))
+	for _, k := range subOrder(sub, headers, statuses) {
+		if cs := byKey[k]; len(cs) > 0 {
+			h := headers[k]
+			h.Cards = cs
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// subHeaderOf builds the sub-section header (key + marker) one card falls under
+// for the given sub axis, reading the already-resolved cardView fields.
+func subHeaderOf(cv cardView, sub string) cardSubgroup {
+	switch sub {
+	case "priority":
+		return cardSubgroup{Key: cv.Priority.Slug, Title: cv.Priority.Label, Tone: cv.Priority.Slug}
+	case "type":
+		return cardSubgroup{Key: cv.Type.Slug, Title: cv.Type.Label, Tone: cv.Type.Slug}
+	case "size":
+		return cardSubgroup{Key: cv.Size.Slug, Title: cv.Size.Label, Tone: cv.Size.Slug}
+	case "due":
+		b := board.DueBucket(cv.Item.DueDate)
+		return cardSubgroup{Key: b, Title: dueBucketTitle(b), Tone: b}
+	case "status":
+		return cardSubgroup{Key: cv.Item.StatusID, Title: cv.StatusName, Color: cv.Color}
+	case "assignee":
+		if cv.HasAssignee {
+			return cardSubgroup{Key: cv.Item.AssigneeID, Title: cv.AssigneeName, HasAvatar: true, IsAgent: cv.IsAgent, AvatarText: cv.AvatarText, AvatarStyle: cv.AvatarStyle}
+		}
+		return cardSubgroup{Key: "", Title: "Unassigned", Tone: "none"}
+	case "project":
+		if cv.HasProject {
+			return cardSubgroup{Key: cv.Item.ProjectID, Title: cv.ProjectName, Color: cv.ProjectColor}
+		}
+		return cardSubgroup{Key: "", Title: "No project", Tone: "none"}
+	}
+	return cardSubgroup{}
+}
+
+// subOrder returns the sub-section keys for an axis in display order: enums and
+// due follow their fixed vocab order; status follows board position; assignee and
+// project sort by name with the none/unassigned bucket last.
+func subOrder(sub string, headers map[string]cardSubgroup, statuses []store.Status) []string {
+	switch sub {
+	case "priority":
+		return slugOrder(board.Priorities)
+	case "type":
+		return slugOrder(board.ItemTypes)
+	case "size":
+		return slugOrder(board.Sizes)
+	case "due":
+		out := make([]string, len(dueBucketSpecs))
+		for i, s := range dueBucketSpecs {
+			out[i] = s.Key
+		}
+		return out
+	case "status":
+		out := make([]string, 0, len(statuses))
+		for _, s := range statuses {
+			out = append(out, s.ID)
+		}
+		return out
+	default: // assignee, project — by title, with the none bucket ("") last
+		keys := make([]string, 0, len(headers))
+		for k := range headers {
+			keys = append(keys, k)
+		}
+		sort.SliceStable(keys, func(i, j int) bool {
+			if (keys[i] == "") != (keys[j] == "") {
+				return keys[j] == "" // empty key sorts last
+			}
+			return strings.ToLower(headers[keys[i]].Title) < strings.ToLower(headers[keys[j]].Title)
+		})
+		return keys
+	}
+}
+
+func slugOrder(v board.AttrVocab) []string {
+	opts := v.Options()
+	out := make([]string, len(opts))
+	for i, o := range opts {
+		out[i] = o.Slug
+	}
+	return out
+}
+
+// dueBucketTitle is the display title for a due bucket key (see dueBucketSpecs).
+func dueBucketTitle(key string) string {
+	for _, s := range dueBucketSpecs {
+		if s.Key == key {
+			return s.Title
+		}
+	}
+	return key
+}
+
+// applySubgroups fills each rendered column's Subgroups from its Cards when a
+// sub-grouping is active. It runs after the primary columns are built, so it's
+// uniform across every grouping mode.
+func applySubgroups(data *boardData, sub string, statuses []store.Status) {
+	if sub == "" {
+		return
+	}
+	for i := range data.Lanes {
+		data.Lanes[i].Subgroups = subgroupize(data.Lanes[i].Cards, sub, statuses)
+	}
+	for i := range data.MilestoneColumns {
+		data.MilestoneColumns[i].Subgroups = subgroupize(data.MilestoneColumns[i].Cards, sub, statuses)
+	}
+	for i := range data.ReleaseColumns {
+		data.ReleaseColumns[i].Subgroups = subgroupize(data.ReleaseColumns[i].Cards, sub, statuses)
+	}
+	for i := range data.Columns {
+		data.Columns[i].Subgroups = subgroupize(data.Columns[i].Cards, sub, statuses)
+	}
+}
+
+// groupColumns builds the columns for a "simple" grouping: bucket every item by
+// the mode's key, then lay the buckets out in a stable order. buildCard renders
+// each card exactly as the lane/release modes do, so filtering, live updates and
+// the modal all carry over unchanged.
+func (h *handlers) groupColumns(mode string, items []store.Item, statuses []store.Status, counts map[string]store.SubtaskCount, filter boardFilter, users []store.User, userByID map[string]store.User, activeProjects []store.Project, projectByID map[string]store.Project, releases map[string]cardRelease, prefix, doneStatusID string) []groupColumn {
+	statusByID := make(map[string]store.Status, len(statuses))
+	for _, s := range statuses {
+		statusByID[s.ID] = s
+	}
+	card := func(it store.Item) cardView {
+		return buildCard(it, counts, statusByID[it.StatusID], filter, userByID, projectByID, releases, prefix, doneStatusID)
+	}
+	switch mode {
+	case "priority":
+		return enumColumns(board.Priorities, items, card, func(it store.Item) int { return it.Priority })
+	case "type":
+		return enumColumns(board.ItemTypes, items, card, func(it store.Item) int { return it.Type })
+	case "size":
+		return enumColumns(board.Sizes, items, card, func(it store.Item) int { return it.Size })
+	case "assignee":
+		return assigneeColumns(items, users, card)
+	case "project":
+		return projectColumns(items, activeProjects, projectByID, card)
+	case "due":
+		return dueColumns(items, card)
+	}
+	return nil
+}
+
+// enumColumns lays out one column per vocabulary option (in display order, which
+// is already board-friendly — Urgent first, "none" last), bucketing items by the
+// option their value maps to. The column Key is the option slug, so dropping a
+// card sets that value (and the "none" column clears it).
+func enumColumns(vocab board.AttrVocab, items []store.Item, card func(store.Item) cardView, val func(store.Item) int) []groupColumn {
+	byKey := map[string][]cardView{}
+	for _, it := range items {
+		slug := vocab.Slug(val(it))
+		byKey[slug] = append(byKey[slug], card(it))
+	}
+	opts := vocab.Options()
+	cols := make([]groupColumn, 0, len(opts))
+	for _, o := range opts {
+		cols = append(cols, groupColumn{Key: o.Slug, Title: o.Label, Tone: o.Slug, Cards: byKey[o.Slug]})
+	}
+	return cols
+}
+
+// assigneeColumns leads with an Unassigned bucket, then a column per principal
+// (humans and their agents), so a card can be dragged onto anyone. A principal no
+// longer in the workspace still gets a trailing column so its cards never vanish.
+func assigneeColumns(items []store.Item, users []store.User, card func(store.Item) cardView) []groupColumn {
+	byKey := map[string][]cardView{}
+	for _, it := range items {
+		byKey[it.AssigneeID] = append(byKey[it.AssigneeID], card(it))
+	}
+	cols := []groupColumn{{Key: "", Title: "Unassigned", Tone: "none", Cards: byKey[""]}}
+	sorted := append([]store.User(nil), users...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return strings.ToLower(displayName(sorted[i])) < strings.ToLower(displayName(sorted[j]))
+	})
+	seen := map[string]bool{"": true}
+	for _, u := range sorted {
+		name := displayName(u)
+		cols = append(cols, groupColumn{
+			Key: u.ID, Title: name, HasAvatar: true, IsAgent: u.AgentOfID != "",
+			AvatarText: initials(name), AvatarStyle: avatarStyle(u.ID), Cards: byKey[u.ID],
+		})
+		seen[u.ID] = true
+	}
+	cols = appendOrphanColumns(cols, byKey, seen, "Unknown", "")
+	return cols
+}
+
+// projectColumns leads with a No-project bucket, then the active projects, then
+// any other project still holding items here (e.g. archived) so nothing is lost.
+func projectColumns(items []store.Item, active []store.Project, byID map[string]store.Project, card func(store.Item) cardView) []groupColumn {
+	byKey := map[string][]cardView{}
+	for _, it := range items {
+		byKey[it.ProjectID] = append(byKey[it.ProjectID], card(it))
+	}
+	cols := []groupColumn{{Key: "", Title: "No project", Tone: "none", Cards: byKey[""]}}
+	seen := map[string]bool{"": true}
+	for _, p := range active {
+		cols = append(cols, groupColumn{Key: p.ID, Title: p.Name, Color: board.ProjectColorFor(p), Cards: byKey[p.ID]})
+		seen[p.ID] = true
+	}
+	// Archived (or otherwise non-active) projects that still hold items, titled and
+	// tinted from the full project map; sorted for a stable order.
+	var rest []string
+	for key := range byKey {
+		if !seen[key] {
+			rest = append(rest, key)
+		}
+	}
+	sort.Strings(rest)
+	for _, key := range rest {
+		title, color := "Archived project", ""
+		if p, ok := byID[key]; ok {
+			title, color = p.Name, board.ProjectColorFor(p)
+		}
+		cols = append(cols, groupColumn{Key: key, Title: title, Color: color, Cards: byKey[key]})
+	}
+	return cols
+}
+
+// dueBucketSpecs is the fixed column order of due-date grouping.
+var dueBucketSpecs = []struct{ Key, Title, Tone string }{
+	{"overdue", "Overdue", "overdue"},
+	{"today", "Today", "today"},
+	{"week", "This week", "week"},
+	{"later", "Later", "later"},
+	{"none", "No due date", "none"},
+}
+
+// dueColumns buckets items by board.DueBucket into the fixed date columns. Every
+// column is NoDrop: a bucket spans many days, so a drop can't say which date —
+// the client surfaces a toast and the item keeps its date (set via the modal).
+func dueColumns(items []store.Item, card func(store.Item) cardView) []groupColumn {
+	byKey := map[string][]cardView{}
+	for _, it := range items {
+		byKey[board.DueBucket(it.DueDate)] = append(byKey[board.DueBucket(it.DueDate)], card(it))
+	}
+	cols := make([]groupColumn, 0, len(dueBucketSpecs))
+	for _, s := range dueBucketSpecs {
+		cols = append(cols, groupColumn{Key: s.Key, Title: s.Title, Tone: s.Tone, NoDrop: true, Cards: byKey[s.Key]})
+	}
+	return cols
+}
+
+// appendOrphanColumns appends a column for each bucket key not already laid out,
+// so cards keyed to a vanished principal/project still show. Keys are sorted for
+// a stable order; tone tints the placeholder dot.
+func appendOrphanColumns(cols []groupColumn, byKey map[string][]cardView, seen map[string]bool, title, tone string) []groupColumn {
+	var rest []string
+	for key := range byKey {
+		if !seen[key] {
+			rest = append(rest, key)
+		}
+	}
+	sort.Strings(rest)
+	for _, key := range rest {
+		cols = append(cols, groupColumn{Key: key, Title: title, Tone: tone, Cards: byKey[key]})
 	}
 	return cols
 }

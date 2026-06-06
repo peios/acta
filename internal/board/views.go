@@ -31,6 +31,34 @@ var DefaultBoardViews = []defaultView{
 // viewFacetKeys are the multi-valued filter params a saved view retains.
 var viewFacetKeys = []string{"status", "assignee", "project", "release", "priority", "type", "size"}
 
+// GroupModes are the non-default board groupings (the ?mode= values). "status"
+// is the default lane grouping and is not listed — it's the empty/absent mode.
+// milestone and release have bespoke column layouts; the rest bucket items by a
+// single key (an enum, the assignee, the project) or by date (due).
+var GroupModes = []string{"milestone", "release", "priority", "type", "size", "due", "assignee", "project"}
+
+// IsGroupMode reports whether m is a recognised non-default grouping. Used to
+// validate the ?mode= param and to decide whether a saved view captures it.
+func IsGroupMode(m string) bool { return slices.Contains(GroupModes, m) }
+
+// SubgroupModes are the axes a board can sub-group by — a second level shown as
+// sub-sections inside each primary group. These reduce to a single per-item key
+// (an enum, the status, the assignee, the project, a due bucket); milestone and
+// release (structural/membership groupings) aren't offered as sub-axes in v1.
+var SubgroupModes = []string{"status", "priority", "type", "size", "due", "assignee", "project"}
+
+// IsSubgroupMode reports whether s is a recognised sub-grouping axis.
+func IsSubgroupMode(s string) bool { return slices.Contains(SubgroupModes, s) }
+
+// OrderModes are the sort orders for cards within a group (the Display menu's
+// Ordering control). "manual" is the default (stored drag position) and isn't
+// listed. Each has a fixed sensible direction: priority urgent-first, due
+// soonest-first (none last), title A–Z, created newest-first.
+var OrderModes = []string{"priority", "due", "title", "created"}
+
+// IsOrderMode reports whether o is a recognised non-default ordering.
+func IsOrderMode(o string) bool { return slices.Contains(OrderModes, o) }
+
 // NormalizeViewQuery reduces a board URL's query to the filter-defining params
 // (mode, the facet keys, and q) in a canonical, order-independent form, dropping
 // everything else (item=, board=, transient UI state). The result is what a view
@@ -39,8 +67,23 @@ var viewFacetKeys = []string{"status", "assignee", "project", "release", "priori
 // omitted — the All-items view is the empty string.
 func NormalizeViewQuery(v url.Values) string {
 	out := url.Values{}
-	if m := v.Get("mode"); m == "milestone" || m == "release" {
+	if m := v.Get("mode"); IsGroupMode(m) {
 		out.Set("mode", m)
+	}
+	// A sub-grouping is captured too, unless it's the no-op of matching the primary
+	// grouping (the server ignores that), so canonical forms line up with what
+	// renders. The primary defaults to status when absent.
+	if s := v.Get("subgroup"); IsSubgroupMode(s) {
+		m := v.Get("mode")
+		if m == "" {
+			m = "status"
+		}
+		if s != m {
+			out.Set("subgroup", s)
+		}
+	}
+	if o := v.Get("order"); IsOrderMode(o) {
+		out.Set("order", o)
 	}
 	for _, key := range viewFacetKeys {
 		for _, x := range dedupeSorted(v[key]) {

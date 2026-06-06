@@ -405,6 +405,19 @@ func (s *Service) Items(ctx context.Context, workspaceID string) ([]store.Item, 
 	return s.store.ItemsByWorkspace(ctx, workspaceID)
 }
 
+// ItemsWithSubtasks returns every active item — top-level and nested — ordered by
+// position, for the board's "Show sub-tasks" view (which surfaces children as
+// their own cards). It reuses AllItemsByWorkspace and re-sorts, since that query
+// orders by title (for the reparent picker) rather than board position.
+func (s *Service) ItemsWithSubtasks(ctx context.Context, workspaceID string) ([]store.Item, error) {
+	items, err := s.store.AllItemsByWorkspace(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	sort.SliceStable(items, func(i, j int) bool { return items[i].Position < items[j].Position })
+	return items, nil
+}
+
 // SearchItems returns items whose title or description contains query
 // (case-insensitive substring) at every nesting depth, ranked title-matches-first
 // then newest. boardID scopes to one board (an item's board is its status's);

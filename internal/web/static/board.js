@@ -29,6 +29,44 @@
   };
   const msg = (e) => MESSAGES[e.message] || 'Something went wrong — reload and try again.';
 
+  // toast shows a transient, non-blocking message (auto-dismisses). Used for soft
+  // rejections that aren't board errors — e.g. dragging into a due-date bucket.
+  let toastTimer = null;
+  function toast(text) {
+    let el = document.querySelector('.board-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'board-toast';
+      document.body.appendChild(el);
+    }
+    el.textContent = text;
+    // reflow so the transition re-runs even on a back-to-back toast
+    void el.offsetWidth;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 3400);
+  }
+
+  // The non-default board groupings (the ?mode= values), mirroring board.GroupModes
+  // in Go. "status" is the default and absent. Used to canonicalise the view query
+  // and to dispatch column wiring.
+  const GROUP_MODES = ['milestone', 'release', 'priority', 'type', 'size', 'due', 'assignee', 'project'];
+  // The sub-grouping axes (board.SubgroupModes in Go) — a second level inside each
+  // primary group. "status" is allowed here (unlike as a primary default).
+  const SUBGROUP_MODES = ['status', 'priority', 'type', 'size', 'due', 'assignee', 'project'];
+  // True when a sub-grouping is active. In that view a card's sub-section is set
+  // from the modal, not by dragging — so a within-column drag (which would only
+  // change sub-position) snaps back, and a cross-column primary move reloads so
+  // the board re-buckets.
+  const subgroupActive = () => !!(board && board.dataset.subgroup);
+  const ORDER_MODES = ['priority', 'due', 'title', 'created'];
+  const orderActive = () => !!(board && board.dataset.order);
+  // Manual within-group reordering is off when a sub-grouping or a non-manual
+  // ordering is active — both impose their own order, so a within-column drag has
+  // nothing to set and snaps back (cross-column primary moves still apply).
+  const manualLocked = () => subgroupActive() || orderActive();
+  const snapBack = (evt) => evt.from.insertBefore(evt.item, evt.from.children[evt.oldIndex] || null);
+
   const myClient = () => (window.actaClientId ? window.actaClientId() : '');
 
   async function api(path, body) {
@@ -438,10 +476,16 @@
         endCardDrag();
         if (handleNestDrop(evt)) return;
         if (handleBoardDrop(evt)) return;
+        // In a sub-grouped view a within-lane drag would only change sub-position,
+        // which isn't drag-settable — snap it back. Cross-lane still sets status.
+        if (manualLocked() && evt.to === evt.from) { snapBack(evt); return; }
         const id = evt.item.dataset.itemId;
         const destLane = evt.to.closest('.lane');
         evt.item.style.setProperty('--lane-color', destLane.dataset.color || '');
-        api('/items/' + id + '/move', { status_id: destLane.dataset.statusId, index: evt.newIndex })
+        // Count position among cards only — with sub-grouping active the lane also
+        // holds non-draggable sub-headers, which would otherwise offset the index.
+        const index = [...evt.to.children].filter((el) => el.classList.contains('item')).indexOf(evt.item);
+        api('/items/' + id + '/move', { status_id: destLane.dataset.statusId, index })
           .then((res) => {
             if (res && res.moved === false && res.gate) {
               // Gated lane, checklist unmet: snap the card back to where it was
@@ -450,6 +494,8 @@
               const srcLane = evt.from.closest('.lane');
               if (srcLane) evt.item.style.setProperty('--lane-color', srcLane.dataset.color || '');
               openGateModal(id, res.gate);
+            } else if (manualLocked()) {
+              location.reload(); // re-bucket into sub-sections after a cross-lane move
             }
           })
           .catch((e) => { if (boardErr) boardErr.textContent = msg(e); location.reload(); });
@@ -513,6 +559,7 @@
         const itemId = evt.item.dataset.itemId;
         const toCol = evt.to.closest('.mcol').dataset.parentId;
         const fromCol = evt.from.closest('.mcol').dataset.parentId;
+        if (manualLocked() && toCol === fromCol) { snapBack(evt); return; } // sub-position isn't drag-settable
         if (toCol !== fromCol) {
           api('/items/' + itemId + '/parent', { parent_id: toCol })
             .then(() => location.reload())
@@ -575,7 +622,91 @@
           api('/items/' + itemId + '/release', { release_id: toCol })
             .then(() => location.reload())
             .catch((e) => { if (boardErr) boardErr.textContent = msg(e); location.reload(); });
+        } else if (subgroupActive()) {
+          snapBack(evt); // sub-position isn't drag-settable
         }
+      },
+    });
+  }
+
+  // groupSetBody maps a grouping axis + column key to the setter endpoint segment
+  // and JSON body. Enum columns carry their slug (the "none" column clears);
+  // assignee/project columns carry an id ("" clears).
+  function groupSetBody(axis, key) {
+    if (axis === 'assignee') return { path: 'assignee', body: { assignee_id: key } };
+    if (axis === 'project') return { path: 'project', body: { project_id: key } };
+    return { path: axis, body: { value: key || 'none' } }; // priority / type / size
+  }
+
+  // wireGroupColumn handles a generic grouping column (priority/type/size/assignee/
+  // project/due). A card dragged into another column sets that attribute (and
+  // reloads, so counts and glyphs refresh); within-column order isn't persisted.
+  // Due buckets are read-only — a bucket spans many days, so a drop can't name a
+  // date; the card snaps back and a toast points to the modal. Quick-add creates
+  // the item and stamps the column's attribute on it.
+  function wireGroupColumn(col, axis) {
+    const key = col.dataset.groupCol;
+    const noDrop = col.hasAttribute('data-no-drop');
+    const enumAxis = axis === 'priority' || axis === 'type' || axis === 'size';
+
+    const add = col.querySelector('.item-add');
+    if (add) {
+      add.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = e.target.querySelector('.item-add-input');
+        const title = input.value.trim();
+        if (!title) return;
+        try {
+          const it = await api('/items', { title }); // server defaults the status
+          // Stamp the column's attribute, unless it's the none/unassigned bucket
+          // (enum "none" or an empty id), where the item's default already fits.
+          if (!noDrop && key && !(enumAxis && key === 'none')) {
+            const { path, body } = groupSetBody(axis, key);
+            await api('/items/' + it.id + '/' + path, body);
+          }
+          const card = newItem(it);
+          card.style.setProperty('--lane-color', it.color || '');
+          col.querySelector('.lane-items').append(card);
+          input.value = '';
+          input.focus();
+        } catch (err) { if (boardErr) boardErr.textContent = msg(err); }
+      });
+    }
+
+    new Sortable(col.querySelector('.lane-items'), {
+      group: 'items',
+      animation: 150,
+      draggable: '.item',
+      filter: '.item-del',
+      ghostClass: 'sortable-ghost',
+      chosenClass: 'sortable-chosen',
+      delay: 200,
+      delayOnTouchOnly: true,
+      touchStartThreshold: 6,
+      scroll: !touchPaging,
+      forceAutoScrollFallback: true,
+      scrollSensitivity: 60,
+      scrollSpeed: 14,
+      onStart: startCardDrag,
+      onChange: onDragChange,
+      onEnd: (evt) => {
+        endCardDrag();
+        if (handleBoardDrop(evt)) return;
+        const itemId = evt.item.dataset.itemId;
+        const toCol = evt.to.closest('.gcol');
+        const fromCol = evt.from.closest('.gcol');
+        if (!toCol || !fromCol) return;
+        if (toCol === fromCol) { if (manualLocked()) snapBack(evt); return; } // within-column: no-op
+        if (axis === 'due') {
+          // Buckets are too coarse to infer a date — snap back and explain.
+          evt.from.insertBefore(evt.item, evt.from.children[evt.oldIndex] || null);
+          toast('Due dates are too coarse to drag — open the item to pick a date.');
+          return;
+        }
+        const { path, body } = groupSetBody(axis, toCol.dataset.groupCol);
+        api('/items/' + itemId + '/' + path, body)
+          .then(() => location.reload())
+          .catch((e) => { if (boardErr) boardErr.textContent = msg(e); location.reload(); });
       },
     });
   }
@@ -1665,7 +1796,11 @@
     const cur = new URLSearchParams(location.search);
     const out = new URLSearchParams();
     const mode = cur.get('mode');
-    if (mode === 'milestone' || mode === 'release') out.set('mode', mode);
+    if (GROUP_MODES.includes(mode)) out.set('mode', mode);
+    const sub = cur.get('subgroup');
+    if (SUBGROUP_MODES.includes(sub) && sub !== (mode || 'status')) out.set('subgroup', sub);
+    const ord = cur.get('order');
+    if (ORDER_MODES.includes(ord)) out.set('order', ord);
     ['status', 'assignee', 'project', 'release', 'priority', 'type', 'size'].forEach((k) => {
       [...new Set(cur.getAll(k))].sort().forEach((v) => out.append(k, v));
     });
@@ -1717,6 +1852,10 @@
     const q = p.toString();
     history.replaceState(null, '', location.pathname + (q ? '?' + q : ''));
     syncModeLinks();
+    syncLayoutLinks();
+    syncSubgroupLinks();
+    syncOrderLinks();
+    syncSubtasksToggle();
   }
 
   // syncModeLinks keeps the Display dropdown's grouping links pointed at the
@@ -1735,6 +1874,70 @@
       const q = p.toString();
       a.setAttribute('href', location.pathname + (q ? '?' + q : ''));
     });
+  }
+
+  // syncLayoutLinks keeps the Display dropdown's List/Board toggle pointed at the
+  // current view: switching layout preserves grouping (mode) and every active
+  // filter, and carries the view anchor through so you stay on your view. Layout
+  // is server-rendered (the board repaints as columns or rows), so these stay
+  // real links; only the href is kept live. An open modal is dropped on switch.
+  function syncLayoutLinks() {
+    document.querySelectorAll('[data-layout-opt]').forEach((a) => {
+      const lay = a.dataset.layoutOpt;
+      const p = new URLSearchParams(location.search);
+      ['layout', 'item', 'view'].forEach((k) => p.delete(k));
+      if (lay === 'list') p.set('layout', 'list');
+      if (viewAnchor) p.set('view', viewAnchor.dataset.viewSlug);
+      const q = p.toString();
+      a.setAttribute('href', location.pathname + (q ? '?' + q : ''));
+    });
+  }
+
+  // syncSubgroupLinks keeps the Sub-group dropdown pointed at the current view:
+  // changing the sub-axis preserves the primary grouping and every filter. "None"
+  // clears it. Like grouping, it's server-rendered, so these stay real links.
+  function syncSubgroupLinks() {
+    document.querySelectorAll('a[data-subgroup]').forEach((a) => {
+      const sub = a.dataset.subgroup;
+      const p = new URLSearchParams(location.search);
+      ['subgroup', 'item', 'view'].forEach((k) => p.delete(k));
+      if (sub && sub !== 'none') p.set('subgroup', sub);
+      if (viewAnchor) p.set('view', viewAnchor.dataset.viewSlug);
+      const q = p.toString();
+      a.setAttribute('href', location.pathname + (q ? '?' + q : ''));
+    });
+  }
+
+  // syncOrderLinks keeps the Ordering dropdown pointed at the current view:
+  // changing the sort preserves grouping, sub-grouping and filters. "manual"
+  // clears it (the stored drag order).
+  function syncOrderLinks() {
+    document.querySelectorAll('a[data-order]').forEach((a) => {
+      const ord = a.dataset.order;
+      const p = new URLSearchParams(location.search);
+      ['order', 'item', 'view'].forEach((k) => p.delete(k));
+      if (ord && ord !== 'manual') p.set('order', ord);
+      if (viewAnchor) p.set('view', viewAnchor.dataset.viewSlug);
+      const q = p.toString();
+      a.setAttribute('href', location.pathname + (q ? '?' + q : ''));
+    });
+  }
+
+  // syncSubtasksToggle keeps the Show-sub-tasks switch pointed at the flipped
+  // state while preserving grouping/sub-group/order/filters, and reflects the
+  // current state in aria-checked. It's a real link (surfacing children needs a
+  // server fetch), so toggling navigates.
+  function syncSubtasksToggle() {
+    const a = document.querySelector('[data-subtasks-toggle]');
+    if (!a) return;
+    const on = new URLSearchParams(location.search).get('subtasks') === '1';
+    const p = new URLSearchParams(location.search);
+    ['subtasks', 'item', 'view'].forEach((k) => p.delete(k));
+    if (!on) p.set('subtasks', '1'); // off → on; on → off (left out)
+    if (viewAnchor) p.set('view', viewAnchor.dataset.viewSlug);
+    const q = p.toString();
+    a.setAttribute('href', location.pathname + (q ? '?' + q : ''));
+    a.setAttribute('aria-checked', on ? 'true' : 'false');
   }
 
   // --- saved views (the tab strip): reorder, save, rename, delete -----------
@@ -2044,6 +2247,11 @@
     // Release columns aren't reorderable (their order follows the releases'); a
     // card dragged between them re-files into that release.
     board.querySelectorAll('.rcol').forEach(wireReleaseColumn);
+  } else if (GROUP_MODES.includes(board.dataset.mode)) {
+    // The "simple" groupings share one column wiring; the axis decides which
+    // attribute a cross-column drag sets (or, for due, that it's read-only).
+    const axis = board.dataset.mode;
+    board.querySelectorAll('.gcol').forEach((c) => wireGroupColumn(c, axis));
   } else {
     board.querySelectorAll('.lane').forEach(wireLane);
 

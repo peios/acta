@@ -141,6 +141,30 @@ func sameDay(a, b *time.Time) bool {
 	return a.UTC().Year() == b.UTC().Year() && a.UTC().YearDay() == b.UTC().YearDay()
 }
 
+// DueBucket classifies a due date into a board-grouping bucket relative to today
+// (UTC): "overdue" (before today), "today", "week" (within the next seven days),
+// "later" (further out), or "none" (no due date). These keys drive the columns of
+// due-date grouping; unlike Overdue it ignores done-ness, since a grouping lens
+// files an item by its date regardless of status.
+func DueBucket(due *time.Time) string {
+	if due == nil {
+		return "none"
+	}
+	now := time.Now().UTC()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	d := *normalizeDue(due)
+	switch {
+	case d.Before(today):
+		return "overdue"
+	case d.Equal(today):
+		return "today"
+	case !d.After(today.AddDate(0, 0, 7)):
+		return "week"
+	default:
+		return "later"
+	}
+}
+
 // Overdue reports whether a due date is in the past and the item isn't done.
 // A done item is never overdue (its deadline no longer matters), and an item with
 // no due date never is. "Past" is strictly before today (UTC) — due today is not

@@ -19,6 +19,7 @@
   <div class="item-top">
     <span class="item-ref">{{.RefID}}</span>
     {{if .Subtasks.Total}}<span class="item-sub" title="Subtasks done">{{.Subtasks.Done}}/{{.Subtasks.Total}}</span>{{end}}
+    {{if .HasParent}}<span class="item-parent" title="Sub-task of {{.ParentRef}}">&#8627; {{.ParentRef}}</span>{{end}}
   </div>
   <span class="item-title">{{.Item.Title}}</span>
   {{if .Item.IsMilestone}}<span class="item-ms" title="Milestone">◆</span>{{end}}
@@ -49,6 +50,24 @@
   </span>
 </span>
 {{end}}
+
+{{/* lane-body fills a column/section's item area: flat cards normally, or, when a
+     sub-grouping is active, the cards under small sub-section headers. Headers are
+     siblings of the cards (not a nesting wrapper) so the column's existing drag
+     wiring keeps managing the .item children — cross-column primary moves still
+     work; the sub-axis is set from the item modal. The dot is `.` = the column. */}}
+{{define "lane-body"}}
+{{- if .Subgroups}}{{range .Subgroups}}
+<div class="subgroup-head" data-sub-key="{{.Key}}">
+  {{if .HasAvatar}}<span class="avatar sm{{if .IsAgent}} bot{{end}}" style="{{.AvatarStyle}}" title="{{.Title}}">{{.AvatarText}}</span>
+  {{else if .Color}}<span class="gcol-dot" style="{{.ColorVar}}"></span>
+  {{else}}<span class="gcol-dot" data-tone="{{.Tone}}"></span>{{end}}
+  <span class="subgroup-title">{{.Title}}</span>
+  <span class="subgroup-count">{{len .Cards}}</span>
+</div>
+{{range .Cards}}{{template "card" .}}{{end}}
+{{end}}{{else}}{{range .Cards}}{{template "card" .}}{{end}}{{end}}
+{{- end}}
 
 {{define "content"}}
 <main class="board-wrap" data-slug="{{.Workspace.Slug}}" data-board-id="{{.BoardID}}" data-lanes-dashed="{{if .LanesDashed}}1{{end}}" data-me="{{with .Principal}}{{.ID}}{{end}}">
@@ -97,6 +116,7 @@
         <div class="popover pop-filter" data-pop-menu hidden>
           <form class="board-filters" method="get" action="{{.BoardBase}}" data-filters>
             {{if ne .Mode "status"}}<input type="hidden" name="mode" value="{{.Mode}}">{{end}}
+            {{if eq .Layout "list"}}<input type="hidden" name="layout" value="list">{{end}}
             {{if .ActiveViewSlug}}<input type="hidden" name="view" value="{{.ActiveViewSlug}}">{{end}}
 
             <details class="facet" data-facet="status" open>
@@ -235,7 +255,7 @@
 
             <div class="filter-foot">
               <button type="submit" class="facet-apply">Apply</button>
-              <a class="facet-clear" href="{{.BoardBase}}?mode={{.Mode}}"{{if not .FilterActive}} hidden{{end}}>Clear</a>
+              <a class="facet-clear" href="{{.BoardBase}}?mode={{.Mode}}{{if eq .Layout "list"}}&amp;layout=list{{end}}"{{if not .FilterActive}} hidden{{end}}>Clear</a>
             </div>
           </form>
         </div>
@@ -246,26 +266,61 @@
           <svg class="ico" viewBox="0 0 16 16"><path d="M2.5 5h5"/><circle cx="9.5" cy="5" r="1.6"/><path d="M11.5 5h2"/><path d="M2.5 11h2"/><circle cx="6" cy="11" r="1.6"/><path d="M8 11h5.5"/></svg><span class="ph-label">Display</span>
         </button>
         <div class="popover pop-display" data-pop-menu hidden>
-          <div class="pop-seg">
-            <button type="button" disabled title="List view — coming soon">
+          <div class="pop-seg" data-layout-seg>
+            <a class="seg-opt{{if eq .Layout "list"}} active{{end}}" data-layout-opt="list" href="{{.BoardBase}}?layout=list{{if ne .Mode "status"}}&amp;mode={{.Mode}}{{end}}">
               <svg class="ico" viewBox="0 0 16 16"><path d="M5 4.5h8M5 8h8M5 11.5h8"/><path d="M2.6 4.5h.01M2.6 8h.01M2.6 11.5h.01"/></svg>List
-            </button>
-            <button type="button" class="active">
+            </a>
+            <a class="seg-opt{{if ne .Layout "list"}} active{{end}}" data-layout-opt="board" href="{{.BoardBase}}{{if ne .Mode "status"}}?mode={{.Mode}}{{end}}">
               <svg class="ico" viewBox="0 0 16 16"><rect x="2.5" y="3" width="4" height="10" rx="1"/><rect x="9.5" y="3" width="4" height="6.5" rx="1"/></svg>Board
-            </button>
+            </a>
           </div>
           <div class="pop-rows">
-            <div class="pop-row grp-row"><span class="lbl">Grouping</span>
-              <div class="grp">
-                <a class="grp-opt{{if eq .Mode "status"}} active{{end}}" href="{{.BoardBase}}?mode=status" data-mode="status">Status</a>
-                <a class="grp-opt{{if eq .Mode "milestone"}} active{{end}}" href="{{.BoardBase}}?mode=milestone" data-mode="milestone">Milestone</a>
-                {{if .HasReleases}}<a class="grp-opt{{if eq .Mode "release"}} active{{end}}" href="{{.BoardBase}}?mode=release" data-mode="release">Release</a>{{end}}
-              </div>
+            <div class="pop-row"><span class="lbl">Grouping</span><span class="spacer"></span>
+              <details class="dd-wrap grp-dd" data-grp-dd>
+                <summary class="dd"><span>{{.GroupLabel}}</span><span class="chev">&#9662;</span></summary>
+                <div class="dd-menu">
+                  <a class="grp-opt{{if eq .Mode "status"}} active{{end}}" href="{{.BoardBase}}{{if eq .Layout "list"}}?layout=list{{end}}" data-mode="status">Status</a>
+                  <a class="grp-opt{{if eq .Mode "milestone"}} active{{end}}" href="{{.BoardBase}}?mode=milestone{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-mode="milestone">Milestone</a>
+                  {{if .HasReleases}}<a class="grp-opt{{if eq .Mode "release"}} active{{end}}" href="{{.BoardBase}}?mode=release{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-mode="release">Release</a>{{end}}
+                  <a class="grp-opt{{if eq .Mode "priority"}} active{{end}}" href="{{.BoardBase}}?mode=priority{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-mode="priority">Priority</a>
+                  <a class="grp-opt{{if eq .Mode "type"}} active{{end}}" href="{{.BoardBase}}?mode=type{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-mode="type">Type</a>
+                  <a class="grp-opt{{if eq .Mode "size"}} active{{end}}" href="{{.BoardBase}}?mode=size{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-mode="size">Size</a>
+                  <a class="grp-opt{{if eq .Mode "due"}} active{{end}}" href="{{.BoardBase}}?mode=due{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-mode="due">Due</a>
+                  <a class="grp-opt{{if eq .Mode "assignee"}} active{{end}}" href="{{.BoardBase}}?mode=assignee{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-mode="assignee">Assignee</a>
+                  <a class="grp-opt{{if eq .Mode "project"}} active{{end}}" href="{{.BoardBase}}?mode=project{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-mode="project">Project</a>
+                </div>
+              </details>
             </div>
-            <div class="pop-row"><span class="lbl">Ordering</span><span class="spacer"></span><button class="dd" type="button" disabled title="Sorting — coming soon"><span>Manual</span><span class="chev">&#9662;</span></button></div>
+            <div class="pop-row"><span class="lbl">Sub-group</span><span class="spacer"></span>
+              <details class="dd-wrap grp-dd" data-grp-dd>
+                <summary class="dd"><span>{{.SubgroupLabel}}</span><span class="chev">&#9662;</span></summary>
+                <div class="dd-menu">
+                  <a class="grp-opt{{if not .Subgroup}} active{{end}}" href="{{.BoardBase}}{{if ne .Mode "status"}}?mode={{.Mode}}{{if eq .Layout "list"}}&amp;layout=list{{end}}{{else if eq .Layout "list"}}?layout=list{{end}}" data-subgroup="none">None</a>
+                  {{if ne .Mode "status"}}<a class="grp-opt{{if eq .Subgroup "status"}} active{{end}}" href="{{.BoardBase}}?subgroup=status{{if ne .Mode "status"}}&amp;mode={{.Mode}}{{end}}{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-subgroup="status">Status</a>{{end}}
+                  {{if ne .Mode "priority"}}<a class="grp-opt{{if eq .Subgroup "priority"}} active{{end}}" href="{{.BoardBase}}?subgroup=priority{{if ne .Mode "status"}}&amp;mode={{.Mode}}{{end}}{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-subgroup="priority">Priority</a>{{end}}
+                  {{if ne .Mode "type"}}<a class="grp-opt{{if eq .Subgroup "type"}} active{{end}}" href="{{.BoardBase}}?subgroup=type{{if ne .Mode "status"}}&amp;mode={{.Mode}}{{end}}{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-subgroup="type">Type</a>{{end}}
+                  {{if ne .Mode "size"}}<a class="grp-opt{{if eq .Subgroup "size"}} active{{end}}" href="{{.BoardBase}}?subgroup=size{{if ne .Mode "status"}}&amp;mode={{.Mode}}{{end}}{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-subgroup="size">Size</a>{{end}}
+                  {{if ne .Mode "due"}}<a class="grp-opt{{if eq .Subgroup "due"}} active{{end}}" href="{{.BoardBase}}?subgroup=due{{if ne .Mode "status"}}&amp;mode={{.Mode}}{{end}}{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-subgroup="due">Due</a>{{end}}
+                  {{if ne .Mode "assignee"}}<a class="grp-opt{{if eq .Subgroup "assignee"}} active{{end}}" href="{{.BoardBase}}?subgroup=assignee{{if ne .Mode "status"}}&amp;mode={{.Mode}}{{end}}{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-subgroup="assignee">Assignee</a>{{end}}
+                  {{if ne .Mode "project"}}<a class="grp-opt{{if eq .Subgroup "project"}} active{{end}}" href="{{.BoardBase}}?subgroup=project{{if ne .Mode "status"}}&amp;mode={{.Mode}}{{end}}{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-subgroup="project">Project</a>{{end}}
+                </div>
+              </details>
+            </div>
+            <div class="pop-row"><span class="lbl">Ordering</span><span class="spacer"></span>
+              <details class="dd-wrap grp-dd" data-grp-dd>
+                <summary class="dd"><span>{{.OrderLabel}}</span><span class="chev">&#9662;</span></summary>
+                <div class="dd-menu">
+                  <a class="grp-opt{{if not .Order}} active{{end}}" href="{{.BoardBase}}?order=manual{{if ne .Mode "status"}}&amp;mode={{.Mode}}{{end}}{{if .Subgroup}}&amp;subgroup={{.Subgroup}}{{end}}{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-order="manual">Manual</a>
+                  <a class="grp-opt{{if eq .Order "priority"}} active{{end}}" href="{{.BoardBase}}?order=priority{{if ne .Mode "status"}}&amp;mode={{.Mode}}{{end}}{{if .Subgroup}}&amp;subgroup={{.Subgroup}}{{end}}{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-order="priority">Priority</a>
+                  <a class="grp-opt{{if eq .Order "due"}} active{{end}}" href="{{.BoardBase}}?order=due{{if ne .Mode "status"}}&amp;mode={{.Mode}}{{end}}{{if .Subgroup}}&amp;subgroup={{.Subgroup}}{{end}}{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-order="due">Due date</a>
+                  <a class="grp-opt{{if eq .Order "title"}} active{{end}}" href="{{.BoardBase}}?order=title{{if ne .Mode "status"}}&amp;mode={{.Mode}}{{end}}{{if .Subgroup}}&amp;subgroup={{.Subgroup}}{{end}}{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-order="title">Title</a>
+                  <a class="grp-opt{{if eq .Order "created"}} active{{end}}" href="{{.BoardBase}}?order=created{{if ne .Mode "status"}}&amp;mode={{.Mode}}{{end}}{{if .Subgroup}}&amp;subgroup={{.Subgroup}}{{end}}{{if eq .Layout "list"}}&amp;layout=list{{end}}" data-order="created">Created</a>
+                </div>
+              </details>
+            </div>
           </div>
           <div class="pop-div"></div>
-          <div class="pop-toggle-row"><span class="lbl muted">Show sub-tasks</span><span class="spacer"></span><button class="toggle" type="button" aria-checked="true" disabled title="Coming soon"></button></div>
+          <div class="pop-toggle-row"><span class="lbl muted">Show sub-tasks</span><span class="spacer"></span><a class="toggle" role="switch" aria-checked="{{if .ShowSubtasks}}true{{else}}false{{end}}" data-subtasks-toggle aria-label="Show sub-tasks" href="{{.BoardBase}}?subtasks={{if .ShowSubtasks}}0{{else}}1{{end}}{{if ne .Mode "status"}}&amp;mode={{.Mode}}{{end}}{{if .Subgroup}}&amp;subgroup={{.Subgroup}}{{end}}{{if .Order}}&amp;order={{.Order}}{{end}}{{if eq .Layout "list"}}&amp;layout=list{{end}}"></a></div>
           <div class="pop-div"></div>
           <div class="pop-sec">Board options</div>
           <div class="pop-toggle-row"><span class="lbl">Show empty columns</span><span class="spacer"></span><button class="toggle" type="button" aria-checked="true" data-display="empty" aria-label="Show empty columns"></button></div>
@@ -284,7 +339,7 @@
   </div>
 
   {{if eq .Mode "release"}}
-  <div class="board" id="board" data-mode="release">
+  <div class="board" id="board" data-mode="release" data-layout="{{.Layout}}" data-subgroup="{{.Subgroup}}" data-order="{{.Order}}">
     {{range .ReleaseColumns}}
     <section class="lane rcol" data-column data-release-col="{{.ID}}"{{if not .Cards}} data-empty{{end}}>
       <header class="lane-head mcol-head">
@@ -292,9 +347,7 @@
         {{else}}<span class="mcol-title mcol-backlog">{{.Name}}</span>{{end}}
         <span class="lane-count">{{len .Cards}}</span>
       </header>
-      <div class="lane-items">
-        {{range .Cards}}{{template "card" .}}{{end}}
-      </div>
+      <div class="lane-items">{{template "lane-body" .}}</div>
       <form class="item-add">
         <input class="item-add-input" placeholder="+ Add item" maxlength="200" aria-label="New item title">
       </form>
@@ -302,7 +355,7 @@
     {{end}}
   </div>
   {{else if eq .Mode "milestone"}}
-  <div class="board" id="board" data-mode="milestone">
+  <div class="board" id="board" data-mode="milestone" data-layout="{{.Layout}}" data-subgroup="{{.Subgroup}}" data-order="{{.Order}}">
     {{range .MilestoneColumns}}
     <section class="lane mcol" data-column data-parent-id="{{.ID}}"{{if not .Cards}} data-empty{{end}}>
       <header class="lane-head mcol-head">
@@ -310,17 +363,35 @@
         {{else}}<span class="mcol-title mcol-backlog">{{.Title}}</span>{{end}}
         <span class="lane-count">{{len .Cards}}</span>
       </header>
-      <div class="lane-items">
-        {{range .Cards}}{{template "card" .}}{{end}}
-      </div>
+      <div class="lane-items">{{template "lane-body" .}}</div>
       <form class="item-add">
         <input class="item-add-input" placeholder="+ Add item" maxlength="200" aria-label="New item title">
       </form>
     </section>
     {{end}}
   </div>
+  {{else if .Columns}}
+  <div class="board" id="board" data-mode="{{.Mode}}" data-layout="{{.Layout}}" data-subgroup="{{.Subgroup}}" data-order="{{.Order}}">
+    {{range .Columns}}
+    <section class="lane gcol" data-column data-group-col="{{.Key}}"{{if .NoDrop}} data-no-drop{{end}}{{if not .Cards}} data-empty{{end}}>
+      <header class="lane-head gcol-head">
+        {{if .HasAvatar}}<span class="avatar sm{{if .IsAgent}} bot{{end}}" style="{{.AvatarStyle}}" title="{{.Title}}">{{.AvatarText}}</span>
+        {{else if .Color}}<span class="gcol-dot" style="{{.ColorVar}}"></span>
+        {{else}}<span class="gcol-dot" data-tone="{{.Tone}}"></span>{{end}}
+        <span class="gcol-title">{{.Title}}</span>
+        <span class="lane-count">{{len .Cards}}</span>
+      </header>
+      <div class="lane-items">{{template "lane-body" .}}</div>
+      {{if not .NoDrop}}
+      <form class="item-add">
+        <input class="item-add-input" placeholder="+ Add item" maxlength="200" aria-label="New item title">
+      </form>
+      {{end}}
+    </section>
+    {{end}}
+  </div>
   {{else}}
-  <div class="board" id="board" data-mode="status">
+  <div class="board" id="board" data-mode="status" data-layout="{{.Layout}}" data-subgroup="{{.Subgroup}}" data-order="{{.Order}}">
     {{range .Lanes}}
     <section class="lane{{if .Hidden}} is-filtered{{end}}" data-status-id="{{.Status.ID}}" data-color="{{.Color}}"{{if not .Cards}} data-empty{{end}}>
       <header class="lane-head">
@@ -336,9 +407,7 @@
         <span class="lane-count">{{len .Cards}}</span>
         <button class="lane-del" type="button" title="Delete lane" aria-label="Delete lane">×</button>
       </header>
-      <div class="lane-items">
-        {{range .Cards}}{{template "card" .}}{{end}}
-      </div>
+      <div class="lane-items">{{template "lane-body" .}}</div>
       <form class="item-add">
         <input class="item-add-input" placeholder="+ Add item" maxlength="200" aria-label="New item title">
       </form>
