@@ -1191,6 +1191,26 @@
       });
     }
 
+    // Priority / Type / Size pills — structurally identical text pickers. Each
+    // posts the chosen slug to /items/{id}/{attr} and patches the card glyph.
+    ['priority', 'type', 'size'].forEach((attr) => wireEnumPill(el, side, id, attr, fail));
+
+    // Due date input: posts the date (or "" to clear) and repaints the chip.
+    const dueInput = el.querySelector('.modal-due');
+    if (dueInput) {
+      dueInput.addEventListener('change', async (e) => {
+        const val = e.target.value;
+        try {
+          await api('/items/' + id + '/due', { due: val });
+          const c = cardOf(id);
+          if (c) {
+            setCardDue(c, val ? { date: val, label: fmtDue(val), overdue: dueIsOverdue(val) } : null);
+            reapplyFilters();
+          }
+        } catch (err2) { fail(err2); }
+      });
+    }
+
     // "More" kebab (mobile): relocate the whole side panel into a dropdown so
     // its remaining fields (parent, milestone, created, archive) live behind the
     // kebab. The hidden status/assignee selects ride along, still pill-driven, so
@@ -1406,8 +1426,9 @@
     return [...form.querySelectorAll('input[name="' + name + '"]:checked')].map((c) => c.value);
   }
 
-  function filterBoard(statuses, assignees, projects, releases) {
-    const sSet = new Set(statuses), aSet = new Set(assignees), pSet = new Set(projects), rSet = new Set(releases);
+  function filterBoard(sel) {
+    const sSet = new Set(sel.statuses), aSet = new Set(sel.assignees), pSet = new Set(sel.projects), rSet = new Set(sel.releases);
+    const prSet = new Set(sel.priorities), tSet = new Set(sel.types), zSet = new Set(sel.sizes), dSet = new Set(sel.due);
     const wrap = document.querySelector('.board-wrap');
     const me = wrap ? (wrap.dataset.me || '') : '';
     const statusOK = (id) => sSet.size === 0 || sSet.has(id);
@@ -1428,9 +1449,14 @@
       if (rSet.has(rid)) return true;
       return rSet.has('active') && active; // "Current release" = any active release
     };
+    // enum facets match by slug ("none" = the unset value); due matches the overdue flag.
+    const enumOK = (set, slug) => set.size === 0 || set.has(slug || 'none');
+    const dueOK = (card) => dSet.size === 0 || (dSet.has('overdue') && card.dataset.overdue === '1');
     board.querySelectorAll('.item').forEach((card) => {
       const hide = !statusOK(card.dataset.statusId) || !assigneeOK(card.dataset.assigneeId || '') ||
-        !projectOK(card.dataset.projectId || '') || !releaseOK(card.dataset.releaseId || '', card.dataset.releaseActive === '1');
+        !projectOK(card.dataset.projectId || '') || !releaseOK(card.dataset.releaseId || '', card.dataset.releaseActive === '1') ||
+        !enumOK(prSet, card.dataset.priority) || !enumOK(tSet, card.dataset.type) || !enumOK(zSet, card.dataset.size) ||
+        !dueOK(card);
       card.classList.toggle('is-filtered', hide);
     });
     board.querySelectorAll('.lane[data-status-id]').forEach((lane) => {
@@ -1443,31 +1469,49 @@
     if (summary) summary.innerHTML = label + (n ? ' <span class="facet-count">' + n + '</span>' : '');
   }
 
-  function syncFilterURL(statuses, assignees, projects, releases) {
+  // FILTER_KEYS are the facet query params, in the order the URL lists them.
+  const FILTER_KEYS = ['status', 'assignee', 'project', 'release', 'priority', 'type', 'size', 'due'];
+
+  function syncFilterURL(sel) {
     const p = new URLSearchParams(location.search);
-    p.delete('status'); p.delete('assignee'); p.delete('project'); p.delete('release');
-    statuses.forEach((v) => p.append('status', v));
-    assignees.forEach((v) => p.append('assignee', v));
-    projects.forEach((v) => p.append('project', v));
-    releases.forEach((v) => p.append('release', v));
+    FILTER_KEYS.forEach((k) => p.delete(k));
+    sel.statuses.forEach((v) => p.append('status', v));
+    sel.assignees.forEach((v) => p.append('assignee', v));
+    sel.projects.forEach((v) => p.append('project', v));
+    sel.releases.forEach((v) => p.append('release', v));
+    sel.priorities.forEach((v) => p.append('priority', v));
+    sel.types.forEach((v) => p.append('type', v));
+    sel.sizes.forEach((v) => p.append('size', v));
+    sel.due.forEach((v) => p.append('due', v));
     const q = p.toString();
     history.replaceState(null, '', location.pathname + (q ? '?' + q : ''));
   }
 
   function applyFilters(form) {
-    const statuses = facetValues(form, 'status');
-    const assignees = facetValues(form, 'assignee');
-    const projects = facetValues(form, 'project');
-    const releases = facetValues(form, 'release');
-    filterBoard(statuses, assignees, projects, releases);
-    setFacetCount(form, 'status', statuses.length, 'Status');
-    setFacetCount(form, 'assignee', assignees.length, 'Assignee');
-    setFacetCount(form, 'project', projects.length, 'Project');
-    setFacetCount(form, 'release', releases.length, 'Release');
-    syncFilterURL(statuses, assignees, projects, releases);
+    const sel = {
+      statuses: facetValues(form, 'status'),
+      assignees: facetValues(form, 'assignee'),
+      projects: facetValues(form, 'project'),
+      releases: facetValues(form, 'release'),
+      priorities: facetValues(form, 'priority'),
+      types: facetValues(form, 'type'),
+      sizes: facetValues(form, 'size'),
+      due: facetValues(form, 'due'),
+    };
+    filterBoard(sel);
+    setFacetCount(form, 'status', sel.statuses.length, 'Status');
+    setFacetCount(form, 'assignee', sel.assignees.length, 'Assignee');
+    setFacetCount(form, 'project', sel.projects.length, 'Project');
+    setFacetCount(form, 'release', sel.releases.length, 'Release');
+    setFacetCount(form, 'priority', sel.priorities.length, 'Priority');
+    setFacetCount(form, 'type', sel.types.length, 'Type');
+    setFacetCount(form, 'size', sel.sizes.length, 'Size');
+    setFacetCount(form, 'due', sel.due.length, 'Due');
+    syncFilterURL(sel);
     refreshViewState(); // update the dirty / Save state for the current view
     if (window.__actaBoardPrefs) window.__actaBoardPrefs.save(); // remember filters per workspace
-    const total = statuses.length + assignees.length + projects.length + releases.length;
+    const total = sel.statuses.length + sel.assignees.length + sel.projects.length + sel.releases.length +
+      sel.priorities.length + sel.types.length + sel.sizes.length + sel.due.length;
     const clear = form.querySelector('.facet-clear');
     if (clear) clear.hidden = total === 0;
     const badge = document.querySelector('[data-filter-badge]');
@@ -1503,7 +1547,7 @@
 
     form.addEventListener('submit', (e) => { e.preventDefault(); applyFilters(form); });
 
-    form.querySelectorAll('input[name="status"], input[name="project"], input[name="release"], input[value="me"], input[value="unassigned"]').forEach((c) => {
+    form.querySelectorAll('input[name="status"], input[name="project"], input[name="release"], input[name="priority"], input[name="type"], input[name="size"], input[name="due"], input[value="me"], input[value="unassigned"]').forEach((c) => {
       c.addEventListener('change', () => applyFilters(form));
     });
 
@@ -1622,9 +1666,10 @@
     const out = new URLSearchParams();
     const mode = cur.get('mode');
     if (mode === 'milestone' || mode === 'release') out.set('mode', mode);
-    ['status', 'assignee', 'project', 'release'].forEach((k) => {
+    ['status', 'assignee', 'project', 'release', 'priority', 'type', 'size'].forEach((k) => {
       [...new Set(cur.getAll(k))].sort().forEach((v) => out.append(k, v));
     });
+    if (cur.get('due') === 'overdue') out.set('due', 'overdue'); // single-valued token, like the server
     out.sort();
     return out.toString();
   }
@@ -2155,6 +2200,108 @@
     chip.querySelector('.item-release-name').textContent = name;
   }
 
+  // ATTR_LABELS titles the per-attribute tooltip; ATTR_BASECLASS is the glyph's
+  // class stem (the slug suffix is appended per value).
+  const ATTR_LABELS = { priority: 'Priority', type: 'Type', size: 'Size' };
+
+  // wireEnumPill wires one priority/type/size pill: clicking an option drives the
+  // hidden .modal-<attr> select, whose change handler posts the slug and repaints
+  // the card glyph. Mirrors the project/release pills, minus the colour dot.
+  function wireEnumPill(el, side, id, attr, fail) {
+    const sel = el.querySelector('.modal-' + attr);
+    const pill = el.querySelector('[data-' + attr + '-pill-side]');
+    if (!sel || !pill) return;
+    const { trigger } = side.wire(pill);
+    const nameEl = pill.querySelector('[data-side-' + attr + '-name]');
+    const sync = () => {
+      const opt = sel.options[sel.selectedIndex];
+      nameEl.textContent = opt ? opt.textContent : '';
+      trigger.classList.toggle('unset', !sel.value || sel.value === 'none');
+    };
+    pill.querySelectorAll('[data-' + attr + '-opt]').forEach((o) => {
+      o.addEventListener('click', () => {
+        side.closeAll();
+        const slug = o.dataset[attr + 'Opt'];
+        if (slug !== sel.value) {
+          sel.value = slug;
+          sel.dispatchEvent(new Event('change'));
+        }
+        sync();
+      });
+    });
+    sync();
+    sel.addEventListener('change', async (e) => {
+      const slug = e.target.value;
+      const opt = e.target.options[e.target.selectedIndex];
+      try {
+        await api('/items/' + id + '/' + attr, { value: slug });
+        const c = cardOf(id);
+        if (c) {
+          setCardEnum(c, attr, { slug, label: opt ? opt.textContent : '', set: slug !== 'none' });
+          reapplyFilters(); // the facet may now hide/show this card
+        }
+      } catch (err2) { fail(err2); }
+    });
+  }
+
+  // setCardEnum toggles a card's priority/type/size glyph in place (class, text,
+  // visibility) and updates the data attribute the filter reads.
+  function setCardEnum(card, attr, info) {
+    const el = card.querySelector('.attr[data-attr="' + attr + '"]');
+    if (!el) return;
+    const slug = info ? info.slug : 'none';
+    const set = !!(info && info.set);
+    card.dataset[attr] = slug;
+    el.dataset.val = slug;
+    el.hidden = !set;
+    el.title = ATTR_LABELS[attr] + ': ' + (info ? info.label : '');
+    if (attr === 'priority') {
+      el.className = 'attr prio p-' + slug; // keeps the inner <svg>
+    } else if (attr === 'type') {
+      el.className = 'attr type t-' + slug;
+      el.textContent = set ? info.label.charAt(0) : '';
+    } else if (attr === 'size') {
+      el.className = 'attr size';
+      el.textContent = set ? info.label : '';
+    }
+  }
+
+  // setCardDue toggles a card's due chip. due is {date,label,overdue} or null.
+  function setCardDue(card, due) {
+    const el = card.querySelector('.attr[data-attr="due"]');
+    if (!el) return;
+    card.dataset.hasDue = due ? '1' : '';
+    card.dataset.overdue = (due && due.overdue) ? '1' : '';
+    el.hidden = !due;
+    if (due) {
+      el.classList.toggle('overdue', !!due.overdue);
+      el.title = 'Due ' + due.label;
+      const lab = el.querySelector('.due-label');
+      if (lab) lab.textContent = due.label;
+    }
+  }
+
+  const DUE_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  // fmtDue formats "YYYY-MM-DD" as "2 Jan" (with year when not the current one),
+  // matching the server's shortDueLabel so an optimistic chip equals a reload.
+  function fmtDue(s) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || '');
+    if (!m) return s || '';
+    const y = +m[1];
+    return +m[3] + ' ' + DUE_MONTHS[+m[2] - 1] + (y === new Date().getFullYear() ? '' : ' ' + y);
+  }
+
+  // dueIsOverdue is the optimistic local check (strictly before today). The server
+  // also factors in done-ness; its authoritative value lands on the next reload.
+  function dueIsOverdue(s) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || '');
+    if (!m) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return new Date(+m[1], +m[2] - 1, +m[3]) < today;
+  }
+
   function applyUpsert(msg) {
     let card = cardOf(msg.id);
     // A non-root item (e.g. just reparented under another) has no board card; if
@@ -2184,6 +2331,10 @@
     card.dataset.releaseId = msg.release ? msg.release.id : '';
     card.dataset.releaseActive = (msg.release && !msg.release.shipped) ? '1' : '';
     setCardRelease(card, msg.release ? msg.release.name : '', msg.release ? msg.release.color : '', msg.release ? msg.release.shipped : false);
+    if (msg.priority) setCardEnum(card, 'priority', { slug: msg.priority.slug, label: msg.priority.label, set: msg.priority.value !== 0 });
+    if (msg.type) setCardEnum(card, 'type', { slug: msg.type.slug, label: msg.type.label, set: msg.type.value !== 0 });
+    if (msg.size) setCardEnum(card, 'size', { slug: msg.size.slug, label: msg.size.label, set: msg.size.value !== 0 });
+    setCardDue(card, msg.due || null);
     if (msg.color) card.style.setProperty('--lane-color', msg.color);
     // Only re-home the card when it isn't already in the target lane, so a field
     // change never yanks it to the bottom of its column.

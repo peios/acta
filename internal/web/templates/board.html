@@ -15,7 +15,7 @@
 {{- end}}
 
 {{define "card"}}
-<article class="item{{if .Hidden}} is-filtered{{end}}" data-item-id="{{.Item.ID}}" data-status-id="{{.Item.StatusID}}" data-assignee-id="{{.Item.AssigneeID}}" data-project-id="{{.Item.ProjectID}}" data-release-id="{{.ReleaseID}}" data-release-active="{{if and .HasRelease (not .ReleaseShipped)}}1{{end}}" style="{{.ColorVar}}"{{if .StatusName}} title="{{.StatusName}}"{{end}}>
+<article class="item{{if .Hidden}} is-filtered{{end}}" data-item-id="{{.Item.ID}}" data-status-id="{{.Item.StatusID}}" data-assignee-id="{{.Item.AssigneeID}}" data-project-id="{{.Item.ProjectID}}" data-release-id="{{.ReleaseID}}" data-release-active="{{if and .HasRelease (not .ReleaseShipped)}}1{{end}}" data-priority="{{.Priority.Slug}}" data-type="{{.Type.Slug}}" data-size="{{.Size.Slug}}" data-has-due="{{if .HasDue}}1{{end}}" data-overdue="{{if .Overdue}}1{{end}}" style="{{.ColorVar}}"{{if .StatusName}} title="{{.StatusName}}"{{end}}>
   <div class="item-top">
     <span class="item-ref">{{.RefID}}</span>
     {{if .Subtasks.Total}}<span class="item-sub" title="Subtasks done">{{.Subtasks.Done}}/{{.Subtasks.Total}}</span>{{end}}
@@ -24,12 +24,30 @@
   {{if .Item.IsMilestone}}<span class="item-ms" title="Milestone">◆</span>{{end}}
   <button class="item-del" type="button" title="Archive" aria-label="Archive item">×</button>
   <div class="item-meta">
+    {{template "card-attrs" .}}
     {{if .HasProject}}<span class="item-project" style="{{.ProjectColorVar}}" title="Project: {{.ProjectName}}"><span class="item-project-dot"></span><span class="item-project-name">{{.ProjectName}}</span></span>{{end}}
     {{if .HasRelease}}<span class="item-release{{if .ReleaseShipped}} shipped{{end}}" style="{{.ReleaseColorVar}}" title="Release: {{.ReleaseName}}"><span class="item-release-dot"></span><span class="item-release-name">{{.ReleaseName}}</span></span>{{end}}
     <span class="meta-spacer"></span>
     {{if .HasAssignee}}<span class="avatar sm{{if .IsAgent}} bot{{end}}" style="{{.AvatarStyle}}" title="{{.AssigneeName}}">{{.AvatarText}}</span>{{end}}
   </div>
 </article>
+{{end}}
+
+{{/* card-attrs: the priority/type/size/due glyph cluster on the meta row. Each
+     glyph is always in the DOM (hidden when unset) so board.js can toggle it in
+     place on a live update, rather than build markup. */}}
+{{define "card-attrs"}}
+<span class="item-attrs">
+  <span class="attr prio p-{{.Priority.Slug}}" data-attr="priority" data-val="{{.Priority.Slug}}" title="Priority: {{.Priority.Label}}"{{if not .Priority.Value}} hidden{{end}} aria-label="Priority: {{.Priority.Label}}">
+    <svg viewBox="0 0 14 12" aria-hidden="true"><rect class="b1" x="0.5" y="7" width="3" height="4.5" rx="1"/><rect class="b2" x="5.5" y="3.5" width="3" height="8" rx="1"/><rect class="b3" x="10.5" y="0.5" width="3" height="11" rx="1"/></svg>
+  </span>
+  <span class="attr type t-{{.Type.Slug}}" data-attr="type" data-val="{{.Type.Slug}}" title="Type: {{.Type.Label}}"{{if not .Type.Value}} hidden{{end}} aria-label="Type: {{.Type.Label}}">{{if .Type.Value}}{{slice .Type.Label 0 1}}{{end}}</span>
+  <span class="attr size" data-attr="size" data-val="{{.Size.Slug}}" title="Size: {{.Size.Label}}"{{if not .Size.Value}} hidden{{end}} aria-label="Size: {{.Size.Label}}">{{if .Size.Value}}{{.Size.Label}}{{end}}</span>
+  <span class="attr due{{if .Overdue}} overdue{{end}}" data-attr="due" title="Due {{.DueLabel}}"{{if not .HasDue}} hidden{{end}} aria-label="Due {{.DueLabel}}">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3"/></svg>
+    <span class="due-label">{{.DueLabel}}</span>
+  </span>
+</span>
 {{end}}
 
 {{define "content"}}
@@ -168,6 +186,52 @@
               </div>
             </details>
             {{end}}
+
+            <details class="facet" data-facet="priority">
+              <summary class="facet-trigger">Priority{{if .PrioritySelected}} <span class="facet-count">{{.PrioritySelected}}</span>{{end}}</summary>
+              <div class="facet-panel">
+                {{range .PriorityFilter}}
+                <label class="facet-row">
+                  <input type="checkbox" name="priority" value="{{.Slug}}"{{if .Selected}} checked{{end}}>
+                  <span class="facet-label">{{.Label}}</span>
+                </label>
+                {{end}}
+              </div>
+            </details>
+
+            <details class="facet" data-facet="type">
+              <summary class="facet-trigger">Type{{if .TypeSelected}} <span class="facet-count">{{.TypeSelected}}</span>{{end}}</summary>
+              <div class="facet-panel">
+                {{range .TypeFilter}}
+                <label class="facet-row">
+                  <input type="checkbox" name="type" value="{{.Slug}}"{{if .Selected}} checked{{end}}>
+                  <span class="facet-label">{{.Label}}</span>
+                </label>
+                {{end}}
+              </div>
+            </details>
+
+            <details class="facet" data-facet="size">
+              <summary class="facet-trigger">Size{{if .SizeSelected}} <span class="facet-count">{{.SizeSelected}}</span>{{end}}</summary>
+              <div class="facet-panel">
+                {{range .SizeFilter}}
+                <label class="facet-row">
+                  <input type="checkbox" name="size" value="{{.Slug}}"{{if .Selected}} checked{{end}}>
+                  <span class="facet-label">{{.Label}}</span>
+                </label>
+                {{end}}
+              </div>
+            </details>
+
+            <details class="facet" data-facet="due">
+              <summary class="facet-trigger">Due{{if .OverdueSelected}} <span class="facet-count">1</span>{{end}}</summary>
+              <div class="facet-panel">
+                <label class="facet-row">
+                  <input type="checkbox" name="due" value="overdue"{{if .OverdueSelected}} checked{{end}}>
+                  <span class="facet-label">Overdue</span>
+                </label>
+              </div>
+            </details>
 
             <div class="filter-foot">
               <button type="submit" class="facet-apply">Apply</button>

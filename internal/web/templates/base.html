@@ -476,7 +476,7 @@
   /* the ref + subtask count moved above the title, so the meta row can be empty
      (just the spacer); collapse it then so cards stay tight. It still exists in
      the DOM for board.js to drop a chip/avatar into, which reveals it via :has(). */
-  .item-meta:not(:has(.item-project, .item-release, .avatar)) { display: none; }
+  .item-meta:not(:has(.item-project, .item-release, .avatar, .attr:not([hidden]))) { display: none; }
   .meta-spacer { flex: 1; }
   /* top line: human id + subtask count, sitting tight above the title */
   .item-top { display: flex; align-items: baseline; gap: 7px; margin-bottom: 2px; padding-right: 1rem; }
@@ -494,6 +494,36 @@
   .item-release-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .item-release.shipped { opacity: .6; }
   .board-wrap.hide-release .item-release { display: none; }
+
+  /* Item attribute glyphs: priority bars, type/size badges, due chip. A tight
+     leading cluster on the meta row; each child hides when its value is unset. */
+  .item-attrs { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+  .item-attrs:not(:has(.attr:not([hidden]))) { display: none; }
+  .attr { display: inline-flex; align-items: center; flex: none; line-height: 1; }
+  .attr[hidden] { display: none; }
+  /* priority: three ascending bars, lit up to the level and tinted by urgency */
+  .attr.prio svg { width: 13px; height: 11px; display: block; }
+  .attr.prio rect { fill: var(--dim); }
+  .attr.prio.p-low rect.b1,
+  .attr.prio.p-medium rect.b1, .attr.prio.p-medium rect.b2,
+  .attr.prio.p-high rect, .attr.prio.p-urgent rect { fill: currentColor; }
+  .attr.prio.p-low { color: var(--muted); }
+  .attr.prio.p-medium { color: var(--accent); }
+  .attr.prio.p-high { color: #e0a14a; }
+  .attr.prio.p-urgent { color: var(--danger); }
+  /* type: a small tinted letter badge (F/B/C) */
+  .attr.type { width: 16px; height: 16px; justify-content: center; border-radius: 4px; font-size: 9.5px; font-weight: 700; letter-spacing: .01em; }
+  .attr.type.t-feature { color: #74c98a; background: color-mix(in srgb, #74c98a 16%, transparent); }
+  .attr.type.t-bug { color: var(--danger-text); background: color-mix(in srgb, var(--danger) 16%, transparent); }
+  .attr.type.t-chore { color: var(--muted); background: color-mix(in srgb, var(--faint) 20%, transparent); }
+  /* size: a neutral text badge (XS…XL) */
+  .attr.size { height: 16px; padding: 0 5px; justify-content: center; border-radius: 4px; font-size: 9.5px; font-weight: 600; letter-spacing: .02em; color: var(--faint); background: color-mix(in srgb, var(--faint) 14%, transparent); font-variant-numeric: tabular-nums; }
+  /* due: a small calendar chip, red when overdue */
+  .attr.due { gap: 3px; height: 16px; padding: 0 6px 0 5px; border-radius: 999px; font-size: 10.5px; color: var(--faint); background: color-mix(in srgb, var(--faint) 13%, transparent); }
+  .attr.due svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.3; }
+  .attr.due .due-label { font-variant-numeric: tabular-nums; }
+  .attr.due.overdue { color: var(--danger-text); background: color-mix(in srgb, var(--danger) 15%, transparent); }
+  .board-wrap.hide-attrs .item-attrs { display: none; }
 
   .item-add { padding: 0; margin: 0; }
   .item-add-input { width: 100%; background: none; border: 1px dashed var(--border-soft); border-radius: 7px; color: var(--faint); font: inherit; font-size: 13px; padding: .5rem .6rem; }
@@ -725,7 +755,7 @@
      title->content spacer instead of stacking with .section-title's margin. */
   .modal-main .section-title { margin-bottom: 0; }
   .modal-desc-view, [data-desc-rendered], [data-desc-preview], [data-desc-full] { min-width: 0; }
-  .modal-side { padding: 1.1rem 1.2rem; display: grid; gap: .9rem; align-content: start; border-left: 1px solid var(--border-soft); }
+  .modal-side { padding: 1.1rem 1.2rem; display: grid; gap: .55rem; align-content: start; border-left: 1px solid var(--border-soft); }
   /* quick-action controls at the top of the side panel: a split Watch control
      (toggle + notification-category dropdown) and an Archive icon pill. */
   .side-tools { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
@@ -764,7 +794,7 @@
   .kebab-item .ico { width: 15px; height: 15px; flex: none; color: var(--faint); }
   .kebab-item:hover .ico { color: var(--accent); }
   .kebab-empty { margin: 0; padding: .55rem; color: var(--faint); font-size: .82rem; text-align: center; }
-  .side-field { display: grid; gap: .4rem; }
+  .side-field { display: grid; gap: .2rem; }
   .side-value { font-size: .85rem; color: var(--text); }
   .side-foot { margin-top: .3rem; }
   .side-foot .btn-secondary { width: 100%; text-align: center; }
@@ -778,7 +808,7 @@
   .side-pill {
     display: flex; align-items: center; gap: .5rem; width: 100%;
     background: var(--field); border: 1px solid var(--border-soft); border-radius: 999px;
-    color: var(--text); font: inherit; font-size: .88rem; padding: .48rem .8rem;
+    color: var(--text); font: inherit; font-size: .85rem; padding: .36rem .8rem;
     cursor: pointer; text-align: left; transition: border-color .12s;
   }
   .side-pill:hover, .side-pill.active { border-color: var(--border-str); }
@@ -789,6 +819,16 @@
   .side-pill.unset .person-icon { display: block; }
   .side-pill.unset [data-side-assignee-avatar] { display: none; }
   .side-pill .avatar.sm { flex: none; }
+  /* due date input — sized to match a side-pill */
+  .side-date {
+    width: 100%; background: var(--field); border: 1px solid var(--border-soft);
+    border-radius: 999px; color: var(--text); font: inherit; font-size: .85rem;
+    padding: .32rem .8rem; cursor: pointer; transition: border-color .12s;
+  }
+  .side-date:hover { border-color: var(--border-str); }
+  .side-date:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+  .side-date:invalid, .side-date:not(:valid) { color: var(--muted); }
+  .side-date::-webkit-calendar-picker-indicator { filter: invert(.7); cursor: pointer; }
   /* anchor to the pill's right edge and grow leftward, so the popover never
      spills off the modal's right side */
   .side-pop { left: auto; right: 0; min-width: 100%; width: max-content; max-width: 15rem; }
@@ -882,7 +922,7 @@
     box-shadow: 0 24px 60px -20px rgba(0,0,0,.85), 0 2px 10px rgba(0,0,0,.4);
   }
   .modal-field { display: grid; gap: .4rem; min-width: 0; }
-  .modal-label { font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
+  .modal-label { font-size: .64rem; line-height: 1; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
   .modal-label-row { display: flex; align-items: baseline; justify-content: space-between; }
   .save-hint { font-size: .68rem; color: var(--faint); letter-spacing: .03em; }
   .modal-status, .modal-assignee, .modal-desc { background: var(--field); border: 1px solid var(--border-soft); border-radius: 7px; color: var(--text); font: inherit; padding: .45rem .55rem; width: 100%; }

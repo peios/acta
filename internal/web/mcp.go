@@ -84,7 +84,7 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_items",
-		Description: "List a board's items. Defaults to the primary board; pass board (a slug from list_boards) for another. Returns top-level items by default; pass parent to list the direct subtasks of an item instead. Optional filters narrow by status (lane name), assignee (username, or \"me\"), or mine. Statuses and principals are named, not id-addressed; items are addressed by id.",
+		Description: "List a board's items. Defaults to the primary board; pass board (a slug from list_boards) for another. Returns top-level items by default; pass parent to list the direct subtasks of an item instead. Optional filters narrow by status (lane name), assignee (username, or \"me\"), mine, project, release, priority, type, size, and overdue. Statuses and principals are named, not id-addressed; items are addressed by id.",
 	}, h.mcpListItems)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -94,7 +94,7 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "create_item",
-		Description: "Create an item. Defaults to the primary board; pass board (a slug from list_boards) to create it on another (e.g. Backlog). Provide a status lane by name (defaults to the board's entry lane) or a parent item id to create it as a subtask. The item is attributed to the calling principal.",
+		Description: "Create an item. Defaults to the primary board; pass board (a slug from list_boards) to create it on another (e.g. Backlog). Provide a status lane by name (defaults to the board's entry lane) or a parent item id to create it as a subtask. Optionally set priority (low/medium/high/urgent), type (feature/bug/chore), size (xs–xl), and a due date (YYYY-MM-DD). The item is attributed to the calling principal.",
 	}, h.mcpCreateItem)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -116,6 +116,26 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 		Name:        "set_item_milestone",
 		Description: "Flag or unflag an item as a milestone.",
 	}, h.mcpSetItemMilestone)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "set_item_priority",
+		Description: "Set an item's priority: low, medium, high, or urgent. Omit priority to clear it.",
+	}, h.mcpSetItemPriority)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "set_item_type",
+		Description: "Set an item's type: feature, bug, or chore. Omit type to clear it.",
+	}, h.mcpSetItemType)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "set_item_size",
+		Description: "Set an item's size estimate: xs, s, m, l, or xl. Omit size to clear it.",
+	}, h.mcpSetItemSize)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "set_item_due",
+		Description: "Set an item's due date (YYYY-MM-DD). Omit due to clear it.",
+	}, h.mcpSetItemDue)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "set_item_parent",
@@ -229,8 +249,12 @@ type mcpItem struct {
 	Title         string `json:"title"`
 	Status        string `json:"status"`
 	Assignee      string `json:"assignee,omitempty"`
-	Project       string `json:"project,omitempty"` // project slug, "" if unfiled
-	Release       string `json:"release,omitempty"` // release name, "" if in none
+	Project       string `json:"project,omitempty"`  // project slug, "" if unfiled
+	Release       string `json:"release,omitempty"`  // release name, "" if in none
+	Priority      string `json:"priority,omitempty"` // low|medium|high|urgent, "" if unset
+	Type          string `json:"type,omitempty"`     // feature|bug|chore, "" if unset
+	Size          string `json:"size,omitempty"`     // xs|s|m|l|xl, "" if unset
+	Due           string `json:"due,omitempty"`      // YYYY-MM-DD, "" if no due date
 	Milestone     bool   `json:"milestone,omitempty"`
 	Archived      bool   `json:"archived,omitempty"`
 	CreatedBy     string `json:"created_by,omitempty"`
@@ -305,12 +329,25 @@ func toMCPItem(it store.Item, statusName, userName, projectSlug map[string]strin
 		Status:    statusName[it.StatusID],
 		Assignee:  userName[it.AssigneeID],
 		Project:   projectSlug[it.ProjectID],
+		Priority:  attrSlugOut(board.Priorities, it.Priority),
+		Type:      attrSlugOut(board.ItemTypes, it.Type),
+		Size:      attrSlugOut(board.Sizes, it.Size),
+		Due:       board.DueString(it.DueDate),
 		Milestone: it.IsMilestone,
 		Archived:  it.ArchivedAt != nil,
 		CreatedBy: userName[it.CreatedBy],
 		CreatedAt: it.CreatedAt.Format(time.RFC3339),
 		ParentID:  it.ParentID,
 	}
+}
+
+// attrSlugOut is the wire slug for an enum attribute, or "" for unset (0) so the
+// omitempty field drops out rather than serialising "none".
+func attrSlugOut(v board.AttrVocab, value int) string {
+	if value == 0 {
+		return ""
+	}
+	return v.Slug(value)
 }
 
 // itemURL builds a browser permalink that opens the item on its board, or ""
@@ -348,16 +385,20 @@ type listStatusesInput struct {
 }
 
 type listItemsInput struct {
-	Workspace string `json:"workspace" jsonschema:"slug of the workspace to list"`
-	Board     string `json:"board,omitempty" jsonschema:"board slug (from list_boards); defaults to the primary board. Pass * to span every board, including a Backlog that an unscoped search would otherwise skip. Ignored when parent is set"`
-	Status    string `json:"status,omitempty" jsonschema:"only items in this status lane, by name"`
-	Assignee  string `json:"assignee,omitempty" jsonschema:"only items assigned to this username; use \"me\" for the caller"`
-	Project   string `json:"project,omitempty" jsonschema:"only items filed under this project (a slug from list_projects)"`
-	Release   string `json:"release,omitempty" jsonschema:"only items in this release (a name from list_releases)"`
-	Parent    string `json:"parent,omitempty" jsonschema:"list the direct subtasks of this item id instead of the board's top-level items"`
-	Mine      bool   `json:"mine,omitempty" jsonschema:"only items assigned to the calling principal (shorthand for assignee=me)"`
-	Query     string `json:"q,omitempty" jsonschema:"free-text search: a case-insensitive substring of the title or description, matched at every subtask depth within the scope. The scope is the board (default: your primary board, so Backlog is skipped; a named board; or * for every board) or, with parent set, that item's children. Results rank by relevance and an exact human id like ACTA-12 floats to the top. The status/assignee/project/release filters still narrow"`
-	IncludeArchived bool `json:"include_archived,omitempty" jsonschema:"include archived items (only applies together with q)"`
+	Workspace       string `json:"workspace" jsonschema:"slug of the workspace to list"`
+	Board           string `json:"board,omitempty" jsonschema:"board slug (from list_boards); defaults to the primary board. Pass * to span every board, including a Backlog that an unscoped search would otherwise skip. Ignored when parent is set"`
+	Status          string `json:"status,omitempty" jsonschema:"only items in this status lane, by name"`
+	Assignee        string `json:"assignee,omitempty" jsonschema:"only items assigned to this username; use \"me\" for the caller"`
+	Project         string `json:"project,omitempty" jsonschema:"only items filed under this project (a slug from list_projects)"`
+	Release         string `json:"release,omitempty" jsonschema:"only items in this release (a name from list_releases)"`
+	Priority        string `json:"priority,omitempty" jsonschema:"only items with this priority: low, medium, high, urgent, or none (unset)"`
+	Type            string `json:"type,omitempty" jsonschema:"only items of this type: feature, bug, chore, or none (unset)"`
+	Size            string `json:"size,omitempty" jsonschema:"only items of this size: xs, s, m, l, xl, or none (unset)"`
+	Overdue         bool   `json:"overdue,omitempty" jsonschema:"only items past their due date and not done"`
+	Parent          string `json:"parent,omitempty" jsonschema:"list the direct subtasks of this item id instead of the board's top-level items"`
+	Mine            bool   `json:"mine,omitempty" jsonschema:"only items assigned to the calling principal (shorthand for assignee=me)"`
+	Query           string `json:"q,omitempty" jsonschema:"free-text search: a case-insensitive substring of the title or description, matched at every subtask depth within the scope. The scope is the board (default: your primary board, so Backlog is skipped; a named board; or * for every board) or, with parent set, that item's children. Results rank by relevance and an exact human id like ACTA-12 floats to the top. The status/assignee/project/release filters still narrow"`
+	IncludeArchived bool   `json:"include_archived,omitempty" jsonschema:"include archived items (only applies together with q)"`
 }
 
 type itemIDInput struct {
@@ -372,6 +413,10 @@ type createItemInput struct {
 	Parent    string `json:"parent,omitempty" jsonschema:"parent item id; when set, create this as a subtask of that item"`
 	Project   string `json:"project,omitempty" jsonschema:"file the new item under this project (a slug from list_projects)"`
 	Release   string `json:"release,omitempty" jsonschema:"add the new item to this release (a name from list_releases)"`
+	Priority  string `json:"priority,omitempty" jsonschema:"priority: low, medium, high, or urgent"`
+	Type      string `json:"type,omitempty" jsonschema:"type: feature, bug, or chore"`
+	Size      string `json:"size,omitempty" jsonschema:"size estimate: xs, s, m, l, or xl"`
+	Due       string `json:"due,omitempty" jsonschema:"due date as YYYY-MM-DD"`
 }
 
 type listProjectsInput struct {
@@ -479,6 +524,26 @@ type setItemDescriptionInput struct {
 type setItemMilestoneInput struct {
 	ID        string `json:"id" jsonschema:"the item id"`
 	Milestone bool   `json:"milestone" jsonschema:"true to flag as a milestone, false to unflag"`
+}
+
+type setItemPriorityInput struct {
+	ID       string `json:"id" jsonschema:"the item id"`
+	Priority string `json:"priority,omitempty" jsonschema:"low, medium, high, or urgent; omit to clear the priority"`
+}
+
+type setItemTypeInput struct {
+	ID   string `json:"id" jsonschema:"the item id"`
+	Type string `json:"type,omitempty" jsonschema:"feature, bug, or chore; omit to clear the type"`
+}
+
+type setItemSizeInput struct {
+	ID   string `json:"id" jsonschema:"the item id"`
+	Size string `json:"size,omitempty" jsonschema:"xs, s, m, l, or xl; omit to clear the size"`
+}
+
+type setItemDueInput struct {
+	ID  string `json:"id" jsonschema:"the item id"`
+	Due string `json:"due,omitempty" jsonschema:"due date as YYYY-MM-DD; omit to clear the due date"`
 }
 
 type setItemParentInput struct {
@@ -755,6 +820,20 @@ func (h *handlers) mcpListItems(ctx context.Context, _ *mcp.CallToolRequest, in 
 			return nil, itemListOutput{}, mcpErr(err)
 		}
 	}
+	// Optional attribute filters (a slug, "none" matching unset). A bad slug fails
+	// before listing.
+	priorityVal, filterPriority, err := resolveAttrFilter(board.Priorities, in.Priority)
+	if err != nil {
+		return nil, itemListOutput{}, mcpErr(err)
+	}
+	typeVal, filterType, err := resolveAttrFilter(board.ItemTypes, in.Type)
+	if err != nil {
+		return nil, itemListOutput{}, mcpErr(err)
+	}
+	sizeVal, filterSize, err := resolveAttrFilter(board.Sizes, in.Size)
+	if err != nil {
+		return nil, itemListOutput{}, mcpErr(err)
+	}
 	doneStatusID := ""
 	if n := len(boardStatuses); n > 0 {
 		doneStatusID = boardStatuses[n-1].ID
@@ -776,6 +855,18 @@ func (h *handlers) mcpListItems(ctx context.Context, _ *mcp.CallToolRequest, in 
 			continue
 		}
 		if releaseID != "" && releaseIDByItem[it.ID] != releaseID {
+			continue
+		}
+		if filterPriority && it.Priority != priorityVal {
+			continue
+		}
+		if filterType && it.Type != typeVal {
+			continue
+		}
+		if filterSize && it.Size != sizeVal {
+			continue
+		}
+		if in.Overdue && !board.Overdue(it.DueDate, it.StatusID == doneStatusID) {
 			continue
 		}
 		v := toMCPItem(it, statusName, userName, projectSlug, ws.ItemPrefix)
@@ -847,6 +938,25 @@ func (h *handlers) mcpCreateItem(ctx context.Context, _ *mcp.CallToolRequest, in
 	}
 	p := principalFrom(ctx)
 
+	// Validate the attribute inputs up front so a bad slug/date fails before we
+	// create anything.
+	priorityVal, err := parseAttrInput(board.Priorities, in.Priority)
+	if err != nil {
+		return nil, mcpItem{}, mcpErr(err)
+	}
+	typeVal, err := parseAttrInput(board.ItemTypes, in.Type)
+	if err != nil {
+		return nil, mcpItem{}, mcpErr(err)
+	}
+	sizeVal, err := parseAttrInput(board.Sizes, in.Size)
+	if err != nil {
+		return nil, mcpItem{}, mcpErr(err)
+	}
+	due, err := board.ParseDue(in.Due)
+	if err != nil {
+		return nil, mcpItem{}, mcpErr(fmt.Errorf("invalid due date %q (want YYYY-MM-DD)", in.Due))
+	}
+
 	var it store.Item
 	if parent := strings.ToLower(strings.TrimSpace(in.Parent)); parent != "" {
 		if _, err := h.mcpItem(ctx, parent, ws.ID); err != nil {
@@ -901,12 +1011,52 @@ func (h *handlers) mcpCreateItem(ctx context.Context, _ *mcp.CallToolRequest, in
 			return nil, mcpItem{}, mcpReleaseErr(rerr)
 		}
 	}
+	// Optional attributes (validated above; 0/nil are no-ops).
+	for _, apply := range []func() error{
+		func() error { return h.board.SetPriority(ctx, it.ID, priorityVal) },
+		func() error { return h.board.SetType(ctx, it.ID, typeVal) },
+		func() error { return h.board.SetSize(ctx, it.ID, sizeVal) },
+		func() error { return h.board.SetDue(ctx, it.ID, due) },
+	} {
+		if err := apply(); err != nil {
+			return nil, mcpItem{}, mcpErr(err)
+		}
+	}
+	it.Priority, it.Type, it.Size, it.DueDate = priorityVal, typeVal, sizeVal, due
 	if it.ParentID != "" {
 		h.publishSubtaskAdd("", it.WorkspaceID, it)
 	} else {
 		h.publishItemUpsert(ctx, "", it.WorkspaceID, it)
 	}
 	return h.mcpItemResult(ctx, it)
+}
+
+// parseAttrInput resolves an optional enum slug to its value (0 = unset/no-op);
+// an unknown slug is an error so a typo isn't silently ignored.
+func parseAttrInput(v board.AttrVocab, raw string) (int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	val, ok := v.Parse(raw)
+	if !ok {
+		return 0, fmt.Errorf("unknown value %q", raw)
+	}
+	return val, nil
+}
+
+// resolveAttrFilter is parseAttrInput for the list filters: an empty slug means
+// "no filter" (the bool is false); "none" is a real filter for unset items.
+func resolveAttrFilter(v board.AttrVocab, raw string) (int, bool, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, false, nil
+	}
+	val, ok := v.Parse(raw)
+	if !ok {
+		return 0, false, fmt.Errorf("unknown value %q", raw)
+	}
+	return val, true, nil
 }
 
 func (h *handlers) mcpListProjects(ctx context.Context, _ *mcp.CallToolRequest, in listProjectsInput) (*mcp.CallToolResult, projectListOutput, error) {
@@ -1163,6 +1313,52 @@ func (h *handlers) mcpSetItemMilestone(ctx context.Context, _ *mcp.CallToolReque
 		return nil, mcpItem{}, err
 	}
 	if err := h.board.SetMilestone(ctx, item.ID, in.Milestone); err != nil {
+		return nil, mcpItem{}, mcpErr(err)
+	}
+	h.liveUpsertOrigin(ctx, "", item.ID)
+	return h.mcpReloadResult(ctx, item.ID)
+}
+
+func (h *handlers) mcpSetItemPriority(ctx context.Context, _ *mcp.CallToolRequest, in setItemPriorityInput) (*mcp.CallToolResult, mcpItem, error) {
+	return h.mcpSetItemEnum(ctx, in.ID, board.Priorities, in.Priority, h.board.SetPriority)
+}
+
+func (h *handlers) mcpSetItemType(ctx context.Context, _ *mcp.CallToolRequest, in setItemTypeInput) (*mcp.CallToolResult, mcpItem, error) {
+	return h.mcpSetItemEnum(ctx, in.ID, board.ItemTypes, in.Type, h.board.SetType)
+}
+
+func (h *handlers) mcpSetItemSize(ctx context.Context, _ *mcp.CallToolRequest, in setItemSizeInput) (*mcp.CallToolResult, mcpItem, error) {
+	return h.mcpSetItemEnum(ctx, in.ID, board.Sizes, in.Size, h.board.SetSize)
+}
+
+// mcpSetItemEnum is the shared body of the priority/type/size setters: resolve the
+// item, parse the slug (empty clears), apply, and return the reloaded item.
+func (h *handlers) mcpSetItemEnum(ctx context.Context, id string, vocab board.AttrVocab, raw string, set func(context.Context, string, int) error) (*mcp.CallToolResult, mcpItem, error) {
+	item, err := h.mcpItem(ctx, id, "")
+	if err != nil {
+		return nil, mcpItem{}, err
+	}
+	val, err := parseAttrInput(vocab, raw)
+	if err != nil {
+		return nil, mcpItem{}, mcpErr(err)
+	}
+	if err := set(ctx, item.ID, val); err != nil {
+		return nil, mcpItem{}, mcpErr(err)
+	}
+	h.liveUpsertOrigin(ctx, "", item.ID)
+	return h.mcpReloadResult(ctx, item.ID)
+}
+
+func (h *handlers) mcpSetItemDue(ctx context.Context, _ *mcp.CallToolRequest, in setItemDueInput) (*mcp.CallToolResult, mcpItem, error) {
+	item, err := h.mcpItem(ctx, in.ID, "")
+	if err != nil {
+		return nil, mcpItem{}, err
+	}
+	due, err := board.ParseDue(in.Due)
+	if err != nil {
+		return nil, mcpItem{}, mcpErr(fmt.Errorf("invalid due date %q (want YYYY-MM-DD)", in.Due))
+	}
+	if err := h.board.SetDue(ctx, item.ID, due); err != nil {
 		return nil, mcpItem{}, mcpErr(err)
 	}
 	h.liveUpsertOrigin(ctx, "", item.ID)

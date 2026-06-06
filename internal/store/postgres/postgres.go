@@ -821,13 +821,14 @@ func (p *Postgres) DeleteBoardView(ctx context.Context, id string) error {
 const itemCols = `id::text, ref_num, workspace_id::text, status_id::text, COALESCE(parent_id::text, ''),
                   title, description, COALESCE(assignee_id::text, ''), position, is_milestone,
                   ms_position, archived_at, created_at, COALESCE(created_by::text, ''),
-                  COALESCE(project_id::text, ''), COALESCE(pending_status_id::text, '')`
+                  COALESCE(project_id::text, ''), COALESCE(pending_status_id::text, ''),
+                  priority, item_type, size, due_date`
 
 func scanItem(row pgx.Row) (store.Item, error) {
 	var i store.Item
 	err := row.Scan(&i.ID, &i.RefNum, &i.WorkspaceID, &i.StatusID, &i.ParentID, &i.Title, &i.Description,
 		&i.AssigneeID, &i.Position, &i.IsMilestone, &i.MSPosition, &i.ArchivedAt, &i.CreatedAt, &i.CreatedBy,
-		&i.ProjectID, &i.PendingStatusID)
+		&i.ProjectID, &i.PendingStatusID, &i.Priority, &i.Type, &i.Size, &i.DueDate)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.Item{}, store.ErrItemNotFound
 	}
@@ -841,17 +842,22 @@ func (p *Postgres) CreateItem(ctx context.Context, i store.Item) (store.Item, er
 		const q = `WITH seq AS (
 		               UPDATE workspaces SET item_seq = item_seq + 1 WHERE id = $1 RETURNING item_seq
 		           )
-		           INSERT INTO items (workspace_id, status_id, title, position, parent_id, created_by, ref_num)
-		           VALUES ($1, $2, $3, $4, $5, $6, (SELECT item_seq FROM seq))
+		           INSERT INTO items (workspace_id, status_id, title, position, parent_id, created_by, ref_num,
+		                              priority, item_type, size, due_date)
+		           VALUES ($1, $2, $3, $4, $5, $6, (SELECT item_seq FROM seq), $7, $8, $9, $10)
 		           RETURNING ` + itemCols
-		var parent, creator any
+		var parent, creator, due any
 		if i.ParentID != "" {
 			parent = i.ParentID
 		}
 		if i.CreatedBy != "" {
 			creator = i.CreatedBy
 		}
-		return scanItem(p.pool.QueryRow(ctx, q, i.WorkspaceID, i.StatusID, i.Title, i.Position, parent, creator))
+		if i.DueDate != nil {
+			due = *i.DueDate
+		}
+		return scanItem(p.pool.QueryRow(ctx, q, i.WorkspaceID, i.StatusID, i.Title, i.Position, parent, creator,
+			i.Priority, i.Type, i.Size, due))
 	})
 }
 
@@ -1004,6 +1010,35 @@ func (p *Postgres) SetItemAssignee(ctx context.Context, id, assigneeID string) e
 		a = assigneeID
 	}
 	ct, err := p.pool.Exec(ctx, `UPDATE items SET assignee_id = $2 WHERE id = $1`, id, a)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrItemNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) SetItemPriority(ctx context.Context, id string, priority int) error {
+	return p.execItem(ctx, `UPDATE items SET priority = $2 WHERE id = $1`, id, priority)
+}
+
+func (p *Postgres) SetItemType(ctx context.Context, id string, itemType int) error {
+	return p.execItem(ctx, `UPDATE items SET item_type = $2 WHERE id = $1`, id, itemType)
+}
+
+func (p *Postgres) SetItemSize(ctx context.Context, id string, size int) error {
+	return p.execItem(ctx, `UPDATE items SET size = $2 WHERE id = $1`, id, size)
+}
+
+func (p *Postgres) SetItemDue(ctx context.Context, id string, due *time.Time) error {
+	// $2 is always present; a nil any encodes as SQL NULL (no due date). We can't
+	// route this through execItem, which drops $2 entirely when the arg is nil.
+	var d any
+	if due != nil {
+		d = *due
+	}
+	ct, err := p.pool.Exec(ctx, `UPDATE items SET due_date = $2 WHERE id = $1`, id, d)
 	if err != nil {
 		return err
 	}

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/httpx"
@@ -47,7 +48,14 @@ type boardData struct {
 	ReleaseSelected    int             // count badge on the Release trigger
 	NoReleaseSelected  bool            // the "No release" token is selected
 	CurrentRelSelected bool            // the "Current release" (any active) token is selected
-	FilterCount        int             // status + assignee + project + release selections, for the Filter button badge
+	PriorityFilter     []attrOpt       // the priority facet options (every value incl. none)
+	PrioritySelected   int             // count badge on the Priority trigger
+	TypeFilter         []attrOpt       // the type facet options
+	TypeSelected       int             // count badge on the Type trigger
+	SizeFilter         []attrOpt       // the size facet options
+	SizeSelected       int             // count badge on the Size trigger
+	OverdueSelected    bool            // the "Overdue" due token is selected
+	FilterCount        int             // total facet selections, for the Filter button badge
 	FilterActive       bool            // any facet currently narrowing the board
 	Views              []viewTab       // the saved-view tab strip (seeded defaults + custom)
 	ViewDirty          bool            // on a view, but the current filter differs from its stored one
@@ -155,6 +163,17 @@ type cardView struct {
 	ReleaseName    string
 	ReleaseColor   string
 	ReleaseShipped bool
+
+	// Attribute glyphs. Each is the resolved option (slug drives the glyph/colour
+	// class, label the tooltip); the template renders it only when Value != 0.
+	Priority board.AttrOption
+	Type     board.AttrOption
+	Size     board.AttrOption
+	// Due chip. HasDue gates it; DueLabel is a short human date; Overdue marks
+	// past + not-done for the red styling.
+	HasDue   bool
+	DueLabel string
+	Overdue  bool
 }
 
 // ProjectColorVar is the chip's project colour as a template-safe `--lane-color`
@@ -177,10 +196,19 @@ type cardRelease struct {
 // buildCard assembles a card's view model, resolving its assignee (if any) to an
 // avatar and its project (if any) to a chip. users maps principal id -> user for
 // the avatar; projects maps project id -> project for the chip.
-func buildCard(it store.Item, counts map[string]store.SubtaskCount, st store.Status, f boardFilter, users map[string]store.User, projects map[string]store.Project, releases map[string]cardRelease, prefix string) cardView {
+func buildCard(it store.Item, counts map[string]store.SubtaskCount, st store.Status, f boardFilter, users map[string]store.User, projects map[string]store.Project, releases map[string]cardRelease, prefix, doneStatusID string) cardView {
 	cv := cardView{
 		Item: it, RefID: refID(prefix, it.RefNum), Subtasks: counts[it.ID], StatusName: st.Name,
 		Color: board.ColorFor(st), Hidden: f.cardHidden(it),
+		Priority: board.Priorities.Option(it.Priority),
+		Type:     board.ItemTypes.Option(it.Type),
+		Size:     board.Sizes.Option(it.Size),
+	}
+	if it.DueDate != nil {
+		done := doneStatusID != "" && it.StatusID == doneStatusID
+		cv.HasDue = true
+		cv.DueLabel = shortDueLabel(it.DueDate)
+		cv.Overdue = board.Overdue(it.DueDate, done)
 	}
 	if it.AssigneeID != "" {
 		if u, ok := users[it.AssigneeID]; ok {
@@ -207,6 +235,29 @@ func buildCard(it store.Item, counts map[string]store.SubtaskCount, st store.Sta
 		cv.ReleaseShipped = rc.Shipped
 	}
 	return cv
+}
+
+// lastLaneID is the id of the board's final lane — the "done" equivalent used to
+// decide whether a past-due item still counts as overdue. "" when there are no
+// lanes (statuses must arrive in position order, as the board builds them).
+func lastLaneID(statuses []store.Status) string {
+	if len(statuses) == 0 {
+		return ""
+	}
+	return statuses[len(statuses)-1].ID
+}
+
+// shortDueLabel formats a due date for a card chip: "2 Jan", with the year
+// appended only when it isn't the current one.
+func shortDueLabel(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	u := t.UTC()
+	if u.Year() == time.Now().UTC().Year() {
+		return u.Format("2 Jan")
+	}
+	return u.Format("2 Jan 2006")
 }
 
 // initials takes the first letters of the first and last words (or the first two
@@ -399,6 +450,11 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 	filter := newBoardFilter(r.URL.Query()["status"], r.URL.Query()["assignee"], me.ID)
 	filter.projects = toSet(r.URL.Query()["project"])
 	filter.releases = toSet(r.URL.Query()["release"])
+	filter.priorities = toSet(r.URL.Query()["priority"])
+	filter.types = toSet(r.URL.Query()["type"])
+	filter.sizes = toSet(r.URL.Query()["size"])
+	filter.due = toSet(r.URL.Query()["due"])
+	filter.doneStatusID = doneStatusID
 	users, err := h.board.Users(r.Context())
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -537,11 +593,19 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 		ReleaseSelected:    len(filter.releases),
 		NoReleaseSelected:  filter.releases["none"],
 		CurrentRelSelected: filter.releases["active"],
-		FilterCount:        len(filter.statuses) + len(filter.assignees) + len(filter.projects) + len(filter.releases),
-		FilterActive:       filter.active(),
-		Views:              viewTabs,
-		ViewDirty:          viewDirty,
-		HasReleases:        hasReleases,
+		PriorityFilter:     attrFacet(board.Priorities, filter.priorities),
+		PrioritySelected:   len(filter.priorities),
+		TypeFilter:         attrFacet(board.ItemTypes, filter.types),
+		TypeSelected:       len(filter.types),
+		SizeFilter:         attrFacet(board.Sizes, filter.sizes),
+		SizeSelected:       len(filter.sizes),
+		OverdueSelected:    filter.due["overdue"],
+		FilterCount: len(filter.statuses) + len(filter.assignees) + len(filter.projects) + len(filter.releases) +
+			len(filter.priorities) + len(filter.types) + len(filter.sizes) + len(filter.due),
+		FilterActive: filter.active(),
+		Views:        viewTabs,
+		ViewDirty:    viewDirty,
+		HasReleases:  hasReleases,
 	}
 	if ctxView != nil {
 		data.ActiveViewID = ctxView.ID
@@ -583,8 +647,9 @@ func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, sta
 	for _, s := range statuses {
 		statusByID[s.ID] = s
 	}
+	doneStatusID := lastLaneID(statuses)
 	card := func(it store.Item) cardView {
-		return buildCard(it, counts, statusByID[it.StatusID], filter, users, projects, releases, prefix)
+		return buildCard(it, counts, statusByID[it.StatusID], filter, users, projects, releases, prefix, doneStatusID)
 	}
 	// Root non-milestones gather in a leading column. It's titled "No milestone"
 	// (not "Backlog") so it doesn't read as the Backlog board, which is unrelated.
@@ -631,10 +696,11 @@ func releaseColumns(items []store.Item, statuses []store.Status, counts map[stri
 	for _, st := range statuses {
 		statusByID[st.ID] = st
 	}
+	doneStatusID := lastLaneID(statuses)
 	byRelease := map[string][]cardView{}
 	for _, it := range items {
 		rid := releaseOf[it.ID]
-		byRelease[rid] = append(byRelease[rid], buildCard(it, counts, statusByID[it.StatusID], filter, users, projects, releaseChips, prefix))
+		byRelease[rid] = append(byRelease[rid], buildCard(it, counts, statusByID[it.StatusID], filter, users, projects, releaseChips, prefix, doneStatusID))
 	}
 	col := func(rel store.Release, tag string) releaseColumn {
 		return releaseColumn{ID: rel.ID, Name: rel.Name, Color: board.ReleaseColorFor(rel), Tag: tag, Cards: byRelease[rel.ID]}
@@ -665,9 +731,10 @@ func groupLanes(statuses []store.Status, items []store.Item, counts map[string]s
 	for _, st := range statuses {
 		byID[st.ID] = st
 	}
+	doneStatusID := lastLaneID(statuses)
 	byStatus := map[string][]cardView{}
 	for _, it := range items {
-		byStatus[it.StatusID] = append(byStatus[it.StatusID], buildCard(it, counts, byID[it.StatusID], filter, users, projects, releases, prefix))
+		byStatus[it.StatusID] = append(byStatus[it.StatusID], buildCard(it, counts, byID[it.StatusID], filter, users, projects, releases, prefix, doneStatusID))
 	}
 	lanes := make([]lane, len(statuses))
 	for i, st := range statuses {
@@ -986,6 +1053,8 @@ func writeBoardErr(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusConflict, body{"cycle"})
 	case errors.Is(err, board.ErrStatusMismatch):
 		writeJSON(w, http.StatusBadRequest, body{"status_mismatch"})
+	case errors.Is(err, board.ErrInvalidAttribute):
+		writeJSON(w, http.StatusBadRequest, body{"invalid_attribute"})
 	case errors.Is(err, board.ErrProjectMismatch):
 		writeJSON(w, http.StatusBadRequest, body{"project_mismatch"})
 	case errors.Is(err, store.ErrProjectNotFound):

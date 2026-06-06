@@ -23,6 +23,10 @@ type mcpItemT struct {
 	Assignee    string        `json:"assignee"`
 	Project     string        `json:"project"`
 	Release     string        `json:"release"`
+	Priority    string        `json:"priority"`
+	Type        string        `json:"type"`
+	Size        string        `json:"size"`
+	Due         string        `json:"due"`
 	Milestone   bool          `json:"milestone"`
 	Archived    bool          `json:"archived"`
 	CreatedBy   string        `json:"created_by"`

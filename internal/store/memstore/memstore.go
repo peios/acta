@@ -989,6 +989,22 @@ func (s *Store) SetItemAssignee(_ context.Context, id, assigneeID string) error 
 	return s.mutateItem(id, func(it *store.Item) { it.AssigneeID = assigneeID })
 }
 
+func (s *Store) SetItemPriority(_ context.Context, id string, priority int) error {
+	return s.mutateItem(id, func(it *store.Item) { it.Priority = priority })
+}
+
+func (s *Store) SetItemType(_ context.Context, id string, itemType int) error {
+	return s.mutateItem(id, func(it *store.Item) { it.Type = itemType })
+}
+
+func (s *Store) SetItemSize(_ context.Context, id string, size int) error {
+	return s.mutateItem(id, func(it *store.Item) { it.Size = size })
+}
+
+func (s *Store) SetItemDue(_ context.Context, id string, due *time.Time) error {
+	return s.mutateItem(id, func(it *store.Item) { it.DueDate = due })
+}
+
 func (s *Store) SetItemStatus(_ context.Context, id, statusID string) error {
 	return s.mutateItem(id, func(it *store.Item) { it.StatusID = statusID })
 }

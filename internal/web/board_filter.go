@@ -22,6 +22,14 @@ type boardFilter struct {
 	releaseOf      map[string]string // item id -> its release id (single, as the UI enforces), for releaseVisible
 	activeReleases map[string]bool   // ids of active (non-shipped) releases, resolving the "active" token
 	me             string            // current principal id, resolving the "me" token
+	// Attribute facets: selected priority/type/size slugs (incl. "none" for unset).
+	priorities map[string]bool
+	types      map[string]bool
+	sizes      map[string]bool
+	// due holds the token "overdue" (past + not-done). doneStatusID is the board's
+	// last lane, resolving done-ness for the overdue check.
+	due          map[string]bool
+	doneStatusID string
 }
 
 // newBoardFilter builds the status+assignee filter. The project selection is set
@@ -45,7 +53,8 @@ func toSet(vals []string) map[string]bool {
 }
 
 func (f boardFilter) active() bool {
-	return len(f.statuses) > 0 || len(f.assignees) > 0 || len(f.projects) > 0 || len(f.releases) > 0
+	return len(f.statuses) > 0 || len(f.assignees) > 0 || len(f.projects) > 0 || len(f.releases) > 0 ||
+		len(f.priorities) > 0 || len(f.types) > 0 || len(f.sizes) > 0 || len(f.due) > 0
 }
 
 func (f boardFilter) statusVisible(id string) bool {
@@ -95,10 +104,33 @@ func (f boardFilter) assigneeVisible(assigneeID string) bool {
 	return f.assignees["me"] && assigneeID == f.me
 }
 
+// enumVisible reports whether an item whose attribute has the given slug passes
+// an enum facet (priority/type/size). No selections means no constraint.
+func enumVisible(sel map[string]bool, slug string) bool {
+	return len(sel) == 0 || sel[slug]
+}
+
+// dueVisible reports whether an item passes the due facet. The only token is
+// "overdue" (past + not in the board's last lane); no selections means no
+// constraint.
+func (f boardFilter) dueVisible(it store.Item) bool {
+	if len(f.due) == 0 {
+		return true
+	}
+	if f.due["overdue"] {
+		return board.Overdue(it.DueDate, it.StatusID == f.doneStatusID)
+	}
+	return true
+}
+
 // cardHidden reports whether an item is filtered out of view.
 func (f boardFilter) cardHidden(it store.Item) bool {
 	return !f.statusVisible(it.StatusID) || !f.assigneeVisible(it.AssigneeID) ||
-		!f.projectVisible(it.ProjectID) || !f.releaseVisible(it.ID)
+		!f.projectVisible(it.ProjectID) || !f.releaseVisible(it.ID) ||
+		!enumVisible(f.priorities, board.Priorities.Slug(it.Priority)) ||
+		!enumVisible(f.types, board.ItemTypes.Slug(it.Type)) ||
+		!enumVisible(f.sizes, board.Sizes.Slug(it.Size)) ||
+		!f.dueVisible(it)
 }
 
 // --- facet view models (the picker UI) ---
@@ -217,4 +249,21 @@ func displayName(u store.User) string {
 		return u.Display
 	}
 	return u.Username
+}
+
+// attrOpt is one option in a priority/type/size filter facet (every value of the
+// vocabulary, including the "none"/unset option so you can find unset items).
+type attrOpt struct {
+	Slug     string
+	Label    string
+	Selected bool
+}
+
+func attrFacet(v board.AttrVocab, sel map[string]bool) []attrOpt {
+	opts := v.Options()
+	out := make([]attrOpt, len(opts))
+	for i, o := range opts {
+		out[i] = attrOpt{Slug: o.Slug, Label: o.Label, Selected: sel[o.Slug]}
+	}
+	return out
 }

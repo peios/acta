@@ -29,7 +29,7 @@ var DefaultBoardViews = []defaultView{
 }
 
 // viewFacetKeys are the multi-valued filter params a saved view retains.
-var viewFacetKeys = []string{"status", "assignee", "project", "release"}
+var viewFacetKeys = []string{"status", "assignee", "project", "release", "priority", "type", "size"}
 
 // NormalizeViewQuery reduces a board URL's query to the filter-defining params
 // (mode, the facet keys, and q) in a canonical, order-independent form, dropping
@@ -46,6 +46,11 @@ func NormalizeViewQuery(v url.Values) string {
 		for _, x := range dedupeSorted(v[key]) {
 			out.Add(key, x)
 		}
+	}
+	// due is a single-valued token (only "overdue" today), kept like q rather than
+	// as a multi-valued facet.
+	if d := v.Get("due"); d == "overdue" {
+		out.Set("due", d)
 	}
 	if q := strings.TrimSpace(v.Get("q")); q != "" {
 		out.Set("q", q)

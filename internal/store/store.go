@@ -77,6 +77,10 @@ const (
 	EventItemReparented   = "item.reparented"     // data: to ("" = top level)
 	EventItemProject      = "item.project"        // data: to (project name, "" = cleared)
 	EventItemRelease      = "item.release"        // data: to (release name, "" = cleared)
+	EventItemPriority     = "item.priority"       // data: to (priority label, "" = none)
+	EventItemType         = "item.type"           // data: to (type label, "" = none)
+	EventItemSize         = "item.size"           // data: to (size label, "" = none)
+	EventItemDue          = "item.due"            // data: to (YYYY-MM-DD, "" = cleared)
 	EventCommentAdded     = "comment.added"       // data: excerpt
 )
 
@@ -290,6 +294,16 @@ type Item struct {
 	// checklist isn't satisfied yet — "" for no pending transition. The item stays
 	// in StatusID until the gate is met (auto-move), forced, or cancelled.
 	PendingStatusID string
+	// Priority, Type and Size are small fixed enums (0 = unset). The value→label
+	// vocabularies live in the board package (board.Priority/ItemType/Size); the
+	// store treats them as opaque ints. Priority: 0 none…4 urgent. Type: 0 none,
+	// 1 feature, 2 bug, 3 chore. Size: 0 none, 1 XS…5 XL.
+	Priority int
+	Type     int
+	Size     int
+	// DueDate is the item's optional target date (date-only; the time is always
+	// midnight UTC), or nil for none. "Overdue" is past + not in a done status.
+	DueDate *time.Time
 }
 
 // SubtaskCount is a parent's direct-child progress: Total active children and
@@ -588,6 +602,14 @@ type Store interface {
 	RenameItem(ctx context.Context, id, title string) error
 	UpdateItemDescription(ctx context.Context, id, description string) error
 	SetItemAssignee(ctx context.Context, id, assigneeID string) error
+	// SetItemPriority/Type/Size set an item's enum attribute (0 clears it). The
+	// store stores the int verbatim; the board package owns the value vocabulary
+	// and validates the range before calling. SetItemDue sets (or clears, with
+	// nil) the item's target date. All four return ErrItemNotFound on no row.
+	SetItemPriority(ctx context.Context, id string, priority int) error
+	SetItemType(ctx context.Context, id string, itemType int) error
+	SetItemSize(ctx context.Context, id string, size int) error
+	SetItemDue(ctx context.Context, id string, due *time.Time) error
 	SetItemStatus(ctx context.Context, id, statusID string) error
 	SetItemParent(ctx context.Context, id, parentID string) error
 	SetItemMilestone(ctx context.Context, id string, isMilestone bool) error

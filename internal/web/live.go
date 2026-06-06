@@ -154,8 +154,25 @@ func (h *handlers) cardFields(ctx context.Context, it store.Item) map[string]any
 		"milestone": it.IsMilestone,
 		"color":     "",
 	}
+	done := false
 	if st, err := h.board.StatusByID(ctx, it.StatusID); err == nil {
 		f["color"] = board.ColorFor(st)
+		// "done" = the item's status is the last lane of its board, so a past-due
+		// done item isn't flagged overdue.
+		if lanes, err := h.board.BoardStatuses(ctx, st.BoardID); err == nil && len(lanes) > 0 {
+			done = lanes[len(lanes)-1].ID == it.StatusID
+		}
+	}
+	f["priority"] = attrField(board.Priorities, it.Priority)
+	f["type"] = attrField(board.ItemTypes, it.Type)
+	f["size"] = attrField(board.Sizes, it.Size)
+	// Due chip. Absent key = no due date, so the client clears any existing chip.
+	if it.DueDate != nil {
+		f["due"] = map[string]any{
+			"date":    board.DueString(it.DueDate),
+			"label":   shortDueLabel(it.DueDate),
+			"overdue": board.Overdue(it.DueDate, done),
+		}
 	}
 	if it.ProjectID != "" {
 		if p, err := h.board.Project(ctx, it.ProjectID); err == nil {
@@ -189,6 +206,13 @@ func (h *handlers) cardFields(ctx context.Context, it store.Item) map[string]any
 		}
 	}
 	return f
+}
+
+// attrField is the live-payload shape for an enum attribute: the value plus the
+// slug and label the client needs to redraw the glyph without knowing the vocab.
+func attrField(v board.AttrVocab, value int) map[string]any {
+	o := v.Option(value)
+	return map[string]any{"value": o.Value, "slug": o.Slug, "label": o.Label}
 }
 
 // publishItemUpsert pushes a card create/update to a workspace's viewers.

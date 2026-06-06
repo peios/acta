@@ -288,6 +288,68 @@
           </select>
         </div>
 
+        {{/* Priority / Type / Size: text pickers sharing the side-pill machinery.
+             Each hidden <select> (value = slug) is the source of truth board.js's
+             change handler posts off, exactly like the project/release pills. */}}
+        <div class="side-field side-priority">
+          <span class="modal-label">Priority</span>
+          <div class="side-pick" data-priority-pill-side>
+            <button class="side-pill{{if not .Priority.Value}} unset{{end}}" type="button" data-pill-trigger aria-label="Change priority">
+              <span class="side-pill-name" data-side-priority-name>{{.Priority.Label}}</span>
+              <span class="chev">&#9662;</span>
+            </button>
+            <div class="popover side-pop" data-pill-menu hidden>
+              {{range .PriorityOpts}}
+              <button class="status-opt" type="button" data-priority-opt="{{.Slug}}"><span class="status-opt-name">{{.Label}}</span></button>
+              {{end}}
+            </div>
+          </div>
+          <select class="modal-priority" hidden aria-hidden="true">
+            {{range .PriorityOpts}}<option value="{{.Slug}}" {{if eq .Value $.Item.Priority}}selected{{end}}>{{.Label}}</option>{{end}}
+          </select>
+        </div>
+
+        <div class="side-field side-type">
+          <span class="modal-label">Type</span>
+          <div class="side-pick" data-type-pill-side>
+            <button class="side-pill{{if not .Type.Value}} unset{{end}}" type="button" data-pill-trigger aria-label="Change type">
+              <span class="side-pill-name" data-side-type-name>{{.Type.Label}}</span>
+              <span class="chev">&#9662;</span>
+            </button>
+            <div class="popover side-pop" data-pill-menu hidden>
+              {{range .TypeOpts}}
+              <button class="status-opt" type="button" data-type-opt="{{.Slug}}"><span class="status-opt-name">{{.Label}}</span></button>
+              {{end}}
+            </div>
+          </div>
+          <select class="modal-type" hidden aria-hidden="true">
+            {{range .TypeOpts}}<option value="{{.Slug}}" {{if eq .Value $.Item.Type}}selected{{end}}>{{.Label}}</option>{{end}}
+          </select>
+        </div>
+
+        <div class="side-field side-size">
+          <span class="modal-label">Size</span>
+          <div class="side-pick" data-size-pill-side>
+            <button class="side-pill{{if not .Size.Value}} unset{{end}}" type="button" data-pill-trigger aria-label="Change size">
+              <span class="side-pill-name" data-side-size-name>{{.Size.Label}}</span>
+              <span class="chev">&#9662;</span>
+            </button>
+            <div class="popover side-pop" data-pill-menu hidden>
+              {{range .SizeOpts}}
+              <button class="status-opt" type="button" data-size-opt="{{.Slug}}"><span class="status-opt-name">{{.Label}}</span></button>
+              {{end}}
+            </div>
+          </div>
+          <select class="modal-size" hidden aria-hidden="true">
+            {{range .SizeOpts}}<option value="{{.Slug}}" {{if eq .Value $.Item.Size}}selected{{end}}>{{.Label}}</option>{{end}}
+          </select>
+        </div>
+
+        <div class="side-field side-due">
+          <span class="modal-label">Due</span>
+          <input type="date" class="modal-due side-date" value="{{.Due}}" aria-label="Due date">
+        </div>
+
         <div class="side-field side-milestone">
           <div class="side-toggle-row">
             <span class="modal-label">Milestone</span>

@@ -57,11 +57,17 @@ func TestNormalizeViewQuery(t *testing.T) {
 		{"mode=bogus", ""}, // unknown mode dropped
 		{"assignee=me", "assignee=me"},
 		{"release=active", "release=active"},
-		{"status=b&status=a", "status=a&status=b"},           // sorted
-		{"status=a&status=a", "status=a"},                    // deduped
-		{"project=p1&assignee=me", "assignee=me&project=p1"}, // keys sorted
-		{"assignee=me&item=xyz&board=tasks", "assignee=me"},  // junk dropped
-		{"q=+hello+", "q=hello"},                             // trimmed
+		{"status=b&status=a", "status=a&status=b"},                         // sorted
+		{"status=a&status=a", "status=a"},                                  // deduped
+		{"project=p1&assignee=me", "assignee=me&project=p1"},               // keys sorted
+		{"assignee=me&item=xyz&board=tasks", "assignee=me"},                // junk dropped
+		{"q=+hello+", "q=hello"},                                           // trimmed
+		{"priority=urgent&priority=high", "priority=high&priority=urgent"}, // attr facet, sorted
+		{"type=bug", "type=bug"},
+		{"size=m&size=m", "size=m"}, // attr facet deduped
+		{"due=overdue", "due=overdue"},
+		{"due=bogus", ""}, // only "overdue" is a valid due token
+		{"priority=high&type=bug&size=l&due=overdue", "due=overdue&priority=high&size=l&type=bug"}, // keys sorted
 	}
 	for _, c := range cases {
 		in, _ := url.ParseQuery(c.in)

@@ -42,18 +42,28 @@ type modalView struct {
 	ReleaseID       string         // current release's id, "" if none (drives the picker's selected state)
 	ReleaseName     string         // current release's name, "" if none
 	ReleaseColorVar template.CSS   // current release's --lane-color (for the pill dot)
-	Archived        bool
-	ParentID        string // "" if this is a top-level item
-	ParentTitle     string
-	Children        []childView
-	SubDone         int
-	SubTotal        int
-	CreatedBy       string // display name of the creator, "" if unrecorded
-	CreatedByAgent  bool
-	Watching        bool             // the viewer is subscribed to this item
-	WatchCats       []catToggle      // the five category toggles for the Watch dropdown, ticked per the filter
-	Pending         *pendingBandView // a pending gated transition (the band atop the modal), or nil
-	Timeline        []timelineGroup  // unified activity feed: comments + system events, oldest first
+	// Attribute pickers. The *Opts are the static vocab menus; Priority/Type/Size
+	// are the item's current option (slug for the pill class, label for its text).
+	// Due is the date input's value (YYYY-MM-DD, "" if none).
+	Priority       board.AttrOption
+	PriorityOpts   []board.AttrOption
+	Type           board.AttrOption
+	TypeOpts       []board.AttrOption
+	Size           board.AttrOption
+	SizeOpts       []board.AttrOption
+	Due            string
+	Archived       bool
+	ParentID       string // "" if this is a top-level item
+	ParentTitle    string
+	Children       []childView
+	SubDone        int
+	SubTotal       int
+	CreatedBy      string // display name of the creator, "" if unrecorded
+	CreatedByAgent bool
+	Watching       bool             // the viewer is subscribed to this item
+	WatchCats      []catToggle      // the five category toggles for the Watch dropdown, ticked per the filter
+	Pending        *pendingBandView // a pending gated transition (the band atop the modal), or nil
+	Timeline       []timelineGroup  // unified activity feed: comments + system events, oldest first
 }
 
 // pendingBandView renders the "Pending Status" band: the gated lane an item is
@@ -564,6 +574,13 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		ReleaseID:       curReleaseID,
 		ReleaseName:     curReleaseName,
 		ReleaseColorVar: colorVar(curReleaseColor),
+		Priority:        board.Priorities.Option(item.Priority),
+		PriorityOpts:    board.Priorities.Options(),
+		Type:            board.ItemTypes.Option(item.Type),
+		TypeOpts:        board.ItemTypes.Options(),
+		Size:            board.Sizes.Option(item.Size),
+		SizeOpts:        board.Sizes.Options(),
+		Due:             board.DueString(item.DueDate),
 		Archived:        item.ArchivedAt != nil,
 		ParentID:        item.ParentID,
 		ParentTitle:     parentTitle,
@@ -630,6 +647,67 @@ func (h *handlers) itemAssignee(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.board.SetAssignee(r.Context(), r.PathValue("id"), req.AssigneeID); err != nil {
+		writeBoardErr(w, err)
+		return
+	}
+	h.liveUpsert(r, r.PathValue("id"))
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *handlers) itemSetPriority(w http.ResponseWriter, r *http.Request) {
+	h.setItemEnum(w, r, board.Priorities, h.board.SetPriority)
+}
+
+func (h *handlers) itemSetType(w http.ResponseWriter, r *http.Request) {
+	h.setItemEnum(w, r, board.ItemTypes, h.board.SetType)
+}
+
+func (h *handlers) itemSetSize(w http.ResponseWriter, r *http.Request) {
+	h.setItemEnum(w, r, board.Sizes, h.board.SetSize)
+}
+
+// setItemEnum is the shared body of the priority/type/size setters: it parses the
+// posted slug against the vocabulary ("none" clears), rejecting an unknown one,
+// then applies it and live-upserts the card.
+func (h *handlers) setItemEnum(w http.ResponseWriter, r *http.Request, vocab board.AttrVocab, set func(context.Context, string, int) error) {
+	if _, ok := h.resolveWorkspace(w, r); !ok {
+		return
+	}
+	var req struct {
+		Value string `json:"value"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	value, ok := vocab.Parse(req.Value)
+	if !ok {
+		http.Error(w, "invalid value", http.StatusBadRequest)
+		return
+	}
+	if err := set(r.Context(), r.PathValue("id"), value); err != nil {
+		writeBoardErr(w, err)
+		return
+	}
+	h.liveUpsert(r, r.PathValue("id"))
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *handlers) itemSetDue(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.resolveWorkspace(w, r); !ok {
+		return
+	}
+	var req struct {
+		Due string `json:"due"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	due, err := board.ParseDue(req.Due)
+	if err != nil {
+		http.Error(w, "invalid date", http.StatusBadRequest)
+		return
+	}
+	if err := h.board.SetDue(r.Context(), r.PathValue("id"), due); err != nil {
 		writeBoardErr(w, err)
 		return
 	}
