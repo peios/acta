@@ -16,54 +16,58 @@ import (
 )
 
 type Store struct {
-	mu          sync.Mutex
-	users       map[string]store.User
-	sessions    map[string]store.Session
-	credentials map[string]store.Credential
-	challenges  map[string]store.Challenge
-	workspaces  map[string]store.Workspace
-	itemSeq     map[string]int // per-workspace monotonic counter for item ref numbers
-	boards      map[string]store.Board
-	statuses    map[string]store.Status
-	items       map[string]store.Item
-	comments    map[string]store.Comment
-	apiTokens   map[string]store.APIToken
-	settings    map[string]string
-	mcpPrompts  map[string]store.MCPPrompt
-	events      map[string]store.Event
-	notifs      map[string]store.Notification
-	pushSubs    map[string]store.PushSubscription // keyed by endpoint
-	projects    map[string]store.Project
-	subs        map[string]store.Subscription // keyed by id
-	facts       map[int64]store.Fact
-	factSeq     int64
-	statusFacts map[string][]int64                  // status id -> ordered gating fact ids
-	itemFacts   map[string]map[int64]store.FactTick // item id -> fact id -> tick
+	mu           sync.Mutex
+	users        map[string]store.User
+	sessions     map[string]store.Session
+	credentials  map[string]store.Credential
+	challenges   map[string]store.Challenge
+	workspaces   map[string]store.Workspace
+	itemSeq      map[string]int // per-workspace monotonic counter for item ref numbers
+	boards       map[string]store.Board
+	statuses     map[string]store.Status
+	items        map[string]store.Item
+	comments     map[string]store.Comment
+	apiTokens    map[string]store.APIToken
+	settings     map[string]string
+	mcpPrompts   map[string]store.MCPPrompt
+	events       map[string]store.Event
+	notifs       map[string]store.Notification
+	pushSubs     map[string]store.PushSubscription // keyed by endpoint
+	projects     map[string]store.Project
+	subs         map[string]store.Subscription // keyed by id
+	facts        map[int64]store.Fact
+	factSeq      int64
+	statusFacts  map[string][]int64                  // status id -> ordered gating fact ids
+	itemFacts    map[string]map[int64]store.FactTick // item id -> fact id -> tick
+	releases     map[string]store.Release
+	itemReleases map[string]map[string]bool // item id -> set of release ids
 }
 
 func New() *Store {
 	return &Store{
-		users:       map[string]store.User{},
-		sessions:    map[string]store.Session{},
-		credentials: map[string]store.Credential{},
-		challenges:  map[string]store.Challenge{},
-		workspaces:  map[string]store.Workspace{},
-		itemSeq:     map[string]int{},
-		boards:      map[string]store.Board{},
-		statuses:    map[string]store.Status{},
-		items:       map[string]store.Item{},
-		comments:    map[string]store.Comment{},
-		apiTokens:   map[string]store.APIToken{},
-		settings:    map[string]string{},
-		mcpPrompts:  map[string]store.MCPPrompt{},
-		events:      map[string]store.Event{},
-		notifs:      map[string]store.Notification{},
-		pushSubs:    map[string]store.PushSubscription{},
-		projects:    map[string]store.Project{},
-		subs:        map[string]store.Subscription{},
-		facts:       map[int64]store.Fact{},
-		statusFacts: map[string][]int64{},
-		itemFacts:   map[string]map[int64]store.FactTick{},
+		users:        map[string]store.User{},
+		sessions:     map[string]store.Session{},
+		credentials:  map[string]store.Credential{},
+		challenges:   map[string]store.Challenge{},
+		workspaces:   map[string]store.Workspace{},
+		itemSeq:      map[string]int{},
+		boards:       map[string]store.Board{},
+		statuses:     map[string]store.Status{},
+		items:        map[string]store.Item{},
+		comments:     map[string]store.Comment{},
+		apiTokens:    map[string]store.APIToken{},
+		settings:     map[string]string{},
+		mcpPrompts:   map[string]store.MCPPrompt{},
+		events:       map[string]store.Event{},
+		notifs:       map[string]store.Notification{},
+		pushSubs:     map[string]store.PushSubscription{},
+		projects:     map[string]store.Project{},
+		subs:         map[string]store.Subscription{},
+		facts:        map[int64]store.Fact{},
+		statusFacts:  map[string][]int64{},
+		itemFacts:    map[string]map[int64]store.FactTick{},
+		releases:     map[string]store.Release{},
+		itemReleases: map[string]map[string]bool{},
 	}
 }
 
@@ -1078,6 +1082,189 @@ func (s *Store) ProjectItemCounts(_ context.Context, workspaceID string, doneSta
 			c.Done++
 		}
 		out[it.ProjectID] = c
+	}
+	return out, nil
+}
+
+// --- releases ---
+
+func (s *Store) CreateRelease(_ context.Context, r store.Release) (store.Release, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, ex := range s.releases {
+		if ex.WorkspaceID == r.WorkspaceID && strings.EqualFold(ex.Name, r.Name) {
+			return store.Release{}, store.ErrReleaseNameTaken
+		}
+	}
+	if r.ID == "" {
+		r.ID = newID()
+	}
+	if r.Status == "" {
+		r.Status = "active"
+	}
+	if r.CreatedAt.IsZero() {
+		r.CreatedAt = time.Now()
+	}
+	s.releases[r.ID] = r
+	return r, nil
+}
+
+func (s *Store) ReleasesByWorkspace(_ context.Context, workspaceID string) ([]store.Release, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.Release
+	for _, r := range s.releases {
+		if r.WorkspaceID == workspaceID {
+			out = append(out, r)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Position != out[j].Position {
+			return out[i].Position < out[j].Position
+		}
+		return out[i].CreatedAt.Before(out[j].CreatedAt)
+	})
+	return out, nil
+}
+
+func (s *Store) ReleaseByID(_ context.Context, id string) (store.Release, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, ok := s.releases[id]
+	if !ok {
+		return store.Release{}, store.ErrReleaseNotFound
+	}
+	return r, nil
+}
+
+func (s *Store) UpdateRelease(_ context.Context, r store.Release) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur, ok := s.releases[r.ID]
+	if !ok {
+		return store.ErrReleaseNotFound
+	}
+	for oid, ex := range s.releases {
+		if oid != r.ID && ex.WorkspaceID == cur.WorkspaceID && strings.EqualFold(ex.Name, r.Name) {
+			return store.ErrReleaseNameTaken
+		}
+	}
+	cur.Name = r.Name
+	cur.Description = r.Description
+	s.releases[r.ID] = cur
+	return nil
+}
+
+func (s *Store) SetReleaseStatus(_ context.Context, id, status string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, ok := s.releases[id]
+	if !ok {
+		return store.ErrReleaseNotFound
+	}
+	r.Status = status
+	if status == "shipped" {
+		now := time.Now()
+		r.ShippedAt = &now
+	} else {
+		r.ShippedAt = nil
+	}
+	s.releases[id] = r
+	return nil
+}
+
+func (s *Store) DeleteRelease(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.releases[id]; !ok {
+		return store.ErrReleaseNotFound
+	}
+	delete(s.releases, id)
+	for itemID, set := range s.itemReleases {
+		delete(set, id)
+		if len(set) == 0 {
+			delete(s.itemReleases, itemID)
+		}
+	}
+	return nil
+}
+
+func (s *Store) SetItemRelease(_ context.Context, itemID, releaseID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if releaseID == "" {
+		delete(s.itemReleases, itemID)
+		return nil
+	}
+	s.itemReleases[itemID] = map[string]bool{releaseID: true}
+	return nil
+}
+
+func (s *Store) ReleasesByItem(_ context.Context, itemID string) ([]store.Release, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.Release
+	for rid := range s.itemReleases[itemID] {
+		if r, ok := s.releases[rid]; ok {
+			out = append(out, r)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Position != out[j].Position {
+			return out[i].Position < out[j].Position
+		}
+		return out[i].CreatedAt.Before(out[j].CreatedAt)
+	})
+	return out, nil
+}
+
+func (s *Store) ItemsByRelease(_ context.Context, releaseID string) ([]store.Item, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := s.filterItems(func(it store.Item) bool {
+		return s.itemReleases[it.ID][releaseID] && it.ParentID == "" && it.ArchivedAt == nil
+	})
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out, nil
+}
+
+func (s *Store) ReleaseLinksByWorkspace(_ context.Context, workspaceID string) (map[string][]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := map[string][]string{}
+	for itemID, set := range s.itemReleases {
+		it, ok := s.items[itemID]
+		if !ok || it.WorkspaceID != workspaceID {
+			continue
+		}
+		for rid := range set {
+			out[itemID] = append(out[itemID], rid)
+		}
+	}
+	return out, nil
+}
+
+func (s *Store) ReleaseItemCounts(_ context.Context, workspaceID string, doneStatusIDs []string) (map[string]store.SubtaskCount, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	done := make(map[string]bool, len(doneStatusIDs))
+	for _, id := range doneStatusIDs {
+		done[id] = true
+	}
+	out := map[string]store.SubtaskCount{}
+	for itemID, set := range s.itemReleases {
+		it, ok := s.items[itemID]
+		if !ok || it.WorkspaceID != workspaceID || it.ParentID != "" || it.ArchivedAt != nil {
+			continue
+		}
+		for rid := range set {
+			c := out[rid]
+			c.Total++
+			if done[it.StatusID] {
+				c.Done++
+			}
+			out[rid] = c
+		}
 	}
 	return out, nil
 }

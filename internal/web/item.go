@@ -38,6 +38,10 @@ type modalView struct {
 	Projects        []modalProject // project-picker options (the workspace's active projects)
 	ProjectName     string         // current project's name, "" if none
 	ProjectColorVar template.CSS   // current project's --lane-color (for the pill dot)
+	Releases        []modalRelease // release-picker options (active releases + the current one)
+	ReleaseID       string         // current release's id, "" if none (drives the picker's selected state)
+	ReleaseName     string         // current release's name, "" if none
+	ReleaseColorVar template.CSS   // current release's --lane-color (for the pill dot)
 	Archived        bool
 	ParentID        string // "" if this is a top-level item
 	ParentTitle     string
@@ -110,6 +114,17 @@ type modalProject struct {
 }
 
 func (p modalProject) ColorVar() template.CSS { return colorVar(p.Color) }
+
+// modalRelease is one option in the modal's release picker: its id, name,
+// resolved colour (for the dropdown dot), and whether it's already shipped.
+type modalRelease struct {
+	ID      string
+	Name    string
+	Color   string
+	Shipped bool
+}
+
+func (r modalRelease) ColorVar() template.CSS { return colorVar(r.Color) }
 
 // containsUser reports whether a user with the given id is in us.
 func containsUser(us []store.User, id string) bool {
@@ -422,6 +437,31 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		}
 	}
 
+	// Release picker: the workspace's active releases, plus the item's current
+	// release even when it's shipped (so it stays shown/selectable rather than
+	// vanishing the moment it ships). One release per item in the UI.
+	releases, err := h.board.Releases(ctx, ws.ID)
+	if err != nil {
+		return modalView{}, false, err
+	}
+	curReleases, err := h.board.ReleasesForItem(ctx, item.ID)
+	if err != nil {
+		return modalView{}, false, err
+	}
+	curReleaseID, curReleaseName, curReleaseColor := "", "", ""
+	if len(curReleases) > 0 {
+		curReleaseID = curReleases[0].ID
+		curReleaseName = curReleases[0].Name
+		curReleaseColor = board.ReleaseColorFor(curReleases[0])
+	}
+	var mreleases []modalRelease
+	for _, rel := range releases {
+		if rel.Status == "shipped" && rel.ID != curReleaseID {
+			continue // the picker offers active releases (plus the current, if shipped)
+		}
+		mreleases = append(mreleases, modalRelease{ID: rel.ID, Name: rel.Name, Color: board.ReleaseColorFor(rel), Shipped: rel.Status == "shipped"})
+	}
+
 	viewerID := ""
 	if p := principalFrom(ctx); p != nil {
 		viewerID = p.ID
@@ -460,6 +500,10 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		Projects:        mprojects,
 		ProjectName:     curProjectName,
 		ProjectColorVar: colorVar(curProjectColor),
+		Releases:        mreleases,
+		ReleaseID:       curReleaseID,
+		ReleaseName:     curReleaseName,
+		ReleaseColorVar: colorVar(curReleaseColor),
 		Archived:        item.ArchivedAt != nil,
 		ParentID:        item.ParentID,
 		ParentTitle:     parentTitle,

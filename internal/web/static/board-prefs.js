@@ -22,8 +22,9 @@
   // the order boxes were ticked.
   function canon(params) {
     const parts = [];
-    if (params.get('mode') === 'milestone') parts.push('mode=milestone');
-    for (const name of ['status', 'assignee', 'project']) {
+    const mode = params.get('mode');
+    if (mode === 'milestone' || mode === 'release') parts.push('mode=' + mode);
+    for (const name of ['status', 'assignee', 'project', 'release']) {
       params.getAll(name).map(encodeURIComponent).sort().forEach((v) => parts.push(name + '=' + v));
     }
     return parts.join('&');
@@ -35,7 +36,7 @@
   window.__actaBoardPrefs = { save };
 
   const params = new URLSearchParams(location.search);
-  const hasView = params.has('mode') || params.has('status') || params.has('assignee') || params.has('project');
+  const hasView = params.has('mode') || params.has('status') || params.has('assignee') || params.has('project') || params.has('release');
 
   if (!hasView) {
     // Bare visit — replay the saved view if there's a non-default one. Any

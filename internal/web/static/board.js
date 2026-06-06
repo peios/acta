@@ -524,6 +524,59 @@
     });
   }
 
+  // wireReleaseColumn handles a Release-mode column (the "No release" bucket or a
+  // release). Cross-column drag re-files the card into that release (and reloads,
+  // so counts and the chip refresh); within-column order isn't persisted.
+  function wireReleaseColumn(col) {
+    const releaseId = col.dataset.releaseCol; // "" for "No release"
+
+    col.querySelector('.item-add').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = e.target.querySelector('.item-add-input');
+      const title = input.value.trim();
+      if (!title) return;
+      try {
+        const it = await api('/items', { title }); // server defaults the status
+        if (releaseId) await api('/items/' + it.id + '/release', { release_id: releaseId });
+        const card = newItem(it);
+        card.style.setProperty('--lane-color', it.color || '');
+        col.querySelector('.lane-items').append(card);
+        input.value = '';
+        input.focus();
+      } catch (err) { if (boardErr) boardErr.textContent = msg(err); }
+    });
+
+    new Sortable(col.querySelector('.lane-items'), {
+      group: 'items',
+      animation: 150,
+      draggable: '.item',
+      filter: '.item-del',
+      ghostClass: 'sortable-ghost',
+      chosenClass: 'sortable-chosen',
+      delay: 200,
+      delayOnTouchOnly: true,
+      touchStartThreshold: 6,
+      scroll: !touchPaging,
+      forceAutoScrollFallback: true,
+      scrollSensitivity: 60,
+      scrollSpeed: 14,
+      onStart: startCardDrag,
+      onChange: onDragChange,
+      onEnd: (evt) => {
+        endCardDrag();
+        if (handleBoardDrop(evt)) return;
+        const itemId = evt.item.dataset.itemId;
+        const toCol = evt.to.closest('.rcol').dataset.releaseCol;
+        const fromCol = evt.from.closest('.rcol').dataset.releaseCol;
+        if (toCol !== fromCol) {
+          api('/items/' + itemId + '/release', { release_id: toCol })
+            .then(() => location.reload())
+            .catch((e) => { if (boardErr) boardErr.textContent = msg(e); location.reload(); });
+        }
+      },
+    });
+  }
+
   // --- the item modal ---
 
   let modalEl = null;
@@ -1086,6 +1139,55 @@
       });
     }
 
+    // Release pill (side panel, exactly like project): drives the hidden
+    // .modal-release select, whose change handler posts and repaints the chip.
+    const releaseSelect = el.querySelector('.modal-release');
+    const sideReleasePill = el.querySelector('[data-release-pill-side]');
+    if (sideReleasePill && releaseSelect) {
+      const { trigger } = side.wire(sideReleasePill);
+      const dot = sideReleasePill.querySelector('[data-side-release-dot]');
+      const nameEl = sideReleasePill.querySelector('[data-side-release-name]');
+      const opts = {};
+      sideReleasePill.querySelectorAll('[data-release-opt]').forEach((o) => {
+        opts[o.dataset.releaseOpt] = { color: o.dataset.color || '', name: o.querySelector('.status-opt-name').textContent };
+      });
+      const syncRelease = () => {
+        const d = opts[releaseSelect.value] || { color: '', name: 'No release' };
+        const set = !!releaseSelect.value;
+        nameEl.textContent = d.name;
+        trigger.classList.toggle('unset', !set);
+        dot.hidden = !set;
+        dot.style.setProperty('--lane-color', d.color);
+      };
+      sideReleasePill.querySelectorAll('[data-release-opt]').forEach((o) => {
+        o.addEventListener('click', () => {
+          side.closeAll();
+          if (o.dataset.releaseOpt !== releaseSelect.value) {
+            releaseSelect.value = o.dataset.releaseOpt;
+            releaseSelect.dispatchEvent(new Event('change'));
+          }
+          syncRelease();
+        });
+      });
+      syncRelease();
+    }
+    if (releaseSelect) {
+      releaseSelect.addEventListener('change', async (e) => {
+        const rid = e.target.value;
+        const opt = e.target.options[e.target.selectedIndex];
+        try {
+          await api('/items/' + id + '/release', { release_id: rid });
+          const c = cardOf(id);
+          if (c) {
+            c.dataset.releaseId = rid;
+            c.dataset.releaseActive = rid ? '1' : ''; // a release picked here is always active
+            setCardRelease(c, rid ? (opt ? opt.textContent : '') : '', opt ? (opt.dataset.color || '') : '', false);
+            reapplyFilters(); // the release facet may now hide/show this card
+          }
+        } catch (err2) { fail(err2); }
+      });
+    }
+
     // "More" kebab (mobile): relocate the whole side panel into a dropdown so
     // its remaining fields (parent, milestone, created, archive) live behind the
     // kebab. The hidden status/assignee selects ride along, still pill-driven, so
@@ -1264,6 +1366,23 @@
       if (offBtn) offBtn.addEventListener('click', () => { side.closeAll(); postWatch({ watching: false }); });
     }
 
+    // Overflow (⋯) menu — per-item actions. The popover is always present; its
+    // contents are server-rendered (empty for ordinary tasks, "Convert to
+    // Release" for milestones).
+    const kebab = el.querySelector('[data-kebab]');
+    if (kebab) {
+      side.wire(kebab);
+      const convert = kebab.querySelector('[data-convert-release]');
+      if (convert) convert.addEventListener('click', async () => {
+        if (!window.confirm('Convert this milestone to a release? Its sub-tasks move into the new release and the milestone is archived.')) return;
+        try {
+          const res = await api('/items/' + id + '/convert-release');
+          side.closeAll();
+          if (res && res.url) location.href = res.url;
+        } catch (e) { fail(e); }
+      });
+    }
+
     const archive = el.querySelector('.modal-archive');
     if (archive) archive.addEventListener('click', async () => {
       try { await api('/items/' + id + '/archive'); const c = cardOf(id); if (c) c.remove(); closeModal(); }
@@ -1284,8 +1403,8 @@
     return [...form.querySelectorAll('input[name="' + name + '"]:checked')].map((c) => c.value);
   }
 
-  function filterBoard(statuses, assignees, projects) {
-    const sSet = new Set(statuses), aSet = new Set(assignees), pSet = new Set(projects);
+  function filterBoard(statuses, assignees, projects, releases) {
+    const sSet = new Set(statuses), aSet = new Set(assignees), pSet = new Set(projects), rSet = new Set(releases);
     const wrap = document.querySelector('.board-wrap');
     const me = wrap ? (wrap.dataset.me || '') : '';
     const statusOK = (id) => sSet.size === 0 || sSet.has(id);
@@ -1300,9 +1419,15 @@
       if (!pid) return pSet.has('none');
       return pSet.has(pid);
     };
+    const releaseOK = (rid, active) => {
+      if (rSet.size === 0) return true;
+      if (!rid) return rSet.has('none');
+      if (rSet.has(rid)) return true;
+      return rSet.has('active') && active; // "Current release" = any active release
+    };
     board.querySelectorAll('.item').forEach((card) => {
       const hide = !statusOK(card.dataset.statusId) || !assigneeOK(card.dataset.assigneeId || '') ||
-        !projectOK(card.dataset.projectId || '');
+        !projectOK(card.dataset.projectId || '') || !releaseOK(card.dataset.releaseId || '', card.dataset.releaseActive === '1');
       card.classList.toggle('is-filtered', hide);
     });
     board.querySelectorAll('.lane[data-status-id]').forEach((lane) => {
@@ -1315,12 +1440,13 @@
     if (summary) summary.innerHTML = label + (n ? ' <span class="facet-count">' + n + '</span>' : '');
   }
 
-  function syncFilterURL(statuses, assignees, projects) {
+  function syncFilterURL(statuses, assignees, projects, releases) {
     const p = new URLSearchParams(location.search);
-    p.delete('status'); p.delete('assignee'); p.delete('project');
+    p.delete('status'); p.delete('assignee'); p.delete('project'); p.delete('release');
     statuses.forEach((v) => p.append('status', v));
     assignees.forEach((v) => p.append('assignee', v));
     projects.forEach((v) => p.append('project', v));
+    releases.forEach((v) => p.append('release', v));
     const q = p.toString();
     history.replaceState(null, '', location.pathname + (q ? '?' + q : ''));
   }
@@ -1329,13 +1455,15 @@
     const statuses = facetValues(form, 'status');
     const assignees = facetValues(form, 'assignee');
     const projects = facetValues(form, 'project');
-    filterBoard(statuses, assignees, projects);
+    const releases = facetValues(form, 'release');
+    filterBoard(statuses, assignees, projects, releases);
     setFacetCount(form, 'status', statuses.length, 'Status');
     setFacetCount(form, 'assignee', assignees.length, 'Assignee');
     setFacetCount(form, 'project', projects.length, 'Project');
-    syncFilterURL(statuses, assignees, projects);
+    setFacetCount(form, 'release', releases.length, 'Release');
+    syncFilterURL(statuses, assignees, projects, releases);
     if (window.__actaBoardPrefs) window.__actaBoardPrefs.save(); // remember filters per workspace
-    const total = statuses.length + assignees.length + projects.length;
+    const total = statuses.length + assignees.length + projects.length + releases.length;
     const clear = form.querySelector('.facet-clear');
     if (clear) clear.hidden = total === 0;
     const badge = document.querySelector('[data-filter-badge]');
@@ -1371,7 +1499,7 @@
 
     form.addEventListener('submit', (e) => { e.preventDefault(); applyFilters(form); });
 
-    form.querySelectorAll('input[name="status"], input[name="project"], input[value="me"], input[value="unassigned"]').forEach((c) => {
+    form.querySelectorAll('input[name="status"], input[name="project"], input[name="release"], input[value="me"], input[value="unassigned"]').forEach((c) => {
       c.addEventListener('change', () => applyFilters(form));
     });
 
@@ -1440,7 +1568,7 @@
 
   // --- display properties (which fields/empty lanes show; per-workspace pref) ---
   const DISP_KEY = 'acta:disp:' + wrap.dataset.slug;
-  const DISP_KEYS = ['empty', 'assignee', 'sub', 'milestone', 'project'];
+  const DISP_KEYS = ['empty', 'assignee', 'sub', 'milestone', 'project', 'release'];
   const loadDisp = () => { try { return JSON.parse(localStorage.getItem(DISP_KEY)) || {}; } catch (_) { return {}; } };
   const saveDisp = (d) => { try { localStorage.setItem(DISP_KEY, JSON.stringify(d)); } catch (_) {} };
   function applyDisp() {
@@ -1632,6 +1760,10 @@
         api('/milestones/reorder', { ids }).catch((e) => { if (boardErr) boardErr.textContent = msg(e); });
       },
     });
+  } else if (board.dataset.mode === 'release') {
+    // Release columns aren't reorderable (their order follows the releases'); a
+    // card dragged between them re-files into that release.
+    board.querySelectorAll('.rcol').forEach(wireReleaseColumn);
   } else {
     board.querySelectorAll('.lane').forEach(wireLane);
 
@@ -1763,6 +1895,26 @@
     chip.querySelector('.item-project-name').textContent = name;
   }
 
+  // setCardRelease creates/updates/removes a card's release chip in the meta row.
+  // Shared by the modal change handler (own edit) and the live SSE path (remote).
+  function setCardRelease(card, name, color, shipped) {
+    let chip = card.querySelector('.item-release');
+    if (!name) { if (chip) chip.remove(); return; }
+    const meta = card.querySelector('.item-meta');
+    if (!meta) return;
+    if (!chip) {
+      chip = document.createElement('span');
+      chip.className = 'item-release';
+      chip.innerHTML = '<span class="item-release-dot"></span><span class="item-release-name"></span>';
+      const spacer = meta.querySelector('.meta-spacer');
+      if (spacer) meta.insertBefore(chip, spacer); else meta.appendChild(chip);
+    }
+    chip.classList.toggle('shipped', !!shipped);
+    chip.title = 'Release: ' + name;
+    chip.style.setProperty('--lane-color', color || '');
+    chip.querySelector('.item-release-name').textContent = name;
+  }
+
   function applyUpsert(msg) {
     let card = cardOf(msg.id);
     // A non-root item (e.g. just reparented under another) has no board card; if
@@ -1789,6 +1941,9 @@
     liveCardAvatar(card, msg.assignee);
     card.dataset.projectId = msg.project ? msg.project.id : '';
     setCardProject(card, msg.project ? msg.project.name : '', msg.project ? msg.project.color : '');
+    card.dataset.releaseId = msg.release ? msg.release.id : '';
+    card.dataset.releaseActive = (msg.release && !msg.release.shipped) ? '1' : '';
+    setCardRelease(card, msg.release ? msg.release.name : '', msg.release ? msg.release.color : '', msg.release ? msg.release.shipped : false);
     if (msg.color) card.style.setProperty('--lane-color', msg.color);
     // Only re-home the card when it isn't already in the target lane, so a field
     // change never yanks it to the bottom of its column.

@@ -1,0 +1,117 @@
+{{define "title"}}{{.Release.Name}} · Releases · Acta{{end}}
+
+{{define "content"}}
+<div class="proj" style="{{.ColorVar}}">
+  <a class="toplink" href="/{{.Workspace.Slug}}/releases">&lsaquo; Releases</a>
+
+  {{if .Err}}<p class="alert" role="alert">{{.Err}}</p>{{end}}
+
+  <div class="proj-page-head">
+    <span class="proj-page-dot"></span>
+    <div>
+      <h1 class="proj-page-title">{{.Release.Name}}</h1>
+      <div class="proj-page-meta">
+        <span class="proj-status" data-status="{{.Status}}">{{.Status}}</span>
+        {{if .ShippedWhen}}<span class="proj-lead">Shipped {{.ShippedWhen}}</span>{{end}}
+        <span class="proj-progress" style="min-width: 8rem">
+          <span class="proj-bar"><i style="width: {{.Pct}}%"></i></span>
+          <span class="proj-count">{{.Done}}/{{.Total}} done</span>
+        </span>
+      </div>
+    </div>
+    <div class="proj-page-actions">
+      <button class="tool-pill" type="button" data-edit-toggle aria-expanded="false" aria-label="Edit release" title="Edit release">
+        <svg class="ico" viewBox="0 0 16 16"><path d="M3 13l.5-2.7 7-7 2.2 2.2-7 7z"/><path d="M9.8 3.4l2.2 2.2"/></svg>
+      </button>
+      {{/* Lifecycle transitions, per current status. planned: activate / ship.
+           active: move back to planned / ship. shipped: reopen to active. */}}
+      {{if eq .Status "planned"}}
+      <form method="post" action="/{{.Workspace.Slug}}/releases/{{.Release.ID}}/status">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="hidden" name="status" value="active">
+        <button class="tool-pill" type="submit" aria-label="Activate" title="Activate — make this a current release">
+          <svg class="ico" viewBox="0 0 16 16"><path d="M5 3.5 12 8 5 12.5z"/></svg>
+        </button>
+      </form>
+      <form method="post" action="/{{.Workspace.Slug}}/releases/{{.Release.ID}}/status">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="hidden" name="status" value="shipped">
+        <button class="tool-pill pill-ship" type="submit" aria-label="Ship" title="Ship this release — freezes it as a changelog entry">
+          <svg class="ico" viewBox="0 0 16 16"><path d="M8 1.5c2.4 1 3.6 3.4 3.6 6.2 0 1.4-.4 2.8-1.1 4H5.5c-.7-1.2-1.1-2.6-1.1-4 0-2.8 1.2-5.2 3.6-6.2z"/><circle cx="8" cy="6.4" r="1.2"/><path d="M5.6 11.7 4 14l2.3-.8M10.4 11.7 12 14l-2.3-.8"/></svg>
+        </button>
+      </form>
+      {{else if eq .Status "active"}}
+      <form method="post" action="/{{.Workspace.Slug}}/releases/{{.Release.ID}}/status">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="hidden" name="status" value="planned">
+        <button class="tool-pill" type="submit" aria-label="Move to planned" title="Move back to planned (a future target, not current)">
+          <svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6"/><path d="M8 4.8V8l2.2 1.4"/></svg>
+        </button>
+      </form>
+      <form method="post" action="/{{.Workspace.Slug}}/releases/{{.Release.ID}}/status">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="hidden" name="status" value="shipped">
+        <button class="tool-pill pill-ship" type="submit" aria-label="Ship" title="Ship this release — freezes it as a changelog entry">
+          <svg class="ico" viewBox="0 0 16 16"><path d="M8 1.5c2.4 1 3.6 3.4 3.6 6.2 0 1.4-.4 2.8-1.1 4H5.5c-.7-1.2-1.1-2.6-1.1-4 0-2.8 1.2-5.2 3.6-6.2z"/><circle cx="8" cy="6.4" r="1.2"/><path d="M5.6 11.7 4 14l2.3-.8M10.4 11.7 12 14l-2.3-.8"/></svg>
+        </button>
+      </form>
+      {{else}}
+      <form method="post" action="/{{.Workspace.Slug}}/releases/{{.Release.ID}}/status">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="hidden" name="status" value="active">
+        <button class="tool-pill" type="submit" aria-label="Reopen" title="Reopen this release (back to active)">
+          <svg class="ico" viewBox="0 0 16 16"><path d="M3.5 8a4.5 4.5 0 1 0 1.5-3.35"/><path d="M2.6 3.2v2.6h2.6"/></svg>
+        </button>
+      </form>
+      {{end}}
+      <form method="post" action="/{{.Workspace.Slug}}/releases/{{.Release.ID}}/delete" data-confirm="Delete release “{{.Release.Name}}”? Its items keep their history — they just lose this tag.">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button class="tool-pill pill-archive" type="submit" aria-label="Delete" title="Delete this release">
+          <svg class="ico" viewBox="0 0 16 16"><path d="M2.6 4.2h10.8"/><path d="M5.6 4.2V3a1 1 0 0 1 1-1h2.8a1 1 0 0 1 1 1v1.2"/><path d="M4 4.2l.6 8.1a1.1 1.1 0 0 0 1.1 1h4.6a1.1 1.1 0 0 0 1.1-1l.6-8.1"/><path d="M6.7 6.7v4M9.3 6.7v4"/></svg>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="panel proj-form-card proj-edit-panel"{{if not .Err}} hidden{{end}} data-edit-panel>
+    <form class="proj-form" method="post" action="/{{.Workspace.Slug}}/releases/{{.Release.ID}}/edit">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <div class="field">
+        <span class="lbl">Name</span>
+        <div class="input-wrap"><input class="input" name="name" maxlength="80" value="{{.Release.Name}}" required></div>
+      </div>
+      <div class="field">
+        <span class="lbl">Notes</span>
+        <textarea class="modal-desc" name="description" rows="4" placeholder="What's this release about? (markdown supported)">{{.Release.Description}}</textarea>
+      </div>
+      <div class="proj-form-actions">
+        <button class="btn-primary" type="submit">Save changes</button>
+      </div>
+    </form>
+  </div>
+
+  <p class="proj-section-title">Notes</p>
+  {{if .HasDesc}}
+  <div class="proj-brief md">{{.DescHTML}}</div>
+  {{else}}
+  <p class="proj-brief-empty">No notes yet — open Edit release to add some.</p>
+  {{end}}
+
+  <p class="proj-section-title">Items · {{.Total}}</p>
+  {{if .Items}}
+  <div class="proj-items">
+    {{range .Items}}
+    <a class="proj-item" href="{{.Href}}">
+      <span class="proj-item-ref">{{.RefID}}</span>
+      <span class="proj-item-title">{{.Title}}</span>
+      <span class="proj-chip" style="{{.StatusColorVar}}"><span class="proj-dot"></span>{{.StatusName}}</span>
+      {{if .HasAssignee}}<span class="avatar sm{{if .IsAgent}} bot{{end}}" style="{{.AvatarStyle}}" title="{{.AssigneeName}}">{{.AvatarText}}</span>{{end}}
+    </a>
+    {{end}}
+  </div>
+  {{else}}
+  <div class="proj-empty">No items yet. Open any item and pick this release from the side panel to add it here.</div>
+  {{end}}
+</div>
+<script src="{{asset "/static/project.js"}}"></script>
+{{end}}

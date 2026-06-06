@@ -30,6 +30,8 @@ var (
 	ErrProjectSlugTaken     = errors.New("store: project slug already taken")
 	ErrFactNotFound         = errors.New("store: fact not found")
 	ErrFactTitleTaken       = errors.New("store: fact title already taken")
+	ErrReleaseNotFound      = errors.New("store: release not found")
+	ErrReleaseNameTaken     = errors.New("store: release name already taken")
 )
 
 // MCPPrompt is a user-defined Model Context Protocol prompt: a named, optionally
@@ -73,6 +75,7 @@ const (
 	EventItemMilestone    = "item.milestone"      // data: on ("true"/"false")
 	EventItemReparented   = "item.reparented"     // data: to ("" = top level)
 	EventItemProject      = "item.project"        // data: to (project name, "" = cleared)
+	EventItemRelease      = "item.release"        // data: to (release name, "" = cleared)
 	EventCommentAdded     = "comment.added"       // data: excerpt
 )
 
@@ -320,6 +323,26 @@ type Project struct {
 	CreatedBy   string
 }
 
+// Release is a workspace's versioned cut-line: a point the project ships at.
+// Unlike a Project (an open-ended theme), a release is stateful — Planned while
+// it's a future target being scoped, Active while it accrues current work, then
+// Shipped, which stamps ShippedAt and freezes it into a changelog entry. Several
+// releases can be Planned or Active at once. Name is the version
+// handle (e.g. "v0.27.0"), unique within the workspace case-insensitively. An
+// item's membership lives in the item_releases join (many-to-many), not on the
+// item — see ReleasesByItem / ItemsByRelease. Color is derived from Position.
+type Release struct {
+	ID          string
+	WorkspaceID string
+	Name        string
+	Description string
+	Status      string     // active|shipped
+	ShippedAt   *time.Time // nil until shipped — the freeze marker
+	Position    int
+	CreatedAt   time.Time
+	CreatedBy   string
+}
+
 // Comment is a note by a user on an item. AuthorID may be empty if the author's
 // account was later removed. EditedAt is non-nil once the author has edited it;
 // DeletedAt is non-nil once soft-deleted — the row is kept (append-only audit)
@@ -557,6 +580,34 @@ type Store interface {
 	SetItemProject(ctx context.Context, id, projectID string) error
 	ItemsByProject(ctx context.Context, projectID string) ([]Item, error)
 	ProjectItemCounts(ctx context.Context, workspaceID string, doneStatusIDs []string) (map[string]SubtaskCount, error)
+
+	// Releases. A release is a workspace-scoped versioned cut-line items belong to
+	// via the item_releases join (many-to-many). CreateRelease returns
+	// ErrReleaseNameTaken on a per-workspace, case-insensitive name collision.
+	// ReleasesByWorkspace lists every release (planned, active and shipped) ordered
+	// by position then created_at. UpdateRelease sets a release's name and
+	// description by r.ID (also returns ErrReleaseNameTaken). SetReleaseStatus moves
+	// a release to planned|active|shipped, stamping shipped_at on "shipped" and
+	// clearing it otherwise. DeleteRelease removes a release
+	// and its memberships (the join cascades). SetItemRelease replaces an item's
+	// memberships with the single given release (or clears them with ""), the UI's
+	// one-release-per-item write path. ReleasesByItem returns the releases an item
+	// belongs to (position order); ItemsByRelease a release's active top-level
+	// items, newest first. ReleaseLinksByWorkspace maps every linked item id in the
+	// workspace to its release ids (for the board's chips and filter).
+	// ReleaseItemCounts returns per-release top-level progress (Total, and Done =
+	// items whose status is in doneStatusIDs) for the overview bars.
+	CreateRelease(ctx context.Context, r Release) (Release, error)
+	ReleasesByWorkspace(ctx context.Context, workspaceID string) ([]Release, error)
+	ReleaseByID(ctx context.Context, id string) (Release, error)
+	UpdateRelease(ctx context.Context, r Release) error
+	SetReleaseStatus(ctx context.Context, id, status string) error
+	DeleteRelease(ctx context.Context, id string) error
+	SetItemRelease(ctx context.Context, itemID, releaseID string) error
+	ReleasesByItem(ctx context.Context, itemID string) ([]Release, error)
+	ItemsByRelease(ctx context.Context, releaseID string) ([]Item, error)
+	ReleaseLinksByWorkspace(ctx context.Context, workspaceID string) (map[string][]string, error)
+	ReleaseItemCounts(ctx context.Context, workspaceID string, doneStatusIDs []string) (map[string]SubtaskCount, error)
 
 	// Comments on an item, returned oldest-first (including soft-deleted ones;
 	// callers filter as they need). CommentByID returns ErrCommentNotFound when

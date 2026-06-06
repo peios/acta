@@ -1140,6 +1140,211 @@ func (p *Postgres) ProjectItemCounts(ctx context.Context, workspaceID string, do
 	return out, rows.Err()
 }
 
+// --- releases ---
+
+const releaseCols = `id::text, workspace_id::text, name, description, status,
+                     shipped_at, position, created_at, COALESCE(created_by::text, '')`
+
+func scanRelease(row pgx.Row) (store.Release, error) {
+	var r store.Release
+	err := row.Scan(&r.ID, &r.WorkspaceID, &r.Name, &r.Description, &r.Status,
+		&r.ShippedAt, &r.Position, &r.CreatedAt, &r.CreatedBy)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.Release{}, store.ErrReleaseNotFound
+	}
+	return r, err
+}
+
+// mapReleaseConflict turns the per-workspace name unique-violation into the
+// matching sentinel; other errors pass through.
+func mapReleaseConflict(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "name") {
+		return store.ErrReleaseNameTaken
+	}
+	return err
+}
+
+func (p *Postgres) CreateRelease(ctx context.Context, r store.Release) (store.Release, error) {
+	out, err := createWithRetry(func() (store.Release, error) {
+		const q = `INSERT INTO releases
+		             (workspace_id, name, description, status, shipped_at, position, created_by)
+		           VALUES ($1, $2, $3, $4, $5, $6, $7)
+		           RETURNING ` + releaseCols
+		var creator any
+		if r.CreatedBy != "" {
+			creator = r.CreatedBy
+		}
+		status := r.Status
+		if status == "" {
+			status = "active"
+		}
+		return scanRelease(p.pool.QueryRow(ctx, q,
+			r.WorkspaceID, r.Name, r.Description, status, r.ShippedAt, r.Position, creator))
+	})
+	if err != nil {
+		return store.Release{}, mapReleaseConflict(err)
+	}
+	return out, nil
+}
+
+func (p *Postgres) ReleasesByWorkspace(ctx context.Context, workspaceID string) ([]store.Release, error) {
+	const q = `SELECT ` + releaseCols + ` FROM releases WHERE workspace_id = $1 ORDER BY position, created_at`
+	rows, err := p.pool.Query(ctx, q, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Release
+	for rows.Next() {
+		r, err := scanRelease(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) ReleaseByID(ctx context.Context, id string) (store.Release, error) {
+	const q = `SELECT ` + releaseCols + ` FROM releases WHERE id = $1`
+	return scanRelease(p.pool.QueryRow(ctx, q, id))
+}
+
+func (p *Postgres) UpdateRelease(ctx context.Context, r store.Release) error {
+	const q = `UPDATE releases SET name = $2, description = $3 WHERE id = $1`
+	ct, err := p.pool.Exec(ctx, q, r.ID, r.Name, r.Description)
+	if err != nil {
+		return mapReleaseConflict(err)
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrReleaseNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) SetReleaseStatus(ctx context.Context, id, status string) error {
+	const q = `UPDATE releases
+	           SET status = $2,
+	               shipped_at = CASE WHEN $2 = 'shipped' THEN now() ELSE NULL END
+	           WHERE id = $1`
+	ct, err := p.pool.Exec(ctx, q, id, status)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrReleaseNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) DeleteRelease(ctx context.Context, id string) error {
+	ct, err := p.pool.Exec(ctx, `DELETE FROM releases WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrReleaseNotFound
+	}
+	return nil
+}
+
+// SetItemRelease replaces an item's release memberships with the single given
+// release (or clears them when releaseID is ""), in one transaction — the UI's
+// one-release-per-item write path over the many-to-many join.
+func (p *Postgres) SetItemRelease(ctx context.Context, itemID, releaseID string) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `DELETE FROM item_releases WHERE item_id = $1`, itemID); err != nil {
+		return err
+	}
+	if releaseID != "" {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO item_releases (item_id, release_id) VALUES ($1, $2)`, itemID, releaseID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+func (p *Postgres) ReleasesByItem(ctx context.Context, itemID string) ([]store.Release, error) {
+	const q = `SELECT ` + releaseCols + ` FROM releases
+	           WHERE id IN (SELECT release_id FROM item_releases WHERE item_id = $1)
+	           ORDER BY position, created_at`
+	rows, err := p.pool.Query(ctx, q, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Release
+	for rows.Next() {
+		r, err := scanRelease(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) ItemsByRelease(ctx context.Context, releaseID string) ([]store.Item, error) {
+	q := `SELECT ` + itemCols + ` FROM items
+	      WHERE id IN (SELECT item_id FROM item_releases WHERE release_id = $1)
+	        AND parent_id IS NULL AND archived_at IS NULL
+	      ORDER BY created_at DESC`
+	return p.queryItems(ctx, q, releaseID)
+}
+
+func (p *Postgres) ReleaseLinksByWorkspace(ctx context.Context, workspaceID string) (map[string][]string, error) {
+	const q = `SELECT item_id::text, release_id::text FROM item_releases
+	           WHERE item_id IN (SELECT id FROM items WHERE workspace_id = $1)`
+	rows, err := p.pool.Query(ctx, q, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]string{}
+	for rows.Next() {
+		var itemID, releaseID string
+		if err := rows.Scan(&itemID, &releaseID); err != nil {
+			return nil, err
+		}
+		out[itemID] = append(out[itemID], releaseID)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) ReleaseItemCounts(ctx context.Context, workspaceID string, doneStatusIDs []string) (map[string]store.SubtaskCount, error) {
+	const q = `SELECT ir.release_id::text,
+	                  count(*) AS total,
+	                  count(*) FILTER (WHERE i.status_id = ANY($2)) AS done
+	           FROM item_releases ir
+	           JOIN items i ON i.id = ir.item_id
+	           WHERE i.workspace_id = $1 AND i.parent_id IS NULL AND i.archived_at IS NULL
+	           GROUP BY ir.release_id`
+	if doneStatusIDs == nil {
+		doneStatusIDs = []string{}
+	}
+	rows, err := p.pool.Query(ctx, q, workspaceID, doneStatusIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]store.SubtaskCount{}
+	for rows.Next() {
+		var rid string
+		var total, done int
+		if err := rows.Scan(&rid, &total, &done); err != nil {
+			return nil, err
+		}
+		out[rid] = store.SubtaskCount{Done: done, Total: total}
+	}
+	return out, rows.Err()
+}
+
 // --- comments ---
 
 func (p *Postgres) CreateComment(ctx context.Context, c store.Comment) (store.Comment, error) {

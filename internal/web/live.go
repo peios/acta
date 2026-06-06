@@ -166,6 +166,17 @@ func (h *handlers) cardFields(ctx context.Context, it store.Item) map[string]any
 			}
 		}
 	}
+	// Release chip (one per item in the UI). Absent key = no release, so the
+	// client clears any existing chip on receipt.
+	if rels, err := h.board.ReleasesForItem(ctx, it.ID); err == nil && len(rels) > 0 {
+		rel := rels[0]
+		f["release"] = map[string]any{
+			"id":      rel.ID,
+			"name":    rel.Name,
+			"color":   board.ReleaseColorFor(rel),
+			"shipped": rel.Status == "shipped",
+		}
+	}
 	if it.AssigneeID != "" {
 		if u, err := h.board.User(ctx, it.AssigneeID); err == nil {
 			name := displayName(u)

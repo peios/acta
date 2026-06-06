@@ -64,6 +64,7 @@ func categoryForVerb(verb string) string {
 		return CatItemsAdded
 	case store.EventItemRenamed, store.EventItemDescribed, store.EventItemArchived,
 		store.EventItemUnarchived, store.EventItemMilestone, store.EventItemReparented,
+		store.EventItemRelease,
 		// A forced move already emits a status-change event (which status watchers
 		// get); this audit note rides "other" so they aren't notified twice.
 		store.EventItemStatusForced:
@@ -301,6 +302,11 @@ func HumanizeEvent(e store.Event) string {
 			return "removed this from its project"
 		}
 		return "filed this under " + d["to"]
+	case store.EventItemRelease:
+		if d["to"] == "" {
+			return "removed this from its release"
+		}
+		return "added this to release " + d["to"]
 	case store.EventCommentAdded:
 		if x := d["excerpt"]; x != "" {
 			return "commented: “" + x + "”"

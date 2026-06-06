@@ -89,6 +89,14 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("POST /{slug}/projects/{id}/archive", protected(h.projectArchive))
 	mux.Handle("POST /{slug}/projects/{id}/unarchive", protected(h.projectUnarchive))
 	mux.Handle("POST /{slug}/projects/{id}/subscribe", protected(h.projectSubscribe))
+	// Releases: a workspace's versioned cut-lines. Same routing shape as projects —
+	// /{slug}/releases is more specific than /{slug}/{board}; the single-release
+	// view rides ?r=<id>; mutations keep the id in the path.
+	mux.Handle("GET /{slug}/releases", protected(h.releases))
+	mux.Handle("POST /{slug}/releases", protected(h.releaseCreate))
+	mux.Handle("POST /{slug}/releases/{id}/edit", protected(h.releaseUpdate))
+	mux.Handle("POST /{slug}/releases/{id}/status", protected(h.releaseSetStatus))
+	mux.Handle("POST /{slug}/releases/{id}/delete", protected(h.releaseDelete))
 	// A second path segment selects a non-default board (e.g. /{slug}/backlog);
 	// the literal sub-routes above are more specific, so they always win.
 	mux.Handle("GET /{slug}/{board}", protected(h.boardPage))
@@ -117,6 +125,8 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("POST /{slug}/items/{id}/comment/{cid}/delete", protected(h.itemCommentDelete))
 	mux.Handle("POST /{slug}/items/{id}/parent", protected(h.itemParent))
 	mux.Handle("POST /{slug}/items/{id}/project", protected(h.itemSetProject))
+	mux.Handle("POST /{slug}/items/{id}/release", protected(h.itemSetRelease))
+	mux.Handle("POST /{slug}/items/{id}/convert-release", protected(h.itemConvertToRelease))
 	mux.Handle("POST /{slug}/items/{id}/subscribe", protected(h.itemSubscribe))
 	mux.Handle("POST /{slug}/items/{id}/milestone", protected(h.itemMilestone))
 	mux.Handle("POST /{slug}/items/{id}/subtasks", protected(h.subtaskCreate))

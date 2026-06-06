@@ -1,0 +1,81 @@
+{{define "title"}}Releases · {{.Workspace.Name}} · Acta{{end}}
+
+{{define "content"}}
+<div class="proj">
+  <div class="proj-head">
+    <h1 class="title">Releases</h1>
+    <span class="proj-head-spacer"></span>
+  </div>
+
+  {{if .Err}}<p class="alert" role="alert">{{.Err}}</p>{{end}}
+
+  <details class="proj-new"{{if .Err}} open{{end}}>
+    <summary class="btn-secondary">+ New release</summary>
+    <div class="panel proj-form-card">
+      <form class="proj-form" method="post" action="/{{.Workspace.Slug}}/releases">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <div class="field">
+          <span class="lbl">Name</span>
+          <div class="input-wrap"><input class="input" name="name" maxlength="80" placeholder="e.g. v0.27.0" required></div>
+        </div>
+        <div class="field">
+          <span class="lbl">Notes</span>
+          <textarea class="modal-desc" name="description" rows="3" placeholder="What's this release about? (markdown supported)"></textarea>
+        </div>
+        <div class="field">
+          <span class="lbl">Status</span>
+          <select class="proj-select" name="status">
+            <option value="active" selected>Active — accruing work now</option>
+            <option value="planned">Planned — a future target</option>
+          </select>
+        </div>
+        <div class="proj-form-actions">
+          <button class="btn-primary" type="submit">Create release</button>
+        </div>
+      </form>
+    </div>
+  </details>
+
+  <p class="proj-section-title">Active · {{len .Active}}</p>
+  {{if .Active}}
+  <div class="proj-grid">
+    {{range .Active}}{{template "release-card" .}}{{end}}
+  </div>
+  {{else}}
+  <div class="proj-empty">No active releases. Create one to start gathering work for the next cut.</div>
+  {{end}}
+
+  {{if .Planned}}
+  <p class="proj-section-title">Planned · {{len .Planned}}</p>
+  <div class="proj-grid">
+    {{range .Planned}}{{template "release-card" .}}{{end}}
+  </div>
+  {{end}}
+
+  {{if .Shipped}}
+  <p class="proj-section-title">Shipped · {{len .Shipped}}</p>
+  <div class="proj-grid">
+    {{range .Shipped}}{{template "release-card" .}}{{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "release-card"}}
+<a class="proj-card" href="{{.Href}}" style="{{.ColorVar}}">
+  <span class="proj-dot"></span>
+  <span class="proj-card-main">
+    <span class="proj-card-name">{{.Name}}</span>
+    <span class="proj-card-sub">
+      <span class="proj-status" data-status="{{.Status}}">{{.Status}}</span>
+      {{if .ShippedWhen}}<span class="proj-lead">{{.ShippedWhen}}</span>{{end}}
+    </span>
+  </span>
+  <span class="proj-card-side">
+    <span class="proj-progress">
+      <span class="proj-bar"><i style="width: {{.Pct}}%"></i></span>
+      <span class="proj-count">{{.Done}}/{{.Total}}</span>
+    </span>
+  </span>
+</a>
+{{end}}

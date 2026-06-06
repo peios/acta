@@ -481,6 +481,13 @@
   .item-project-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--lane-color, var(--faint)); }
   .item-project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .board-wrap.hide-project .item-project { display: none; }
+  /* release chip — mirrors the project chip, but a squared accent (round = project,
+     square = release) tells them apart at a glance; shipped releases read dimmer. */
+  .item-release { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 9rem; padding: 1px 7px 1px 5px; border-radius: 999px; font-size: 11px; line-height: 1.5; color: var(--muted); background: color-mix(in srgb, var(--lane-color, var(--faint)) 13%, transparent); border: 1px solid color-mix(in srgb, var(--lane-color, var(--faint)) 30%, transparent); }
+  .item-release-dot { width: 6px; height: 6px; flex: none; border-radius: 2px; background: var(--lane-color, var(--faint)); }
+  .item-release-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item-release.shipped { opacity: .6; }
+  .board-wrap.hide-release .item-release { display: none; }
 
   .item-add { padding: 0; margin: 0; }
   .item-add-input { width: 100%; background: none; border: 1px dashed var(--border-soft); border-radius: 7px; color: var(--faint); font: inherit; font-size: 13px; padding: .5rem .6rem; }
@@ -520,6 +527,12 @@
   .mcol-title:hover:not(.mcol-backlog) { color: var(--accent-hi); }
   .mcol-diamond { width: 6px; height: 6px; flex: none; background: var(--lane-color, var(--accent)); border-radius: 1px; transform: rotate(45deg); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lane-color, var(--accent)) 15%, transparent); }
   .mcol-backlog { color: var(--muted); cursor: default; }
+
+  /* release-mode columns reuse the milestone column header chrome; the accent is
+     a squared dot (matching the release chip) and shipped columns carry a tag. */
+  .rcol-dot { width: 7px; height: 7px; flex: none; border-radius: 2px; background: var(--lane-color, var(--faint)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lane-color, var(--faint)) 15%, transparent); }
+  .rcol-title { text-decoration: none; }
+  .rcol-tag { font-size: 9.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); border: 1px solid var(--border-soft); border-radius: 4px; padding: 0 4px; }
 
   /* ---- board filters ---- */
   .board-filters { display: inline-flex; align-items: center; gap: .4rem; margin: 0; }
@@ -609,9 +622,14 @@
   .pop-row .lbl { color: var(--muted); font-size: 13px; }
   .pop-row .spacer { flex: 1; }
   .grp { display: inline-flex; padding: 2px; gap: 2px; background: var(--field); border: 1px solid var(--border-soft); border-radius: 8px; }
-  .grp-opt { text-decoration: none; color: var(--muted); font-size: 12.5px; font-weight: 500; padding: 4px 10px; border-radius: 6px; }
+  .grp-opt { text-decoration: none; color: var(--muted); font-size: 12.5px; font-weight: 500; padding: 4px 10px; border-radius: 6px; text-align: center; white-space: nowrap; }
   .grp-opt:hover { color: var(--text); }
   .grp-opt.active { color: var(--text); background: var(--surface-h); box-shadow: inset 0 0 0 1px var(--border-soft); }
+  /* Grouping stacks: the segmented control sits full-width on its own line under
+     the label, splitting evenly — so it never overflows as options are added. */
+  .grp-row { flex-direction: column; align-items: stretch; gap: 7px; }
+  .grp-row .grp { display: flex; }
+  .grp-row .grp-opt { flex: 1; }
   .dd { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px 0 11px; border-radius: 7px; background: var(--field); border: 1px solid var(--border-soft); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
   .dd .chev { color: var(--faint); font-size: 9px; }
   .pop-div { height: 1px; background: var(--border-soft); margin: 6px 4px; }
@@ -710,6 +728,15 @@
   .watch-cat input { accent-color: var(--accent); width: 15px; height: 15px; flex: none; }
   .watch-off { display: block; width: 100%; margin-top: .3rem; padding: .5rem; background: none; border: 0; border-top: 1px solid var(--border-soft); color: var(--danger, #e5707a); font: inherit; font-size: .82rem; font-weight: 500; cursor: pointer; text-align: center; }
   .watch-off:hover { background: rgba(229, 112, 122, .1); }
+
+  /* overflow (⋯) menu on the item modal — per-item actions */
+  .kebab-control { position: relative; display: inline-flex; }
+  .kebab-pop { width: max-content; min-width: 11rem; padding: 5px; }
+  .kebab-item { display: flex; align-items: center; gap: .55rem; width: 100%; padding: .5rem .55rem; background: none; border: 0; border-radius: 7px; color: var(--text); font: inherit; font-size: .86rem; text-align: left; cursor: pointer; }
+  .kebab-item:hover { background: var(--surface-h); }
+  .kebab-item .ico { width: 15px; height: 15px; flex: none; color: var(--faint); }
+  .kebab-item:hover .ico { color: var(--accent); }
+  .kebab-empty { margin: 0; padding: .55rem; color: var(--faint); font-size: .82rem; text-align: center; }
   .side-field { display: grid; gap: .4rem; }
   .side-value { font-size: .85rem; color: var(--text); }
   .side-foot { margin-top: .3rem; }
@@ -1050,6 +1077,8 @@
   .proj-status[data-status="active"] { color: var(--accent-hi); border-color: var(--accent-line); background: var(--accent-weak); }
   .proj-status[data-status="paused"] { color: #e8b96d; border-color: color-mix(in srgb, #e8b96d 38%, transparent); background: color-mix(in srgb, #e8b96d 14%, transparent); }
   .proj-status[data-status="done"] { color: var(--status); border-color: color-mix(in srgb, var(--status) 38%, transparent); background: color-mix(in srgb, var(--status) 12%, transparent); }
+  .proj-status[data-status="shipped"] { color: var(--status); border-color: color-mix(in srgb, var(--status) 38%, transparent); background: color-mix(in srgb, var(--status) 12%, transparent); }
+  .proj-status[data-status="planned"] { color: #8ea2c0; border-color: color-mix(in srgb, #8ea2c0 34%, transparent); background: color-mix(in srgb, #8ea2c0 12%, transparent); }
 
   /* progress */
   .proj-progress { display: flex; align-items: center; gap: .6rem; min-width: 9rem; }
@@ -1353,6 +1382,10 @@
       <a class="nav-item{{if eq .Section "projects"}} active{{end}}" href="/{{.Workspace.Slug}}/projects">
         <svg class="ico" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/></svg>
         <span class="nav-label">Projects</span>
+      </a>
+      <a class="nav-item{{if eq .Section "releases"}} active{{end}}" href="/{{.Workspace.Slug}}/releases">
+        <svg class="ico" viewBox="0 0 16 16"><path d="M8 1.5 13.5 4.5v7L8 14.5 2.5 11.5v-7z"/><path d="M2.5 4.5 8 7.5 13.5 4.5"/><path d="M8 7.5v7"/></svg>
+        <span class="nav-label">Releases</span>
       </a>
       <a class="nav-item{{if and (eq .Section "activity") (not .ActiveBoard)}} active{{end}}" href="/{{.Workspace.Slug}}/activity">
         <svg class="ico" viewBox="0 0 16 16"><path d="M1.5 8h3l1.5-4 3 8 1.5-4h4"/></svg>

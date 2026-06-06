@@ -170,6 +170,23 @@
             <svg class="ico" viewBox="0 0 16 16"><path d="M2.6 4.2h10.8"/><path d="M5.6 4.2V3a1 1 0 0 1 1-1h2.8a1 1 0 0 1 1 1v1.2"/><path d="M4 4.2l.6 8.1a1.1 1.1 0 0 0 1.1 1h4.6a1.1 1.1 0 0 0 1.1-1l.6-8.1"/><path d="M6.7 6.7v4M9.3 6.7v4"/></svg>
           </button>
           {{end}}
+          {{/* Overflow menu: per-item actions. Empty for ordinary tasks for now;
+               milestones get "Convert to Release". */}}
+          <div class="kebab-control" data-kebab>
+            <button class="tool-pill" type="button" data-pill-trigger aria-label="More actions" title="More actions">
+              <svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="3.4" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="8" cy="12.6" r="1.3"/></svg>
+            </button>
+            <div class="popover kebab-pop" data-pill-menu hidden>
+              {{if .Item.IsMilestone}}
+              <button class="kebab-item" type="button" data-convert-release>
+                <svg class="ico" viewBox="0 0 16 16"><path d="M8 1.5 13.5 4.5v7L8 14.5 2.5 11.5v-7z"/><path d="M2.5 4.5 8 7.5 13.5 4.5"/><path d="M8 7.5v7"/></svg>
+                Convert to Release
+              </button>
+              {{else}}
+              <p class="kebab-empty">No actions yet</p>
+              {{end}}
+            </div>
+          </div>
         </div>
 
         {{/* Each field is a full-width "pill" trigger opening a custom popover —
@@ -244,6 +261,30 @@
           <select class="modal-project" hidden aria-hidden="true">
             <option value="">No project</option>
             {{range .Projects}}<option value="{{.ID}}" data-color="{{.Color}}" {{if eq .ID $.Item.ProjectID}}selected{{end}}>{{.Name}}</option>{{end}}
+          </select>
+        </div>
+
+        <div class="side-field side-release">
+          <span class="modal-label">Release</span>
+          <div class="side-pick" data-release-pill-side>
+            <button class="side-pill{{if not .ReleaseID}} unset{{end}}" type="button" data-pill-trigger aria-label="Change release">
+              <span class="status-dot" data-side-release-dot style="{{.ReleaseColorVar}}"{{if not .ReleaseID}} hidden{{end}}></span>
+              <span class="side-pill-name" data-side-release-name>{{if .ReleaseName}}{{.ReleaseName}}{{else}}No release{{end}}</span>
+              <span class="chev">&#9662;</span>
+            </button>
+            <div class="popover side-pop" data-pill-menu hidden>
+              <button class="status-opt" type="button" data-release-opt=""><span class="status-dot" style="--lane-color:var(--dim)"></span><span class="status-opt-name">No release</span></button>
+              {{range .Releases}}
+              <button class="status-opt" type="button" data-release-opt="{{.ID}}" data-color="{{.Color}}">
+                <span class="status-dot" style="{{.ColorVar}}"></span>
+                <span class="status-opt-name">{{.Name}}{{if .Shipped}} · shipped{{end}}</span>
+              </button>
+              {{end}}
+            </div>
+          </div>
+          <select class="modal-release" hidden aria-hidden="true">
+            <option value="">No release</option>
+            {{range .Releases}}<option value="{{.ID}}" data-color="{{.Color}}" {{if eq .ID $.ReleaseID}}selected{{end}}>{{.Name}}</option>{{end}}
           </select>
         </div>
 

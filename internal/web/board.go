@@ -25,26 +25,32 @@ type boardData struct {
 	// Board context. BoardID drives the add-lane target (data-board-id); BoardBase
 	// is the current board-view path (filters/mode links hang off it); Activity
 	// and Archive hrefs are this board's scoped feeds (the header toolbar).
-	BoardID           string
-	BoardBase         string
-	ActivityHref      string
-	ArchiveHref       string
-	LanesDashed       bool     // this is the Backlog board — its lane/facet dots render dashed
-	Mode              string   // "status" or "milestone"
-	Lanes             []lane   // status mode
-	Palette           []swatch // lane-colour options for the header picker
-	MilestoneColumns  []milestoneColumn
-	StatusFilter      []statusOpt   // the status facet options
-	StatusSelected    int           // count badge on the Status trigger
-	Assignees         assigneeFacet // the assignee facet (hierarchical)
-	AssigneeSelected  int           // count badge on the Assignee trigger
-	ProjectFilter     []projectOpt  // the project facet options (empty hides the facet)
-	ProjectSelected   int           // count badge on the Project trigger
-	NoProjectSelected bool          // the "No project" token is selected
-	FilterCount       int           // status + assignee + project selections, for the Filter button badge
-	FilterActive      bool          // any facet currently narrowing the board
-	ViewMine          bool          // the active view is "assigned to me" (My items tab)
-	Modal             *modalView    // set when ?item=<id> resolves within this workspace
+	BoardID            string
+	BoardBase          string
+	ActivityHref       string
+	ArchiveHref        string
+	LanesDashed        bool     // this is the Backlog board — its lane/facet dots render dashed
+	Mode               string   // "status", "milestone", or "release"
+	Lanes              []lane   // status mode
+	Palette            []swatch // lane-colour options for the header picker
+	MilestoneColumns   []milestoneColumn
+	ReleaseColumns     []releaseColumn // release mode: a column per release (+ "No release")
+	HasReleases        bool            // the workspace has ≥1 release (gates the Releases view tab)
+	StatusFilter       []statusOpt     // the status facet options
+	StatusSelected     int             // count badge on the Status trigger
+	Assignees          assigneeFacet   // the assignee facet (hierarchical)
+	AssigneeSelected   int             // count badge on the Assignee trigger
+	ProjectFilter      []projectOpt    // the project facet options (empty hides the facet)
+	ProjectSelected    int             // count badge on the Project trigger
+	NoProjectSelected  bool            // the "No project" token is selected
+	ReleaseFilter      []releaseOpt    // the release facet options (empty hides the facet)
+	ReleaseSelected    int             // count badge on the Release trigger
+	NoReleaseSelected  bool            // the "No release" token is selected
+	CurrentRelSelected bool            // the "Current release" (any active) token is selected
+	FilterCount        int             // status + assignee + project + release selections, for the Filter button badge
+	FilterActive       bool            // any facet currently narrowing the board
+	ViewMine           bool            // the active view is "assigned to me" (My items tab)
+	Modal              *modalView      // set when ?item=<id> resolves within this workspace
 }
 
 // swatch is one option in the lane-colour picker: its hex (sent back on pick)
@@ -87,6 +93,22 @@ type milestoneColumn struct {
 // declaration for its header diamond.
 func (m milestoneColumn) ColorVar() template.CSS { return colorVar(m.Color) }
 
+// releaseColumn is one column of Release mode: the "No release" bucket (ID "")
+// or a release holding the items in it. Tag is the lifecycle label shown beside
+// the name for non-active releases ("planned"/"shipped"), "" for active and the
+// No-release bucket.
+type releaseColumn struct {
+	ID    string
+	Name  string
+	Color string
+	Tag   string
+	Cards []cardView
+}
+
+// ColorVar is the release's colour as a template-safe `--lane-color` declaration
+// for its header dot.
+func (c releaseColumn) ColorVar() template.CSS { return colorVar(c.Color) }
+
 type cardView struct {
 	Item       store.Item
 	RefID      string // human id, e.g. "ACTA-12"
@@ -107,16 +129,37 @@ type cardView struct {
 	HasProject   bool
 	ProjectName  string
 	ProjectColor string
+
+	// Release chip (resolved from the item's release membership). HasRelease gates
+	// it; ReleaseID drives the filter's data attribute; ReleaseShipped dims the chip.
+	HasRelease     bool
+	ReleaseID      string
+	ReleaseName    string
+	ReleaseColor   string
+	ReleaseShipped bool
 }
 
 // ProjectColorVar is the chip's project colour as a template-safe `--lane-color`
 // declaration. The value is always a palette hex, so it's safe to emit verbatim.
 func (c cardView) ProjectColorVar() template.CSS { return colorVar(c.ProjectColor) }
 
+// ReleaseColorVar is the release chip's colour as a template-safe `--lane-color`
+// declaration; like ProjectColorVar the value is always a palette hex.
+func (c cardView) ReleaseColorVar() template.CSS { return colorVar(c.ReleaseColor) }
+
+// cardRelease is a card's resolved release chip: the membership reduced to what
+// the card shows. Keyed by item id in the map threaded through the card builders.
+type cardRelease struct {
+	ID      string
+	Name    string
+	Color   string
+	Shipped bool
+}
+
 // buildCard assembles a card's view model, resolving its assignee (if any) to an
 // avatar and its project (if any) to a chip. users maps principal id -> user for
 // the avatar; projects maps project id -> project for the chip.
-func buildCard(it store.Item, counts map[string]store.SubtaskCount, st store.Status, f boardFilter, users map[string]store.User, projects map[string]store.Project, prefix string) cardView {
+func buildCard(it store.Item, counts map[string]store.SubtaskCount, st store.Status, f boardFilter, users map[string]store.User, projects map[string]store.Project, releases map[string]cardRelease, prefix string) cardView {
 	cv := cardView{
 		Item: it, RefID: refID(prefix, it.RefNum), Subtasks: counts[it.ID], StatusName: st.Name,
 		Color: board.ColorFor(st), Hidden: f.cardHidden(it),
@@ -137,6 +180,13 @@ func buildCard(it store.Item, counts map[string]store.SubtaskCount, st store.Sta
 			cv.ProjectName = p.Name
 			cv.ProjectColor = board.ProjectColorFor(p)
 		}
+	}
+	if rc, ok := releases[it.ID]; ok {
+		cv.HasRelease = true
+		cv.ReleaseID = rc.ID
+		cv.ReleaseName = rc.Name
+		cv.ReleaseColor = rc.Color
+		cv.ReleaseShipped = rc.Shipped
 	}
 	return cv
 }
@@ -320,13 +370,17 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mode := "status"
-	if r.URL.Query().Get("mode") == "milestone" {
+	switch r.URL.Query().Get("mode") {
+	case "milestone":
 		mode = "milestone"
+	case "release":
+		mode = "release"
 	}
 
 	me := principalFrom(r.Context())
 	filter := newBoardFilter(r.URL.Query()["status"], r.URL.Query()["assignee"], me.ID)
 	filter.projects = toSet(r.URL.Query()["project"])
+	filter.releases = toSet(r.URL.Query()["release"])
 	users, err := h.board.Users(r.Context())
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -347,6 +401,47 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 			activeProjects = append(activeProjects, p)
 		}
 	}
+	// Releases for the chips, the filter, and the facet. The chip/filter draw on
+	// every release (a card keeps its chip after the release ships); the facet
+	// offers only active ones. The UI keeps one release per item, so the chip map
+	// reduces each item's memberships to one.
+	releases, err := h.board.Releases(r.Context(), ws.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	releaseByID := make(map[string]store.Release, len(releases))
+	var openReleases []store.Release // planned + active — offered in the facet
+	activeReleaseIDs := map[string]bool{}
+	for _, rel := range releases {
+		releaseByID[rel.ID] = rel
+		if rel.Status != "shipped" {
+			openReleases = append(openReleases, rel)
+		}
+		if rel.Status == "active" {
+			activeReleaseIDs[rel.ID] = true // "Current release" = active only, not planned
+		}
+	}
+	filter.activeReleases = activeReleaseIDs
+	links, err := h.board.ReleaseLinks(r.Context(), ws.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	releaseOf := make(map[string]string, len(links))
+	releaseChips := make(map[string]cardRelease, len(links))
+	for itemID, rids := range links {
+		if len(rids) == 0 {
+			continue
+		}
+		rel, ok := releaseByID[rids[0]] // one-per-item in the UI; take the first
+		if !ok {
+			continue
+		}
+		releaseOf[itemID] = rel.ID
+		releaseChips[itemID] = cardRelease{ID: rel.ID, Name: rel.Name, Color: board.ReleaseColorFor(rel), Shipped: rel.Status == "shipped"}
+	}
+	filter.releaseOf = releaseOf
 	userByID := make(map[string]store.User, len(users))
 	for _, u := range users {
 		userByID[u.ID] = u
@@ -354,35 +449,43 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 
 	ch.ActiveBoard = bd.Slug
 	data := boardData{
-		chrome:            ch,
-		Principal:         me,
-		BoardID:           bd.ID,
-		BoardBase:         r.URL.Path,
-		ActivityHref:      "/" + ws.Slug + "/activity?board=" + bd.Slug,
-		ArchiveHref:       "/" + ws.Slug + "/archive?board=" + bd.Slug,
-		LanesDashed:       isBacklogBoard(bd),
-		Mode:              mode,
-		Palette:           palette(),
-		StatusFilter:      statusFacet(statuses, filter),
-		StatusSelected:    len(filter.statuses),
-		Assignees:         assigneeFacetFrom(users, filter),
-		AssigneeSelected:  len(filter.assignees),
-		ProjectFilter:     projectFacet(activeProjects, filter),
-		ProjectSelected:   len(filter.projects),
-		NoProjectSelected: filter.projects["none"],
-		FilterCount:       len(filter.statuses) + len(filter.assignees) + len(filter.projects),
-		FilterActive:      filter.active(),
-		ViewMine:          filter.assignees["me"] && len(filter.assignees) == 1 && len(filter.statuses) == 0,
+		chrome:             ch,
+		Principal:          me,
+		BoardID:            bd.ID,
+		BoardBase:          r.URL.Path,
+		ActivityHref:       "/" + ws.Slug + "/activity?board=" + bd.Slug,
+		ArchiveHref:        "/" + ws.Slug + "/archive?board=" + bd.Slug,
+		LanesDashed:        isBacklogBoard(bd),
+		Mode:               mode,
+		Palette:            palette(),
+		StatusFilter:       statusFacet(statuses, filter),
+		StatusSelected:     len(filter.statuses),
+		Assignees:          assigneeFacetFrom(users, filter),
+		AssigneeSelected:   len(filter.assignees),
+		ProjectFilter:      projectFacet(activeProjects, filter),
+		ProjectSelected:    len(filter.projects),
+		NoProjectSelected:  filter.projects["none"],
+		ReleaseFilter:      releaseFacet(openReleases, filter),
+		ReleaseSelected:    len(filter.releases),
+		NoReleaseSelected:  filter.releases["none"],
+		CurrentRelSelected: filter.releases["active"],
+		FilterCount:        len(filter.statuses) + len(filter.assignees) + len(filter.projects) + len(filter.releases),
+		FilterActive:       filter.active(),
+		ViewMine:           filter.assignees["me"] && len(filter.assignees) == 1 && len(filter.statuses) == 0,
+		HasReleases:        len(releases) > 0,
 	}
-	if mode == "milestone" {
-		cols, err := h.milestoneColumns(r.Context(), items, statuses, counts, filter, userByID, projectByID, ws.ItemPrefix)
+	switch mode {
+	case "milestone":
+		cols, err := h.milestoneColumns(r.Context(), items, statuses, counts, filter, userByID, projectByID, releaseChips, ws.ItemPrefix)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 		data.MilestoneColumns = cols
-	} else {
-		data.Lanes = groupLanes(statuses, items, counts, filter, userByID, projectByID, ws.ItemPrefix)
+	case "release":
+		data.ReleaseColumns = releaseColumns(items, statuses, counts, filter, userByID, projectByID, releaseChips, releaseOf, releases, ws.ItemPrefix)
+	default:
+		data.Lanes = groupLanes(statuses, items, counts, filter, userByID, projectByID, releaseChips, ws.ItemPrefix)
 	}
 	// A ?item=<id> deep link opens that item's modal (server-rendered, so it
 	// works on refresh and with JS off).
@@ -401,13 +504,13 @@ func (h *handlers) boardPage(w http.ResponseWriter, r *http.Request) {
 
 // milestoneColumns builds Milestone mode: a Backlog column of root
 // non-milestones, then one column per root milestone holding its children.
-func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, statuses []store.Status, counts map[string]store.SubtaskCount, filter boardFilter, users map[string]store.User, projects map[string]store.Project, prefix string) ([]milestoneColumn, error) {
+func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, statuses []store.Status, counts map[string]store.SubtaskCount, filter boardFilter, users map[string]store.User, projects map[string]store.Project, releases map[string]cardRelease, prefix string) ([]milestoneColumn, error) {
 	statusByID := make(map[string]store.Status, len(statuses))
 	for _, s := range statuses {
 		statusByID[s.ID] = s
 	}
 	card := func(it store.Item) cardView {
-		return buildCard(it, counts, statusByID[it.StatusID], filter, users, projects, prefix)
+		return buildCard(it, counts, statusByID[it.StatusID], filter, users, projects, releases, prefix)
 	}
 	// Root non-milestones gather in a leading column. It's titled "No milestone"
 	// (not "Backlog") so it doesn't read as the Backlog board, which is unrelated.
@@ -443,16 +546,54 @@ func (h *handlers) milestoneColumns(ctx context.Context, roots []store.Item, sta
 	return cols, nil
 }
 
+// releaseColumns buckets items by their release for Release mode: a leading "No
+// release" column, then active releases, then planned releases (both always
+// shown, so they're drag targets even when empty), then any shipped release that
+// still holds items on this board (so nothing is orphaned, without cluttering
+// with empty history). An item's release comes from releaseOf (the join reduced
+// to one, as the UI enforces); items in no release fall into the leading column.
+func releaseColumns(items []store.Item, statuses []store.Status, counts map[string]store.SubtaskCount, filter boardFilter, users map[string]store.User, projects map[string]store.Project, releaseChips map[string]cardRelease, releaseOf map[string]string, releases []store.Release, prefix string) []releaseColumn {
+	statusByID := make(map[string]store.Status, len(statuses))
+	for _, st := range statuses {
+		statusByID[st.ID] = st
+	}
+	byRelease := map[string][]cardView{}
+	for _, it := range items {
+		rid := releaseOf[it.ID]
+		byRelease[rid] = append(byRelease[rid], buildCard(it, counts, statusByID[it.StatusID], filter, users, projects, releaseChips, prefix))
+	}
+	col := func(rel store.Release, tag string) releaseColumn {
+		return releaseColumn{ID: rel.ID, Name: rel.Name, Color: board.ReleaseColorFor(rel), Tag: tag, Cards: byRelease[rel.ID]}
+	}
+	cols := []releaseColumn{{Name: "No release", Cards: byRelease[""]}}
+	for _, rel := range releases { // active first (the current focus)
+		if rel.Status == "active" {
+			cols = append(cols, col(rel, ""))
+		}
+	}
+	for _, rel := range releases { // then planned (upcoming targets)
+		if rel.Status == "planned" {
+			cols = append(cols, col(rel, "planned"))
+		}
+	}
+	for _, rel := range releases { // then shipped releases that still hold work here
+		if rel.Status == "shipped" && len(byRelease[rel.ID]) > 0 {
+			cols = append(cols, col(rel, "shipped"))
+		}
+	}
+	return cols
+}
+
 // groupLanes buckets items under their status, attaching each item's subtask
 // progress. items arrives ordered by position, so each lane stays in order.
-func groupLanes(statuses []store.Status, items []store.Item, counts map[string]store.SubtaskCount, filter boardFilter, users map[string]store.User, projects map[string]store.Project, prefix string) []lane {
+func groupLanes(statuses []store.Status, items []store.Item, counts map[string]store.SubtaskCount, filter boardFilter, users map[string]store.User, projects map[string]store.Project, releases map[string]cardRelease, prefix string) []lane {
 	byID := make(map[string]store.Status, len(statuses))
 	for _, st := range statuses {
 		byID[st.ID] = st
 	}
 	byStatus := map[string][]cardView{}
 	for _, it := range items {
-		byStatus[it.StatusID] = append(byStatus[it.StatusID], buildCard(it, counts, byID[it.StatusID], filter, users, projects, prefix))
+		byStatus[it.StatusID] = append(byStatus[it.StatusID], buildCard(it, counts, byID[it.StatusID], filter, users, projects, releases, prefix))
 	}
 	lanes := make([]lane, len(statuses))
 	for i, st := range statuses {
@@ -775,6 +916,14 @@ func writeBoardErr(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusBadRequest, body{"project_mismatch"})
 	case errors.Is(err, store.ErrProjectNotFound):
 		writeJSON(w, http.StatusNotFound, body{"project_not_found"})
+	case errors.Is(err, board.ErrReleaseMismatch):
+		writeJSON(w, http.StatusBadRequest, body{"release_mismatch"})
+	case errors.Is(err, store.ErrReleaseNotFound):
+		writeJSON(w, http.StatusNotFound, body{"release_not_found"})
+	case errors.Is(err, store.ErrReleaseNameTaken):
+		writeJSON(w, http.StatusConflict, body{"release_name_taken"})
+	case errors.Is(err, board.ErrNotMilestone):
+		writeJSON(w, http.StatusBadRequest, body{"not_milestone"})
 	case errors.Is(err, board.ErrInvalidColor):
 		writeJSON(w, http.StatusBadRequest, body{"invalid_color"})
 	case errors.Is(err, store.ErrStatusNotFound):

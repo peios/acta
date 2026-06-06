@@ -3,7 +3,7 @@
 {{define "head"}}<script src="{{asset "/static/board-prefs.js"}}"></script>{{end}}
 
 {{define "card"}}
-<article class="item{{if .Hidden}} is-filtered{{end}}" data-item-id="{{.Item.ID}}" data-status-id="{{.Item.StatusID}}" data-assignee-id="{{.Item.AssigneeID}}" data-project-id="{{.Item.ProjectID}}" style="{{.ColorVar}}"{{if .StatusName}} title="{{.StatusName}}"{{end}}>
+<article class="item{{if .Hidden}} is-filtered{{end}}" data-item-id="{{.Item.ID}}" data-status-id="{{.Item.StatusID}}" data-assignee-id="{{.Item.AssigneeID}}" data-project-id="{{.Item.ProjectID}}" data-release-id="{{.ReleaseID}}" data-release-active="{{if and .HasRelease (not .ReleaseShipped)}}1{{end}}" style="{{.ColorVar}}"{{if .StatusName}} title="{{.StatusName}}"{{end}}>
   <span class="item-title">{{.Item.Title}}</span>
   {{if .Item.IsMilestone}}<span class="item-ms" title="Milestone">◆</span>{{end}}
   <button class="item-del" type="button" title="Archive" aria-label="Archive item">×</button>
@@ -11,6 +11,7 @@
     <span class="item-ref">{{.RefID}}</span>
     {{if .Subtasks.Total}}<span class="item-sub" title="Subtasks done">{{.Subtasks.Done}}/{{.Subtasks.Total}}</span>{{end}}
     {{if .HasProject}}<span class="item-project" style="{{.ProjectColorVar}}" title="Project: {{.ProjectName}}"><span class="item-project-dot"></span><span class="item-project-name">{{.ProjectName}}</span></span>{{end}}
+    {{if .HasRelease}}<span class="item-release{{if .ReleaseShipped}} shipped{{end}}" style="{{.ReleaseColorVar}}" title="Release: {{.ReleaseName}}"><span class="item-release-dot"></span><span class="item-release-name">{{.ReleaseName}}</span></span>{{end}}
     <span class="meta-spacer"></span>
     {{if .HasAssignee}}<span class="avatar sm{{if .IsAgent}} bot{{end}}" style="{{.AvatarStyle}}" title="{{.AssigneeName}}">{{.AvatarText}}</span>{{end}}
   </div>
@@ -30,6 +31,11 @@
       <a class="view-tab{{if eq .Mode "milestone"}} active{{end}}" href="{{.BoardBase}}?mode=milestone">
         <svg class="ico" viewBox="0 0 16 16"><path d="M8 2.4 13.6 8 8 13.6 2.4 8z"/></svg>Milestones
       </a>
+      {{if .HasReleases}}
+      <a class="view-tab{{if eq .Mode "release"}} active{{end}}" href="{{.BoardBase}}?mode=release">
+        <svg class="ico" viewBox="0 0 16 16"><path d="M8 1.5 13.5 4.5v7L8 14.5 2.5 11.5v-7z"/><path d="M2.5 4.5 8 7.5 13.5 4.5"/><path d="M8 7.5v7"/></svg>Releases
+      </a>
+      {{end}}
     </div>
 
     <div class="bar-right">
@@ -54,7 +60,7 @@
         </button>
         <div class="popover pop-filter" data-pop-menu hidden>
           <form class="board-filters" method="get" action="{{.BoardBase}}" data-filters>
-            {{if eq .Mode "milestone"}}<input type="hidden" name="mode" value="milestone">{{end}}
+            {{if ne .Mode "status"}}<input type="hidden" name="mode" value="{{.Mode}}">{{end}}
 
             <details class="facet" data-facet="status" open>
               <summary class="facet-trigger">Status{{if .StatusSelected}} <span class="facet-count">{{.StatusSelected}}</span>{{end}}</summary>
@@ -121,6 +127,29 @@
             </details>
             {{end}}
 
+            {{if .ReleaseFilter}}
+            <details class="facet" data-facet="release" open>
+              <summary class="facet-trigger">Release{{if .ReleaseSelected}} <span class="facet-count">{{.ReleaseSelected}}</span>{{end}}</summary>
+              <div class="facet-panel">
+                <label class="facet-row">
+                  <input type="checkbox" name="release" value="active"{{if .CurrentRelSelected}} checked{{end}}>
+                  <span class="facet-label">Current release</span>
+                </label>
+                <label class="facet-row">
+                  <input type="checkbox" name="release" value="none"{{if .NoReleaseSelected}} checked{{end}}>
+                  <span class="facet-label">No release</span>
+                </label>
+                {{range .ReleaseFilter}}
+                <label class="facet-row">
+                  <input type="checkbox" name="release" value="{{.ID}}"{{if .Selected}} checked{{end}}>
+                  <span class="facet-dot" style="{{.ColorVar}}"></span>
+                  <span class="facet-label">{{.Name}}</span>
+                </label>
+                {{end}}
+              </div>
+            </details>
+            {{end}}
+
             <div class="filter-foot">
               <button type="submit" class="facet-apply">Apply</button>
               <a class="facet-clear" href="{{.BoardBase}}?mode={{.Mode}}"{{if not .FilterActive}} hidden{{end}}>Clear</a>
@@ -143,10 +172,11 @@
             </button>
           </div>
           <div class="pop-rows">
-            <div class="pop-row"><span class="lbl">Grouping</span><span class="spacer"></span>
+            <div class="pop-row grp-row"><span class="lbl">Grouping</span>
               <div class="grp">
                 <a class="grp-opt{{if eq .Mode "status"}} active{{end}}" href="{{.BoardBase}}?mode=status">Status</a>
                 <a class="grp-opt{{if eq .Mode "milestone"}} active{{end}}" href="{{.BoardBase}}?mode=milestone">Milestone</a>
+                {{if .HasReleases}}<a class="grp-opt{{if eq .Mode "release"}} active{{end}}" href="{{.BoardBase}}?mode=release">Release</a>{{end}}
               </div>
             </div>
             <div class="pop-row"><span class="lbl">Ordering</span><span class="spacer"></span><button class="dd" type="button" disabled title="Sorting — coming soon"><span>Manual</span><span class="chev">&#9662;</span></button></div>
@@ -162,6 +192,7 @@
             <button class="dp" type="button" aria-pressed="true" data-display="sub">Sub-tasks</button>
             <button class="dp" type="button" aria-pressed="true" data-display="milestone">Milestone</button>
             <button class="dp" type="button" aria-pressed="true" data-display="project">Project</button>
+            <button class="dp" type="button" aria-pressed="true" data-display="release">Release</button>
           </div>
           <div class="pop-foot"><button class="pop-reset" type="button" data-display-reset>Reset</button></div>
         </div>
@@ -169,7 +200,25 @@
     </div>
   </div>
 
-  {{if eq .Mode "milestone"}}
+  {{if eq .Mode "release"}}
+  <div class="board" id="board" data-mode="release">
+    {{range .ReleaseColumns}}
+    <section class="lane rcol" data-column data-release-col="{{.ID}}"{{if not .Cards}} data-empty{{end}}>
+      <header class="lane-head mcol-head">
+        {{if .ID}}<span class="rcol-dot" style="{{.ColorVar}}"></span><a class="mcol-title rcol-title" href="/{{$.Workspace.Slug}}/releases?r={{.ID}}">{{.Name}}</a>{{if .Tag}}<span class="rcol-tag">{{.Tag}}</span>{{end}}
+        {{else}}<span class="mcol-title mcol-backlog">{{.Name}}</span>{{end}}
+        <span class="lane-count">{{len .Cards}}</span>
+      </header>
+      <div class="lane-items">
+        {{range .Cards}}{{template "card" .}}{{end}}
+      </div>
+      <form class="item-add">
+        <input class="item-add-input" placeholder="+ Add item" maxlength="200" aria-label="New item title">
+      </form>
+    </section>
+    {{end}}
+  </div>
+  {{else if eq .Mode "milestone"}}
   <div class="board" id="board" data-mode="milestone">
     {{range .MilestoneColumns}}
     <section class="lane mcol" data-column data-parent-id="{{.ID}}"{{if not .Cards}} data-empty{{end}}>

@@ -16,7 +16,12 @@ type boardFilter struct {
 	statuses  map[string]bool // selected status ids
 	assignees map[string]bool // selected principal ids plus tokens "me"/"unassigned"
 	projects  map[string]bool // selected project ids plus the token "none" (no project)
-	me        string          // current principal id, resolving the "me" token
+	// releases holds selected release ids plus two tokens: "none" (in no release)
+	// and "active" (in any active release — the "Current release" convenience).
+	releases       map[string]bool
+	releaseOf      map[string]string // item id -> its release id (single, as the UI enforces), for releaseVisible
+	activeReleases map[string]bool   // ids of active (non-shipped) releases, resolving the "active" token
+	me             string            // current principal id, resolving the "me" token
 }
 
 // newBoardFilter builds the status+assignee filter. The project selection is set
@@ -40,7 +45,7 @@ func toSet(vals []string) map[string]bool {
 }
 
 func (f boardFilter) active() bool {
-	return len(f.statuses) > 0 || len(f.assignees) > 0 || len(f.projects) > 0
+	return len(f.statuses) > 0 || len(f.assignees) > 0 || len(f.projects) > 0 || len(f.releases) > 0
 }
 
 func (f boardFilter) statusVisible(id string) bool {
@@ -59,6 +64,24 @@ func (f boardFilter) projectVisible(projectID string) bool {
 	return f.projects[projectID]
 }
 
+// releaseVisible reports whether an item passes the release facet, looking its
+// release up by item id (releases live in a join, not on the item). No
+// selections means no constraint; the "none" token matches items in no release,
+// and the "active" token ("Current release") matches items in any active release.
+func (f boardFilter) releaseVisible(itemID string) bool {
+	if len(f.releases) == 0 {
+		return true
+	}
+	rid := f.releaseOf[itemID]
+	if rid == "" {
+		return f.releases["none"]
+	}
+	if f.releases[rid] {
+		return true
+	}
+	return f.releases["active"] && f.activeReleases[rid]
+}
+
 func (f boardFilter) assigneeVisible(assigneeID string) bool {
 	if len(f.assignees) == 0 {
 		return true
@@ -74,7 +97,8 @@ func (f boardFilter) assigneeVisible(assigneeID string) bool {
 
 // cardHidden reports whether an item is filtered out of view.
 func (f boardFilter) cardHidden(it store.Item) bool {
-	return !f.statusVisible(it.StatusID) || !f.assigneeVisible(it.AssigneeID) || !f.projectVisible(it.ProjectID)
+	return !f.statusVisible(it.StatusID) || !f.assigneeVisible(it.AssigneeID) ||
+		!f.projectVisible(it.ProjectID) || !f.releaseVisible(it.ID)
 }
 
 // --- facet view models (the picker UI) ---
@@ -109,6 +133,23 @@ func projectFacet(projects []store.Project, f boardFilter) []projectOpt {
 	out := make([]projectOpt, len(projects))
 	for i, p := range projects {
 		out[i] = projectOpt{ID: p.ID, Name: p.Name, Color: board.ProjectColorFor(p), Selected: f.projects[p.ID]}
+	}
+	return out
+}
+
+type releaseOpt struct {
+	ID       string
+	Name     string
+	Color    string
+	Selected bool
+}
+
+func (o releaseOpt) ColorVar() template.CSS { return colorVar(o.Color) }
+
+func releaseFacet(releases []store.Release, f boardFilter) []releaseOpt {
+	out := make([]releaseOpt, len(releases))
+	for i, r := range releases {
+		out[i] = releaseOpt{ID: r.ID, Name: r.Name, Color: board.ReleaseColorFor(r), Selected: f.releases[r.ID]}
 	}
 	return out
 }
