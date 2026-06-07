@@ -1016,6 +1016,145 @@
     input.addEventListener('input', () => { setHint('saving…'); save(); });
   }
 
+  // postDoc posts a document create/edit and returns the server-rendered card
+  // fragment (markdown -> sanitized HTML), mirroring saveDescription's text reply.
+  async function postDoc(path, body) {
+    const res = await fetch(base + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, 'X-Acta-Client': myClient() },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      let code = String(res.status);
+      try { code = (await res.json()).error || code; } catch (_) {}
+      throw new Error(code);
+    }
+    return res.text();
+  }
+
+  // openDocEditor reveals the shared editor at the bottom of the Documents
+  // section, in create mode (doc null) or edit mode (doc = {id,title,body}). The
+  // editing id rides on the editor's dataset so the single Save handler knows
+  // which path to post. closeDocEditor hides and clears it.
+  function openDocEditor(wrap, doc) {
+    const editor = wrap.querySelector('[data-doc-editor]');
+    const addBtn = wrap.querySelector('[data-doc-add]');
+    editor.querySelector('[data-doc-title]').value = doc ? doc.title : '';
+    editor.querySelector('[data-doc-body]').value = doc ? doc.body : '';
+    editor.dataset.editing = doc ? doc.id : '';
+    editor.hidden = false;
+    if (addBtn) addBtn.hidden = true;
+    editor.querySelector('[data-doc-title]').focus();
+  }
+  function closeDocEditor(wrap) {
+    const editor = wrap.querySelector('[data-doc-editor]');
+    editor.hidden = true;
+    editor.dataset.editing = '';
+    editor.querySelector('[data-doc-title]').value = '';
+    editor.querySelector('[data-doc-body]').value = '';
+    const addBtn = wrap.querySelector('[data-doc-add]');
+    if (addBtn) addBtn.hidden = false;
+  }
+
+  // wireDocs runs the Documents section: the add button + shared editor (create
+  // and edit both post through it), and per-card expand/edit/delete wiring.
+  function wireDocs(el, id, fail) {
+    const wrap = el.querySelector('[data-docs]');
+    if (!wrap) return;
+    const list = wrap.querySelector('[data-doc-list]');
+    const addBtn = wrap.querySelector('[data-doc-add]');
+    const editor = wrap.querySelector('[data-doc-editor]');
+    const titleIn = editor.querySelector('[data-doc-title]');
+    const bodyIn = editor.querySelector('[data-doc-body]');
+    const saveBtn = editor.querySelector('[data-doc-save]');
+    const cancelBtn = editor.querySelector('[data-doc-cancel]');
+
+    addBtn.addEventListener('click', () => openDocEditor(wrap, null));
+    cancelBtn.addEventListener('click', () => closeDocEditor(wrap));
+
+    const submit = async () => {
+      const title = titleIn.value.trim();
+      if (!title) { titleIn.focus(); return; }
+      const editingId = editor.dataset.editing || '';
+      saveBtn.disabled = true;
+      try {
+        const path = editingId
+          ? '/items/' + id + '/documents/' + editingId + '/edit'
+          : '/items/' + id + '/documents';
+        const html = await postDoc(path, { title, body: bodyIn.value });
+        if (editingId) {
+          const old = list.querySelector('.doc[data-doc-id="' + CSS.escape(editingId) + '"]');
+          if (old) { old.outerHTML = html; }
+          const fresh = list.querySelector('.doc[data-doc-id="' + CSS.escape(editingId) + '"]');
+          if (fresh) wireDocCard(fresh, id);
+        } else {
+          list.insertAdjacentHTML('beforeend', html);
+          wireDocCard(list.lastElementChild, id);
+        }
+        closeDocEditor(wrap);
+      } catch (e) { fail(e); }
+      finally { saveBtn.disabled = false; }
+    };
+    saveBtn.addEventListener('click', submit);
+    // ⌘↵ from either field saves; Escape cancels.
+    [titleIn, bodyIn].forEach((f) => f.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); submit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeDocEditor(wrap); }
+    }));
+
+    list.querySelectorAll('.doc').forEach((card) => wireDocCard(card, id));
+  }
+
+  // wireDocCard attaches a document card's behaviour: the title toggles the
+  // rendered body, and the kebab offers edit (prefills the shared editor) and an
+  // arm-then-confirm delete. Documents aren't author-locked — anyone may edit.
+  function wireDocCard(card, id) {
+    const toggle = card.querySelector('[data-doc-toggle]');
+    const bodyEl = card.querySelector('[data-doc-rendered]');
+    if (toggle && bodyEl) {
+      toggle.addEventListener('click', () => {
+        const open = toggle.getAttribute('aria-expanded') === 'true';
+        bodyEl.hidden = open;
+        toggle.setAttribute('aria-expanded', String(!open));
+        card.classList.toggle('doc-open', !open);
+      });
+    }
+    const menu = card.querySelector('[data-doc-menu]');
+    if (!menu) return;
+    const btn = menu.querySelector('[data-doc-menu-btn]');
+    const pop = menu.querySelector('[data-doc-menu-pop]');
+    const editBtn = menu.querySelector('[data-doc-edit]');
+    const delBtn = menu.querySelector('[data-doc-delete]');
+
+    let armed = false, armTimer = null;
+    const resetDelete = () => { armed = false; clearTimeout(armTimer); delBtn.textContent = 'Delete'; delBtn.classList.remove('armed'); };
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      pop.hidden = !pop.hidden;
+      if (pop.hidden) resetDelete();
+    });
+
+    editBtn.addEventListener('click', () => {
+      pop.hidden = true;
+      const wrap = card.closest('[data-docs]');
+      if (wrap) openDocEditor(wrap, { id: card.dataset.docId, title: card.dataset.docTitle || '', body: card.dataset.docSrc || '' });
+    });
+
+    delBtn.addEventListener('click', async () => {
+      if (!armed) { // first click arms; a second within 2.5s confirms
+        armed = true;
+        delBtn.textContent = 'Click to confirm';
+        delBtn.classList.add('armed');
+        armTimer = setTimeout(resetDelete, 2500);
+        return;
+      }
+      resetDelete();
+      pop.hidden = true;
+      try { await api('/items/' + id + '/documents/' + card.dataset.docId + '/delete'); card.remove(); }
+      catch (_) { /* leave the card on failure */ }
+    });
+  }
+
   function wireModal(el) {
     const id = el.dataset.itemId;
     opener = cardOf(id);
@@ -1377,6 +1516,7 @@
     });
 
     wireDescription(el, id, fail);
+    wireDocs(el, id, fail);
 
     // The new-comment composer: post, append the card optimistically, clear.
     const feed = el.querySelector('[data-feed]');
@@ -2715,6 +2855,36 @@
     if (card) tombstone(card);
   }
 
+  function applyDocAdd(msg) {
+    if (!modalEl || modalEl.dataset.itemId !== msg.item) return;
+    const list = modalEl.querySelector('[data-doc-list]');
+    if (!list || list.querySelector('.doc[data-doc-id="' + CSS.escape(msg.id) + '"]')) return;
+    list.insertAdjacentHTML('beforeend', msg.html || '');
+    const card = list.querySelector('.doc[data-doc-id="' + CSS.escape(msg.id) + '"]');
+    if (card) wireDocCard(card, msg.item);
+  }
+
+  function applyDocEdit(msg) {
+    if (!modalEl || modalEl.dataset.itemId !== msg.item) return;
+    const list = modalEl.querySelector('[data-doc-list]');
+    const old = list && list.querySelector('.doc[data-doc-id="' + CSS.escape(msg.id) + '"]');
+    if (!old) return;
+    // Preserve whether the viewer had this doc expanded across the swap.
+    const wasOpen = old.classList.contains('doc-open');
+    old.outerHTML = msg.html || '';
+    const card = list.querySelector('.doc[data-doc-id="' + CSS.escape(msg.id) + '"]');
+    if (card) {
+      wireDocCard(card, msg.item);
+      if (wasOpen) { const t = card.querySelector('[data-doc-toggle]'); if (t) t.click(); }
+    }
+  }
+
+  function applyDocDelete(msg) {
+    if (!modalEl || modalEl.dataset.itemId !== msg.item) return;
+    const card = modalEl.querySelector('.doc[data-doc-id="' + CSS.escape(msg.id) + '"]');
+    if (card) card.remove();
+  }
+
   function applySubtaskAdd(msg) {
     if (!modalEl || modalEl.dataset.itemId !== msg.parent) return;
     const list = modalEl.querySelector('[data-subtask-list]');
@@ -2739,6 +2909,9 @@
         case 'comment.add': applyComment(msg); break;
         case 'comment.edit': applyCommentEdit(msg); break;
         case 'comment.delete': applyCommentDelete(msg); break;
+        case 'document.add': applyDocAdd(msg); break;
+        case 'document.edit': applyDocEdit(msg); break;
+        case 'document.delete': applyDocDelete(msg); break;
         case 'subtask.add': applySubtaskAdd(msg); break;
       }
     } catch (_) { /* a live update must never break the page */ }
@@ -2748,6 +2921,10 @@
   document.addEventListener('pointerdown', (e) => {
     document.querySelectorAll('[data-cmt-menu-pop]:not([hidden])').forEach((pop) => {
       const menu = pop.closest('[data-cmt-menu]');
+      if (menu && !menu.contains(e.target)) pop.hidden = true;
+    });
+    document.querySelectorAll('[data-doc-menu-pop]:not([hidden])').forEach((pop) => {
+      const menu = pop.closest('[data-doc-menu]');
       if (menu && !menu.contains(e.target)) pop.hidden = true;
     });
   });

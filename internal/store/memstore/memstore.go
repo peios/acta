@@ -28,6 +28,7 @@ type Store struct {
 	boardViews   map[string]store.BoardView
 	items        map[string]store.Item
 	comments     map[string]store.Comment
+	documents    map[string]store.Document
 	apiTokens    map[string]store.APIToken
 	settings     map[string]string
 	mcpPrompts   map[string]store.MCPPrompt
@@ -57,6 +58,7 @@ func New() *Store {
 		boardViews:   map[string]store.BoardView{},
 		items:        map[string]store.Item{},
 		comments:     map[string]store.Comment{},
+		documents:    map[string]store.Document{},
 		apiTokens:    map[string]store.APIToken{},
 		settings:     map[string]string{},
 		mcpPrompts:   map[string]store.MCPPrompt{},
@@ -1468,6 +1470,71 @@ func (s *Store) SoftDeleteComment(_ context.Context, id string, deletedAt time.T
 	c.DeletedAt = &deletedAt
 	s.comments[id] = c
 	return c, nil
+}
+
+// --- documents ---
+
+func (s *Store) CreateDocument(_ context.Context, d store.Document) (store.Document, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if d.ID == "" {
+		d.ID = newID()
+	}
+	if d.CreatedAt.IsZero() {
+		d.CreatedAt = time.Now()
+	}
+	if d.UpdatedAt.IsZero() {
+		d.UpdatedAt = d.CreatedAt
+	}
+	s.documents[d.ID] = d
+	return d, nil
+}
+
+func (s *Store) DocumentsByItem(_ context.Context, itemID string) ([]store.Document, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.Document
+	for _, d := range s.documents {
+		if d.ItemID == itemID {
+			out = append(out, d)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out, nil
+}
+
+func (s *Store) DocumentByID(_ context.Context, id string) (store.Document, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, ok := s.documents[id]
+	if !ok {
+		return store.Document{}, store.ErrDocumentNotFound
+	}
+	return d, nil
+}
+
+func (s *Store) UpdateDocument(_ context.Context, id, title, body string, updatedAt time.Time) (store.Document, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, ok := s.documents[id]
+	if !ok {
+		return store.Document{}, store.ErrDocumentNotFound
+	}
+	d.Title = title
+	d.Body = body
+	d.UpdatedAt = updatedAt
+	s.documents[id] = d
+	return d, nil
+}
+
+func (s *Store) DeleteDocument(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.documents[id]; !ok {
+		return store.ErrDocumentNotFound
+	}
+	delete(s.documents, id)
+	return nil
 }
 
 // --- activity log ---

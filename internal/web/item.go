@@ -64,6 +64,7 @@ type modalView struct {
 	WatchCats      []catToggle      // the five category toggles for the Watch dropdown, ticked per the filter
 	Pending        *pendingBandView // a pending gated transition (the band atop the modal), or nil
 	Timeline       []timelineGroup  // unified activity feed: comments + system events, oldest first
+	Documents      []documentView   // long-form markdown documents attached to the item
 }
 
 // pendingBandView renders the "Pending Status" band: the gated lane an item is
@@ -159,6 +160,35 @@ type commentView struct {
 	Mine        bool          // authored by the viewer (gates edit/delete affordances)
 	Edited      bool          // has been edited at least once
 	Deleted     bool          // soft-deleted — render a tombstone, no body
+}
+
+// documentView renders a stored document for the modal's Documents section: the
+// title, both raw (for the editor) and rendered markdown, and a creator + time
+// line. Documents are collapsed by default; the body only shows on expand.
+type documentView struct {
+	ID       string
+	Title    string
+	Body     string        // raw markdown, for the inline editor
+	BodyHTML template.HTML // rendered, sanitized markdown
+	Author   string        // creator display name, "" if unknown/unrecorded
+	Rel      string        // relative time of the last edit
+	Abs      string        // absolute time, for the hover tooltip
+	Updated  bool          // edited after creation (shows an "edited" marker)
+}
+
+// documentToView renders a stored document. authorName is the creator's display
+// name (resolved by the caller, "" if unknown).
+func documentToView(d store.Document, authorName string) documentView {
+	return documentView{
+		ID:       d.ID,
+		Title:    d.Title,
+		Body:     d.Body,
+		BodyHTML: mdToHTML(d.Body),
+		Author:   authorName,
+		Rel:      relativeWhen(d.UpdatedAt),
+		Abs:      formatWhen(d.UpdatedAt),
+		Updated:  d.UpdatedAt.Sub(d.CreatedAt) > time.Second,
+	}
 }
 
 // timelineGroup is one render unit in the unified activity feed: either a
@@ -405,6 +435,11 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		return modalView{}, false, err
 	}
 
+	docs, err := h.board.Documents(ctx, itemID)
+	if err != nil {
+		return modalView{}, false, err
+	}
+
 	nameByID := make(map[string]string, len(users))
 	isAgent := make(map[string]bool, len(users))
 	for _, u := range users {
@@ -545,6 +580,11 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 	}
 	timeline := buildTimeline(comments, history, nameByID, colorByStatus, viewerID, backlogID)
 
+	docViews := make([]documentView, len(docs))
+	for i, d := range docs {
+		docViews[i] = documentToView(d, nameByID[d.AuthorID])
+	}
+
 	// The Watch control reflects the viewer's item subscription: whether they
 	// watch it, and which categories its filter delivers (for the dropdown).
 	watchSub, watching, _ := h.board.SubscriptionFor(ctx, viewerID, store.SubjectItem, itemID)
@@ -593,6 +633,7 @@ func (h *handlers) buildModal(r *http.Request, ws store.Workspace, itemID string
 		WatchCats:       catToggles(watchSub.Events),
 		Pending:         pending,
 		Timeline:        timeline,
+		Documents:       docViews,
 	}, true, nil
 }
 
@@ -828,6 +869,96 @@ func (h *handlers) itemCommentDelete(w http.ResponseWriter, r *http.Request) {
 	h.publishLive(wsTopic(ws.ID), "comment.delete", clientID(r), map[string]any{
 		"item": r.PathValue("id"),
 		"id":   cid,
+	})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- documents ---
+
+// authorName resolves a user id to a display name, "" if unknown or unset. Used
+// to label a freshly created/edited document card outside buildModal's name map.
+func (h *handlers) authorName(ctx context.Context, id string) string {
+	if id == "" {
+		return ""
+	}
+	if u, err := h.board.User(ctx, id); err == nil {
+		return u.Display
+	}
+	return ""
+}
+
+// itemDocumentCreate attaches a new markdown document to an item and returns the
+// server-rendered card (markdown -> sanitized HTML), which board.js injects.
+func (h *handlers) itemDocumentCreate(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.resolveWorkspace(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Title string `json:"title"`
+		Body  string `json:"body"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	p := principalFrom(r.Context())
+	itemID := r.PathValue("id")
+	d, err := h.board.AddDocument(r.Context(), itemID, p.ID, req.Title, req.Body)
+	if err != nil {
+		writeBoardErr(w, err)
+		return
+	}
+	dv := documentToView(d, p.Display)
+	h.publishLive(wsTopic(ws.ID), "document.add", clientID(r), map[string]any{
+		"item": itemID,
+		"id":   d.ID,
+		"html": docCardHTML(dv),
+	})
+	renderDocCard(w, dv)
+}
+
+// itemDocumentEdit replaces a document's title and body in place, returning the
+// re-rendered card to swap into the modal.
+func (h *handlers) itemDocumentEdit(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.resolveWorkspace(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Title string `json:"title"`
+		Body  string `json:"body"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	d, err := h.board.EditDocument(r.Context(), r.PathValue("did"), req.Title, req.Body)
+	if err != nil {
+		writeBoardErr(w, err)
+		return
+	}
+	dv := documentToView(d, h.authorName(r.Context(), d.AuthorID))
+	h.publishLive(wsTopic(ws.ID), "document.edit", clientID(r), map[string]any{
+		"item": r.PathValue("id"),
+		"id":   d.ID,
+		"html": docCardHTML(dv),
+	})
+	renderDocCard(w, dv)
+}
+
+// itemDocumentDelete removes a document, clearing it from every open modal.
+func (h *handlers) itemDocumentDelete(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.resolveWorkspace(w, r)
+	if !ok {
+		return
+	}
+	did := r.PathValue("did")
+	if _, err := h.board.RemoveDocument(r.Context(), did); err != nil {
+		writeBoardErr(w, err)
+		return
+	}
+	h.publishLive(wsTopic(ws.ID), "document.delete", clientID(r), map[string]any{
+		"item": r.PathValue("id"),
+		"id":   did,
 	})
 	w.WriteHeader(http.StatusNoContent)
 }

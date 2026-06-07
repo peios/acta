@@ -23,6 +23,11 @@ const (
 	MaxItemTitleLen   = 200
 	MaxDescriptionLen = 1_000_000
 	MaxCommentLen     = 5000
+	// Documents hold whole reports, so the body ceiling is generous (~4MB of
+	// text — well above any markdown a human or agent writes, but a backstop
+	// against a pasted blob). The title is a one-liner.
+	MaxDocumentLen      = 4_000_000
+	MaxDocumentTitleLen = 200
 
 	// endOfLane is a large index that MoveItem clamps to a lane's end; used by
 	// status changes that carry no explicit position.
@@ -35,6 +40,7 @@ var (
 	ErrInvalidDescription = errors.New("board: description too long")
 	ErrInvalidComment     = errors.New("board: invalid comment")
 	ErrCommentForbidden   = errors.New("board: not the comment author")
+	ErrInvalidDocument    = errors.New("board: invalid document")
 	ErrStatusNotEmpty     = errors.New("board: status still has items")
 	ErrNoStatus           = errors.New("board: workspace has no statuses")
 	ErrCycle              = errors.New("board: would create a cycle")
@@ -1192,6 +1198,84 @@ func (s *Service) AddComment(ctx context.Context, itemID, authorID, body string)
 		s.autoSubscribe(ctx, authorID, store.SubjectItem, itemID) // commenting follows the thread
 	}
 	return c, notified, nil
+}
+
+// --- documents ---
+//
+// Documents are titled markdown artifacts on an item (many per item), edited in
+// place. Unlike comments they're not author-locked: anyone who can see the item
+// can add, edit, or remove its documents — they're shared task artifacts, like
+// the description, not personal posts. AuthorID records the creator for display.
+
+// Documents returns an item's documents, oldest-first.
+func (s *Service) Documents(ctx context.Context, itemID string) ([]store.Document, error) {
+	return s.store.DocumentsByItem(ctx, itemID)
+}
+
+// Document returns a single document by id.
+func (s *Service) Document(ctx context.Context, id string) (store.Document, error) {
+	return s.store.DocumentByID(ctx, id)
+}
+
+// AddDocument attaches a new document to an item. The title is required (trimmed,
+// bounded); the body is optional markdown, bounded at MaxDocumentLen.
+func (s *Service) AddDocument(ctx context.Context, itemID, authorID, title, body string) (store.Document, error) {
+	title = strings.TrimSpace(title)
+	if title == "" || len([]rune(title)) > MaxDocumentTitleLen || len([]rune(body)) > MaxDocumentLen {
+		return store.Document{}, ErrInvalidDocument
+	}
+	item, err := s.store.ItemByID(ctx, itemID)
+	if err != nil {
+		return store.Document{}, err
+	}
+	d, err := s.store.CreateDocument(ctx, store.Document{
+		ItemID:   itemID,
+		AuthorID: authorID,
+		Title:    title,
+		Body:     body,
+	})
+	if err != nil {
+		return store.Document{}, err
+	}
+	s.recordEvent(ctx, item, store.EventDocumentAdded, map[string]string{"title": title})
+	s.autoSubscribe(ctx, authorID, store.SubjectItem, itemID) // authoring follows the item
+	return d, nil
+}
+
+// EditDocument replaces a document's title and body in place, stamping updatedAt.
+func (s *Service) EditDocument(ctx context.Context, docID, title, body string) (store.Document, error) {
+	title = strings.TrimSpace(title)
+	if title == "" || len([]rune(title)) > MaxDocumentTitleLen || len([]rune(body)) > MaxDocumentLen {
+		return store.Document{}, ErrInvalidDocument
+	}
+	existing, err := s.store.DocumentByID(ctx, docID)
+	if err != nil {
+		return store.Document{}, err
+	}
+	d, err := s.store.UpdateDocument(ctx, docID, title, body, s.now())
+	if err != nil {
+		return store.Document{}, err
+	}
+	if item, ierr := s.store.ItemByID(ctx, existing.ItemID); ierr == nil {
+		s.recordEvent(ctx, item, store.EventDocumentUpdated, map[string]string{"title": title})
+	}
+	return d, nil
+}
+
+// RemoveDocument deletes a document and returns the removed row (for the
+// activity event and any live fanout).
+func (s *Service) RemoveDocument(ctx context.Context, docID string) (store.Document, error) {
+	d, err := s.store.DocumentByID(ctx, docID)
+	if err != nil {
+		return store.Document{}, err
+	}
+	if err := s.store.DeleteDocument(ctx, docID); err != nil {
+		return store.Document{}, err
+	}
+	if item, ierr := s.store.ItemByID(ctx, d.ItemID); ierr == nil {
+		s.recordEvent(ctx, item, store.EventDocumentRemoved, map[string]string{"title": d.Title})
+	}
+	return d, nil
 }
 
 // mentionRe matches an @handle. The handle starts alphanumeric and may contain

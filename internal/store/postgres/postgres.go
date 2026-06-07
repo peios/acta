@@ -1588,6 +1588,75 @@ func (p *Postgres) SoftDeleteComment(ctx context.Context, id string, deletedAt t
 	return c, err
 }
 
+// --- documents ---
+
+const documentCols = `id::text, item_id::text, COALESCE(author_id::text, ''), title, body, created_at, updated_at`
+
+func scanDocument(row interface{ Scan(...any) error }) (store.Document, error) {
+	var d store.Document
+	err := row.Scan(&d.ID, &d.ItemID, &d.AuthorID, &d.Title, &d.Body, &d.CreatedAt, &d.UpdatedAt)
+	return d, err
+}
+
+func (p *Postgres) CreateDocument(ctx context.Context, d store.Document) (store.Document, error) {
+	return createWithRetry(func() (store.Document, error) {
+		const q = `INSERT INTO documents (item_id, author_id, title, body)
+		           VALUES ($1, $2, $3, $4)
+		           RETURNING ` + documentCols
+		var author any
+		if d.AuthorID != "" {
+			author = d.AuthorID
+		}
+		return scanDocument(p.pool.QueryRow(ctx, q, d.ItemID, author, d.Title, d.Body))
+	})
+}
+
+func (p *Postgres) DocumentsByItem(ctx context.Context, itemID string) ([]store.Document, error) {
+	q := `SELECT ` + documentCols + ` FROM documents WHERE item_id = $1 ORDER BY created_at`
+	rows, err := p.pool.Query(ctx, q, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Document
+	for rows.Next() {
+		d, err := scanDocument(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) DocumentByID(ctx context.Context, id string) (store.Document, error) {
+	d, err := scanDocument(p.pool.QueryRow(ctx, `SELECT `+documentCols+` FROM documents WHERE id = $1`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.Document{}, store.ErrDocumentNotFound
+	}
+	return d, err
+}
+
+func (p *Postgres) UpdateDocument(ctx context.Context, id, title, body string, updatedAt time.Time) (store.Document, error) {
+	q := `UPDATE documents SET title = $2, body = $3, updated_at = $4 WHERE id = $1 RETURNING ` + documentCols
+	d, err := scanDocument(p.pool.QueryRow(ctx, q, id, title, body, updatedAt))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.Document{}, store.ErrDocumentNotFound
+	}
+	return d, err
+}
+
+func (p *Postgres) DeleteDocument(ctx context.Context, id string) error {
+	ct, err := p.pool.Exec(ctx, `DELETE FROM documents WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrDocumentNotFound
+	}
+	return nil
+}
+
 // --- activity log ---
 
 const eventCols = `id::text, workspace_id::text, board_id, item_id, item_title, actor_id, actor_name, verb, data, created_at`

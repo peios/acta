@@ -312,6 +312,12 @@ func HumanizeEvent(e store.Event) string {
 			return "commented: “" + x + "”"
 		}
 		return "added a comment"
+	case store.EventDocumentAdded:
+		return "added the document “" + d["title"] + "”"
+	case store.EventDocumentUpdated:
+		return "updated the document “" + d["title"] + "”"
+	case store.EventDocumentRemoved:
+		return "removed the document “" + d["title"] + "”"
 	default:
 		return e.Verb
 	}

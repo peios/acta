@@ -90,6 +90,28 @@
           </div>
         </div>
 
+        <div class="modal-docs" data-docs>
+          <p class="section-title">Documents</p>
+          <div class="doc-list" data-doc-list>
+            {{range .Documents}}{{template "doc-card" .}}{{end}}
+          </div>
+          <button class="doc-add-btn" type="button" data-doc-add>
+            <svg class="ico" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9"/></svg>
+            Add document
+          </button>
+          <div class="doc-editor" data-doc-editor hidden>
+            <input class="doc-title-input" data-doc-title placeholder="Document title" maxlength="200" aria-label="Document title">
+            <textarea class="doc-body-input" data-doc-body rows="12" placeholder="Write markdown…" aria-label="Document body"></textarea>
+            <div class="doc-editor-foot">
+              <span class="doc-md-hint">Markdown supported</span>
+              <div class="doc-editor-actions">
+                <button class="btn-secondary doc-cancel" type="button" data-doc-cancel>Cancel</button>
+                <button class="btn-primary doc-save" type="button" data-doc-save>Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="modal-subtasks" data-subtasks>
           <p class="section-title">Subtasks{{if .SubTotal}} · {{.SubDone}}/{{.SubTotal}}{{end}}</p>
           <div class="subtask-list" data-subtask-list>
@@ -414,6 +436,31 @@
   <div class="cmt-body md" data-cmt-body>{{.BodyHTML}}</div>
 </article>
 {{- end}}
+{{end}}
+
+{{/* doc-card: one document — a collapsed title row (click to expand the rendered
+     markdown) plus an owner-agnostic edit/delete kebab. data-doc-src carries the
+     raw markdown so the editor can prefill without a round-trip. */}}
+{{define "doc-card"}}
+<article class="doc" data-doc-id="{{.ID}}" data-doc-title="{{.Title}}" data-doc-src="{{.Body}}">
+  <div class="doc-head">
+    <button class="doc-toggle" type="button" data-doc-toggle aria-expanded="false">
+      <span class="doc-chevron" aria-hidden="true">&#9656;</span>
+      <span class="doc-title" data-doc-title-text>{{.Title}}</span>
+    </button>
+    <span class="doc-meta">{{if .Author}}{{.Author}} · {{end}}<time title="{{.Abs}}">{{.Rel}}</time>{{if .Updated}} · edited{{end}}</span>
+    <div class="doc-menu" data-doc-menu>
+      <button class="doc-menu-btn" type="button" data-doc-menu-btn aria-label="Document actions">
+        <svg class="ico" viewBox="0 0 16 16"><circle cx="3.2" cy="8" r="1.25"/><circle cx="8" cy="8" r="1.25"/><circle cx="12.8" cy="8" r="1.25"/></svg>
+      </button>
+      <div class="popover doc-menu-pop" data-doc-menu-pop hidden>
+        <button class="doc-menu-item" type="button" data-doc-edit>Edit</button>
+        <button class="doc-menu-item danger" type="button" data-doc-delete>Delete</button>
+      </div>
+    </div>
+  </div>
+  <div class="doc-body md" data-doc-rendered hidden>{{.BodyHTML}}</div>
+</article>
 {{end}}
 
 {{/* evt-glyph: the small left-column icon for one system event. Status and

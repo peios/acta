@@ -198,6 +198,31 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 	}, h.mcpAddComment)
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "list_documents",
+		Description: "List the documents attached to an item — titled long-form markdown artifacts (compliance reports, findings, runbooks), distinct from the item's description and its comment thread. Returns each document's id, title, author and timestamps, but not its body; fetch a body with get_document. An item can hold many documents.",
+	}, h.mcpListDocuments)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "get_document",
+		Description: "Fetch one document by id (from list_documents), including its full markdown body.",
+	}, h.mcpGetDocument)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "create_document",
+		Description: "Attach a new markdown document to an item: a titled long-form artifact like a compliance report or findings doc. Provide the item id, a title, and the body (markdown). Returns the created document. Use this for substantial reports you want to keep on the task; use set_item_description for the task's primary body and add_comment for short progress notes.",
+	}, h.mcpCreateDocument)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "update_document",
+		Description: "Replace a document's title and body in place, by document id (from list_documents). Both are required and overwrite the old values.",
+	}, h.mcpUpdateDocument)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "delete_document",
+		Description: "Delete a document by id (from list_documents). This is permanent.",
+	}, h.mcpDeleteDocument)
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "watch_comments",
 		Description: "Block until new comments are posted on an item, then return them — the way to wait on a human (or another agent) replying in a thread. Returns every comment after the `after` cursor (a comment id from add_comment or a prior watch; omit to watch for comments posted from now on). Waits up to ~25s for at least one and returns the moment they arrive, or an empty list on timeout so you can call again. To ask and wait for an answer: add_comment(your question), then loop watch_comments with `after` set to that comment's id, advancing `after` to the returned cursor each call until you get a reply you can act on.",
 	}, h.mcpWatchComments)
@@ -1408,6 +1433,147 @@ func (h *handlers) mcpAddComment(ctx context.Context, _ *mcp.CallToolRequest, in
 		Body:   c.Body,
 		At:     c.CreatedAt.Format(time.RFC3339),
 	}, nil
+}
+
+// --- documents ---
+
+type documentAPI struct {
+	ID        string `json:"id"`
+	Item      string `json:"item,omitempty"`
+	Title     string `json:"title"`
+	Body      string `json:"body,omitempty"` // omitted in list summaries; present on get/create/update
+	Author    string `json:"author,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
+type listDocumentsInput struct {
+	Item string `json:"item" jsonschema:"the item id whose documents to list"`
+}
+
+type listDocumentsOutput struct {
+	Documents []documentAPI `json:"documents"`
+}
+
+type documentRefInput struct {
+	ID string `json:"id" jsonschema:"the document id (from list_documents)"`
+}
+
+type createDocumentInput struct {
+	Item  string `json:"item" jsonschema:"the item id to attach the document to"`
+	Title string `json:"title" jsonschema:"the document title"`
+	Body  string `json:"body" jsonschema:"the document body (markdown)"`
+}
+
+type updateDocumentInput struct {
+	ID    string `json:"id" jsonschema:"the document id (from list_documents)"`
+	Title string `json:"title" jsonschema:"the new title"`
+	Body  string `json:"body" jsonschema:"the new body (markdown); replaces the old one"`
+}
+
+// documentAPIFull renders a document with its body and resolved author.
+func (h *handlers) documentAPIFull(ctx context.Context, d store.Document) documentAPI {
+	return documentAPI{
+		ID:        d.ID,
+		Item:      d.ItemID,
+		Title:     d.Title,
+		Body:      d.Body,
+		Author:    h.authorName(ctx, d.AuthorID),
+		CreatedAt: d.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: d.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
+func (h *handlers) mcpListDocuments(ctx context.Context, _ *mcp.CallToolRequest, in listDocumentsInput) (*mcp.CallToolResult, listDocumentsOutput, error) {
+	item, err := h.mcpItem(ctx, in.Item, "")
+	if err != nil {
+		return nil, listDocumentsOutput{}, err
+	}
+	docs, err := h.board.Documents(ctx, item.ID)
+	if err != nil {
+		return nil, listDocumentsOutput{}, mcpErr(err)
+	}
+	out := listDocumentsOutput{Documents: make([]documentAPI, 0, len(docs))}
+	for _, d := range docs {
+		// Summary: omit the body to keep the listing light (bodies can be large).
+		out.Documents = append(out.Documents, documentAPI{
+			ID:        d.ID,
+			Title:     d.Title,
+			Author:    h.authorName(ctx, d.AuthorID),
+			CreatedAt: d.CreatedAt.Format(time.RFC3339),
+			UpdatedAt: d.UpdatedAt.Format(time.RFC3339),
+		})
+	}
+	return &mcp.CallToolResult{}, out, nil
+}
+
+func (h *handlers) mcpGetDocument(ctx context.Context, _ *mcp.CallToolRequest, in documentRefInput) (*mcp.CallToolResult, documentAPI, error) {
+	d, err := h.board.Document(ctx, in.ID)
+	if err != nil {
+		return nil, documentAPI{}, mcpErr(err)
+	}
+	if _, err := h.mcpItem(ctx, d.ItemID, ""); err != nil { // workspace-access guard
+		return nil, documentAPI{}, err
+	}
+	return &mcp.CallToolResult{}, h.documentAPIFull(ctx, d), nil
+}
+
+func (h *handlers) mcpCreateDocument(ctx context.Context, _ *mcp.CallToolRequest, in createDocumentInput) (*mcp.CallToolResult, documentAPI, error) {
+	item, err := h.mcpItem(ctx, in.Item, "")
+	if err != nil {
+		return nil, documentAPI{}, err
+	}
+	p := principalFrom(ctx)
+	d, err := h.board.AddDocument(ctx, item.ID, p.ID, in.Title, in.Body)
+	if err != nil {
+		return nil, documentAPI{}, mcpErr(err)
+	}
+	dv := documentToView(d, p.Display)
+	h.publishLive(wsTopic(item.WorkspaceID), "document.add", "", map[string]any{
+		"item": item.ID, "id": d.ID, "html": docCardHTML(dv),
+	})
+	return &mcp.CallToolResult{}, h.documentAPIFull(ctx, d), nil
+}
+
+func (h *handlers) mcpUpdateDocument(ctx context.Context, _ *mcp.CallToolRequest, in updateDocumentInput) (*mcp.CallToolResult, documentAPI, error) {
+	cur, err := h.board.Document(ctx, in.ID)
+	if err != nil {
+		return nil, documentAPI{}, mcpErr(err)
+	}
+	if _, err := h.mcpItem(ctx, cur.ItemID, ""); err != nil { // workspace-access guard
+		return nil, documentAPI{}, err
+	}
+	d, err := h.board.EditDocument(ctx, in.ID, in.Title, in.Body)
+	if err != nil {
+		return nil, documentAPI{}, mcpErr(err)
+	}
+	dv := documentToView(d, h.authorName(ctx, d.AuthorID))
+	if item, ierr := h.board.Item(ctx, d.ItemID); ierr == nil {
+		h.publishLive(wsTopic(item.WorkspaceID), "document.edit", "", map[string]any{
+			"item": d.ItemID, "id": d.ID, "html": docCardHTML(dv),
+		})
+	}
+	return &mcp.CallToolResult{}, h.documentAPIFull(ctx, d), nil
+}
+
+func (h *handlers) mcpDeleteDocument(ctx context.Context, _ *mcp.CallToolRequest, in documentRefInput) (*mcp.CallToolResult, documentAPI, error) {
+	cur, err := h.board.Document(ctx, in.ID)
+	if err != nil {
+		return nil, documentAPI{}, mcpErr(err)
+	}
+	if _, err := h.mcpItem(ctx, cur.ItemID, ""); err != nil { // workspace-access guard
+		return nil, documentAPI{}, err
+	}
+	d, err := h.board.RemoveDocument(ctx, in.ID)
+	if err != nil {
+		return nil, documentAPI{}, mcpErr(err)
+	}
+	if item, ierr := h.board.Item(ctx, d.ItemID); ierr == nil {
+		h.publishLive(wsTopic(item.WorkspaceID), "document.delete", "", map[string]any{
+			"item": d.ItemID, "id": d.ID,
+		})
+	}
+	return &mcp.CallToolResult{}, documentAPI{ID: d.ID, Title: d.Title}, nil
 }
 
 // mcpWatchComments is the "listen to a task for comments" primitive: a bounded,

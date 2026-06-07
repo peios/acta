@@ -55,6 +55,8 @@ func kindForVerb(verb string) string {
 		return "project"
 	case store.EventCommentAdded:
 		return "comment"
+	case store.EventDocumentAdded, store.EventDocumentUpdated, store.EventDocumentRemoved:
+		return "describe" // a document glyph: lines on a page, same as the description icon
 	default:
 		return "generic"
 	}

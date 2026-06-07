@@ -27,6 +27,7 @@ var (
 	ErrMCPPromptNotFound    = errors.New("store: mcp prompt not found")
 	ErrMCPPromptNameTaken   = errors.New("store: mcp prompt name already taken")
 	ErrCommentNotFound      = errors.New("store: comment not found")
+	ErrDocumentNotFound     = errors.New("store: document not found")
 	ErrProjectNotFound      = errors.New("store: project not found")
 	ErrProjectSlugTaken     = errors.New("store: project slug already taken")
 	ErrFactNotFound         = errors.New("store: fact not found")
@@ -82,6 +83,9 @@ const (
 	EventItemSize         = "item.size"           // data: to (size label, "" = none)
 	EventItemDue          = "item.due"            // data: to (YYYY-MM-DD, "" = cleared)
 	EventCommentAdded     = "comment.added"       // data: excerpt
+	EventDocumentAdded    = "document.added"      // data: title
+	EventDocumentUpdated  = "document.updated"    // data: title
+	EventDocumentRemoved  = "document.removed"    // data: title
 )
 
 // Event is one entry in the append-only activity log. ActorID/ActorName are ""
@@ -391,6 +395,21 @@ type Comment struct {
 	DeletedAt *time.Time
 }
 
+// Document is a titled, long-form markdown artifact attached to an item (many
+// per item): a compliance report, findings doc, runbook. Distinct from the
+// item's single Description body and from conversational Comments — documents
+// are named, edited in place, and not author-locked. AuthorID records the
+// creator (decorative; cleared if the user is removed).
+type Document struct {
+	ID        string
+	ItemID    string
+	AuthorID  string
+	Title     string
+	Body      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 // Notification kinds. Each names why a principal was notified; the row's
 // snapshot fields carry the already-resolved context to render it.
 const (
@@ -680,6 +699,16 @@ type Store interface {
 	CommentByID(ctx context.Context, id string) (Comment, error)
 	UpdateComment(ctx context.Context, id, body string, editedAt time.Time) (Comment, error)
 	SoftDeleteComment(ctx context.Context, id string, deletedAt time.Time) (Comment, error)
+
+	// Documents on an item — titled markdown artifacts, many per item, returned
+	// oldest-first. DocumentByID returns ErrDocumentNotFound when absent.
+	// UpdateDocument replaces title+body and stamps updatedAt; DeleteDocument is
+	// a hard delete (ErrDocumentNotFound if the row is already gone).
+	CreateDocument(ctx context.Context, d Document) (Document, error)
+	DocumentsByItem(ctx context.Context, itemID string) ([]Document, error)
+	DocumentByID(ctx context.Context, id string) (Document, error)
+	UpdateDocument(ctx context.Context, id, title, body string, updatedAt time.Time) (Document, error)
+	DeleteDocument(ctx context.Context, id string) error
 
 	// Activity log. RecordEvent appends an entry (assigning its id). The two
 	// readers return newest-first, capped at limit (a non-positive limit is

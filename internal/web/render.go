@@ -114,6 +114,24 @@ var itemModalTmpl = template.Must(
 	template.New("item_modal.html").ParseFS(templatesFS, "templates/item_modal.html"),
 )
 
+// docCardHTML renders one document card to a string, for the live broker payload
+// (so other open modals inject an identical card).
+func docCardHTML(dv documentView) string {
+	var buf bytes.Buffer
+	if err := itemModalTmpl.ExecuteTemplate(&buf, "doc-card", dv); err != nil {
+		slog.Error("render doc card", "err", err)
+		return ""
+	}
+	return buf.String()
+}
+
+// renderDocCard writes a document card fragment as the response — the create and
+// edit handlers return it for board.js to inject or swap in place.
+func renderDocCard(w http.ResponseWriter, dv documentView) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write([]byte(docCardHTML(dv)))
+}
+
 // renderDescView writes just the rendered description fragment (the markdown
 // view + its show-more control), so the editor can swap it in after a save.
 func renderDescView(w http.ResponseWriter, dv descView) {
