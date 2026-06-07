@@ -15,6 +15,7 @@ create or change anything.
 
 - Call ` + "`whoami`" + ` to learn who you're acting as. You may be a **human** principal
   or an **agent** principal that belongs to a human (your "owner").
+- Call ` + "`list_principals`" + ` when you need to see who can be assigned work.
 - Call ` + "`list_workspaces`" + ` to see the workspaces available. Items always live in
   one workspace, addressed by its ` + "`slug`" + `.
 - Call ` + "`list_items`" + ` to read the board before you change it. Don't re-create work
@@ -115,6 +116,7 @@ go-ahead — don't busy-poll the board. Ask in a comment and block on the reply:
 | Goal | Tool |
 | --- | --- |
 | Who am I? | ` + "`whoami`" + ` |
+| Who can be assigned? | ` + "`list_principals`" + ` |
 | What workspaces exist? | ` + "`list_workspaces`" + ` |
 | What projects exist? | ` + "`list_projects`" + ` |
 | What releases exist? | ` + "`list_releases`" + ` |
@@ -123,6 +125,8 @@ go-ahead — don't busy-poll the board. Ask in a comment and block on the reply:
 | Search items by text | ` + "`list_items`" + ` with ` + "`q`" + ` |
 | Read one item in full | ` + "`get_item`" + ` |
 | Create an item | ` + "`create_item`" + ` |
+| Rename an item | ` + "`set_item_title`" + ` |
+| Claim an item as yourself | ` + "`claim_item`" + ` |
 | Move its column | ` + "`set_item_status`" + ` |
 | Assign it | ` + "`set_item_assignee`" + ` |
 | Edit the description | ` + "`set_item_description`" + ` |

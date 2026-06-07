@@ -107,7 +107,8 @@ Usage:
   acta subscribe <type> <ref>     follow item|project|principal (alias: watch)
                                   [--workspace slug] [--events c1,c2,...]
   acta unsubscribe <type> <ref>   stop following (alias: unwatch) [--workspace slug]
-  acta mcp install                wire an MCP client (Claude Code) to Acta
+  acta mcp install                wire an MCP client to Acta
+  acta mcp proxy [profile]        bridge stdio MCP to Acta's HTTP MCP endpoint
 
 Environment (override the stored login):
   ACTA_URL        server base URL (default http://localhost:8080)

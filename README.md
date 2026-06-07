@@ -179,7 +179,7 @@ Acta speaks the [Model Context Protocol](https://modelcontextprotocol.io) at
 presentation of the same board — authenticated the same way: a personal access
 token as a `Bearer` header, no cookies, no CSRF.
 
-### Install (Claude Code)
+### Install (Claude Code or Codex)
 
 ```sh
 acta login <host>     # once, if you haven't
@@ -187,10 +187,18 @@ acta mcp install
 ```
 
 `acta mcp install` rides your login: it lets you pick or create the principal to
-act as, mints that principal's token, and writes Claude Code's MCP config
-(`claude mcp add` under the hood — re-running just replaces the entry). It uses
-the server and credentials from `acta login`, so log in first. Verify afterwards
-with `/mcp` in Claude Code.
+act as, mints that principal's token, and writes the selected client's MCP
+config. Pick **Claude Code** or **Codex** when prompted. It uses the server and
+credentials from `acta login`, so log in first.
+
+For Claude Code, the installer runs `claude mcp add` under the hood and stores
+the bearer token in Claude's config. Re-running replaces the `acta` entry.
+
+For Codex, the installer runs `codex mcp add` under the hood. Codex stores the
+command `acta mcp proxy codex`, which Codex starts automatically when it needs
+the MCP server. The proxy reads the Acta URL and token from Acta's own config
+and forwards to `/mcp`, so no separate proxy process or token environment
+variable is needed.
 
 **Act as an agent.** When the installer offers a principal, pick or create an
 **agent** (a `you/agentname` principal) rather than yourself. Every write the
@@ -208,6 +216,16 @@ claude mcp add --transport http --scope user acta http://localhost:8080/mcp \
   --header "Authorization: Bearer acta_pat_…"
 ```
 
+For Codex:
+
+```sh
+codex mcp add acta -- acta mcp proxy codex
+```
+
+For the manual Codex proxy form, first create a `codex` MCP profile in Acta's
+config by running `acta mcp install`, or use Codex's direct HTTP mode with your
+own token environment variable.
+
 or, as a committed `.mcp.json` (keep the secret in an env var, not the file):
 
 ```jsonc
@@ -224,10 +242,10 @@ or, as a committed `.mcp.json` (keep the secret in an env var, not the file):
 
 ### Tools
 
-`whoami`, `list_workspaces`, `list_items` (filter by status / assignee / `mine` /
-parent), `get_item` (deep — description, subtasks, comments), `create_item`,
-`set_item_status`, `set_item_assignee`, `set_item_description`,
-`set_item_milestone`, `set_item_parent` (reparent / promote), `add_comment`,
-`archive_item`, `unarchive_item`. Statuses and principals are referred to by
-name; items by id. Item payloads carry a `url` permalink that opens the item on
-the board.
+`whoami`, `list_principals`, `list_workspaces`, `list_items` (filter by status /
+assignee / `mine` / parent), `get_item` (deep — description, subtasks,
+comments), `create_item`, `set_item_title`, `claim_item`, `set_item_status`,
+`set_item_assignee`, `set_item_description`, `set_item_milestone`,
+`set_item_parent` (reparent / promote), `add_comment`, `archive_item`,
+`unarchive_item`. Statuses and principals are referred to by name; items by id.
+Item payloads carry a `url` permalink that opens the item on the board.

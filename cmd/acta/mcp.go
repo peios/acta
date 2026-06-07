@@ -15,7 +15,7 @@ import (
 )
 
 // cmdMCP dispatches the `acta mcp` group. Today its only subcommand is install,
-// which wires a local MCP client (Claude Code) to this Acta server end to end:
+// which wires a local MCP client to this Acta server end to end:
 // authorize, pick or create a principal to act as, mint that principal's token,
 // and write the client's config.
 func cmdMCP(args []string) error {
@@ -25,8 +25,11 @@ func cmdMCP(args []string) error {
 	switch args[0] {
 	case "install":
 		return cmdMCPInstall(args[1:])
+	case "proxy":
+		return cmdMCPProxy(args[1:])
 	case "-h", "--help", "help":
-		fmt.Fprintln(os.Stderr, "usage: acta mcp install   (wire an MCP client to your logged-in server)")
+		fmt.Fprintln(os.Stderr, "usage: acta mcp install        wire an MCP client to your logged-in server")
+		fmt.Fprintln(os.Stderr, "       acta mcp proxy [profile] bridge stdio MCP to Acta's HTTP MCP endpoint")
 		return nil
 	default:
 		return fmt.Errorf("unknown mcp subcommand %q (try: acta mcp install)", args[0])
@@ -36,6 +39,9 @@ func cmdMCP(args []string) error {
 const (
 	principalSelf = "__self__"
 	principalNew  = "__new__"
+
+	mcpClientClaude = "claude"
+	mcpClientCodex  = "codex"
 )
 
 func cmdMCPInstall(args []string) error {
@@ -65,7 +71,22 @@ func cmdMCPInstall(args []string) error {
 		return err
 	}
 
-	// Choose the principal the MCP client will act as, and label the token.
+	// Choose the MCP client to configure, then the principal it will act as and
+	// the label for the freshly minted token.
+	mcpClient := defaultMCPClient()
+	harnessForm := huh.NewForm(huh.NewGroup(
+		huh.NewSelect[string]().
+			Title("Install into which harness?").
+			Options(
+				huh.NewOption("Claude Code", mcpClientClaude),
+				huh.NewOption("Codex", mcpClientCodex),
+			).
+			Value(&mcpClient),
+	))
+	if err := runForm(harnessForm); err != nil {
+		return err
+	}
+
 	principal := principalSelf
 	if len(agents) > 0 {
 		principal = agents[0].ID // default to acting as an agent when one exists
@@ -74,7 +95,7 @@ func cmdMCPInstall(args []string) error {
 	if host == "" {
 		host = "local"
 	}
-	label := "claude@" + host
+	label := mcpClient + "@" + host
 
 	opts := []huh.Option[string]{huh.NewOption("Yourself — "+me.Username, principalSelf)}
 	for _, a := range agents {
@@ -96,6 +117,7 @@ func cmdMCPInstall(args []string) error {
 	if err := runForm(form); err != nil {
 		return err
 	}
+	label = normalizeTokenLabel(label, mcpClient, host)
 
 	newName := ""
 	if principal == principalNew {
@@ -133,13 +155,77 @@ func cmdMCPInstall(args []string) error {
 		return err
 	}
 
-	if err := installClaude(base, tok.Token); err != nil {
-		return err
+	switch mcpClient {
+	case mcpClientClaude:
+		if err := installClaude(base, tok.Token); err != nil {
+			return err
+		}
+		fmt.Printf("\n✓ Wired Claude Code to %s, acting as %s.\n", base, actingAs)
+		fmt.Println("  Check it in Claude Code with /mcp. The token is stored in Claude's")
+		fmt.Println("  config and won't be shown again.")
+	case mcpClientCodex:
+		cfg.MCPProfile("codex", mcpConfig{URL: base, Token: tok.Token})
+		if err := saveConfig(cfg); err != nil {
+			return err
+		}
+		if err := installCodex(base); err != nil {
+			return err
+		}
+		fmt.Printf("\n✓ Wired Codex to %s, acting as %s.\n", base, actingAs)
+		fmt.Println("  Codex will launch `acta mcp proxy codex` automatically.")
+		fmt.Println("  The MCP token is stored in Acta's config and won't be shown again.")
+	default:
+		return fmt.Errorf("unknown MCP client %q", mcpClient)
 	}
-	fmt.Printf("\n✓ Wired Claude Code to %s, acting as %s.\n", base, actingAs)
-	fmt.Println("  Check it in Claude Code with /mcp. The token is stored in Claude's")
-	fmt.Println("  config and won't be shown again.")
 	return nil
+}
+
+func defaultMCPClient() string {
+	if _, err := exec.LookPath("claude"); err == nil {
+		return mcpClientClaude
+	}
+	if _, err := exec.LookPath("codex"); err == nil {
+		return mcpClientCodex
+	}
+	return mcpClientClaude
+}
+
+func normalizeTokenLabel(label, mcpClient, host string) string {
+	label = strings.TrimSpace(label)
+	if label != "" {
+		return label
+	}
+	return mcpClient + "@" + host
+}
+
+// installCodex writes the MCP server entry into Codex via its own CLI. Codex's
+// stdio config launches Acta's proxy command, which reads the bearer token from
+// Acta's own config and forwards to the HTTP MCP endpoint.
+func installCodex(base string) error {
+	addArgs := codexAddArgs("codex")
+
+	codex, err := exec.LookPath("codex")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "\nThe `codex` CLI wasn't found on PATH. Finish by running:")
+		fmt.Fprintln(os.Stderr, "  codex mcp remove acta")
+		fmt.Fprintf(os.Stderr, "  codex %s\n", strings.Join(quoteArgs(addArgs), " "))
+		return nil
+	}
+	// Best-effort removal of any existing entry, so add is idempotent.
+	_ = exec.Command(codex, "mcp", "remove", "acta").Run()
+
+	cmd := exec.Command(codex, addArgs...)
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("`codex mcp add` failed: %w (if an 'acta' server already exists, remove it with `codex mcp remove acta` and retry)", err)
+	}
+	return nil
+}
+
+// codexAddArgs builds the argv for `codex mcp add` for a stdio MCP server.
+// Codex starts this command automatically when it needs the server.
+func codexAddArgs(profile string) []string {
+	return []string{"mcp", "add", "acta", "--", "acta", "mcp", "proxy", profile}
 }
 
 // installClaude writes the MCP server entry into Claude Code via its own CLI

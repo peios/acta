@@ -10,6 +10,12 @@ import (
 // config is what `acta login` persists so later commands need no env vars. It
 // lives at $XDG_CONFIG_HOME/acta/config.json (default ~/.config/acta), 0600.
 type config struct {
+	URL   string               `json:"url"`
+	Token string               `json:"token"`
+	MCP   map[string]mcpConfig `json:"mcp,omitempty"`
+}
+
+type mcpConfig struct {
 	URL   string `json:"url"`
 	Token string `json:"token"`
 }
@@ -53,6 +59,13 @@ func saveConfig(c config) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o600)
+}
+
+func (c *config) MCPProfile(name string, m mcpConfig) {
+	if c.MCP == nil {
+		c.MCP = map[string]mcpConfig{}
+	}
+	c.MCP[name] = m
 }
 
 func clearConfig() error {

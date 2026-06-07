@@ -69,29 +69,29 @@ func TestPGSearchItems(t *testing.T) {
 	}
 
 	// Title + case-insensitivity + workspace scoping (only this ws's loregd).
-	if got, err := pg.SearchItems(ctx, ws.ID, "","LOREGD", false); err != nil || len(got) != 1 || got[0].ID != titleHit.ID {
+	if got, err := pg.SearchItems(ctx, ws.ID, "", "LOREGD", false); err != nil || len(got) != 1 || got[0].ID != titleHit.ID {
 		t.Fatalf("title/case/scoped search = %v, err %v", got, err)
 	}
 	// Description substring.
-	if got, _ := pg.SearchItems(ctx, ws.ID, "","registry", false); len(got) != 1 || got[0].ID != descHit.ID {
+	if got, _ := pg.SearchItems(ctx, ws.ID, "", "registry", false); len(got) != 1 || got[0].ID != descHit.ID {
 		t.Fatalf("description search wrong: %v", got)
 	}
 	// LIKE wildcards stay literal (the escape).
-	if got, _ := pg.SearchItems(ctx, ws.ID, "","%", false); len(got) != 1 || got[0].ID != pct.ID {
+	if got, _ := pg.SearchItems(ctx, ws.ID, "", "%", false); len(got) != 1 || got[0].ID != pct.ID {
 		t.Fatalf(`literal "%%" search wrong: %v`, got)
 	}
-	if got, _ := pg.SearchItems(ctx, ws.ID, "","a_b", false); len(got) != 1 || got[0].ID != und.ID {
+	if got, _ := pg.SearchItems(ctx, ws.ID, "", "a_b", false); len(got) != 1 || got[0].ID != und.ID {
 		t.Fatalf(`literal "a_b" search wrong: %v`, got)
 	}
 	// Title matches rank above body-only matches.
-	if got, _ := pg.SearchItems(ctx, ws.ID, "","zeta", false); len(got) != 2 || got[0].ID != zTitle.ID || got[1].ID != zBody.ID {
+	if got, _ := pg.SearchItems(ctx, ws.ID, "", "zeta", false); len(got) != 2 || got[0].ID != zTitle.ID || got[1].ID != zBody.ID {
 		t.Fatalf("title-before-body ordering wrong: %v", got)
 	}
 	// Archived gating.
-	if got, _ := pg.SearchItems(ctx, ws.ID, "","widget", false); len(got) != 1 {
+	if got, _ := pg.SearchItems(ctx, ws.ID, "", "widget", false); len(got) != 1 {
 		t.Fatalf("default search must skip archived: %v", got)
 	}
-	if got, _ := pg.SearchItems(ctx, ws.ID, "","widget", true); len(got) != 2 {
+	if got, _ := pg.SearchItems(ctx, ws.ID, "", "widget", true); len(got) != 2 {
 		t.Fatalf("include-archived search: want 2, got %v", got)
 	}
 }

@@ -56,6 +56,10 @@ type mcpPrincipalT struct {
 	Owner    string `json:"owner"`
 }
 
+type mcpPrincipalsT struct {
+	Principals []mcpPrincipalT `json:"principals"`
+}
+
 type mcpWorkspacesT struct {
 	Workspaces []struct {
 		Slug string `json:"slug"`
@@ -243,7 +247,7 @@ func TestMCPToolsLifecycle(t *testing.T) {
 	}
 	for _, want := range []string{
 		"whoami", "list_workspaces", "list_statuses", "list_items", "get_item", "create_item",
-		"set_item_status", "set_item_assignee", "add_comment", "watch_comments", "archive_item", "unarchive_item",
+		"list_principals", "claim_item", "set_item_title", "set_item_status", "set_item_assignee", "add_comment", "watch_comments", "archive_item", "unarchive_item",
 		"list_notifications", "mark_notification_read",
 	} {
 		if !got[want] {
@@ -255,6 +259,10 @@ func TestMCPToolsLifecycle(t *testing.T) {
 	who := callTool[mcpPrincipalT](t, sess, "whoami", struct{}{})
 	if who.Username != "jack" || who.IsAgent {
 		t.Fatalf("whoami = %+v, want jack / not-agent", who)
+	}
+	principals := callTool[mcpPrincipalsT](t, sess, "list_principals", struct{}{})
+	if !hasPrincipal(principals, "jack") {
+		t.Fatalf("list_principals missing jack: %+v", principals.Principals)
 	}
 
 	// list_workspaces includes the seeded 'general' board.
@@ -275,6 +283,13 @@ func TestMCPToolsLifecycle(t *testing.T) {
 	}
 	if !strings.Contains(created.URL, "/general?item="+created.ID) {
 		t.Errorf("create_item url = %q, want a board permalink", created.URL)
+	}
+
+	renamed := callTool[mcpItemT](t, sess, "set_item_title", map[string]any{
+		"id": created.ID, "title": "From MCP, renamed",
+	})
+	if renamed.Title != "From MCP, renamed" {
+		t.Fatalf("set_item_title = %q", renamed.Title)
 	}
 
 	// set_item_status by name.
@@ -306,6 +321,21 @@ func TestMCPToolsLifecycle(t *testing.T) {
 	}
 	if len(detail.Comments) != 1 || detail.Comments[0].Body != "picked this up" {
 		t.Fatalf("get_item comments = %+v", detail.Comments)
+	}
+
+	// claim_item assigns to the caller, optionally moves status, and adds a comment.
+	claimable := callTool[mcpItemT](t, sess, "create_item", map[string]any{
+		"workspace": "general", "title": "Claim me",
+	})
+	claimed := callTool[mcpItemT](t, sess, "claim_item", map[string]any{
+		"id": claimable.ID, "status": "Doing", "comment": "starting now",
+	})
+	if claimed.Assignee != "jack" || claimed.Status != "Doing" {
+		t.Fatalf("claim_item = %+v, want assigned jack in Doing", claimed)
+	}
+	claimedDetail := callTool[mcpItemT](t, sess, "get_item", map[string]any{"id": claimable.ID})
+	if len(claimedDetail.Comments) != 1 || claimedDetail.Comments[0].Body != "starting now" {
+		t.Fatalf("claim_item comments = %+v", claimedDetail.Comments)
 	}
 
 	// A subtask via create_item parent, then list_items by parent surfaces it.
@@ -657,6 +687,15 @@ func TestMCPAgentAttribution(t *testing.T) {
 func hasWorkspace(w mcpWorkspacesT, slug string) bool {
 	for _, ws := range w.Workspaces {
 		if ws.Slug == slug {
+			return true
+		}
+	}
+	return false
+}
+
+func hasPrincipal(p mcpPrincipalsT, username string) bool {
+	for _, pr := range p.Principals {
+		if pr.Username == username {
 			return true
 		}
 	}

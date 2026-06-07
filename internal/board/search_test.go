@@ -37,7 +37,7 @@ func TestSearchItemsMatchesTitleAndDescription(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := svc.SearchItems(ctx, wsID, "",c.q, false)
+			got, err := svc.SearchItems(ctx, wsID, "", c.q, false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -65,7 +65,7 @@ func TestSearchItemsRanksTitleBeforeBody(t *testing.T) {
 	}
 	title, _ := svc.CreateItem(ctx, wsID, todo, "kappa headline")
 
-	got, err := svc.SearchItems(ctx, wsID, "","kappa", false)
+	got, err := svc.SearchItems(ctx, wsID, "", "kappa", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,10 +89,10 @@ func TestSearchItemsTreatsWildcardsLiterally(t *testing.T) {
 	und, _ := svc.CreateItem(ctx, wsID, todo, "a_b boundary")
 	svc.CreateItem(ctx, wsID, todo, "axb other")
 
-	if got, _ := svc.SearchItems(ctx, wsID, "","%", false); len(got) != 1 || got[0].ID != pct.ID {
+	if got, _ := svc.SearchItems(ctx, wsID, "", "%", false); len(got) != 1 || got[0].ID != pct.ID {
 		t.Fatalf(`"%%" must match a literal percent: got %v`, searchTitles(got))
 	}
-	if got, _ := svc.SearchItems(ctx, wsID, "","a_b", false); len(got) != 1 || got[0].ID != und.ID {
+	if got, _ := svc.SearchItems(ctx, wsID, "", "a_b", false); len(got) != 1 || got[0].ID != und.ID {
 		t.Fatalf(`"a_b" must match a literal underscore, not "axb": got %v`, searchTitles(got))
 	}
 }
@@ -108,10 +108,10 @@ func TestSearchItemsArchivedGating(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got, _ := svc.SearchItems(ctx, wsID, "","widget", false); len(got) != 1 || got[0].ID != live.ID {
+	if got, _ := svc.SearchItems(ctx, wsID, "", "widget", false); len(got) != 1 || got[0].ID != live.ID {
 		t.Fatalf("default search must skip archived: got %v", searchTitles(got))
 	}
-	if got, _ := svc.SearchItems(ctx, wsID, "","widget", true); len(got) != 2 {
+	if got, _ := svc.SearchItems(ctx, wsID, "", "widget", true); len(got) != 2 {
 		t.Fatalf("include-archived search: want 2, got %v", searchTitles(got))
 	}
 }
@@ -174,7 +174,7 @@ func TestSearchItemsSpansSubtasks(t *testing.T) {
 	if err := svc.Reparent(ctx, child.ID, parent.ID); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := svc.SearchItems(ctx, wsID, "","gamma", false); len(got) != 1 || got[0].ID != child.ID {
+	if got, _ := svc.SearchItems(ctx, wsID, "", "gamma", false); len(got) != 1 || got[0].ID != child.ID {
 		t.Fatalf("search must reach subtasks: got %v", searchTitles(got))
 	}
 }

@@ -68,6 +68,11 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 	}, h.mcpWhoami)
 
 	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "list_principals",
+		Description: "List assignable principals visible to the caller: active humans, plus the caller's own agents. Use this before assigning work when you don't know the exact username.",
+	}, h.mcpListPrincipals)
+
+	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_workspaces",
 		Description: "List the workspaces. Each has a slug (used to address it in other tools) and a display name. A workspace contains boards (see list_boards) — Tasks and Backlog.",
 	}, h.mcpListWorkspaces)
@@ -101,6 +106,16 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 		Name:        "set_item_status",
 		Description: "Move an item to a different status lane, named (e.g. \"Doing\", \"Done\"). If the target lane has a checklist (see required_facts on list_statuses), pass the fact titles you confirm are true as `checklist` — the move is rejected, naming what's still required, until the checklist is satisfied (already-true facts carry over and needn't be repeated).",
 	}, h.mcpSetItemStatus)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "claim_item",
+		Description: "Claim an item as the caller: assign it to yourself, optionally move it to a named status, optionally confirming checklist facts, and optionally add a progress comment. Useful when starting work on an item.",
+	}, h.mcpClaimItem)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "set_item_title",
+		Description: "Rename an item by id. The title is trimmed and must be non-empty.",
+	}, h.mcpSetItemTitle)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "set_item_assignee",
@@ -262,6 +277,10 @@ type principalView struct {
 	Display  string `json:"display,omitempty"`
 	IsAgent  bool   `json:"is_agent"`
 	Owner    string `json:"owner,omitempty"` // owning human, when is_agent
+}
+
+type principalListOutput struct {
+	Principals []principalView `json:"principals"`
 }
 
 // mcpItem is the agent-facing item shape. It is deliberately separate from the
@@ -518,6 +537,18 @@ type setItemStatusInput struct {
 	Checklist []string `json:"checklist,omitempty" jsonschema:"fact titles you confirm are true, to pass the lane's checklist gate (see required_facts on list_statuses). Each is recorded as confirmed by you. Only needed when the target lane is gated; already-true facts needn't be repeated"`
 }
 
+type claimItemInput struct {
+	ID        string   `json:"id" jsonschema:"the item id to claim"`
+	Status    string   `json:"status,omitempty" jsonschema:"optional status lane to move the item to after claiming it"`
+	Checklist []string `json:"checklist,omitempty" jsonschema:"fact titles you confirm are true if the target status is gated"`
+	Comment   string   `json:"comment,omitempty" jsonschema:"optional progress comment to add after claiming"`
+}
+
+type setItemTitleInput struct {
+	ID    string `json:"id" jsonschema:"the item id"`
+	Title string `json:"title" jsonschema:"the new title"`
+}
+
 type setItemAssigneeInput struct {
 	ID       string `json:"id" jsonschema:"the item id"`
 	Assignee string `json:"assignee,omitempty" jsonschema:"username to assign to; \"me\" for the caller; omit to clear the assignment"`
@@ -642,12 +673,28 @@ func (h *handlers) mcpWhoami(ctx context.Context, _ *mcp.CallToolRequest, _ empt
 	if p == nil {
 		return nil, principalView{}, errors.New("not authenticated")
 	}
-	v := principalView{Username: p.Username, Display: p.Display}
-	if owner, _, ok := strings.Cut(p.Username, "/"); ok {
+	return &mcp.CallToolResult{}, principalViewFor(p.Username, p.Display), nil
+}
+
+func principalViewFor(username, display string) principalView {
+	v := principalView{Username: username, Display: display}
+	if owner, _, ok := strings.Cut(username, "/"); ok {
 		v.IsAgent = true
 		v.Owner = owner
 	}
-	return &mcp.CallToolResult{}, v, nil
+	return v
+}
+
+func (h *handlers) mcpListPrincipals(ctx context.Context, _ *mcp.CallToolRequest, _ emptyInput) (*mcp.CallToolResult, principalListOutput, error) {
+	users, err := h.board.Assignables(ctx)
+	if err != nil {
+		return nil, principalListOutput{}, mcpErr(err)
+	}
+	out := principalListOutput{Principals: make([]principalView, len(users))}
+	for i, u := range users {
+		out.Principals[i] = principalViewFor(u.Username, u.Display)
+	}
+	return &mcp.CallToolResult{}, out, nil
 }
 
 func (h *handlers) mcpListWorkspaces(ctx context.Context, _ *mcp.CallToolRequest, _ emptyInput) (*mcp.CallToolResult, workspaceListOutput, error) {
@@ -1301,6 +1348,52 @@ func (h *handlers) mcpSetItemStatus(ctx context.Context, _ *mcp.CallToolRequest,
 	return h.mcpReloadResult(ctx, item.ID)
 }
 
+func (h *handlers) mcpClaimItem(ctx context.Context, _ *mcp.CallToolRequest, in claimItemInput) (*mcp.CallToolResult, mcpItem, error) {
+	item, err := h.mcpItem(ctx, in.ID, "")
+	if err != nil {
+		return nil, mcpItem{}, err
+	}
+	p := principalFrom(ctx)
+	if p == nil {
+		return nil, mcpItem{}, errors.New("not authenticated")
+	}
+	comment := strings.TrimSpace(in.Comment)
+	if comment != "" && len([]rune(comment)) > board.MaxCommentLen {
+		return nil, mcpItem{}, mcpErr(board.ErrInvalidComment)
+	}
+	if status := strings.TrimSpace(in.Status); status != "" {
+		statusID, err := h.statusIDByName(ctx, item.WorkspaceID, status)
+		if err != nil {
+			return nil, mcpItem{}, mcpErr(err)
+		}
+		if _, err := h.board.ConfirmStatus(ctx, item.ID, statusID, in.Checklist); err != nil {
+			return nil, mcpItem{}, mcpErr(err)
+		}
+	}
+	if err := h.board.SetAssignee(ctx, item.ID, p.ID); err != nil {
+		return nil, mcpItem{}, mcpErr(err)
+	}
+	if comment != "" {
+		if _, _, err := h.addMCPComment(ctx, item.ID, comment); err != nil {
+			return nil, mcpItem{}, err
+		}
+	}
+	h.liveUpsertOrigin(ctx, "", item.ID)
+	return h.mcpReloadResult(ctx, item.ID)
+}
+
+func (h *handlers) mcpSetItemTitle(ctx context.Context, _ *mcp.CallToolRequest, in setItemTitleInput) (*mcp.CallToolResult, mcpItem, error) {
+	item, err := h.mcpItem(ctx, in.ID, "")
+	if err != nil {
+		return nil, mcpItem{}, err
+	}
+	if err := h.board.RenameItem(ctx, item.ID, in.Title); err != nil {
+		return nil, mcpItem{}, mcpErr(err)
+	}
+	h.liveUpsertOrigin(ctx, "", item.ID)
+	return h.mcpReloadResult(ctx, item.ID)
+}
+
 func (h *handlers) mcpSetItemAssignee(ctx context.Context, _ *mcp.CallToolRequest, in setItemAssigneeInput) (*mcp.CallToolResult, mcpItem, error) {
 	item, err := h.mcpItem(ctx, in.ID, "")
 	if err != nil {
@@ -1411,12 +1504,16 @@ func (h *handlers) mcpSetItemParent(ctx context.Context, _ *mcp.CallToolRequest,
 }
 
 func (h *handlers) mcpAddComment(ctx context.Context, _ *mcp.CallToolRequest, in addCommentInput) (*mcp.CallToolResult, commentAPI, error) {
-	item, err := h.mcpItem(ctx, in.ID, "")
+	return h.addMCPComment(ctx, in.ID, in.Body)
+}
+
+func (h *handlers) addMCPComment(ctx context.Context, id, body string) (*mcp.CallToolResult, commentAPI, error) {
+	item, err := h.mcpItem(ctx, id, "")
 	if err != nil {
 		return nil, commentAPI{}, err
 	}
 	p := principalFrom(ctx)
-	c, notified, err := h.board.AddComment(ctx, item.ID, p.ID, in.Body)
+	c, notified, err := h.board.AddComment(ctx, item.ID, p.ID, body)
 	if err != nil {
 		return nil, commentAPI{}, mcpErr(err)
 	}
