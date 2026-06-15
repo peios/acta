@@ -642,3 +642,135 @@ func (h *handlers) projectMemoryDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	http.Redirect(w, r, projMemBase(ws.Slug, proj.ID), http.StatusSeeOther)
 }
+
+// --- settings: site memories ---
+//
+// Instance-wide memories (scope "site", scope_id ""), managed from /settings —
+// shared across the whole instance (e.g. the "how to use Acta" guide and the
+// memory-scope conventions). Same shape as the account memories, in the settings
+// chrome. No permissions yet, so any signed-in user can manage them.
+
+type siteMemoriesData struct {
+	chrome
+	Principal *identity.Principal
+	Memories  []memoryView
+	Err       string
+}
+
+type siteMemoryEditData struct {
+	chrome
+	Principal *identity.Principal
+	Memory    store.Memory
+	Err       string
+}
+
+const siteMemBase = "/settings/memories"
+
+// resolveSiteMemory loads a memory and confirms it's site-scoped, so an id from
+// another scope can't be reached through the settings routes.
+func (h *handlers) resolveSiteMemory(r *http.Request, mid string) (store.Memory, error) {
+	m, err := h.memories.Get(r.Context(), mid)
+	if err != nil {
+		return store.Memory{}, err
+	}
+	if m.Scope != store.ScopeSite || m.ScopeID != "" {
+		return store.Memory{}, store.ErrMemoryNotFound
+	}
+	return m, nil
+}
+
+func (h *handlers) settingsMemories(w http.ResponseWriter, r *http.Request) {
+	ch, err := h.chromeFor(r, "settings", nil)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	mems, err := h.memories.List(r.Context(), store.ScopeSite, "")
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	views := make([]memoryView, len(mems))
+	for i, m := range mems {
+		views[i] = memoryToView(m, h.authorName(r.Context(), m.UpdatedBy))
+	}
+	render(w, http.StatusOK, "settings_memories.html", siteMemoriesData{
+		chrome:    ch,
+		Principal: principalFrom(r.Context()),
+		Memories:  views,
+		Err:       memoryError(r.URL.Query().Get("err")),
+	})
+}
+
+func (h *handlers) settingsMemoryCreate(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	_, err := h.memories.Create(r.Context(), store.ScopeSite, "",
+		r.PostFormValue("name"), r.PostFormValue("summary"), r.PostFormValue("body"), principalFrom(r.Context()).ID)
+	if err != nil {
+		if errors.Is(err, memory.ErrInvalid) {
+			http.Redirect(w, r, siteMemBase+"?err=invalid", http.StatusSeeOther)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, siteMemBase, http.StatusSeeOther)
+}
+
+func (h *handlers) settingsMemoryEdit(w http.ResponseWriter, r *http.Request) {
+	m, err := h.resolveSiteMemory(r, r.PathValue("mid"))
+	if err != nil {
+		memoryNotFoundOr500(w, r, err)
+		return
+	}
+	ch, err := h.chromeFor(r, "settings", nil)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	render(w, http.StatusOK, "settings_memory_edit.html", siteMemoryEditData{
+		chrome:    ch,
+		Principal: principalFrom(r.Context()),
+		Memory:    m,
+		Err:       memoryError(r.URL.Query().Get("err")),
+	})
+}
+
+func (h *handlers) settingsMemoryUpdate(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	m, err := h.resolveSiteMemory(r, r.PathValue("mid"))
+	if err != nil {
+		memoryNotFoundOr500(w, r, err)
+		return
+	}
+	_, err = h.memories.Update(r.Context(), m.ID, r.PostFormValue("name"), r.PostFormValue("summary"), r.PostFormValue("body"), principalFrom(r.Context()).ID)
+	if err != nil {
+		if errors.Is(err, memory.ErrInvalid) {
+			http.Redirect(w, r, siteMemBase+"/"+m.ID+"?err=invalid", http.StatusSeeOther)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, siteMemBase, http.StatusSeeOther)
+}
+
+func (h *handlers) settingsMemoryDelete(w http.ResponseWriter, r *http.Request) {
+	m, err := h.resolveSiteMemory(r, r.PathValue("mid"))
+	if err != nil {
+		memoryNotFoundOr500(w, r, err)
+		return
+	}
+	if err := h.memories.Delete(r.Context(), m.ID); err != nil &&
+		!errors.Is(err, store.ErrMemoryNotFound) {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, siteMemBase, http.StatusSeeOther)
+}
