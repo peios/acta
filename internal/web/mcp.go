@@ -266,6 +266,31 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 		Name:        "mark_notification_read",
 		Description: "Mark one of your notifications read by id (ids come from list_notifications), clearing it from the unread inbox. Idempotent: an already-read, unknown, or someone else's id is a no-op. Returns your remaining unread count.",
 	}, h.mcpMarkNotificationRead)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "memory_recall",
+		Description: "Recall your durable markdown memories. Call this at the start of a task to remember what you already know. With no arguments it returns everything visible to you across scopes — agent (your own), user (your owner's), and site (instance-wide) — as a scannable index (name + one-line summary), no bodies. Pass workspace (a slug) to also include that workspace's shared memories, and project (a slug, with workspace) for a project's. Filter with scopes and a query substring; set include_bodies to get full markdown inline. Then memory_get the ones worth reading in full.",
+	}, h.mcpMemoryRecall)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "memory_get",
+		Description: "Read one memory's full markdown body. Address it by scope + name (the usual way) or by id. For workspace scope pass the workspace slug; for project scope pass workspace + project slugs.",
+	}, h.mcpMemoryGet)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "memory_save",
+		Description: "Save a durable memory — create it, or overwrite/append by name (upsert on scope+name, so you never juggle ids). Use this when you learn something worth remembering across sessions: a convention, a decision, a gotcha, a preference. scope is agent (your own scratchpad), user (your owner), site (instance-wide), workspace, or project. Give a short name (the key), a one-line summary (shown in recall), and the markdown body. mode defaults to replace; use append to add to an existing memory's body. workspace/project slugs are required for those scopes.",
+	}, h.mcpMemorySave)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "memory_edit",
+		Description: "Make a surgical edit to a memory's body: replace old_string with new_string (like a file edit), without rewriting the whole thing. old_string must match exactly once unless replace_all is set. Address the memory by scope + name (+ workspace/project slugs where the scope needs them).",
+	}, h.mcpMemoryEdit)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "memory_delete",
+		Description: "Delete a memory you no longer want, by scope + name (or by id). Use when a memory is wrong or stale — prefer fixing it with memory_edit/memory_save when it's merely out of date.",
+	}, h.mcpMemoryDelete)
 }
 
 // --- tool input/output types ---

@@ -15,6 +15,7 @@ import (
 	"github.com/peios/acta/internal/config"
 	"github.com/peios/acta/internal/live"
 	"github.com/peios/acta/internal/mcpcfg"
+	"github.com/peios/acta/internal/memory"
 	"github.com/peios/acta/internal/passkey"
 	"github.com/peios/acta/internal/push"
 	"github.com/peios/acta/internal/session"
@@ -27,7 +28,7 @@ import (
 const maxBodyBytes = 1 << 20
 
 // NewHandler builds the application handler.
-func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Provider, passkeys *passkey.Service, tokens *apitoken.Service, agents *agent.Service, accounts *account.Service, workspaces *workspace.Service, boards *board.Service, mcpConfig *mcpcfg.Service, pushSender *push.Sender) http.Handler {
+func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Provider, passkeys *passkey.Service, tokens *apitoken.Service, agents *agent.Service, accounts *account.Service, workspaces *workspace.Service, boards *board.Service, memories *memory.Service, mcpConfig *mcpcfg.Service, pushSender *push.Sender) http.Handler {
 	h := &handlers{
 		sessions:   sessions,
 		provider:   provider,
@@ -37,6 +38,7 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 		accounts:   accounts,
 		workspaces: workspaces,
 		board:      boards,
+		memories:   memories,
 		mcpcfg:     mcpConfig,
 		live:       live.NewHub(),
 		push:       pushSender,
@@ -89,6 +91,12 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("POST /{slug}/projects/{id}/archive", protected(h.projectArchive))
 	mux.Handle("POST /{slug}/projects/{id}/unarchive", protected(h.projectUnarchive))
 	mux.Handle("POST /{slug}/projects/{id}/subscribe", protected(h.projectSubscribe))
+	// Project-scoped memories, nested under the project (id in the path).
+	mux.Handle("GET /{slug}/projects/{id}/memories", protected(h.projectMemories))
+	mux.Handle("POST /{slug}/projects/{id}/memories", protected(h.projectMemoryCreate))
+	mux.Handle("GET /{slug}/projects/{id}/memories/{mid}/edit", protected(h.projectMemoryEdit))
+	mux.Handle("POST /{slug}/projects/{id}/memories/{mid}/edit", protected(h.projectMemoryUpdate))
+	mux.Handle("POST /{slug}/projects/{id}/memories/{mid}/delete", protected(h.projectMemoryDelete))
 	// Releases: a workspace's versioned cut-lines. Same routing shape as projects —
 	// /{slug}/releases is more specific than /{slug}/{board}; the single-release
 	// view rides ?r=<id>; mutations keep the id in the path.
@@ -97,6 +105,14 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("POST /{slug}/releases/{id}/edit", protected(h.releaseUpdate))
 	mux.Handle("POST /{slug}/releases/{id}/status", protected(h.releaseSetStatus))
 	mux.Handle("POST /{slug}/releases/{id}/delete", protected(h.releaseDelete))
+	// Workspace-scoped memories: a literal /{slug}/memories beats /{slug}/{board}.
+	// The edit page and mutations use 4-segment paths so they never collide with
+	// /notifications/{id}/open the way a 3-segment /{slug}/memories/{mid} would.
+	mux.Handle("GET /{slug}/memories", protected(h.workspaceMemories))
+	mux.Handle("POST /{slug}/memories", protected(h.workspaceMemoryCreate))
+	mux.Handle("GET /{slug}/memories/{mid}/edit", protected(h.workspaceMemoryEdit))
+	mux.Handle("POST /{slug}/memories/{mid}/edit", protected(h.workspaceMemoryUpdate))
+	mux.Handle("POST /{slug}/memories/{mid}/delete", protected(h.workspaceMemoryDelete))
 	// Cmd-K quick-switcher results fragment. Literal segment, matched ahead of
 	// /{slug}/{board} so it never shadows a board.
 	mux.Handle("GET /{slug}/search", protected(h.searchResults))
@@ -170,6 +186,12 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	// Web Push: register/forget this browser's subscription (fetch + CSRF).
 	mux.Handle("POST /account/push/subscribe", protected(h.pushSubscribe))
 	mux.Handle("POST /account/push/unsubscribe", protected(h.pushUnsubscribe))
+	// The signed-in user's own memories (scope "user").
+	mux.Handle("GET /account/memories", protected(h.accountMemories))
+	mux.Handle("POST /account/memories", protected(h.accountMemoryCreate))
+	mux.Handle("GET /account/memories/{mid}", protected(h.accountMemoryEdit))
+	mux.Handle("POST /account/memories/{mid}", protected(h.accountMemoryUpdate))
+	mux.Handle("POST /account/memories/{mid}/delete", protected(h.accountMemoryDelete))
 	mux.Handle("GET /account/agents", protected(h.accountAgents))
 	mux.Handle("POST /account/agents", protected(h.agentCreate))
 	mux.Handle("GET /account/agents/{id}", protected(h.agentDetail))

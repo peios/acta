@@ -34,6 +34,7 @@ var (
 	ErrFactTitleTaken       = errors.New("store: fact title already taken")
 	ErrReleaseNotFound      = errors.New("store: release not found")
 	ErrReleaseNameTaken     = errors.New("store: release name already taken")
+	ErrMemoryNotFound       = errors.New("store: memory not found")
 )
 
 // MCPPrompt is a user-defined Model Context Protocol prompt: a named, optionally
@@ -410,6 +411,41 @@ type Document struct {
 	UpdatedAt time.Time
 }
 
+// Memory scopes — the kind of owner a Memory belongs to, persisted in the scope
+// column. The accompanying ScopeID names the specific owner: a User id for
+// agent/user scope, a workspace/project/item id for those, "" for the single
+// site scope. Like the subscription Subject* constants, these live here because
+// they're persisted enum values shared across the store, service, and web layers.
+const (
+	ScopeAgent     = "agent"
+	ScopeUser      = "user"
+	ScopeSite      = "site"
+	ScopeWorkspace = "workspace"
+	ScopeProject   = "project"
+	ScopeTask      = "task"
+)
+
+// Memory is an arbitrary markdown note accumulated under a scope: an agent's
+// own notes, a user's, the site's, a workspace's, a project's, or a task's.
+// Scope names the kind of owner (see the Scope* constants) and ScopeID is that
+// owner's id — a User id for agent/user scope, "" for the single site scope.
+// Stored inline (not as a file). Name is a short label/filename; Body is
+// markdown, rendered through the same pipeline as descriptions and documents.
+type Memory struct {
+	ID      string
+	Scope   string
+	ScopeID string
+	Name    string
+	Summary string
+	Body    string
+	// CreatedBy / UpdatedBy are the principal ids that wrote and last touched the
+	// memory (decorative provenance; "" if unrecorded or the user was removed).
+	CreatedBy string
+	UpdatedBy string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 // Notification kinds. Each names why a principal was notified; the row's
 // snapshot fields carry the already-resolved context to render it.
 const (
@@ -709,6 +745,23 @@ type Store interface {
 	DocumentByID(ctx context.Context, id string) (Document, error)
 	UpdateDocument(ctx context.Context, id, title, body string, updatedAt time.Time) (Document, error)
 	DeleteDocument(ctx context.Context, id string) error
+
+	// Memories scoped to one owner — arbitrary markdown notes, returned
+	// oldest-first. MemoriesByScope filters on (scope, scopeID). MemoryByID and
+	// MemoryByScopeName return ErrMemoryNotFound when absent; the latter is the
+	// name-addressed lookup behind upsert/edit. UpdateMemory replaces
+	// name+summary+body and stamps updatedBy/updatedAt; DeleteMemory is a hard
+	// delete (ErrMemoryNotFound if the row is already gone).
+	CreateMemory(ctx context.Context, m Memory) (Memory, error)
+	MemoriesByScope(ctx context.Context, scope, scopeID string) ([]Memory, error)
+	MemoryByID(ctx context.Context, id string) (Memory, error)
+	MemoryByScopeName(ctx context.Context, scope, scopeID, name string) (Memory, error)
+	UpdateMemory(ctx context.Context, id, name, summary, body, updatedBy string, updatedAt time.Time) (Memory, error)
+	DeleteMemory(ctx context.Context, id string) error
+	// DeleteMemoriesByScope removes every memory under one owner — the
+	// polymorphic cascade (scope_id carries no FK), used when an owner such as an
+	// agent is deleted. Deleting zero rows is not an error.
+	DeleteMemoriesByScope(ctx context.Context, scope, scopeID string) error
 
 	// Activity log. RecordEvent appends an entry (assigning its id). The two
 	// readers return newest-first, capped at limit (a non-positive limit is

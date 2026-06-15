@@ -1,0 +1,60 @@
+{{define "title"}}Memories · {{.Project.Name}} · Acta{{end}}
+{{define "content"}}
+<div class="proj">
+  <a class="toplink" href="/{{.Workspace.Slug}}/projects?p={{.Project.Slug}}">&lsaquo; {{.Project.Name}}</a>
+
+  <div class="proj-head">
+    <h1 class="title">Memories</h1>
+    <span class="proj-head-spacer"></span>
+  </div>
+
+  <p class="subtitle" style="margin: -0.6rem 0 1.2rem;">Markdown notes scoped to the <strong>{{.Project.Name}}</strong> project.</p>
+
+  {{if .Err}}<p class="alert" role="alert">{{.Err}}</p>{{end}}
+
+  <details class="proj-new"{{if .Err}} open{{end}}>
+    <summary class="btn-secondary">+ New memory</summary>
+    <div class="panel proj-form-card">
+      <form class="proj-form" method="post" action="/{{.Workspace.Slug}}/projects/{{.Project.ID}}/memories">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <div class="field">
+          <span class="lbl">Name</span>
+          <div class="input-wrap"><input class="input" name="name" maxlength="200" autocomplete="off" spellcheck="false" placeholder="decisions.md" required></div>
+        </div>
+        <div class="field">
+          <span class="lbl">Summary</span>
+          <div class="input-wrap"><input class="input" name="summary" maxlength="280" autocomplete="off" placeholder="One-line hook shown when recalling"></div>
+        </div>
+        <div class="field">
+          <span class="lbl">Body</span>
+          <textarea class="input" name="body" rows="12" spellcheck="false" placeholder="Write markdown…"></textarea>
+        </div>
+        <div class="proj-form-actions">
+          <button class="btn-primary" type="submit">Create memory</button>
+        </div>
+      </form>
+    </div>
+  </details>
+
+  {{if .Memories}}
+  <div class="prompt-list" style="margin-top: 1.4rem;">
+    {{range .Memories}}
+    <div class="prompt-row">
+      <a class="prompt-main" href="/{{$.Workspace.Slug}}/projects/{{$.Project.ID}}/memories/{{.ID}}/edit">
+        <span class="prompt-name">{{.Name}}</span>
+        {{if .Summary}}<span class="prompt-desc">{{.Summary}}</span>{{end}}
+        <span class="prompt-desc"><time title="{{.Abs}}">{{.Rel}}</time>{{if .By}} · {{.By}}{{end}}{{if .Updated}} · edited{{end}}</span>
+      </a>
+      <form method="post" action="/{{$.Workspace.Slug}}/projects/{{$.Project.ID}}/memories/{{.ID}}/delete" class="prompt-del">
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <button class="link-danger" type="submit">Delete</button>
+      </form>
+    </div>
+    {{end}}
+  </div>
+  {{else}}
+  <p class="help" style="margin-top: 1.2rem;">No memories yet.</p>
+  {{end}}
+</div>
+{{end}}
+{{define "scripts"}}<script src="{{asset "/static/acta.js"}}"></script>{{end}}
