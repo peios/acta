@@ -1,0 +1,53 @@
+{{define "title"}}Edit memory · Settings · Acta{{end}}
+{{define "content"}}
+<main class="stage stage--wide">
+  <div class="settings reveal d1">
+    <nav class="menu">
+      <a href="/settings/workspaces">Workspaces</a>
+      <a href="/settings/principals">Principals</a>
+      <a href="/settings/guide">MCP Guide</a>
+      <a href="/settings/prompts">Prompts</a>
+      <a class="active" href="/settings/memories">Memories</a>
+    </nav>
+
+    <section>
+      <a class="toplink" href="/settings/memories">&lsaquo; Memories</a>
+      <h2 class="title" style="font-size: 1.45rem; margin: .6rem 0 .2rem;">Edit memory</h2>
+
+      {{if .Err}}<p class="alert" role="alert">{{.Err}}</p>{{end}}
+
+      <form method="post" action="/settings/memories/{{.Memory.ID}}" class="prompt-form">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+        <label class="field">
+          <span class="field-label">Name</span>
+          <div class="input-wrap"><input class="input" name="name" value="{{.Memory.Name}}" maxlength="200" autocomplete="off" spellcheck="false" required></div>
+        </label>
+
+        <label class="field">
+          <span class="field-label">Summary</span>
+          <div class="input-wrap"><input class="input" name="summary" value="{{.Memory.Summary}}" maxlength="280" autocomplete="off" placeholder="One-line hook shown when recalling"></div>
+        </label>
+
+        <label class="field">
+          <span class="field-label">Body</span>
+          <span class="help">Markdown supported.</span>
+          <textarea class="input" name="body" rows="18" spellcheck="false" placeholder="Write markdown…">{{.Memory.Body}}</textarea>
+        </label>
+
+        <div class="prompt-actions">
+          <button class="btn-primary" type="submit" style="width:auto;">Save</button>
+          <a class="btn-secondary" href="/settings/memories" style="width:auto;">Cancel</a>
+        </div>
+      </form>
+
+      <p class="section-title" style="margin-top: 2.2rem;">Danger zone</p>
+      <form method="post" action="/settings/memories/{{.Memory.ID}}/delete">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button class="link-danger" type="submit">Delete this memory</button>
+      </form>
+    </section>
+  </div>
+</main>
+{{end}}
+{{define "scripts"}}<script src="{{asset "/static/acta.js"}}"></script>{{end}}

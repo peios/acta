@@ -219,6 +219,12 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("GET /settings/prompts/{id}", protected(h.promptEdit))
 	mux.Handle("POST /settings/prompts/{id}", protected(h.promptUpdate))
 	mux.Handle("POST /settings/prompts/{id}/delete", protected(h.promptDelete))
+	// Site-wide memories (scope "site"): instance-global notes managed from settings.
+	mux.Handle("GET /settings/memories", protected(h.settingsMemories))
+	mux.Handle("POST /settings/memories", protected(h.settingsMemoryCreate))
+	mux.Handle("GET /settings/memories/{mid}", protected(h.settingsMemoryEdit))
+	mux.Handle("POST /settings/memories/{mid}", protected(h.settingsMemoryUpdate))
+	mux.Handle("POST /settings/memories/{mid}/delete", protected(h.settingsMemoryDelete))
 	mux.Handle("GET /welcome/passkey", protected(h.welcomePasskey))
 
 	// CLI login (gh-style loopback): a browser page that mints a token and hands
