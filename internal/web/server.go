@@ -210,9 +210,8 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("POST /settings/principals", protected(h.principalCreate))
 	mux.Handle("POST /settings/principals/{id}/disable", protected(h.principalDisable))
 	mux.Handle("POST /settings/principals/{id}/enable", protected(h.principalEnable))
-	// MCP customisation: the guide (acta://guide) and user-defined prompts.
+	// MCP: the conventions guide (acta://guide, read-only) and user-defined prompts.
 	mux.Handle("GET /settings/guide", protected(h.settingsGuide))
-	mux.Handle("POST /settings/guide", protected(h.guideSave))
 	mux.Handle("GET /settings/prompts", protected(h.settingsPrompts))
 	mux.Handle("GET /settings/prompts/new", protected(h.promptNew))
 	mux.Handle("POST /settings/prompts", protected(h.promptCreate))

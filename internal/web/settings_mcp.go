@@ -14,71 +14,29 @@ import (
 
 type guidePageData struct {
 	chrome
-	Custom       string        // textarea content (the operator's override, or "")
-	UsingDefault bool          // true when no override is stored
-	Preview      template.HTML // rendered markdown of what agents currently see
-	Saved        bool
-	Err          string
+	Preview template.HTML // rendered markdown of the hardcoded guide agents read
 }
 
+// settingsGuide shows the conventions guide (served as acta://guide) read-only.
+// The guide is hardcoded and ships with each release — Acta's equivalent of a
+// system prompt — so there is nothing to edit; the page exists so operators can
+// always see exactly what agents are told. It's rendered with the same live
+// context (the workspace list) agents receive.
 func (h *handlers) settingsGuide(w http.ResponseWriter, r *http.Request) {
-	h.renderGuide(w, r, http.StatusOK, "", "")
-}
-
-// renderGuide renders the guide editor. override, when non-empty, replaces the
-// textarea content (used by "Start from default"); errMsg shows a save error.
-func (h *handlers) renderGuide(w http.ResponseWriter, r *http.Request, status int, override, errMsg string) {
-	ctx := r.Context()
-	custom, err := h.mcpcfg.Guide(ctx)
+	body, err := h.guideDoc(r.Context())
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
-	}
-	box := custom
-	if override != "" {
-		box = override
-	}
-	previewSrc := box
-	if strings.TrimSpace(previewSrc) == "" {
-		previewSrc = mcpcfg.DefaultGuide
 	}
 	ch, err := h.chromeFor(r, "settings", nil)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	render(w, status, "settings_guide.html", guidePageData{
-		chrome:       ch,
-		Custom:       box,
-		UsingDefault: strings.TrimSpace(custom) == "",
-		Preview:      mdToHTML(previewSrc),
-		Saved:        r.URL.Query().Get("saved") == "1",
-		Err:          errMsg,
+	render(w, http.StatusOK, "settings_guide.html", guidePageData{
+		chrome:  ch,
+		Preview: mdToHTML(body),
 	})
-}
-
-func (h *handlers) guideSave(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
-	// "Start from default" loads the built-in text into the editor to edit from;
-	// it doesn't persist anything.
-	if r.PostFormValue("action") == "default" {
-		h.renderGuide(w, r, http.StatusOK, mcpcfg.DefaultGuide, "")
-		return
-	}
-	body := r.PostFormValue("guide")
-	if err := h.mcpcfg.SetGuide(r.Context(), body); err != nil {
-		var ve mcpcfg.ValidationError
-		if errors.As(err, &ve) {
-			h.renderGuide(w, r, http.StatusOK, body, ve.Msg)
-			return
-		}
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	http.Redirect(w, r, "/settings/guide?saved=1", http.StatusSeeOther)
 }
 
 // --- prompts ---

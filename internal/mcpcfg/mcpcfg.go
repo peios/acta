@@ -1,11 +1,11 @@
-// Package mcpcfg owns the customisable surface of the MCP integration: the
-// instance-global "guide" document (served as the acta://guide resource) and
-// the set of user-defined prompts (surfaced to clients as slash commands).
+// Package mcpcfg owns the configurable surface of the MCP integration: the set
+// of user-defined prompts (surfaced to clients as slash commands).
 //
-// The guide is default-as-fallback: an empty stored value means "serve the
-// built-in DefaultGuide", so the shipped default keeps improving for operators
-// who never customised it. Prompts are seeded once (DefaultPrompts) as ordinary,
-// editable rows — see EnsureSeeded.
+// The conventions guide served as the acta://guide resource is NOT configurable
+// — it ships hardcoded (guide.md, rendered via RenderGuide) and updates with each
+// release, like a system prompt that is the same for every instance. Prompts, by
+// contrast, are seeded once (DefaultPrompts) as ordinary, editable rows — see
+// EnsureSeeded.
 package mcpcfg
 
 import (
@@ -18,11 +18,8 @@ import (
 	"github.com/peios/acta/internal/store"
 )
 
-// Setting keys in the store's app_settings bag.
-const (
-	guideKey  = "mcp.guide"
-	seededKey = "mcp.seeded"
-)
+// Setting key in the store's app_settings bag.
+const seededKey = "mcp.seeded"
 
 // Field limits. Generous — these guard against runaway input, not real use.
 const (
@@ -52,38 +49,9 @@ type Service struct {
 
 func New(st store.Store) *Service { return &Service{store: st} }
 
-// --- guide ---
-
-// Guide returns the operator's custom guide text, or "" if none is set (meaning
-// the built-in default is in effect).
-func (s *Service) Guide(ctx context.Context) (string, error) {
-	return s.store.AppSetting(ctx, guideKey)
-}
-
-// EffectiveGuide returns the guide actually served to clients: the custom text
-// if set, otherwise the built-in DefaultGuide.
-func (s *Service) EffectiveGuide(ctx context.Context) (string, error) {
-	g, err := s.store.AppSetting(ctx, guideKey)
-	if err != nil {
-		return "", err
-	}
-	if strings.TrimSpace(g) == "" {
-		return DefaultGuide, nil
-	}
-	return g, nil
-}
-
-// SetGuide stores a custom guide. An empty/whitespace value clears the override,
-// reverting to the built-in default.
-func (s *Service) SetGuide(ctx context.Context, body string) error {
-	if strings.TrimSpace(body) == "" {
-		body = ""
-	}
-	if len(body) > MaxBody {
-		return invalid("guide is too long (max %d characters)", MaxBody)
-	}
-	return s.store.SetAppSetting(ctx, guideKey, body)
-}
+// The conventions guide is not stored or configurable — it is served straight
+// from the hardcoded guide.md, rendered with live context by RenderGuide (see
+// defaults.go and mcp_resources.go).
 
 // --- prompts ---
 

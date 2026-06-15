@@ -12,22 +12,8 @@
 
     <section>
       <h2 class="title" style="font-size: 1.45rem; margin-top: 0;">MCP Guide</h2>
-      <p class="help">The conventions document agents read over MCP, served as the <code>acta://guide</code> resource. Leave it empty to serve the built-in default; edit it to tailor the conventions for this instance. Changes are live on the next MCP request.</p>
+      <p class="help">The conventions document every agent reads over MCP, served as the <code>acta://guide</code> resource. It is Acta's equivalent of a system prompt: hardcoded and shipped with each release, the same on every instance, so it stays in step with the behaviour it describes. It can't be edited here — this is what agents are told, verbatim.</p>
 
-      {{if .Saved}}<p class="notice">Guide saved.</p>{{end}}
-      {{if .Err}}<p class="alert" role="alert">{{.Err}}</p>{{end}}
-
-      <form method="post" action="/settings/guide" class="guide-form">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        {{if .UsingDefault}}<p class="help">No override set — currently serving the built-in default (previewed below). Edit and save to customise, or use <em>Start from default</em> to begin from the shipped text.</p>{{end}}
-        <textarea class="input guide-text" name="guide" rows="22" placeholder="Leave empty to use the built-in default…" spellcheck="false">{{.Custom}}</textarea>
-        <div class="guide-actions">
-          <button class="btn-primary" type="submit" style="width:auto;">Save</button>
-          <button class="btn-secondary" type="submit" name="action" value="default" formnovalidate>Start from default</button>
-        </div>
-      </form>
-
-      <p class="section-title">Preview</p>
       <div class="md guide-preview">{{.Preview}}</div>
     </section>
   </div>

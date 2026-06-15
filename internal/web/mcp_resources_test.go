@@ -28,10 +28,17 @@ func TestMCPResourcesAndPrompts(t *testing.T) {
 		t.Fatalf("missing expected resources, got %v", uris)
 	}
 
-	// The guide reads as the built-in default when none is customised.
+	// The guide reads as the hardcoded, shipped document.
 	guide := readResource(t, sess, "acta://guide")
 	if !strings.Contains(guide, "Using Acta") || !strings.Contains(guide, "list_workspaces") {
 		t.Fatalf("guide resource missing expected content:\n%s", guide)
+	}
+	// It leans hard on memory and renders the live workspace list inline.
+	if !strings.Contains(guide, "memory_recall") {
+		t.Fatalf("guide resource doesn't mention memory:\n%s", guide)
+	}
+	if !strings.Contains(guide, "slug `general`") {
+		t.Fatalf("guide resource missing the live workspace list:\n%s", guide)
 	}
 
 	// Creating an item shows up in the live workspace snapshot, grouped by status.
