@@ -1657,6 +1657,96 @@ func (p *Postgres) DeleteDocument(ctx context.Context, id string) error {
 	return nil
 }
 
+// --- memories ---
+
+const memoryCols = `id::text, scope, scope_id, name, summary, body, COALESCE(created_by::text, ''), COALESCE(updated_by::text, ''), created_at, updated_at`
+
+func scanMemory(row interface{ Scan(...any) error }) (store.Memory, error) {
+	var m store.Memory
+	err := row.Scan(&m.ID, &m.Scope, &m.ScopeID, &m.Name, &m.Summary, &m.Body, &m.CreatedBy, &m.UpdatedBy, &m.CreatedAt, &m.UpdatedAt)
+	return m, err
+}
+
+func (p *Postgres) CreateMemory(ctx context.Context, m store.Memory) (store.Memory, error) {
+	return createWithRetry(func() (store.Memory, error) {
+		const q = `INSERT INTO memories (scope, scope_id, name, summary, body, created_by, updated_by)
+		           VALUES ($1, $2, $3, $4, $5, $6, $7)
+		           RETURNING ` + memoryCols
+		var createdBy, updatedBy any
+		if m.CreatedBy != "" {
+			createdBy = m.CreatedBy
+		}
+		if m.UpdatedBy != "" {
+			updatedBy = m.UpdatedBy
+		}
+		return scanMemory(p.pool.QueryRow(ctx, q, m.Scope, m.ScopeID, m.Name, m.Summary, m.Body, createdBy, updatedBy))
+	})
+}
+
+func (p *Postgres) MemoryByScopeName(ctx context.Context, scope, scopeID, name string) (store.Memory, error) {
+	q := `SELECT ` + memoryCols + ` FROM memories WHERE scope = $1 AND scope_id = $2 AND name = $3 ORDER BY created_at LIMIT 1`
+	m, err := scanMemory(p.pool.QueryRow(ctx, q, scope, scopeID, name))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.Memory{}, store.ErrMemoryNotFound
+	}
+	return m, err
+}
+
+func (p *Postgres) MemoriesByScope(ctx context.Context, scope, scopeID string) ([]store.Memory, error) {
+	q := `SELECT ` + memoryCols + ` FROM memories WHERE scope = $1 AND scope_id = $2 ORDER BY created_at`
+	rows, err := p.pool.Query(ctx, q, scope, scopeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Memory
+	for rows.Next() {
+		m, err := scanMemory(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) MemoryByID(ctx context.Context, id string) (store.Memory, error) {
+	m, err := scanMemory(p.pool.QueryRow(ctx, `SELECT `+memoryCols+` FROM memories WHERE id = $1`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.Memory{}, store.ErrMemoryNotFound
+	}
+	return m, err
+}
+
+func (p *Postgres) UpdateMemory(ctx context.Context, id, name, summary, body, updatedBy string, updatedAt time.Time) (store.Memory, error) {
+	q := `UPDATE memories SET name = $2, summary = $3, body = $4, updated_by = $5, updated_at = $6 WHERE id = $1 RETURNING ` + memoryCols
+	var by any
+	if updatedBy != "" {
+		by = updatedBy
+	}
+	m, err := scanMemory(p.pool.QueryRow(ctx, q, id, name, summary, body, by, updatedAt))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.Memory{}, store.ErrMemoryNotFound
+	}
+	return m, err
+}
+
+func (p *Postgres) DeleteMemory(ctx context.Context, id string) error {
+	ct, err := p.pool.Exec(ctx, `DELETE FROM memories WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return store.ErrMemoryNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) DeleteMemoriesByScope(ctx context.Context, scope, scopeID string) error {
+	_, err := p.pool.Exec(ctx, `DELETE FROM memories WHERE scope = $1 AND scope_id = $2`, scope, scopeID)
+	return err
+}
+
 // --- activity log ---
 
 const eventCols = `id::text, workspace_id::text, board_id, item_id, item_title, actor_id, actor_name, verb, data, created_at`

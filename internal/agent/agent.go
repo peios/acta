@@ -88,10 +88,15 @@ func (s *Service) Get(ctx context.Context, agentID, ownerID string) (store.User,
 }
 
 // Delete removes one of ownerID's agents; its tokens cascade away with it, and
-// items it created keep their history with a null creator.
+// items it created keep their history with a null creator. Its memories carry no
+// FK to cascade on (scope_id is polymorphic), so they're removed explicitly to
+// complete the delete.
 func (s *Service) Delete(ctx context.Context, agentID, ownerID string) error {
 	if _, err := s.Get(ctx, agentID, ownerID); err != nil {
 		return err
 	}
-	return s.store.DeleteUser(ctx, agentID)
+	if err := s.store.DeleteUser(ctx, agentID); err != nil {
+		return err
+	}
+	return s.store.DeleteMemoriesByScope(ctx, store.ScopeAgent, agentID)
 }

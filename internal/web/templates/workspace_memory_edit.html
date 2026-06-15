@@ -1,0 +1,40 @@
+{{define "title"}}Edit memory · {{.Workspace.Name}} · Acta{{end}}
+{{define "content"}}
+<div class="proj">
+  <div class="proj-head">
+    <h1 class="title">Edit memory</h1>
+    <span class="proj-head-spacer"></span>
+    <a class="toplink" href="/{{.Workspace.Slug}}/memories">&lsaquo; Memories</a>
+  </div>
+
+  {{if .Err}}<p class="alert" role="alert">{{.Err}}</p>{{end}}
+
+  <div class="panel proj-form-card">
+    <form class="proj-form" method="post" action="/{{.Workspace.Slug}}/memories/{{.Memory.ID}}/edit">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <div class="field">
+        <span class="lbl">Name</span>
+        <div class="input-wrap"><input class="input" name="name" value="{{.Memory.Name}}" maxlength="200" autocomplete="off" spellcheck="false" required></div>
+      </div>
+      <div class="field">
+        <span class="lbl">Summary</span>
+        <div class="input-wrap"><input class="input" name="summary" value="{{.Memory.Summary}}" maxlength="280" autocomplete="off" placeholder="One-line hook shown when recalling"></div>
+      </div>
+      <div class="field">
+        <span class="lbl">Body</span>
+        <textarea class="input" name="body" rows="18" spellcheck="false" placeholder="Write markdown…">{{.Memory.Body}}</textarea>
+      </div>
+      <div class="proj-form-actions">
+        <button class="btn-primary" type="submit">Save</button>
+        <a class="btn-secondary" href="/{{.Workspace.Slug}}/memories" style="width:auto;">Cancel</a>
+      </div>
+    </form>
+  </div>
+
+  <form method="post" action="/{{.Workspace.Slug}}/memories/{{.Memory.ID}}/delete" style="margin-top: 1.4rem;">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <button class="link-danger" type="submit">Delete this memory</button>
+  </form>
+</div>
+{{end}}
+{{define "scripts"}}<script src="{{asset "/static/acta.js"}}"></script>{{end}}

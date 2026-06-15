@@ -19,6 +19,7 @@ import (
 	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/config"
 	"github.com/peios/acta/internal/mcpcfg"
+	"github.com/peios/acta/internal/memory"
 	"github.com/peios/acta/internal/passkey"
 	"github.com/peios/acta/internal/push"
 	"github.com/peios/acta/internal/session"
@@ -100,12 +101,13 @@ func buildTestHandler(t *testing.T) http.Handler {
 	tokens := apitoken.New(ms)
 	agents := agent.New(ms)
 	accounts := account.New(ms)
+	memories := memory.New(ms)
 	mcpConfig := mcpcfg.New(ms)
 	if err := mcpConfig.EnsureSeeded(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	provider := local.NewProvider(ms, sessions, passkeys, false)
-	return web.NewHandler(config.Config{Env: "dev", RPOrigin: "http://localhost:8080"}, sessions, provider, passkeys, tokens, agents, accounts, workspaces, boards, mcpConfig, pushSender)
+	return web.NewHandler(config.Config{Env: "dev", RPOrigin: "http://localhost:8080"}, sessions, provider, passkeys, tokens, agents, accounts, workspaces, boards, memories, mcpConfig, pushSender)
 }
 
 func newTestClient() *http.Client {

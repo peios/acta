@@ -16,6 +16,7 @@ import (
 	"github.com/peios/acta/internal/identity"
 	"github.com/peios/acta/internal/live"
 	"github.com/peios/acta/internal/mcpcfg"
+	"github.com/peios/acta/internal/memory"
 	"github.com/peios/acta/internal/passkey"
 	"github.com/peios/acta/internal/push"
 	"github.com/peios/acta/internal/session"
@@ -32,6 +33,7 @@ type handlers struct {
 	accounts   *account.Service
 	workspaces *workspace.Service
 	board      *board.Service
+	memories   *memory.Service
 	mcpcfg     *mcpcfg.Service
 	live       live.Broker  // fans mutations to browsers over SSE; nil disables live updates
 	push       *push.Sender // Web Push delivery; nil disables push (no VAPID keys)

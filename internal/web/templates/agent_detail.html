@@ -5,6 +5,7 @@
     <nav class="menu">
       <a href="/account/security">Security</a>
       <a class="active" href="/account/agents">Agents</a>
+      <a href="/account/memories">Memories</a>
     </nav>
 
     <section>
@@ -20,6 +21,12 @@
       </p>
 
       {{template "token-section" .TokenSection}}
+
+      <p class="section-title" style="margin-top: 2.4rem;">Memories</p>
+      <p class="subtitle" style="margin-bottom: 1rem;">
+        Arbitrary markdown notes this agent carries — view, create, edit, delete.
+      </p>
+      <a class="btn-secondary" href="/account/memories?agent={{.Agent.ID}}" style="width:auto;">Memories</a>
 
       <p class="section-title" style="margin-top: 2.4rem;">Danger zone</p>
       <form method="post" action="/account/agents/{{.Agent.ID}}/delete">

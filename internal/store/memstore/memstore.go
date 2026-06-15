@@ -29,6 +29,7 @@ type Store struct {
 	items        map[string]store.Item
 	comments     map[string]store.Comment
 	documents    map[string]store.Document
+	memories     map[string]store.Memory
 	apiTokens    map[string]store.APIToken
 	settings     map[string]string
 	mcpPrompts   map[string]store.MCPPrompt
@@ -59,6 +60,7 @@ func New() *Store {
 		items:        map[string]store.Item{},
 		comments:     map[string]store.Comment{},
 		documents:    map[string]store.Document{},
+		memories:     map[string]store.Memory{},
 		apiTokens:    map[string]store.APIToken{},
 		settings:     map[string]string{},
 		mcpPrompts:   map[string]store.MCPPrompt{},
@@ -1534,6 +1536,100 @@ func (s *Store) DeleteDocument(_ context.Context, id string) error {
 		return store.ErrDocumentNotFound
 	}
 	delete(s.documents, id)
+	return nil
+}
+
+// --- memories ---
+
+func (s *Store) CreateMemory(_ context.Context, m store.Memory) (store.Memory, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if m.ID == "" {
+		m.ID = newID()
+	}
+	if m.CreatedAt.IsZero() {
+		m.CreatedAt = time.Now()
+	}
+	if m.UpdatedAt.IsZero() {
+		m.UpdatedAt = m.CreatedAt
+	}
+	s.memories[m.ID] = m
+	return m, nil
+}
+
+func (s *Store) MemoriesByScope(_ context.Context, scope, scopeID string) ([]store.Memory, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.Memory
+	for _, m := range s.memories {
+		if m.Scope == scope && m.ScopeID == scopeID {
+			out = append(out, m)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out, nil
+}
+
+func (s *Store) MemoryByID(_ context.Context, id string) (store.Memory, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m, ok := s.memories[id]
+	if !ok {
+		return store.Memory{}, store.ErrMemoryNotFound
+	}
+	return m, nil
+}
+
+func (s *Store) MemoryByScopeName(_ context.Context, scope, scopeID, name string) (store.Memory, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.Memory
+	for _, m := range s.memories {
+		if m.Scope == scope && m.ScopeID == scopeID && m.Name == name {
+			out = append(out, m)
+		}
+	}
+	if len(out) == 0 {
+		return store.Memory{}, store.ErrMemoryNotFound
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out[0], nil
+}
+
+func (s *Store) UpdateMemory(_ context.Context, id, name, summary, body, updatedBy string, updatedAt time.Time) (store.Memory, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m, ok := s.memories[id]
+	if !ok {
+		return store.Memory{}, store.ErrMemoryNotFound
+	}
+	m.Name = name
+	m.Summary = summary
+	m.Body = body
+	m.UpdatedBy = updatedBy
+	m.UpdatedAt = updatedAt
+	s.memories[id] = m
+	return m, nil
+}
+
+func (s *Store) DeleteMemory(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.memories[id]; !ok {
+		return store.ErrMemoryNotFound
+	}
+	delete(s.memories, id)
+	return nil
+}
+
+func (s *Store) DeleteMemoriesByScope(_ context.Context, scope, scopeID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, m := range s.memories {
+		if m.Scope == scope && m.ScopeID == scopeID {
+			delete(s.memories, id)
+		}
+	}
 	return nil
 }
 
