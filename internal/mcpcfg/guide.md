@@ -13,10 +13,12 @@ live board snapshot at `acta://workspace/<slug>`.
 
 Do these three things, in order, before you touch the board:
 
-1. **Recall what you already know.** Call `memory_recall`. You have durable
-   memory in Acta that survives across sessions, machines, and harnesses — the
-   index tells you what's there. This is step one, every time. See **Memory**
-   below; it's the most important habit on this list.
+1. **Recall what you already know.** You begin with an index of your `agent`,
+   `user`, and `site` memories (your harness may inject it at startup; otherwise
+   call `memory_recall`). For anything tied to a workspace, also call
+   `memory_recall` with its slug — workspace memories aren't in the default
+   index. This is step one, every time. See **Memory** below; it's the most
+   important habit here.
 2. **Orient.** Call `whoami` to learn who you're acting as, and skim the
    workspace list below (or call `list_workspaces`) to know where work lives.
 3. **Read before you write.** Call `list_items` (and `get_item` for detail) to
@@ -34,6 +36,44 @@ durable** — a convention, a decision and its rationale, a gotcha, a preference
 how-to, the lay of the land in a codebase. If a future you (or another agent)
 would benefit from knowing it, write it down. Treat "I just figured something
 out" as a trigger to `memory_save`.
+
+### Recall, and what you start with
+
+At the start of a task you typically already have an **index of your `agent`,
+`user`, and `site` memories** — names and summaries, not bodies (your harness may
+inject it; or call `memory_recall` with no arguments). That index deliberately
+does **not** include workspace or project memories, because nothing yet knows
+what you'll work on.
+
+So **before you start work on anything tied to a workspace, call `memory_recall`
+with that workspace's slug** (plus a project slug when relevant). That folds in
+the shared memories for it — the conventions, decisions, and gotchas the team has
+written down there. Skipping this is how you end up relearning what already
+exists. Then `memory_get` the entries worth reading in full.
+
+### Memory is for durable knowledge, NOT live state
+
+This is the rule that keeps memory worth reading: **memory holds what stays true
+over time; it is never a status board or a progress log.** Anything that changes
+as work proceeds goes stale the instant you write it, and a confidently
+out-of-date memory is worse than no memory at all. Time-varying information
+belongs where Acta already tracks it — and keeps it current:
+
+- **Current status — what's in progress, what's done** → the item's **status**
+  lane (`set_item_status`) and the board. Never "remember" that something is
+  done; move the item.
+- **Progress, updates, what-just-changed, in-the-moment decisions** → **comments**
+  on the item (`add_comment`) — the dated narrative.
+- **The spec: the durable what-and-why of a piece of work** → the item's
+  **description** (`set_item_description`).
+- **Substantial reports, findings, runbooks tied to a task** → **documents**
+  (`create_document`).
+
+Reach for **memory** only for knowledge that outlives any single item and isn't
+about current state: conventions, architectural decisions and their rationale,
+gotchas, hard-won how-tos, preferences. Litmus test before every `memory_save`:
+*will this still be true in a month, no matter what happens on the board?* If
+not, it belongs on an item, not in memory.
 
 ### Scopes — and choosing the right one
 
