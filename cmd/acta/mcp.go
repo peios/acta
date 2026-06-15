@@ -163,6 +163,17 @@ func cmdMCPInstall(args []string) error {
 		fmt.Printf("\n✓ Wired Claude Code to %s, acting as %s.\n", base, actingAs)
 		fmt.Println("  Check it in Claude Code with /mcp. The token is stored in Claude's")
 		fmt.Println("  config and won't be shown again.")
+		// Also set up the SessionStart hook that loads the agent's Acta memory
+		// index each session. Best-effort: a failure here shouldn't fail the
+		// install — the MCP server still works without it.
+		if scriptPath, herr := installClaudeBootHook(); herr != nil {
+			fmt.Fprintf(os.Stderr, "  ⚠ Couldn't set up the session-start memory hook: %v\n", herr)
+			fmt.Fprintln(os.Stderr, "    (Acta still works — you just won't get your memory auto-loaded at startup.)")
+		} else {
+			fmt.Println("  Installed a SessionStart hook that loads your Acta memory index")
+			fmt.Printf("  each session: %s\n", scriptPath)
+			fmt.Println("  It takes effect next session; review or remove it with /hooks.")
+		}
 	case mcpClientCodex:
 		cfg.MCPProfile("codex", mcpConfig{URL: base, Token: tok.Token})
 		if err := saveConfig(cfg); err != nil {
