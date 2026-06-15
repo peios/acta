@@ -1,0 +1,32 @@
+# acta — Peios project tracker (Go + htmx + Postgres).
+#
+# Self-describing build: acta ships this manifest so a delegate recipe under
+# pkgs/ can borrow it at each release tag (the loregd model) instead of carrying
+# acta's build itself. One module, two binaries: acta-server (the service;
+# templates and migrations are go:embed'd, so it's self-contained) and acta (the
+# client CLI).
+#
+# Cross-compiled static linux/amd64 with -trimpath + -s -w, matching acta's
+# Dockerfile for a stripped, reproducible build. Version stamping is the
+# packaging recipe's job (it passes --version); it's deliberately not templated
+# here, so a bare `pekit build`/`install` works without a version.
+
+outDir = "out"
+
+[build.server]
+command = "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o $PEKIT_OUT/acta-server ./cmd/acta-server"
+
+[build.cli]
+command = "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o $PEKIT_OUT/acta ./cmd/acta"
+
+[install.server]
+command = "go install ./cmd/acta-server"
+
+[install.cli]
+command = "go install ./cmd/acta"
+
+[test]
+command = "go test ./..."
+
+[clean]
+command = "go clean"
