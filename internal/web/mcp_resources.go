@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/peios/acta/internal/mcpcfg"
 	"github.com/peios/acta/internal/store"
 )
 
@@ -42,7 +43,7 @@ func (h *handlers) registerMCPResources(ctx context.Context, srv *mcp.Server) {
 }
 
 func (h *handlers) mcpGuideResource(ctx context.Context, _ *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-	body, err := h.mcpcfg.EffectiveGuide(ctx)
+	body, err := h.guideDoc(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -51,6 +52,21 @@ func (h *handlers) mcpGuideResource(ctx context.Context, _ *mcp.ReadResourceRequ
 		MIMEType: "text/markdown",
 		Text:     body,
 	}}}, nil
+}
+
+// guideDoc renders the conventions guide (served as acta://guide and shown
+// read-only in Settings) with live instance context — currently the list of
+// workspaces, so agents see what exists without a separate call.
+func (h *handlers) guideDoc(ctx context.Context) (string, error) {
+	list, err := h.workspaces.List(ctx)
+	if err != nil {
+		return "", err
+	}
+	data := mcpcfg.GuideData{Workspaces: make([]mcpcfg.GuideWorkspace, len(list))}
+	for i, ws := range list {
+		data.Workspaces[i] = mcpcfg.GuideWorkspace{Name: ws.Name, Slug: ws.Slug, ItemPrefix: ws.ItemPrefix}
+	}
+	return mcpcfg.RenderGuide(data)
 }
 
 func (h *handlers) mcpWorkspaceResource(slug, uri string) mcp.ResourceHandler {

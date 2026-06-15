@@ -15,30 +15,38 @@ func newSvc(t *testing.T) (*mcpcfg.Service, context.Context) {
 	return mcpcfg.New(memstore.New()), context.Background()
 }
 
-func TestEffectiveGuideFallsBackToDefault(t *testing.T) {
-	s, ctx := newSvc(t)
-	g, err := s.EffectiveGuide(ctx)
+func TestRenderGuide(t *testing.T) {
+	// The guide is hardcoded and ships with each release (no customisation), but
+	// it renders a little live context — the workspace list — inline.
+	g, err := mcpcfg.RenderGuide(mcpcfg.GuideData{
+		Workspaces: []mcpcfg.GuideWorkspace{
+			{Name: "Acta", Slug: "acta", ItemPrefix: "ACTA"},
+			{Name: "Peios", Slug: "workspace"},
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if g != mcpcfg.DefaultGuide {
-		t.Fatalf("empty guide should serve the default")
+	// Static markers the resource test and agents rely on.
+	for _, want := range []string{"Using Acta", "memory_recall", "list_workspaces"} {
+		if !strings.Contains(g, want) {
+			t.Fatalf("guide missing %q", want)
+		}
+	}
+	// The live workspace context is rendered inline.
+	for _, want := range []string{"**Acta** — slug `acta`", "`ACTA-12`", "**Peios** — slug `workspace`"} {
+		if !strings.Contains(g, want) {
+			t.Fatalf("guide missing rendered workspace %q", want)
+		}
 	}
 
-	if err := s.SetGuide(ctx, "# My rules\nDo the thing."); err != nil {
+	// With no workspaces it still renders, with the empty-state line.
+	empty, err := mcpcfg.RenderGuide(mcpcfg.GuideData{})
+	if err != nil {
 		t.Fatal(err)
 	}
-	g, _ = s.EffectiveGuide(ctx)
-	if !strings.Contains(g, "My rules") {
-		t.Fatalf("custom guide not served: %q", g)
-	}
-
-	// Clearing reverts to the default.
-	if err := s.SetGuide(ctx, "   "); err != nil {
-		t.Fatal(err)
-	}
-	if g, _ := s.EffectiveGuide(ctx); g != mcpcfg.DefaultGuide {
-		t.Fatalf("cleared guide should revert to default")
+	if !strings.Contains(empty, "No workspaces exist yet") {
+		t.Fatalf("empty guide missing the no-workspaces line")
 	}
 }
 

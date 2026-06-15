@@ -7,34 +7,37 @@ import (
 	"testing"
 )
 
-func TestSettingsGuideCustomise(t *testing.T) {
+func TestSettingsGuideReadOnly(t *testing.T) {
 	base, client := newTestServer(t)
 	csrf := signIn(t, client, base)
 
-	// Default page previews the built-in guide.
+	// The page previews the hardcoded guide and offers no way to edit it.
 	body := getBody(t, client, base+"/settings/guide", http.StatusOK)
 	if !strings.Contains(body, "MCP Guide") || !strings.Contains(body, "Using Acta") {
-		t.Fatalf("guide page missing default preview")
+		t.Fatalf("guide page missing the shipped guide")
+	}
+	if strings.Contains(body, `name="guide"`) || strings.Contains(body, `action="/settings/guide"`) {
+		t.Fatalf("guide page still has an editor; it must be read-only")
 	}
 
-	// Saving a custom guide redirects and then shows up in the editor.
+	// There is no save route — POSTing is method-not-allowed.
 	resp := postForm(t, client, base+"/settings/guide", url.Values{
 		"guide": {"# House rules\nAlways read me."}, "csrf_token": {csrf},
 	})
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("save guide: want 303, got %d", resp.StatusCode)
-	}
-	body = getBody(t, client, base+"/settings/guide", http.StatusOK)
-	if !strings.Contains(body, "House rules") {
-		t.Fatalf("custom guide not persisted")
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("guide is read-only: want 405 on POST, got %d", resp.StatusCode)
 	}
 
-	// The custom guide is what the MCP resource serves.
+	// The MCP resource serves the hardcoded default, unaffected by the POST.
 	token := mintToken(t, client, base, csrf)
 	sess := mcpConnect(t, base, token)
-	if g := readResource(t, sess, "acta://guide"); !strings.Contains(g, "House rules") {
-		t.Fatalf("MCP guide resource didn't pick up the custom guide:\n%s", g)
+	g := readResource(t, sess, "acta://guide")
+	if !strings.Contains(g, "Using Acta") {
+		t.Fatalf("MCP guide resource missing the shipped guide:\n%s", g)
+	}
+	if strings.Contains(g, "House rules") {
+		t.Fatalf("MCP guide resource picked up a POSTed override; should be hardcoded")
 	}
 }
 
