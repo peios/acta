@@ -235,6 +235,7 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	// cookies, so it mounts outside the CSRF chain — the token is the auth.
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/v1/me", h.apiMe)
+	api.HandleFunc("GET /api/v1/agent/boot", h.apiAgentBoot)
 	api.HandleFunc("POST /api/v1/logout", h.apiLogout)
 	api.HandleFunc("GET /api/v1/workspaces", h.apiWorkspaces)
 	api.HandleFunc("GET /api/v1/w/{slug}/items", h.apiListItems)
