@@ -250,6 +250,7 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	api.HandleFunc("GET /api/v1/w/{slug}/releases", h.apiListReleases)
 	api.HandleFunc("POST /api/v1/w/{slug}/releases", h.apiCreateRelease)
 	api.HandleFunc("POST /api/v1/w/{slug}/releases/{name}/status", h.apiSetReleaseStatus)
+	api.HandleFunc("POST /api/v1/w/{slug}/releases/{name}/target", h.apiSetReleaseTarget)
 	api.HandleFunc("GET /api/v1/subscriptions", h.apiListSubscriptions)
 	api.HandleFunc("POST /api/v1/subscriptions", h.apiSubscribe)
 	api.HandleFunc("DELETE /api/v1/subscriptions", h.apiUnsubscribe)

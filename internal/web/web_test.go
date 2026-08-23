@@ -47,6 +47,17 @@ func newTestServer(t *testing.T) (string, *http.Client) {
 	return srv.URL, newTestClient()
 }
 
+// newTestServerWithStore is newTestServer plus the underlying store, for tests
+// that need to plant data the HTTP surface can't write — a progress history
+// stretching back over days, say.
+func newTestServerWithStore(t *testing.T) (string, *http.Client, *memstore.Store) {
+	t.Helper()
+	handler, ms := buildTestHandlerStore(t)
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	return srv.URL, newTestClient(), ms
+}
+
 // newTestServerWriteTimeout is newTestServer with the production-style write
 // timeout the real server runs (cmd/acta-server sets 15s). httptest's default
 // is no timeout, which hides whether long-poll endpoints survive that ceiling.
@@ -62,6 +73,11 @@ func newTestServerWriteTimeout(t *testing.T, d time.Duration) (string, *http.Cli
 // buildTestHandler wires the full web handler over a fresh in-memory store with
 // one user (jack) and a seeded "General" workspace.
 func buildTestHandler(t *testing.T) http.Handler {
+	h, _ := buildTestHandlerStore(t)
+	return h
+}
+
+func buildTestHandlerStore(t *testing.T) (http.Handler, *memstore.Store) {
 	t.Helper()
 	ms := memstore.New()
 	hash, err := local.HashPassword(testPassword)
@@ -107,7 +123,7 @@ func buildTestHandler(t *testing.T) http.Handler {
 		t.Fatal(err)
 	}
 	provider := local.NewProvider(ms, sessions, passkeys, false)
-	return web.NewHandler(config.Config{Env: "dev", RPOrigin: "http://localhost:8080"}, sessions, provider, passkeys, tokens, agents, accounts, workspaces, boards, memories, mcpConfig, pushSender)
+	return web.NewHandler(config.Config{Env: "dev", RPOrigin: "http://localhost:8080"}, sessions, provider, passkeys, tokens, agents, accounts, workspaces, boards, memories, mcpConfig, pushSender), ms
 }
 
 func newTestClient() *http.Client {

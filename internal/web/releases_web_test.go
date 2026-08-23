@@ -6,6 +6,9 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/peios/acta/internal/store"
 )
 
 // createRelease makes a release via the form post and returns its id (read from
@@ -416,5 +419,153 @@ func TestBoardCardShowsReleaseChip(t *testing.T) {
 	}
 	if !strings.Contains(board, `data-display="release"`) {
 		t.Error("display popover missing the Release toggle")
+	}
+}
+
+// --- progress over time ---
+
+func TestReleaseTargetDateRoundTrip(t *testing.T) {
+	base, client := newTestServer(t)
+	token := csrfToken(t, client, base)
+	login(t, client, base, token)
+
+	// Set on create, and shown on both the overview and the release page.
+	resp := postForm(t, client, base+"/general/releases", url.Values{
+		"name": {"v0.27.0"}, "target_date": {"2026-10-14"}, "csrf_token": {token},
+	})
+	resp.Body.Close()
+	id := releaseIDFromRedirect(t, resp)
+
+	page := getBody(t, client, base+"/general/releases?r="+id, http.StatusOK)
+	if !strings.Contains(page, "Target 14 Oct") {
+		t.Error("release page missing its target date")
+	}
+	if !strings.Contains(page, `value="2026-10-14"`) {
+		t.Error("edit form missing the target date value")
+	}
+	if overview := getBody(t, client, base+"/general/releases", http.StatusOK); !strings.Contains(overview, "due 14 Oct") {
+		t.Error("overview card missing the target date")
+	}
+
+	// Moved by an edit, and cleared by an empty one.
+	r2 := postForm(t, client, base+"/general/releases/"+id+"/edit", url.Values{
+		"name": {"v0.27.0"}, "target_date": {"2026-11-01"}, "csrf_token": {token},
+	})
+	r2.Body.Close()
+	if page = getBody(t, client, base+"/general/releases?r="+id, http.StatusOK); !strings.Contains(page, "Target 1 Nov") {
+		t.Error("edited target date not applied")
+	}
+	r3 := postForm(t, client, base+"/general/releases/"+id+"/edit", url.Values{
+		"name": {"v0.27.0"}, "target_date": {""}, "csrf_token": {token},
+	})
+	r3.Body.Close()
+	if page = getBody(t, client, base+"/general/releases?r="+id, http.StatusOK); strings.Contains(page, "Target 1 Nov") {
+		t.Error("blank target date should clear it")
+	}
+}
+
+func TestReleaseTargetDateRejectsGarbage(t *testing.T) {
+	base, client := newTestServer(t)
+	token := csrfToken(t, client, base)
+	login(t, client, base, token)
+
+	resp := postForm(t, client, base+"/general/releases", url.Values{
+		"name": {"v9"}, "target_date": {"next tuesday"}, "csrf_token": {token},
+	})
+	resp.Body.Close()
+	if loc := resp.Header.Get("Location"); !strings.Contains(loc, "err=invalid_target") {
+		t.Fatalf("redirect = %q, want an invalid_target error", loc)
+	}
+	if page := getBody(t, client, base+"/general/releases?err=invalid_target", http.StatusOK); !strings.Contains(page, "YYYY-MM-DD") {
+		t.Error("the invalid target date message should explain the format")
+	}
+}
+
+func TestReleasePageShowsProgressPanel(t *testing.T) {
+	base, client := newTestServer(t)
+	token := csrfToken(t, client, base)
+	login(t, client, base, token)
+
+	relID := createRelease(t, client, base, token, "v0.27.0", "")
+	todo := statusID(t, client, base, "To do")
+	id := createItem(t, client, base, token, todo, "ship boot")
+	r := postJSON(t, client, base+"/general/items/"+id+"/release", token, map[string]any{"release_id": relID})
+	r.Body.Close()
+
+	page := getBody(t, client, base+"/general/releases?r="+relID, http.StatusOK)
+	// One unsized item is a medium: 3 points of scope, none of it done.
+	if !strings.Contains(page, "<b>0%</b> of 3 pts") {
+		t.Error("progress panel missing the points rollup")
+	}
+	// A single day of history isn't a trend, so the chart holds off and says why.
+	if strings.Contains(page, "<svg class=\"burnup\"") {
+		t.Error("a chart was drawn from one day of history")
+	}
+	if !strings.Contains(page, "measured once a day") {
+		t.Error("progress panel missing its empty-state explanation")
+	}
+	// The item's arrival shows up in the digest.
+	if !strings.Contains(page, `data-kind="added"`) {
+		t.Error("what-moved digest missing the added item")
+	}
+}
+
+func TestReleaseBurnupRendersFromHistory(t *testing.T) {
+	base, client, ms := newTestServerWithStore(t)
+	token := csrfToken(t, client, base)
+	login(t, client, base, token)
+
+	// A release aiming at a date a fortnight out, with one item in it.
+	target := time.Now().UTC().AddDate(0, 0, 14).Format("2006-01-02")
+	resp := postForm(t, client, base+"/general/releases", url.Values{
+		"name": {"v0.27.0"}, "target_date": {target}, "csrf_token": {token},
+	})
+	resp.Body.Close()
+	relID := releaseIDFromRedirect(t, resp)
+	todo := statusID(t, client, base, "To do")
+	id := createItem(t, client, base, token, todo, "ship boot")
+	r := postJSON(t, client, base+"/general/items/"+id+"/release", token, map[string]any{"release_id": relID})
+	r.Body.Close()
+	// Finish it, so the release has genuinely moved and a pace exists to measure.
+	r2 := postJSON(t, client, base+"/general/items/"+id+"/status", token,
+		map[string]any{"status_id": statusID(t, client, base, "Done")})
+	r2.Body.Close()
+
+	// A week of history behind today, climbing steadily. Planted directly: the
+	// HTTP surface can only ever measure today, and today's row is written by
+	// the page view itself.
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	var snaps []store.ProgressSnapshot
+	for i := range 7 {
+		snaps = append(snaps, store.ProgressSnapshot{
+			SubjectType: "release", SubjectID: relID, Day: today.AddDate(0, 0, i-7),
+			DoneItems: 0, TotalItems: 1, DonePoints: 0, TotalPoints: 3,
+			Synthetic: i < 2, // the oldest days are reconstructed
+		})
+	}
+	if err := ms.UpsertProgressSnapshots(t.Context(), snaps); err != nil {
+		t.Fatal(err)
+	}
+
+	page := getBody(t, client, base+"/general/releases?r="+relID, http.StatusOK)
+	if !strings.Contains(page, `class="burnup"`) {
+		t.Fatal("no burn-up chart drawn from a week of history")
+	}
+	for _, want := range []string{
+		`class="burnup-done"`,   // work completed
+		`class="burnup-total"`,  // total scope, so growth is visible
+		`class="burnup-target"`, // the target date
+		`class="burnup-synth"`,  // reconstructed days, shaded
+		"reconstructed from activity",
+		"pts/week", // measured pace
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("burn-up missing %q", want)
+		}
+	}
+
+	// The overview shows the same history as a sparkline.
+	if overview := getBody(t, client, base+"/general/releases", http.StatusOK); !strings.Contains(overview, `class="spark`) {
+		t.Error("overview card missing its sparkline")
 	}
 }

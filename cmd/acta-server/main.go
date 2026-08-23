@@ -183,6 +183,7 @@ func runServe(args []string) error {
 	defer stop()
 
 	go sweepLoop(shutdownCtx, guard, cfg.LoginWindow)
+	go progressLoop(shutdownCtx, boards)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -218,6 +219,44 @@ func sweepLoop(ctx context.Context, guard *local.Guard, every time.Duration) {
 		case <-t.C:
 			guard.Sweep()
 		}
+	}
+}
+
+// progressSnapshotEvery is how often every workspace's release and project
+// progress is written to the history behind the burn-up charts. Hourly rather
+// than daily: a day's row is idempotent, and measuring often means an instance
+// that's restarted or asleep at midnight still records the day.
+const progressSnapshotEvery = time.Hour
+
+// progressLoop keeps the progress history current: it reconstructs a
+// best-effort past for subjects that have none (once, at startup — see
+// BackfillProgress) and then measures every workspace on a timer until
+// shutdown. Failures are logged, never fatal: a missing data point costs a gap
+// in a chart, and nothing else.
+func progressLoop(ctx context.Context, boards *board.Service) {
+	backfillProgress(ctx, boards)
+	snapshotProgress(ctx, boards)
+	t := time.NewTicker(progressSnapshotEvery)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			snapshotProgress(ctx, boards)
+		}
+	}
+}
+
+func snapshotProgress(ctx context.Context, boards *board.Service) {
+	if err := boards.SnapshotAll(ctx, time.Now()); err != nil {
+		slog.Warn("progress snapshot sweep failed", "err", err)
+	}
+}
+
+func backfillProgress(ctx context.Context, boards *board.Service) {
+	if err := boards.BackfillAllProgress(ctx, time.Now()); err != nil {
+		slog.Warn("progress backfill failed", "err", err)
 	}
 }
 

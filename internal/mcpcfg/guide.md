@@ -178,7 +178,17 @@ here.
   Addressed by `slug`; lifecycle planned/active/paused/done.
 - **Release** — a versioned cut-line a workspace ships at (e.g. "v0.27.0"),
   addressed by `name`. Stateful: **planned → active → shipped**; shipping freezes
-  it as a changelog entry. An item belongs to one release at a time.
+  it as a changelog entry. An item belongs to one release at a time. A release
+  may carry a **target date** (`set_release_target`) — the day it's aiming at.
+- **Progress** — measured in points, not items: each item is weighted by its
+  size (xs 1, s 2, m 3, l 5, xl 8), and an item with **no size counts as a
+  medium**, since sizing is how you mark something as unusually big or small.
+  `list_releases` reports both (`done`/`total` items and
+  `done_points`/`total_points`). Progress is recorded once a day, so a release
+  also reports its recent **pace** (`pace_per_week`), the date the remaining
+  work lands at that pace (`forecast_date`), and `days_late` against its target.
+  These are measurements, not promises: they're absent when there's too little
+  history to say anything honest, and you should present them the same way.
 - **Document** — a titled long-form markdown artifact attached to an item (a
   report, findings, a runbook), separate from the description and the comment
   thread. Manage with `list_documents` / `get_document` / `create_document` /
@@ -280,6 +290,8 @@ can act on.
 | File under a project | `set_item_project` |
 | Add to a release | `set_item_release` |
 | Ship / advance a release | `set_release_status` |
+| Aim a release at a date | `set_release_target` |
+| Check pace / whether it'll land | `list_releases` (pace, forecast, days late) |
 | Attach / read a document | `create_document` / `get_document` / `list_documents` |
 | Update / delete a document | `update_document` / `delete_document` |
 

@@ -23,6 +23,10 @@
           <textarea class="modal-desc" name="description" rows="3" placeholder="What's this release about? (markdown supported)"></textarea>
         </div>
         <div class="field">
+          <span class="lbl">Target date <span class="lbl-hint">optional</span></span>
+          <div class="input-wrap"><input class="input" type="date" name="target_date"></div>
+        </div>
+        <div class="field">
           <span class="lbl">Status</span>
           <select class="proj-select" name="status">
             <option value="active" selected>Active — accruing work now</option>
@@ -69,9 +73,18 @@
     <span class="proj-card-sub">
       <span class="proj-status" data-status="{{.Status}}">{{.Status}}</span>
       {{if .ShippedWhen}}<span class="proj-lead">{{.ShippedWhen}}</span>{{end}}
+      {{if .TargetWhen}}<span class="proj-lead">due {{.TargetWhen}}</span>{{end}}
+      {{if .Track}}<span class="track{{if .Late}} track-late{{end}}">{{.Track}}</span>{{end}}
     </span>
   </span>
   <span class="proj-card-side">
+    {{if .HasSpark}}
+    <svg class="spark{{if .Spark.Rising}} spark-rising{{end}}" viewBox="0 0 {{.Spark.W}} {{.Spark.H}}"
+         width="{{.Spark.W}}" height="{{.Spark.H}}" aria-hidden="true" focusable="false">
+      <polyline points="{{.Spark.Points}}" fill="none" stroke="currentColor" stroke-width="1.5"
+                stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>
+    {{end}}
     <span class="proj-progress">
       <span class="proj-bar"><i style="width: {{.Pct}}%"></i></span>
       <span class="proj-count">{{.Done}}/{{.Total}}</span>

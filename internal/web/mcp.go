@@ -174,13 +174,18 @@ func (h *handlers) registerMCPTools(srv *mcp.Server) {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_releases",
-		Description: "List a workspace's releases: versioned cut-lines items ship in (e.g. \"v0.27.0\"). Each has a name (used to address it in create_item, set_item_release, set_release_status, and the list_items release filter), a lifecycle status (planned/active/shipped), a ship time once shipped, and progress (done/total top-level items). A release differs from a project: it's a point the project ships at, not an open-ended theme.",
+		Description: "List a workspace's releases: versioned cut-lines items ship in (e.g. \"v0.27.0\"). Each has a name (used to address it in create_item, set_item_release, set_release_status, set_release_target, and the list_items release filter), a lifecycle status (planned/active/shipped), a ship time once shipped, and progress — both as top-level item counts and as size-weighted points (an item with no size counts as a medium). A release aiming at a date also reports that target, the recent pace in points per week, the date the remaining work lands at that pace, and how many days late that is. A release differs from a project: it's a point the project ships at, not an open-ended theme.",
 	}, h.mcpListReleases)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "create_release",
-		Description: "Create a release in a workspace — a versioned cut-line to gather work toward. Provide a name (unique in the workspace); optionally a description (markdown) and a status (planned, or active by default). Returns the new release. Add items with set_item_release (or create_item's release argument); ship it later with set_release_status.",
+		Description: "Create a release in a workspace — a versioned cut-line to gather work toward. Provide a name (unique in the workspace); optionally a description (markdown), a status (planned, or active by default), and a target date to aim at. Returns the new release. Add items with set_item_release (or create_item's release argument); ship it later with set_release_status.",
 	}, h.mcpCreateRelease)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "set_release_target",
+		Description: "Set the date a release is aiming at (YYYY-MM-DD), or omit the target to clear it. The target is what list_releases judges the forecast against — a release with no target still reports its pace, just nothing to be late for. Addressed by release name.",
+	}, h.mcpSetReleaseTarget)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "set_item_release",
@@ -522,6 +527,7 @@ type createReleaseInput struct {
 	Name        string `json:"name" jsonschema:"the release name (e.g. \"v0.27.0\"), unique within the workspace"`
 	Description string `json:"description,omitempty" jsonschema:"notes about the release (markdown)"`
 	Status      string `json:"status,omitempty" jsonschema:"lifecycle to create it in: planned, or active (default). shipped is reached later via set_release_status"`
+	TargetDate  string `json:"target_date,omitempty" jsonschema:"the date the release is aiming at, as YYYY-MM-DD; omit for a release that ships when it's ready"`
 }
 
 type setItemReleaseInput struct {
@@ -533,6 +539,12 @@ type setReleaseStatusInput struct {
 	Workspace string `json:"workspace" jsonschema:"slug of the workspace the release is in"`
 	Release   string `json:"release" jsonschema:"the release name (from list_releases)"`
 	Status    string `json:"status" jsonschema:"new lifecycle state: planned, active, or shipped (shipping stamps the ship time and freezes it)"`
+}
+
+type setReleaseTargetInput struct {
+	Workspace  string `json:"workspace" jsonschema:"slug of the workspace the release is in"`
+	Release    string `json:"release" jsonschema:"the release name (from list_releases)"`
+	TargetDate string `json:"target_date,omitempty" jsonschema:"the date to aim at, as YYYY-MM-DD; omit to clear the target"`
 }
 
 type subscribeInput struct {
@@ -1177,7 +1189,7 @@ func (h *handlers) mcpCreateProject(ctx context.Context, _ *mcp.CallToolRequest,
 	if err != nil {
 		return nil, projectAPI{}, mcpProjectErr(err)
 	}
-	return &mcp.CallToolResult{}, h.projectAPIFor(ctx, p, store.SubtaskCount{}), nil
+	return &mcp.CallToolResult{}, h.projectAPIFor(ctx, p, board.Progress{}), nil
 }
 
 func (h *handlers) mcpSetItemProject(ctx context.Context, _ *mcp.CallToolRequest, in setItemProjectInput) (*mcp.CallToolResult, mcpItem, error) {
@@ -1234,11 +1246,23 @@ func (h *handlers) mcpCreateRelease(ctx context.Context, _ *mcp.CallToolRequest,
 	if err != nil {
 		return nil, releaseAPI{}, err
 	}
-	rel, err := h.createReleaseShared(ctx, ws, in.Name, in.Description, in.Status)
+	rel, err := h.createReleaseShared(ctx, ws, in.Name, in.Description, in.Status, in.TargetDate)
 	if err != nil {
 		return nil, releaseAPI{}, mcpReleaseErr(err)
 	}
-	return &mcp.CallToolResult{}, toReleaseAPI(rel, store.SubtaskCount{}), nil
+	return &mcp.CallToolResult{}, toReleaseAPI(rel, board.Progress{}, board.Forecast{}), nil
+}
+
+func (h *handlers) mcpSetReleaseTarget(ctx context.Context, _ *mcp.CallToolRequest, in setReleaseTargetInput) (*mcp.CallToolResult, releaseAPI, error) {
+	ws, err := h.mcpWorkspace(ctx, in.Workspace)
+	if err != nil {
+		return nil, releaseAPI{}, err
+	}
+	rel, err := h.setReleaseTargetShared(ctx, ws, in.Release, in.TargetDate)
+	if err != nil {
+		return nil, releaseAPI{}, mcpReleaseErr(err)
+	}
+	return &mcp.CallToolResult{}, toReleaseAPI(rel, board.Progress{}, board.Forecast{}), nil
 }
 
 func (h *handlers) mcpSetItemRelease(ctx context.Context, _ *mcp.CallToolRequest, in setItemReleaseInput) (*mcp.CallToolResult, mcpItem, error) {
@@ -1275,7 +1299,7 @@ func (h *handlers) mcpSetReleaseStatus(ctx context.Context, _ *mcp.CallToolReque
 	if err != nil {
 		return nil, releaseAPI{}, mcpErr(err)
 	}
-	return &mcp.CallToolResult{}, toReleaseAPI(rel, store.SubtaskCount{}), nil
+	return &mcp.CallToolResult{}, toReleaseAPI(rel, board.Progress{}, board.Forecast{}), nil
 }
 
 // mcpReleaseErr adds the release-specific sentinels to mcpErr's mapping (the
@@ -1294,6 +1318,8 @@ func mcpReleaseErr(err error) error {
 		return errors.New("release belongs to another workspace")
 	case errors.Is(err, store.ErrReleaseNameTaken):
 		return errors.New("a release with that name already exists")
+	case errors.Is(err, errBadTargetDate):
+		return err
 	default:
 		return mcpErr(err)
 	}

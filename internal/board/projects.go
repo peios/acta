@@ -229,18 +229,6 @@ func (s *Service) SetItemProject(ctx context.Context, itemID, projectID string) 
 	return nil
 }
 
-// ProjectProgress returns per-project top-level item progress for a workspace.
-// Done counts items that have reached their board's last lane (the "done"
-// equivalent) across every board — the same "done = last lane" rule the board
-// page uses. Backs the overview's progress bars and a project's own rollup.
-func (s *Service) ProjectProgress(ctx context.Context, workspaceID string) (map[string]store.SubtaskCount, error) {
-	done, err := s.doneStatusIDs(ctx, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-	return s.store.ProjectItemCounts(ctx, workspaceID, done)
-}
-
 // doneStatusIDs is the set of "done" lanes across a workspace's boards: each
 // board's last lane.
 func (s *Service) doneStatusIDs(ctx context.Context, workspaceID string) ([]string, error) {

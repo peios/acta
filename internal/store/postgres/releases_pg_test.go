@@ -88,13 +88,18 @@ func TestPGReleases(t *testing.T) {
 		t.Fatalf("links = %+v, want A:2 B:1", links)
 	}
 
-	// Per-release counts: r1 has 2 items, one of them (B) in the Done lane.
-	counts, err := pg.ReleaseItemCounts(ctx, ws.ID, []string{done.ID})
+	// Per-release counts, broken down by size: r1 has 2 items, one of them (B) in
+	// the Done lane.
+	counts, err := pg.ReleaseSizeCounts(ctx, ws.ID, []string{done.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c := counts[r1.ID]; c.Total != 2 || c.Done != 1 {
-		t.Fatalf("counts[r1] = %d/%d, want 1/2", c.Done, c.Total)
+	var total, doneCount int
+	for _, c := range counts[r1.ID] {
+		total, doneCount = total+c.Total, doneCount+c.Done
+	}
+	if total != 2 || doneCount != 1 {
+		t.Fatalf("counts[r1] = %d/%d, want 1/2", doneCount, total)
 	}
 
 	// Status machine: shipping stamps shipped_at; moving to planned clears it.

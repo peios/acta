@@ -100,11 +100,14 @@ type mcpProjectsT struct {
 }
 
 type mcpReleaseT struct {
-	Name      string `json:"name"`
-	Status    string `json:"status"`
-	ShippedAt string `json:"shipped_at"`
-	Done      int    `json:"done"`
-	Total     int    `json:"total"`
+	Name        string `json:"name"`
+	Status      string `json:"status"`
+	ShippedAt   string `json:"shipped_at"`
+	Done        int    `json:"done"`
+	Total       int    `json:"total"`
+	DonePoints  int    `json:"done_points"`
+	TotalPoints int    `json:"total_points"`
+	TargetDate  string `json:"target_date"`
 }
 
 type mcpReleasesT struct {
@@ -949,6 +952,61 @@ func TestMCPSubscriptions(t *testing.T) {
 	}
 }
 
+// TestMCPReleaseTargetsAndPoints covers what an agent needs to answer "are we on
+// track": a target date it can set and read back, and size-weighted progress
+// alongside the item counts.
+func TestMCPReleaseTargetsAndPoints(t *testing.T) {
+	base, client := newTestServer(t)
+	csrf := signIn(t, client, base)
+	token := mintToken(t, client, base, csrf)
+	sess := mcpConnect(t, base, token)
+
+	created := callTool[mcpReleaseT](t, sess, "create_release", map[string]any{
+		"workspace": "general", "name": "v1", "target_date": "2026-10-14",
+	})
+	if created.TargetDate != "2026-10-14" {
+		t.Fatalf("create_release target = %q, want 2026-10-14", created.TargetDate)
+	}
+
+	// An XL and an unsized item: 8 + 3 points of scope.
+	big := callTool[mcpItemT](t, sess, "create_item", map[string]any{
+		"workspace": "general", "title": "big", "size": "xl", "release": "v1",
+	})
+	callTool[mcpItemT](t, sess, "create_item", map[string]any{
+		"workspace": "general", "title": "plain", "release": "v1",
+	})
+	callTool[mcpItemT](t, sess, "set_item_status", map[string]any{"id": big.ID, "status": "Done"})
+
+	rels := callTool[mcpReleasesT](t, sess, "list_releases", map[string]any{"workspace": "general"})
+	if len(rels.Releases) != 1 {
+		t.Fatalf("list_releases = %+v", rels)
+	}
+	got := rels.Releases[0]
+	if got.TotalPoints != 11 || got.DonePoints != 8 {
+		t.Errorf("points = %d/%d, want 8/11", got.DonePoints, got.TotalPoints)
+	}
+	if got.Total != 2 || got.Done != 1 {
+		t.Errorf("items = %d/%d, want 1/2", got.Done, got.Total)
+	}
+	if got.TargetDate != "2026-10-14" {
+		t.Errorf("target = %q, want 2026-10-14", got.TargetDate)
+	}
+
+	// The target moves, and clears.
+	moved := callTool[mcpReleaseT](t, sess, "set_release_target", map[string]any{
+		"workspace": "general", "release": "v1", "target_date": "2026-11-01",
+	})
+	if moved.TargetDate != "2026-11-01" {
+		t.Fatalf("set_release_target = %q, want 2026-11-01", moved.TargetDate)
+	}
+	cleared := callTool[mcpReleaseT](t, sess, "set_release_target", map[string]any{
+		"workspace": "general", "release": "v1",
+	})
+	if cleared.TargetDate != "" {
+		t.Fatalf("cleared target = %q, want empty", cleared.TargetDate)
+	}
+}
+
 func TestMCPReleases(t *testing.T) {
 	base, client := newTestServer(t)
 	csrf := signIn(t, client, base)
@@ -987,6 +1045,11 @@ func TestMCPReleases(t *testing.T) {
 	}
 
 	// Errors: unknown release, and create-as-shipped is rejected.
+	if msg := toolErr(t, sess, "set_release_target", map[string]any{
+		"workspace": "general", "release": "v0.27.0", "target_date": "soonish",
+	}); !strings.Contains(msg, "YYYY-MM-DD") {
+		t.Errorf("bad target date error = %q", msg)
+	}
 	if msg := toolErr(t, sess, "set_item_release", map[string]any{"id": it.ID, "release": "nope"}); !strings.Contains(msg, "unknown release") {
 		t.Errorf("unknown release error = %q", msg)
 	}

@@ -116,6 +116,9 @@ type Service struct {
 	store     store.Store
 	now       func() time.Time
 	notifiers []Notifier
+	// snapshots rate-limits the write-on-read progress snapshot (see
+	// EnsureSnapshot) so read paths can call it without measuring every render.
+	snapshots snapshotGuard
 }
 
 // Notifier is an out-of-band delivery channel for notifications (e.g. Web Push,

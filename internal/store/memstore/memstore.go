@@ -43,7 +43,8 @@ type Store struct {
 	statusFacts  map[string][]int64                  // status id -> ordered gating fact ids
 	itemFacts    map[string]map[int64]store.FactTick // item id -> fact id -> tick
 	releases     map[string]store.Release
-	itemReleases map[string]map[string]bool // item id -> set of release ids
+	itemReleases map[string]map[string]bool        // item id -> set of release ids
+	snapshots    map[string]store.ProgressSnapshot // "type\x00id\x00YYYY-MM-DD" -> row
 }
 
 func New() *Store {
@@ -74,6 +75,7 @@ func New() *Store {
 		itemFacts:    map[string]map[int64]store.FactTick{},
 		releases:     map[string]store.Release{},
 		itemReleases: map[string]map[string]bool{},
+		snapshots:    map[string]store.ProgressSnapshot{},
 	}
 }
 
@@ -1206,26 +1208,34 @@ func (s *Store) ItemsByProject(_ context.Context, projectID string) ([]store.Ite
 	return out, nil
 }
 
-func (s *Store) ProjectItemCounts(_ context.Context, workspaceID string, doneStatusIDs []string) (map[string]store.SubtaskCount, error) {
+func (s *Store) ProjectSizeCounts(_ context.Context, workspaceID string, doneStatusIDs []string) (map[string]store.SizeCounts, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	done := make(map[string]bool, len(doneStatusIDs))
 	for _, id := range doneStatusIDs {
 		done[id] = true
 	}
-	out := map[string]store.SubtaskCount{}
+	out := map[string]store.SizeCounts{}
 	for _, it := range s.items {
 		if it.WorkspaceID != workspaceID || it.ParentID != "" || it.ArchivedAt != nil || it.ProjectID == "" {
 			continue
 		}
-		c := out[it.ProjectID]
-		c.Total++
-		if done[it.StatusID] {
-			c.Done++
-		}
-		out[it.ProjectID] = c
+		tally(out, it.ProjectID, it.Size, done[it.StatusID])
 	}
 	return out, nil
+}
+
+// tally records one item against a subject's per-size counts.
+func tally(out map[string]store.SizeCounts, subjectID string, size int, isDone bool) {
+	if out[subjectID] == nil {
+		out[subjectID] = store.SizeCounts{}
+	}
+	c := out[subjectID][size]
+	c.Total++
+	if isDone {
+		c.Done++
+	}
+	out[subjectID][size] = c
 }
 
 // --- releases ---
@@ -1293,6 +1303,7 @@ func (s *Store) UpdateRelease(_ context.Context, r store.Release) error {
 	}
 	cur.Name = r.Name
 	cur.Description = r.Description
+	cur.TargetDate = r.TargetDate
 	s.releases[r.ID] = cur
 	return nil
 }
@@ -1386,29 +1397,77 @@ func (s *Store) ReleaseLinksByWorkspace(_ context.Context, workspaceID string) (
 	return out, nil
 }
 
-func (s *Store) ReleaseItemCounts(_ context.Context, workspaceID string, doneStatusIDs []string) (map[string]store.SubtaskCount, error) {
+func (s *Store) ReleaseSizeCounts(_ context.Context, workspaceID string, doneStatusIDs []string) (map[string]store.SizeCounts, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	done := make(map[string]bool, len(doneStatusIDs))
 	for _, id := range doneStatusIDs {
 		done[id] = true
 	}
-	out := map[string]store.SubtaskCount{}
+	out := map[string]store.SizeCounts{}
 	for itemID, set := range s.itemReleases {
 		it, ok := s.items[itemID]
 		if !ok || it.WorkspaceID != workspaceID || it.ParentID != "" || it.ArchivedAt != nil {
 			continue
 		}
 		for rid := range set {
-			c := out[rid]
-			c.Total++
-			if done[it.StatusID] {
-				c.Done++
-			}
-			out[rid] = c
+			tally(out, rid, it.Size, done[it.StatusID])
 		}
 	}
 	return out, nil
+}
+
+// --- progress snapshots ---
+
+func snapshotKey(subjectType, subjectID string, day time.Time) string {
+	return subjectType + "\x00" + subjectID + "\x00" + day.UTC().Format("2006-01-02")
+}
+
+func (s *Store) UpsertProgressSnapshots(_ context.Context, snaps []store.ProgressSnapshot) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, sn := range snaps {
+		sn.Day = sn.Day.UTC().Truncate(24 * time.Hour)
+		k := snapshotKey(sn.SubjectType, sn.SubjectID, sn.Day)
+		// A synthetic row never displaces a measured one (see the store docs).
+		if cur, ok := s.snapshots[k]; ok && sn.Synthetic && !cur.Synthetic {
+			continue
+		}
+		s.snapshots[k] = sn
+	}
+	return nil
+}
+
+func (s *Store) ProgressSnapshotsBySubjects(_ context.Context, subjectType string, subjectIDs []string, since time.Time) (map[string][]store.ProgressSnapshot, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	want := make(map[string]bool, len(subjectIDs))
+	for _, id := range subjectIDs {
+		want[id] = true
+	}
+	out := map[string][]store.ProgressSnapshot{}
+	for _, sn := range s.snapshots {
+		if sn.SubjectType != subjectType || !want[sn.SubjectID] || sn.Day.Before(since) {
+			continue
+		}
+		out[sn.SubjectID] = append(out[sn.SubjectID], sn)
+	}
+	for id := range out {
+		rows := out[id]
+		sort.Slice(rows, func(i, j int) bool { return rows[i].Day.Before(rows[j].Day) })
+	}
+	return out, nil
+}
+
+func (s *Store) DeleteProgressSnapshots(_ context.Context, subjectType, subjectID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for k, sn := range s.snapshots {
+		if sn.SubjectType == subjectType && sn.SubjectID == subjectID {
+			delete(s.snapshots, k)
+		}
+	}
+	return nil
 }
 
 // --- comments ---

@@ -318,6 +318,28 @@ type SubtaskCount struct {
 	Total int
 }
 
+// SizeCounts is a progress tally broken down by item size (the Item.Size enum,
+// 0 for unset), so the caller can apply its own per-size weighting. The store
+// counts; the board package decides what a size is worth.
+type SizeCounts map[int]SubtaskCount
+
+// ProgressSnapshot is how much of one subject — a release or a project — was
+// done at the end of one day. Day is that date at UTC midnight.
+//
+// Points are size-weighted (the board package's weighting); Items are a plain
+// head count of top-level items. Synthetic marks a row reconstructed from the
+// event log rather than measured on the day, which the UI shows as approximate.
+type ProgressSnapshot struct {
+	SubjectType string // "release" | "project"
+	SubjectID   string
+	Day         time.Time
+	DoneItems   int
+	TotalItems  int
+	DonePoints  int
+	TotalPoints int
+	Synthetic   bool
+}
+
 // Fact is one entry in a workspace's checklist vocabulary: a named truth an item
 // can carry ("Provium tests pass"). A status may require a set of facts to gate
 // entry, and an item carries each fact as ticked or not (see FactTick). Facts are
@@ -377,9 +399,13 @@ type Release struct {
 	Description string
 	Status      string     // active|shipped
 	ShippedAt   *time.Time // nil until shipped — the freeze marker
-	Position    int
-	CreatedAt   time.Time
-	CreatedBy   string
+	// TargetDate is the day the release is aiming at (UTC midnight), or nil if
+	// it ships when it's ready. Unlike ShippedAt it's set by hand, in advance —
+	// it's what the burn-up's forecast is judged against.
+	TargetDate *time.Time
+	Position   int
+	CreatedAt  time.Time
+	CreatedBy  string
 }
 
 // Comment is a note by a user on an item. AuthorID may be empty if the author's
@@ -696,14 +722,14 @@ type Store interface {
 	SetProjectArchived(ctx context.Context, id string, archived bool) error
 	SetItemProject(ctx context.Context, id, projectID string) error
 	ItemsByProject(ctx context.Context, projectID string) ([]Item, error)
-	ProjectItemCounts(ctx context.Context, workspaceID string, doneStatusIDs []string) (map[string]SubtaskCount, error)
+	ProjectSizeCounts(ctx context.Context, workspaceID string, doneStatusIDs []string) (map[string]SizeCounts, error)
 
 	// Releases. A release is a workspace-scoped versioned cut-line items belong to
 	// via the item_releases join (many-to-many). CreateRelease returns
 	// ErrReleaseNameTaken on a per-workspace, case-insensitive name collision.
 	// ReleasesByWorkspace lists every release (planned, active and shipped) ordered
-	// by position then created_at. UpdateRelease sets a release's name and
-	// description by r.ID (also returns ErrReleaseNameTaken). SetReleaseStatus moves
+	// by position then created_at. UpdateRelease sets a release's name,
+	// description and target date by r.ID (also returns ErrReleaseNameTaken). SetReleaseStatus moves
 	// a release to planned|active|shipped, stamping shipped_at on "shipped" and
 	// clearing it otherwise. DeleteRelease removes a release
 	// and its memberships (the join cascades). SetItemRelease replaces an item's
@@ -712,8 +738,9 @@ type Store interface {
 	// belongs to (position order); ItemsByRelease a release's active top-level
 	// items, newest first. ReleaseLinksByWorkspace maps every linked item id in the
 	// workspace to its release ids (for the board's chips and filter).
-	// ReleaseItemCounts returns per-release top-level progress (Total, and Done =
-	// items whose status is in doneStatusIDs) for the overview bars.
+	// ReleaseSizeCounts returns per-release top-level progress broken down by item
+	// size (Total, and Done = items whose status is in doneStatusIDs), which the
+	// board package weights into the overview bars.
 	CreateRelease(ctx context.Context, r Release) (Release, error)
 	ReleasesByWorkspace(ctx context.Context, workspaceID string) ([]Release, error)
 	ReleaseByID(ctx context.Context, id string) (Release, error)
@@ -724,7 +751,19 @@ type Store interface {
 	ReleasesByItem(ctx context.Context, itemID string) ([]Release, error)
 	ItemsByRelease(ctx context.Context, releaseID string) ([]Item, error)
 	ReleaseLinksByWorkspace(ctx context.Context, workspaceID string) (map[string][]string, error)
-	ReleaseItemCounts(ctx context.Context, workspaceID string, doneStatusIDs []string) (map[string]SubtaskCount, error)
+	ReleaseSizeCounts(ctx context.Context, workspaceID string, doneStatusIDs []string) (map[string]SizeCounts, error)
+
+	// Progress snapshots: one row per subject ("release"/"project") per day, the
+	// history behind burn-up charts and velocity. UpsertProgressSnapshots writes a
+	// batch, replacing same-day rows — except that a measured row is never
+	// overwritten by a synthetic (backfilled) one, so re-running a backfill can't
+	// clobber real history. ProgressSnapshotsBySubjects returns each requested
+	// subject's rows from since onward, oldest first, keyed by subject id (absent
+	// for a subject with no rows). DeleteProgressSnapshots is the manual cascade
+	// for a deleted subject — subject_id is polymorphic and carries no FK.
+	UpsertProgressSnapshots(ctx context.Context, snaps []ProgressSnapshot) error
+	ProgressSnapshotsBySubjects(ctx context.Context, subjectType string, subjectIDs []string, since time.Time) (map[string][]ProgressSnapshot, error)
+	DeleteProgressSnapshots(ctx context.Context, subjectType, subjectID string) error
 
 	// Comments on an item, returned oldest-first (including soft-deleted ones;
 	// callers filter as they need). CommentByID returns ErrCommentNotFound when

@@ -2,10 +2,13 @@ package web
 
 import (
 	"errors"
+	"fmt"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/peios/acta/internal/board"
 	"github.com/peios/acta/internal/identity"
@@ -23,8 +26,9 @@ type releasesData struct {
 	Err       string
 }
 
-// releaseRow is one release on the overview: its lifecycle, when it shipped, and
-// top-level item progress, plus the resolved colour driving its accent dot.
+// releaseRow is one release on the overview: its lifecycle, when it shipped or
+// is due, size-weighted progress with a thumbnail of how it got there, and the
+// resolved colour driving its accent dot.
 type releaseRow struct {
 	ID          string
 	Name        string
@@ -36,6 +40,14 @@ type releaseRow struct {
 	Total       int
 	Pct         int
 	Href        string
+	// TargetWhen is the target date, and Track a one-word verdict on it
+	// ("on track", "3d late", "overdue") — "" when there's no target or no pace
+	// to judge it by.
+	TargetWhen string
+	Track      string
+	Late       bool
+	Spark      sparkline
+	HasSpark   bool
 }
 
 func (r releaseRow) ColorVar() template.CSS { return colorVar(r.Color) }
@@ -66,7 +78,21 @@ func (h *handlers) releasesOverview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	// Keep today's history point current before reading any of it back.
+	if err := h.board.EnsureSnapshot(r.Context(), ws.ID); err != nil {
+		logSnapshotErr(r, err)
+	}
 	progress, err := h.board.ReleaseProgress(r.Context(), ws.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	ids := make([]string, 0, len(releases))
+	for _, rel := range releases {
+		ids = append(ids, rel.ID)
+	}
+	now := time.Now()
+	history, err := h.board.ProgressHistories(r.Context(), board.SubjectRelease, ids, now.Add(-historyWindow))
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -74,12 +100,19 @@ func (h *handlers) releasesOverview(w http.ResponseWriter, r *http.Request) {
 	var active, planned, shipped []releaseRow
 	for _, rel := range releases {
 		c := progress[rel.ID]
+		hist := history[rel.ID]
+		f := board.Project(hist, c, rel.TargetDate, now)
 		row := releaseRow{
 			ID: rel.ID, Name: rel.Name, Color: board.ReleaseColorFor(rel),
 			Status: rel.Status, HasDesc: rel.Description != "",
-			Done: c.Done, Total: c.Total, Pct: pct(c.Done, c.Total),
+			Done: c.DoneItems, Total: c.TotalItems, Pct: c.Pct(),
 			Href: "/" + ws.Slug + "/releases?r=" + rel.ID,
 		}
+		if rel.TargetDate != nil {
+			row.TargetWhen = formatDay(*rel.TargetDate)
+			row.Track, row.Late = trackVerdict(f, rel.Status, now)
+		}
+		row.Spark, row.HasSpark = buildSparkline(hist)
 		if rel.ShippedAt != nil {
 			row.ShippedWhen = formatWhen(*rel.ShippedAt)
 		}
@@ -118,8 +151,35 @@ type releasePageData struct {
 	Done        int
 	Total       int
 	Pct         int
+	DonePoints  int
+	TotalPoints int
 	Items       []releaseItemRow
 	Err         string
+
+	// Target date: TargetValue feeds the edit form's date input (YYYY-MM-DD),
+	// TargetWhen is the human form, and Track/Late are the verdict on it.
+	TargetValue string
+	TargetWhen  string
+	HasTarget   bool
+	Track       string
+	Late        bool
+
+	// The burn-up and what the pace implies. Pace/ETA are "" when there's not
+	// enough history to say anything honest.
+	Chart        burnup
+	HasChart     bool
+	HasSynthetic bool
+	Pace         string
+	ETAWhen      string
+	Moves        []releaseMoveRow
+}
+
+// releaseMoveRow is one line of the "what moved" digest.
+type releaseMoveRow struct {
+	Kind  string // done|reopened|added
+	Title string
+	Href  string
+	When  string
 }
 
 func (d releasePageData) ColorVar() template.CSS { return colorVar(d.Color) }
@@ -216,7 +276,40 @@ func (h *handlers) releasePage(w http.ResponseWriter, r *http.Request) {
 	if rel.ShippedAt != nil {
 		shippedWhen = formatWhen(*rel.ShippedAt)
 	}
-	render(w, http.StatusOK, "release.html", releasePageData{
+
+	// Progress, history and what they imply. The page still renders if any of
+	// this is missing — a release with no history is just a release with no
+	// chart yet.
+	if err := h.board.EnsureSnapshot(r.Context(), ws.ID); err != nil {
+		logSnapshotErr(r, err)
+	}
+	now := time.Now()
+	progress, err := h.board.ReleaseProgress(r.Context(), ws.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	cur := progress[rel.ID]
+	hist, err := h.board.ProgressHistory(r.Context(), board.SubjectRelease, rel.ID, now.Add(-historyWindow))
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	f := board.Project(hist, cur, rel.TargetDate, now)
+	moves, err := h.board.ReleaseMoves(r.Context(), rel.ID, now.Add(-digestWindow), digestLimit)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	moveRows := make([]releaseMoveRow, 0, len(moves))
+	for _, m := range moves {
+		moveRows = append(moveRows, releaseMoveRow{
+			Kind: m.Kind, Title: m.Title, When: relativeWhen(m.At),
+			Href: "/" + ws.Slug + "?item=" + m.ItemID,
+		})
+	}
+
+	data := releasePageData{
 		chrome:      ch,
 		Principal:   principalFrom(r.Context()),
 		Release:     rel,
@@ -227,10 +320,28 @@ func (h *handlers) releasePage(w http.ResponseWriter, r *http.Request) {
 		ShippedWhen: shippedWhen,
 		Done:        done,
 		Total:       len(items),
-		Pct:         pct(done, len(items)),
+		Pct:         cur.Pct(),
+		DonePoints:  cur.DonePoints,
+		TotalPoints: cur.TotalPoints,
 		Items:       rows,
+		Moves:       moveRows,
 		Err:         releaseError(r.URL.Query().Get("err")),
-	})
+	}
+	if rel.TargetDate != nil {
+		data.HasTarget = true
+		data.TargetValue = board.DueString(rel.TargetDate)
+		data.TargetWhen = formatDay(*rel.TargetDate)
+		data.Track, data.Late = trackVerdict(f, rel.Status, now)
+	}
+	if f.HasPace {
+		data.Pace = formatPace(f.PointsPerDay)
+	}
+	if f.ETA != nil {
+		data.ETAWhen = formatDay(*f.ETA)
+	}
+	data.Chart, data.HasChart = buildBurnup(hist, cur, f, now)
+	data.HasSynthetic = data.Chart.HasSynthetic
+	render(w, http.StatusOK, "release.html", data)
 }
 
 // --- release mutations (form posts) ---
@@ -244,8 +355,14 @@ func (h *handlers) releaseCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	target, err := board.ParseDue(r.PostFormValue("target_date"))
+	if err != nil {
+		http.Redirect(w, r, "/"+ws.Slug+"/releases?err=invalid_target", http.StatusSeeOther)
+		return
+	}
 	rel, err := h.board.CreateRelease(r.Context(), ws.ID,
-		r.PostFormValue("name"), r.PostFormValue("description"), r.PostFormValue("status"), principalFrom(r.Context()).ID)
+		r.PostFormValue("name"), r.PostFormValue("description"), r.PostFormValue("status"),
+		target, principalFrom(r.Context()).ID)
 	if err != nil {
 		redirectReleaseErr(w, r, "/"+ws.Slug+"/releases", err)
 		return
@@ -263,7 +380,12 @@ func (h *handlers) releaseUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	err := h.board.UpdateRelease(r.Context(), id, r.PostFormValue("name"), r.PostFormValue("description"))
+	target, err := board.ParseDue(r.PostFormValue("target_date"))
+	if err != nil {
+		http.Redirect(w, r, "/"+ws.Slug+"/releases?r="+id+"&err=invalid_target", http.StatusSeeOther)
+		return
+	}
+	err = h.board.UpdateRelease(r.Context(), id, r.PostFormValue("name"), r.PostFormValue("description"), target)
 	if errors.Is(err, store.ErrReleaseNotFound) {
 		http.NotFound(w, r)
 		return
@@ -377,7 +499,63 @@ func releaseError(code string) string {
 		return "Pick a valid release status."
 	case "name_taken":
 		return "A release with that name already exists in this workspace."
+	case "invalid_target":
+		return "Enter the target date as YYYY-MM-DD, or leave it blank."
 	default:
 		return ""
 	}
+}
+
+// --- progress presentation ---
+
+const (
+	// digestWindow is how far back the "what moved" list looks, and digestLimit
+	// caps it: a glance at the last fortnight, not a second activity log.
+	digestWindow = 14 * 24 * time.Hour
+	digestLimit  = 8
+)
+
+// trackVerdict turns a forecast into the short badge shown against a target
+// date, and whether it should read as a warning. A shipped release is judged on
+// what happened, not on what might; a release with no measurable pace gets no
+// verdict at all rather than a falsely confident one.
+func trackVerdict(f board.Forecast, status string, now time.Time) (string, bool) {
+	if !f.HasTarget || status == "shipped" {
+		return "", false
+	}
+	if f.Done {
+		return "complete", false
+	}
+	if today := truncDay(now); today.After(f.Target) {
+		return fmt.Sprintf("%s overdue", plural(int(today.Sub(f.Target).Hours()/24), "day")), true
+	}
+	if !f.HasPace || f.ETA == nil {
+		return "", false
+	}
+	if f.DaysLate > 0 {
+		return fmt.Sprintf("%s late", plural(f.DaysLate, "day")), true
+	}
+	return "on track", false
+}
+
+// formatDay renders a date the way a target reads in a sentence ("14 Oct").
+func formatDay(t time.Time) string { return t.UTC().Format("2 Jan") }
+
+// formatPace renders velocity as points per week, which is the unit people
+// actually plan in — "0.4 points a day" means nothing to anyone.
+func formatPace(pointsPerDay float64) string {
+	return fmt.Sprintf("%.1f pts/week", pointsPerDay*7)
+}
+
+func plural(n int, unit string) string {
+	if n == 1 {
+		return "1 " + unit
+	}
+	return fmt.Sprintf("%d %ss", n, unit)
+}
+
+// logSnapshotErr notes a failed write-on-read measurement. Recording history is
+// a side-effect of viewing a page: it must never take the page down with it.
+func logSnapshotErr(r *http.Request, err error) {
+	slog.WarnContext(r.Context(), "progress snapshot failed", "err", err)
 }

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -50,20 +52,25 @@ type projectAPI struct {
 	Brief  string `json:"brief,omitempty"` // markdown description
 	Done   int    `json:"done"`            // top-level items in a "done" lane
 	Total  int    `json:"total"`           // top-level items in the project
+	// Points is the same progress weighted by item size (an unsized item counts
+	// as a medium), which is what the progress bars and forecasts measure.
+	DonePoints  int `json:"done_points"`
+	TotalPoints int `json:"total_points"`
 }
 
-func toProjectAPI(p store.Project, userName map[string]string, c store.SubtaskCount) projectAPI {
+func toProjectAPI(p store.Project, userName map[string]string, c board.Progress) projectAPI {
 	return projectAPI{
 		Slug: p.Slug, Name: p.Name, Status: p.Status,
 		Lead: userName[p.LeadID], Brief: p.Brief,
-		Done: c.Done, Total: c.Total,
+		Done: c.DoneItems, Total: c.TotalItems,
+		DonePoints: c.DonePoints, TotalPoints: c.TotalPoints,
 	}
 }
 
 // projectAPIFor renders a single project, resolving its lead id to a username
 // (the list path uses toProjectAPI with a prebuilt map instead). For the
 // create responses, where only one project is in hand.
-func (h *handlers) projectAPIFor(ctx context.Context, p store.Project, c store.SubtaskCount) projectAPI {
+func (h *handlers) projectAPIFor(ctx context.Context, p store.Project, c board.Progress) projectAPI {
 	lead := ""
 	if p.LeadID != "" {
 		if u, err := h.board.User(ctx, p.LeadID); err == nil {
@@ -72,7 +79,8 @@ func (h *handlers) projectAPIFor(ctx context.Context, p store.Project, c store.S
 	}
 	return projectAPI{
 		Slug: p.Slug, Name: p.Name, Status: p.Status,
-		Lead: lead, Brief: p.Brief, Done: c.Done, Total: c.Total,
+		Lead: lead, Brief: p.Brief, Done: c.DoneItems, Total: c.TotalItems,
+		DonePoints: c.DonePoints, TotalPoints: c.TotalPoints,
 	}
 }
 
@@ -395,6 +403,7 @@ var (
 	errUnknownRelease     = errors.New("unknown release")
 	errUnknownSubjectType = errors.New("unknown subject type (use item, project, or principal)")
 	errProjectNeedsWS     = errors.New("a workspace is required to address a project by slug")
+	errBadTargetDate      = errors.New("target date must be YYYY-MM-DD")
 )
 
 // subscriptionAPI is a subscription as rendered to API and MCP clients: the
@@ -541,12 +550,41 @@ type releaseAPI struct {
 	ShippedAt string `json:"shipped_at,omitempty"` // RFC3339, "" unless shipped
 	Done      int    `json:"done"`                 // top-level items in a "done" lane
 	Total     int    `json:"total"`                // top-level items in the release
+	// Points is the same progress weighted by item size (an unsized item counts
+	// as a medium) — the measure behind the pace and the forecast below.
+	DonePoints  int `json:"done_points"`
+	TotalPoints int `json:"total_points"`
+	// TargetDate is the day the release is aiming at (YYYY-MM-DD), "" if it
+	// ships when it's ready.
+	TargetDate string `json:"target_date,omitempty"`
+	// Pace is recent velocity in points per week, and Forecast the date the
+	// remaining work lands at that pace (YYYY-MM-DD). Both are omitted when
+	// there's too little history to measure, rather than guessed at.
+	Pace     float64 `json:"pace_per_week,omitempty"`
+	Forecast string  `json:"forecast_date,omitempty"`
+	// DaysLate is how far the forecast falls past the target date (negative for
+	// early); present only when there's both a target and a forecast.
+	DaysLate *int `json:"days_late,omitempty"`
 }
 
-func toReleaseAPI(r store.Release, c store.SubtaskCount) releaseAPI {
-	out := releaseAPI{Name: r.Name, Status: r.Status, Done: c.Done, Total: c.Total}
+func toReleaseAPI(r store.Release, c board.Progress, f board.Forecast) releaseAPI {
+	out := releaseAPI{
+		Name: r.Name, Status: r.Status, Done: c.DoneItems, Total: c.TotalItems,
+		DonePoints: c.DonePoints, TotalPoints: c.TotalPoints,
+		TargetDate: board.DueString(r.TargetDate),
+	}
 	if r.ShippedAt != nil {
 		out.ShippedAt = r.ShippedAt.Format(time.RFC3339)
+	}
+	if f.HasPace {
+		out.Pace = math.Round(f.PointsPerDay*70) / 10
+	}
+	if f.ETA != nil {
+		out.Forecast = f.ETA.Format("2006-01-02")
+		if f.HasTarget {
+			late := f.DaysLate
+			out.DaysLate = &late
+		}
 	}
 	return out
 }
@@ -577,21 +615,62 @@ func (h *handlers) listReleasesAPI(ctx context.Context, workspaceID string) ([]r
 	if err != nil {
 		return nil, err
 	}
+	// Measure today before reading history back, so an agent asking "are we on
+	// track" gets a forecast that includes today.
+	if err := h.board.EnsureSnapshot(ctx, workspaceID); err != nil {
+		slog.WarnContext(ctx, "progress snapshot failed", "err", err)
+	}
+	ids := make([]string, 0, len(releases))
+	for _, r := range releases {
+		ids = append(ids, r.ID)
+	}
+	now := time.Now()
+	history, err := h.board.ProgressHistories(ctx, board.SubjectRelease, ids, now.Add(-historyWindow))
+	if err != nil {
+		return nil, err
+	}
 	out := make([]releaseAPI, len(releases))
 	for i, r := range releases {
-		out[i] = toReleaseAPI(r, progress[r.ID])
+		c := progress[r.ID]
+		out[i] = toReleaseAPI(r, c, board.Project(history[r.ID], c, r.TargetDate, now))
 	}
 	return out, nil
 }
 
 // createReleaseShared creates a release attributed to the caller, shared by REST
-// and MCP. status is "" (defaults to active), "planned", or "active".
-func (h *handlers) createReleaseShared(ctx context.Context, ws store.Workspace, name, description, status string) (store.Release, error) {
+// and MCP. status is "" (defaults to active), "planned", or "active"; target is
+// an optional "YYYY-MM-DD" date to aim at.
+func (h *handlers) createReleaseShared(ctx context.Context, ws store.Workspace, name, description, status, target string) (store.Release, error) {
 	createdBy := ""
 	if p := principalFrom(ctx); p != nil {
 		createdBy = p.ID
 	}
-	return h.board.CreateRelease(ctx, ws.ID, name, description, strings.TrimSpace(status), createdBy)
+	targetDate, err := board.ParseDue(target)
+	if err != nil {
+		return store.Release{}, errBadTargetDate
+	}
+	return h.board.CreateRelease(ctx, ws.ID, name, description, strings.TrimSpace(status), targetDate, createdBy)
+}
+
+// setReleaseTargetShared moves (or clears, with "") a release's target date,
+// shared by REST and MCP.
+func (h *handlers) setReleaseTargetShared(ctx context.Context, ws store.Workspace, name, target string) (store.Release, error) {
+	id, err := h.releaseIDByName(ctx, ws.ID, name)
+	if err != nil {
+		return store.Release{}, err
+	}
+	rel, err := h.board.Release(ctx, id)
+	if err != nil {
+		return store.Release{}, err
+	}
+	targetDate, err := board.ParseDue(target)
+	if err != nil {
+		return store.Release{}, errBadTargetDate
+	}
+	if err := h.board.UpdateRelease(ctx, id, rel.Name, rel.Description, targetDate); err != nil {
+		return store.Release{}, err
+	}
+	return h.board.Release(ctx, id)
 }
 
 // itemReleaseMaps returns, for a workspace, item id -> its release id and item id
@@ -646,6 +725,8 @@ func apiReleaseErr(w http.ResponseWriter, err error) {
 		apiError(w, http.StatusBadRequest, "release belongs to another workspace")
 	case errors.Is(err, store.ErrReleaseNameTaken):
 		apiError(w, http.StatusConflict, "a release with that name already exists")
+	case errors.Is(err, errBadTargetDate):
+		apiError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, store.ErrReleaseNotFound), errors.Is(err, errUnknownRelease):
 		apiError(w, http.StatusNotFound, err.Error())
 	default:
@@ -675,16 +756,17 @@ func (h *handlers) apiCreateRelease(w http.ResponseWriter, r *http.Request) {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 		Status      string `json:"status"`
+		TargetDate  string `json:"target_date"`
 	}
 	if !readAPIJSON(w, r, &req) {
 		return
 	}
-	rel, err := h.createReleaseShared(r.Context(), ws, req.Name, req.Description, req.Status)
+	rel, err := h.createReleaseShared(r.Context(), ws, req.Name, req.Description, req.Status, req.TargetDate)
 	if err != nil {
 		apiReleaseErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, toReleaseAPI(rel, store.SubtaskCount{}))
+	writeJSON(w, http.StatusCreated, toReleaseAPI(rel, board.Progress{}, board.Forecast{}))
 }
 
 // apiSetItemRelease puts an item in a release (by name) or, with an empty
@@ -729,6 +811,27 @@ func (h *handlers) apiSetItemRelease(w http.ResponseWriter, r *http.Request) {
 }
 
 // apiSetReleaseStatus moves a release along its lifecycle (planned/active/shipped).
+// apiSetReleaseTarget sets (or clears, with an empty target_date) the date a
+// release is aiming at.
+func (h *handlers) apiSetReleaseTarget(w http.ResponseWriter, r *http.Request) {
+	ws, ok := h.apiWorkspace(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		TargetDate string `json:"target_date"`
+	}
+	if !readAPIJSON(w, r, &req) {
+		return
+	}
+	rel, err := h.setReleaseTargetShared(r.Context(), ws, r.PathValue("name"), req.TargetDate)
+	if err != nil {
+		apiReleaseErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toReleaseAPI(rel, board.Progress{}, board.Forecast{}))
+}
+
 func (h *handlers) apiSetReleaseStatus(w http.ResponseWriter, r *http.Request) {
 	ws, ok := h.apiWorkspace(w, r)
 	if !ok {
@@ -754,7 +857,7 @@ func (h *handlers) apiSetReleaseStatus(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	writeJSON(w, http.StatusOK, toReleaseAPI(rel, store.SubtaskCount{}))
+	writeJSON(w, http.StatusOK, toReleaseAPI(rel, board.Progress{}, board.Forecast{}))
 }
 
 // apiProjectErr maps a project create/update error to a JSON response.
@@ -809,7 +912,7 @@ func (h *handlers) apiCreateProject(w http.ResponseWriter, r *http.Request) {
 		apiProjectErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, h.projectAPIFor(r.Context(), p, store.SubtaskCount{}))
+	writeJSON(w, http.StatusCreated, h.projectAPIFor(r.Context(), p, board.Progress{}))
 }
 
 // apiSetItemProject files an item under a project (by slug) or, with an empty

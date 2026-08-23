@@ -1292,6 +1292,45 @@
   .proj-lead { display: inline-flex; align-items: center; gap: .35rem; color: var(--muted); font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .proj-empty { text-align: center; padding: 2.6rem 1rem; color: var(--faint); border: 1px dashed var(--border-soft); border-radius: 10px; font-size: .9rem; }
 
+  /* progress over time: the on-track badge, card sparklines, and the burn-up */
+  .track { font-size: .72rem; font-weight: 600; letter-spacing: .01em; padding: .1rem .42rem; border-radius: 999px; white-space: nowrap;
+           color: var(--status); background: color-mix(in srgb, var(--status) 14%, transparent); }
+  .track-late { color: var(--danger-text); background: color-mix(in srgb, var(--danger) 15%, transparent); }
+  .spark { flex: none; color: var(--dim); }
+  .spark-rising { color: color-mix(in srgb, var(--accent) 70%, transparent); }
+  .lbl-hint { color: var(--dim); font-weight: 400; }
+
+  .chart-card { padding: .9rem 1.1rem 1rem; display: grid; gap: .7rem; }
+  .chart-facts { display: flex; flex-wrap: wrap; align-items: baseline; gap: .35rem 1.1rem; }
+  .chart-fact { font-size: .82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .chart-fact b { color: var(--text); font-size: 1.05rem; font-weight: 650; }
+  .chart-empty { margin: 0; color: var(--faint); font-size: .85rem; line-height: 1.5; }
+  .chart-note { color: var(--dim); font-size: .74rem; }
+  .burnup { display: block; width: 100%; height: auto; overflow: visible; }
+  .burnup-synth { fill: var(--surface-h); }
+  .burnup-axis { stroke: var(--border); stroke-width: 1; }
+  .burnup-total { stroke: var(--dim); stroke-width: 1.5; stroke-dasharray: 4 3; stroke-linejoin: round; }
+  .burnup-area { fill: var(--accent-glow); stroke: none; }
+  .burnup-done { stroke: var(--lane-color, var(--accent)); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .burnup-proj { stroke: var(--accent-line); stroke-width: 1.5; stroke-dasharray: 2 4; stroke-linecap: round; }
+  .burnup-target { stroke: var(--status); stroke-width: 1.5; stroke-dasharray: 3 3; }
+  .burnup-target-late { stroke: var(--danger); }
+  .burnup-lbl { fill: var(--dim); font-size: 10px; font-family: var(--sans); }
+  .burnup-lbl-y { text-anchor: end; }
+  .burnup-lbl:last-of-type { text-anchor: end; }
+  .chart-legend { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .9rem; color: var(--faint); font-size: .76rem; }
+  .key { display: inline-block; width: .85rem; height: 0; border-top-width: 2px; border-top-style: solid; margin-right: .3rem; vertical-align: middle; }
+  .key-done { border-color: var(--lane-color, var(--accent)); }
+  .key-total { border-top-style: dashed; border-color: var(--dim); }
+  .key-proj { border-top-style: dotted; border-color: var(--accent-line); }
+  .key-target { border-top-style: dashed; border-color: var(--status); }
+
+  /* "what moved" digest */
+  .move-kind { flex: none; min-width: 4.4rem; font-size: .72rem; font-weight: 600; text-transform: lowercase; color: var(--faint); }
+  .move-kind[data-kind="done"] { color: var(--status); }
+  .move-kind[data-kind="reopened"] { color: var(--danger-text); }
+  .move-kind[data-kind="added"] { color: var(--accent-hi); }
+
   /* single project page */
   .proj-page-head { display: flex; align-items: flex-start; gap: .9rem; margin: 1rem 0 1.1rem; }
   .proj-page-dot { margin-top: .5rem; width: .8rem; height: .8rem; border-radius: 50%; flex: none; background: var(--lane-color, var(--faint)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lane-color, var(--faint)) 16%, transparent); }

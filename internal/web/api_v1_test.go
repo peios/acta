@@ -223,6 +223,23 @@ func TestAPIReleases(t *testing.T) {
 		t.Fatalf("?release filter wrong:\n%s", fb)
 	}
 
+	// The target date sets on create, moves through its own endpoint, and comes
+	// back with the size-weighted progress an agent plans against.
+	tgt := readBody(t, bearerJSON(t, base, "POST", "/api/v1/w/general/releases/v0.27.0/target", token,
+		map[string]string{"target_date": "2026-10-14"}))
+	if !strings.Contains(tgt, `"target_date":"2026-10-14"`) {
+		t.Fatalf("set target response wrong:\n%s", tgt)
+	}
+	listed := readBody(t, bearerJSON(t, base, "GET", "/api/v1/w/general/releases", token, nil))
+	if !strings.Contains(listed, `"target_date":"2026-10-14"`) || !strings.Contains(listed, `"total_points":3`) {
+		t.Fatalf("release list missing target/points:\n%s", listed)
+	}
+	if bad := bearerJSON(t, base, "POST", "/api/v1/w/general/releases/v0.27.0/target", token,
+		map[string]string{"target_date": "whenever"}); bad.StatusCode != http.StatusBadRequest {
+		bad.Body.Close()
+		t.Fatalf("bad target date: want 400, got %d", bad.StatusCode)
+	}
+
 	// Lifecycle: activate then ship.
 	st := bearerJSON(t, base, "POST", "/api/v1/w/general/releases/v0.27.0/status", token, map[string]string{"status": "active"})
 	st.Body.Close()

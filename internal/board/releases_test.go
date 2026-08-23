@@ -14,7 +14,7 @@ func TestReleaseCreateAndNameUniqueness(t *testing.T) {
 	svc, wsID, _ := setup(t)
 	ctx := context.Background()
 
-	r1, err := svc.CreateRelease(ctx, wsID, "v0.27.0", "next cut", "", "")
+	r1, err := svc.CreateRelease(ctx, wsID, "v0.27.0", "next cut", "", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +25,7 @@ func TestReleaseCreateAndNameUniqueness(t *testing.T) {
 		t.Fatal("a fresh release must not be shipped")
 	}
 	// The name is unique within the workspace, case-insensitively.
-	if _, err := svc.CreateRelease(ctx, wsID, "V0.27.0", "", "", ""); !errors.Is(err, store.ErrReleaseNameTaken) {
+	if _, err := svc.CreateRelease(ctx, wsID, "V0.27.0", "", "", nil, ""); !errors.Is(err, store.ErrReleaseNameTaken) {
 		t.Fatalf("duplicate name: want ErrReleaseNameTaken, got %v", err)
 	}
 }
@@ -34,7 +34,7 @@ func TestReleaseValidation(t *testing.T) {
 	svc, wsID, _ := setup(t)
 	ctx := context.Background()
 
-	if _, err := svc.CreateRelease(ctx, wsID, "   ", "", "", ""); !errors.Is(err, board.ErrInvalidReleaseName) {
+	if _, err := svc.CreateRelease(ctx, wsID, "   ", "", "", nil, ""); !errors.Is(err, board.ErrInvalidReleaseName) {
 		t.Fatalf("blank name: want ErrInvalidReleaseName, got %v", err)
 	}
 }
@@ -44,7 +44,7 @@ func TestItemReleaseAssignmentAndProgress(t *testing.T) {
 	ctx := context.Background()
 	todo, done := statuses[0].ID, statuses[len(statuses)-1].ID
 
-	rel, err := svc.CreateRelease(ctx, wsID, "v0.27.0", "", "", "")
+	rel, err := svc.CreateRelease(ctx, wsID, "v0.27.0", "", "", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,8 +74,8 @@ func TestItemReleaseAssignmentAndProgress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if g := prog[rel.ID]; g.Total != 2 || g.Done != 1 {
-		t.Fatalf("progress = %d/%d, want 1/2", g.Done, g.Total)
+	if g := prog[rel.ID]; g.TotalItems != 2 || g.DoneItems != 1 {
+		t.Fatalf("progress = %d/%d items, want 1/2", g.DoneItems, g.TotalItems)
 	}
 
 	// Clearing the release unfiles the item.
@@ -91,8 +91,8 @@ func TestSetItemReleaseReplacesSingle(t *testing.T) {
 	svc, wsID, statuses := setup(t)
 	ctx := context.Background()
 
-	r1, _ := svc.CreateRelease(ctx, wsID, "v0.27.0", "", "", "")
-	r2, _ := svc.CreateRelease(ctx, wsID, "v0.28.0", "", "", "")
+	r1, _ := svc.CreateRelease(ctx, wsID, "v0.27.0", "", "", nil, "")
+	r2, _ := svc.CreateRelease(ctx, wsID, "v0.28.0", "", "", nil, "")
 	it, _ := svc.CreateItem(ctx, wsID, statuses[0].ID, "x")
 
 	if err := svc.SetItemRelease(ctx, it.ID, r1.ID); err != nil {
@@ -126,7 +126,7 @@ func TestSetItemReleaseRejectsForeignWorkspace(t *testing.T) {
 	if err := svc.SeedDefaults(ctx, ws2.ID); err != nil {
 		t.Fatal(err)
 	}
-	rel, _ := svc.CreateRelease(ctx, ws2.ID, "v1", "", "", "")
+	rel, _ := svc.CreateRelease(ctx, ws2.ID, "v1", "", "", nil, "")
 	st1, _ := svc.Statuses(ctx, ws1.ID)
 	it, _ := svc.CreateItem(ctx, ws1.ID, st1[0].ID, "x")
 
@@ -139,7 +139,7 @@ func TestReleaseShipReopenAndDelete(t *testing.T) {
 	svc, wsID, statuses := setup(t)
 	ctx := context.Background()
 
-	rel, _ := svc.CreateRelease(ctx, wsID, "v0.27.0", "", "", "")
+	rel, _ := svc.CreateRelease(ctx, wsID, "v0.27.0", "", "", nil, "")
 	it, _ := svc.CreateItem(ctx, wsID, statuses[0].ID, "x")
 	if err := svc.SetItemRelease(ctx, it.ID, rel.ID); err != nil {
 		t.Fatal(err)
@@ -181,7 +181,7 @@ func TestReleasePlannedLifecycle(t *testing.T) {
 	ctx := context.Background()
 
 	// Create directly as Planned.
-	rel, err := svc.CreateRelease(ctx, wsID, "v1.0", "future", "planned", "")
+	rel, err := svc.CreateRelease(ctx, wsID, "v1.0", "future", "planned", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestReleasePlannedLifecycle(t *testing.T) {
 		t.Fatalf("bad status: want ErrInvalidReleaseStatus, got %v", err)
 	}
 	// Can't create as shipped.
-	if _, err := svc.CreateRelease(ctx, wsID, "v2.0", "", "shipped", ""); !errors.Is(err, board.ErrInvalidReleaseStatus) {
+	if _, err := svc.CreateRelease(ctx, wsID, "v2.0", "", "shipped", nil, ""); !errors.Is(err, board.ErrInvalidReleaseStatus) {
 		t.Fatalf("create shipped: want ErrInvalidReleaseStatus, got %v", err)
 	}
 }
@@ -254,8 +254,8 @@ func TestUpdateRelease(t *testing.T) {
 	svc, wsID, _ := setup(t)
 	ctx := context.Background()
 
-	rel, _ := svc.CreateRelease(ctx, wsID, "v0.27.0", "old notes", "", "")
-	if err := svc.UpdateRelease(ctx, rel.ID, "v0.27.1", "new notes"); err != nil {
+	rel, _ := svc.CreateRelease(ctx, wsID, "v0.27.0", "old notes", "", nil, "")
+	if err := svc.UpdateRelease(ctx, rel.ID, "v0.27.1", "new notes", nil); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := svc.Release(ctx, rel.ID)

@@ -96,7 +96,7 @@ func (h *handlers) projectsOverview(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, projectRow{
 			Slug: p.Slug, Name: p.Name, Status: p.Status, Color: board.ProjectColorFor(p),
 			HasBrief: p.Brief != "", Lead: lead, LeadAgent: leadAgent,
-			Done: c.Done, Total: c.Total, Pct: pct(c.Done, c.Total),
+			Done: c.DoneItems, Total: c.TotalItems, Pct: c.Pct(),
 			Href: "/" + ws.Slug + "/projects?p=" + p.Slug,
 		})
 	}

@@ -1284,14 +1284,21 @@ func (p *Postgres) ItemsByProject(ctx context.Context, projectID string) ([]stor
 	return p.queryItems(ctx, q, projectID)
 }
 
-func (p *Postgres) ProjectItemCounts(ctx context.Context, workspaceID string, doneStatusIDs []string) (map[string]store.SubtaskCount, error) {
-	const q = `SELECT project_id::text,
+func (p *Postgres) ProjectSizeCounts(ctx context.Context, workspaceID string, doneStatusIDs []string) (map[string]store.SizeCounts, error) {
+	const q = `SELECT project_id::text, size,
 	                  count(*) AS total,
 	                  count(*) FILTER (WHERE status_id = ANY($2)) AS done
 	           FROM items
 	           WHERE workspace_id = $1 AND parent_id IS NULL AND archived_at IS NULL
 	             AND project_id IS NOT NULL
-	           GROUP BY project_id`
+	           GROUP BY project_id, size`
+	return p.scanSizeCounts(ctx, q, workspaceID, doneStatusIDs)
+}
+
+// scanSizeCounts runs a (subject_id, size, total, done) grouping query and folds
+// it into per-subject SizeCounts — the shared tail of the project and release
+// progress queries.
+func (p *Postgres) scanSizeCounts(ctx context.Context, q, workspaceID string, doneStatusIDs []string) (map[string]store.SizeCounts, error) {
 	if doneStatusIDs == nil {
 		doneStatusIDs = []string{}
 	}
@@ -1300,14 +1307,19 @@ func (p *Postgres) ProjectItemCounts(ctx context.Context, workspaceID string, do
 		return nil, err
 	}
 	defer rows.Close()
-	out := map[string]store.SubtaskCount{}
+	out := map[string]store.SizeCounts{}
 	for rows.Next() {
-		var pid string
-		var total, done int
-		if err := rows.Scan(&pid, &total, &done); err != nil {
+		var id string
+		var size, total, done int
+		if err := rows.Scan(&id, &size, &total, &done); err != nil {
 			return nil, err
 		}
-		out[pid] = store.SubtaskCount{Done: done, Total: total}
+		if out[id] == nil {
+			out[id] = store.SizeCounts{}
+		}
+		c := out[id][size]
+		c.Done, c.Total = c.Done+done, c.Total+total
+		out[id][size] = c
 	}
 	return out, rows.Err()
 }
@@ -1315,12 +1327,12 @@ func (p *Postgres) ProjectItemCounts(ctx context.Context, workspaceID string, do
 // --- releases ---
 
 const releaseCols = `id::text, workspace_id::text, name, description, status,
-                     shipped_at, position, created_at, COALESCE(created_by::text, '')`
+                     shipped_at, target_date, position, created_at, COALESCE(created_by::text, '')`
 
 func scanRelease(row pgx.Row) (store.Release, error) {
 	var r store.Release
 	err := row.Scan(&r.ID, &r.WorkspaceID, &r.Name, &r.Description, &r.Status,
-		&r.ShippedAt, &r.Position, &r.CreatedAt, &r.CreatedBy)
+		&r.ShippedAt, &r.TargetDate, &r.Position, &r.CreatedAt, &r.CreatedBy)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.Release{}, store.ErrReleaseNotFound
 	}
@@ -1340,8 +1352,8 @@ func mapReleaseConflict(err error) error {
 func (p *Postgres) CreateRelease(ctx context.Context, r store.Release) (store.Release, error) {
 	out, err := createWithRetry(func() (store.Release, error) {
 		const q = `INSERT INTO releases
-		             (workspace_id, name, description, status, shipped_at, position, created_by)
-		           VALUES ($1, $2, $3, $4, $5, $6, $7)
+		             (workspace_id, name, description, status, shipped_at, target_date, position, created_by)
+		           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		           RETURNING ` + releaseCols
 		var creator any
 		if r.CreatedBy != "" {
@@ -1352,7 +1364,7 @@ func (p *Postgres) CreateRelease(ctx context.Context, r store.Release) (store.Re
 			status = "active"
 		}
 		return scanRelease(p.pool.QueryRow(ctx, q,
-			r.WorkspaceID, r.Name, r.Description, status, r.ShippedAt, r.Position, creator))
+			r.WorkspaceID, r.Name, r.Description, status, r.ShippedAt, r.TargetDate, r.Position, creator))
 	})
 	if err != nil {
 		return store.Release{}, mapReleaseConflict(err)
@@ -1384,8 +1396,8 @@ func (p *Postgres) ReleaseByID(ctx context.Context, id string) (store.Release, e
 }
 
 func (p *Postgres) UpdateRelease(ctx context.Context, r store.Release) error {
-	const q = `UPDATE releases SET name = $2, description = $3 WHERE id = $1`
-	ct, err := p.pool.Exec(ctx, q, r.ID, r.Name, r.Description)
+	const q = `UPDATE releases SET name = $2, description = $3, target_date = $4 WHERE id = $1`
+	ct, err := p.pool.Exec(ctx, q, r.ID, r.Name, r.Description, r.TargetDate)
 	if err != nil {
 		return mapReleaseConflict(err)
 	}
@@ -1489,32 +1501,73 @@ func (p *Postgres) ReleaseLinksByWorkspace(ctx context.Context, workspaceID stri
 	return out, rows.Err()
 }
 
-func (p *Postgres) ReleaseItemCounts(ctx context.Context, workspaceID string, doneStatusIDs []string) (map[string]store.SubtaskCount, error) {
-	const q = `SELECT ir.release_id::text,
+func (p *Postgres) ReleaseSizeCounts(ctx context.Context, workspaceID string, doneStatusIDs []string) (map[string]store.SizeCounts, error) {
+	const q = `SELECT ir.release_id::text, i.size,
 	                  count(*) AS total,
 	                  count(*) FILTER (WHERE i.status_id = ANY($2)) AS done
 	           FROM item_releases ir
 	           JOIN items i ON i.id = ir.item_id
 	           WHERE i.workspace_id = $1 AND i.parent_id IS NULL AND i.archived_at IS NULL
-	           GROUP BY ir.release_id`
-	if doneStatusIDs == nil {
-		doneStatusIDs = []string{}
+	           GROUP BY ir.release_id, i.size`
+	return p.scanSizeCounts(ctx, q, workspaceID, doneStatusIDs)
+}
+
+// --- progress snapshots ---
+
+// UpsertProgressSnapshots writes a day's rows. A measured row (synthetic =
+// false) always wins: it overwrites whatever is there, while a synthetic row
+// only lands where nothing measured exists — so a backfill can be re-run without
+// rewriting real history.
+func (p *Postgres) UpsertProgressSnapshots(ctx context.Context, snaps []store.ProgressSnapshot) error {
+	if len(snaps) == 0 {
+		return nil
 	}
-	rows, err := p.pool.Query(ctx, q, workspaceID, doneStatusIDs)
+	const q = `INSERT INTO progress_snapshots
+	             (subject_type, subject_id, day, done_items, total_items, done_points, total_points, synthetic)
+	           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	           ON CONFLICT (subject_type, subject_id, day) DO UPDATE
+	             SET done_items = EXCLUDED.done_items, total_items = EXCLUDED.total_items,
+	                 done_points = EXCLUDED.done_points, total_points = EXCLUDED.total_points,
+	                 synthetic = EXCLUDED.synthetic
+	             WHERE NOT EXCLUDED.synthetic OR progress_snapshots.synthetic`
+	batch := &pgx.Batch{}
+	for _, sn := range snaps {
+		batch.Queue(q, sn.SubjectType, sn.SubjectID, sn.Day,
+			sn.DoneItems, sn.TotalItems, sn.DonePoints, sn.TotalPoints, sn.Synthetic)
+	}
+	return p.pool.SendBatch(ctx, batch).Close()
+}
+
+func (p *Postgres) ProgressSnapshotsBySubjects(ctx context.Context, subjectType string, subjectIDs []string, since time.Time) (map[string][]store.ProgressSnapshot, error) {
+	if len(subjectIDs) == 0 {
+		return map[string][]store.ProgressSnapshot{}, nil
+	}
+	const q = `SELECT subject_id, day, done_items, total_items, done_points, total_points, synthetic
+	           FROM progress_snapshots
+	           WHERE subject_type = $1 AND subject_id = ANY($2) AND day >= $3
+	           ORDER BY day`
+	rows, err := p.pool.Query(ctx, q, subjectType, subjectIDs, since)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := map[string]store.SubtaskCount{}
+	out := map[string][]store.ProgressSnapshot{}
 	for rows.Next() {
-		var rid string
-		var total, done int
-		if err := rows.Scan(&rid, &total, &done); err != nil {
+		sn := store.ProgressSnapshot{SubjectType: subjectType}
+		if err := rows.Scan(&sn.SubjectID, &sn.Day, &sn.DoneItems, &sn.TotalItems,
+			&sn.DonePoints, &sn.TotalPoints, &sn.Synthetic); err != nil {
 			return nil, err
 		}
-		out[rid] = store.SubtaskCount{Done: done, Total: total}
+		sn.Day = sn.Day.UTC()
+		out[sn.SubjectID] = append(out[sn.SubjectID], sn)
 	}
 	return out, rows.Err()
+}
+
+func (p *Postgres) DeleteProgressSnapshots(ctx context.Context, subjectType, subjectID string) error {
+	_, err := p.pool.Exec(ctx,
+		`DELETE FROM progress_snapshots WHERE subject_type = $1 AND subject_id = $2`, subjectType, subjectID)
+	return err
 }
 
 // --- comments ---

@@ -13,6 +13,8 @@
       <div class="proj-page-meta">
         <span class="proj-status" data-status="{{.Status}}">{{.Status}}</span>
         {{if .ShippedWhen}}<span class="proj-lead">Shipped {{.ShippedWhen}}</span>{{end}}
+        {{if .HasTarget}}<span class="proj-lead">Target {{.TargetWhen}}</span>{{end}}
+        {{if .Track}}<span class="track{{if .Late}} track-late{{end}}">{{.Track}}</span>{{end}}
         <span class="proj-progress" style="min-width: 8rem">
           <span class="proj-bar"><i style="width: {{.Pct}}%"></i></span>
           <span class="proj-count">{{.Done}}/{{.Total}} done</span>
@@ -84,11 +86,69 @@
         <span class="lbl">Notes</span>
         <textarea class="modal-desc" name="description" rows="4" placeholder="What's this release about? (markdown supported)">{{.Release.Description}}</textarea>
       </div>
+      <div class="field">
+        <span class="lbl">Target date <span class="lbl-hint">blank for “when it’s ready”</span></span>
+        <div class="input-wrap"><input class="input" type="date" name="target_date" value="{{.TargetValue}}"></div>
+      </div>
       <div class="proj-form-actions">
         <button class="btn-primary" type="submit">Save changes</button>
       </div>
     </form>
   </div>
+
+  <p class="proj-section-title">Progress</p>
+  <div class="panel chart-card">
+    <div class="chart-facts">
+      <span class="chart-fact"><b>{{.Pct}}%</b> of {{.TotalPoints}} pts</span>
+      <span class="chart-fact">{{.DonePoints}} pts done · {{.Done}}/{{.Total}} items</span>
+      {{if .Pace}}<span class="chart-fact">{{.Pace}}</span>{{end}}
+      {{if .ETAWhen}}<span class="chart-fact">forecast {{.ETAWhen}}</span>{{end}}
+    </div>
+    {{if .HasChart}}
+    <svg class="burnup" viewBox="0 0 {{.Chart.W}} {{.Chart.H}}" preserveAspectRatio="xMidYMid meet"
+         role="img" aria-label="Completed work against total scope, {{.Pct}} percent done">
+      {{/* Reconstructed history, shaded to say "approximate" without a caption. */}}
+      {{if .Chart.HasSynthetic}}
+      <rect class="burnup-synth" x="38" y="12" width="{{.Chart.SyntheticW}}" height="184"></rect>
+      {{end}}
+      <line class="burnup-axis" x1="38" y1="196" x2="706" y2="196"></line>
+      <polyline class="burnup-total" points="{{.Chart.TotalPoints}}" fill="none"></polyline>
+      <path class="burnup-area" d="{{.Chart.DoneArea}}"></path>
+      <polyline class="burnup-done" points="{{.Chart.DonePoints}}" fill="none"></polyline>
+      {{if .Chart.HasProj}}
+      <polyline class="burnup-proj" points="{{.Chart.ProjPoints}}" fill="none"></polyline>
+      {{end}}
+      {{if .Chart.HasTarget}}
+      <line class="burnup-target{{if .Chart.TargetLate}} burnup-target-late{{end}}"
+            x1="{{.Chart.TargetX}}" y1="12" x2="{{.Chart.TargetX}}" y2="196"></line>
+      {{end}}
+      {{range .Chart.YLabels}}<text class="burnup-lbl burnup-lbl-y" x="{{.X}}" y="{{.Y}}">{{.Text}}</text>{{end}}
+      {{range .Chart.XLabels}}<text class="burnup-lbl" x="{{.X}}" y="{{.Y}}">{{.Text}}</text>{{end}}
+    </svg>
+    <p class="chart-legend">
+      <span class="key key-done"></span>done
+      <span class="key key-total"></span>scope
+      {{if .Chart.HasProj}}<span class="key key-proj"></span>forecast{{end}}
+      {{if .Chart.HasTarget}}<span class="key key-target"></span>target{{end}}
+      {{if .HasSynthetic}}<span class="chart-note">shaded days are reconstructed from activity, not measured</span>{{end}}
+    </p>
+    {{else}}
+    <p class="chart-empty">Progress is measured once a day — the chart appears once there are a couple of days to draw. Sizes weight it: an item with no size counts as a medium.</p>
+    {{end}}
+  </div>
+
+  {{if .Moves}}
+  <p class="proj-section-title">What moved</p>
+  <div class="proj-items">
+    {{range .Moves}}
+    <a class="proj-item move" href="{{.Href}}">
+      <span class="move-kind" data-kind="{{.Kind}}">{{.Kind}}</span>
+      <span class="proj-item-title">{{.Title}}</span>
+      <span class="proj-lead">{{.When}}</span>
+    </a>
+    {{end}}
+  </div>
+  {{end}}
 
   <p class="proj-section-title">Notes</p>
   {{if .HasDesc}}

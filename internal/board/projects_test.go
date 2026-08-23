@@ -84,8 +84,8 @@ func TestItemProjectAssignmentAndProgress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if g := prog[pr.ID]; g.Total != 2 || g.Done != 1 {
-		t.Fatalf("progress = %d/%d, want 1/2", g.Done, g.Total)
+	if g := prog[pr.ID]; g.TotalItems != 2 || g.DoneItems != 1 {
+		t.Fatalf("progress = %d/%d items, want 1/2", g.DoneItems, g.TotalItems)
 	}
 	_ = c
 
