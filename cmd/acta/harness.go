@@ -99,6 +99,8 @@ type harness struct {
 	out  chan []byte
 
 	tails map[string]chan struct{} // session/task_id -> closed when the background task ends
+
+	forgotten map[string]bool // sessions Acta deleted: nothing more is sent about them
 }
 
 func hostLabel() string {
@@ -234,6 +236,8 @@ func (h *harness) connectAndServe(ctx context.Context) error {
 			h.input(f.Session, f.Text, f.Images)
 		case "stop":
 			h.stopSession(f.Session)
+		case "forget":
+			h.forget(f.Session)
 		case "control":
 			h.control(f.Session, f.Payload)
 		}
@@ -444,7 +448,7 @@ func (h *harness) startProc(session string, st sessionState, resume bool) bool {
 		sc.Buffer(make([]byte, 0, 1<<20), 16<<20)
 		for sc.Scan() {
 			line := sc.Bytes()
-			if len(strings.TrimSpace(string(line))) == 0 {
+			if len(strings.TrimSpace(string(line))) == 0 || h.isForgotten(session) {
 				continue
 			}
 			kind := messageType(line)
@@ -471,6 +475,9 @@ func (h *harness) startProc(session string, st sessionState, resume bool) bool {
 		h.mu.Lock()
 		delete(h.procs, session)
 		h.mu.Unlock()
+		if h.isForgotten(session) {
+			return // Acta deleted it; the exit is expected and unreported
+		}
 		// Claude Code writes a session's conversation only once it has taken a
 		// turn, so resuming one that was spawned but never used fails outright.
 		// Start it fresh under the same id instead of leaving it unusable.
@@ -862,6 +869,31 @@ func (h *harness) stopSession(session string) {
 		}
 	}
 	_ = proc.cmd.Process.Signal(syscall.SIGINT)
+}
+
+// forget drops a session Acta has deleted: its process is killed and its
+// record removed, so a later hello no longer offers it and nothing more is
+// reported about it. Claude Code's own transcript on disk stays.
+func (h *harness) forget(session string) {
+	h.mu.Lock()
+	proc := h.procs[session]
+	delete(h.sessions, session)
+	delete(h.pending, session)
+	if h.forgotten == nil {
+		h.forgotten = map[string]bool{}
+	}
+	h.forgotten[session] = true
+	h.mu.Unlock()
+	h.saveState()
+	if proc != nil && proc.cmd.Process != nil {
+		_ = proc.cmd.Process.Kill()
+	}
+}
+
+func (h *harness) isForgotten(session string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.forgotten[session]
 }
 
 // --- local state ---

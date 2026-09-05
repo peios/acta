@@ -39,6 +39,10 @@ const (
 	FrameInput = "input"
 	// FrameStop ends a session's current turn / process.
 	FrameStop = "stop"
+	// FrameForget tells the harness a session has been deleted: kill its
+	// process and drop it from the harness's records. The backend's own
+	// transcript on the host is left alone.
+	FrameForget = "forget"
 	// FrameControl carries a control-protocol message for the backend verbatim
 	// (a control_response answering a permission prompt, or a control_request
 	// such as set_permission_mode). The harness writes it to the process as-is.

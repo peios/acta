@@ -280,6 +280,30 @@ func (h *Hub) applyTitleAnswer(ctx context.Context, ownerID, sessionID string, p
 	return true
 }
 
+// Delete removes a session and tells every harness holding it to stop its
+// process and forget it, so it is neither offered on the next hello nor left
+// running unowned. Claude Code's own transcript on the host is left alone.
+func (h *Hub) Delete(ctx context.Context, ownerID, sessionID string) error {
+	if err := h.svc.Delete(ctx, sessionID, ownerID); err != nil {
+		return err
+	}
+	h.mu.Lock()
+	var conns []*harnessConn
+	for _, c := range h.harness[ownerID] {
+		conns = append(conns, c)
+	}
+	h.mu.Unlock()
+	for _, c := range conns {
+		if !c.holds(sessionID) {
+			continue
+		}
+		c.drop(sessionID)
+		c.send(Outbound{T: FrameForget, Session: sessionID})
+	}
+	h.notify(ownerID, sessionID)
+	return nil
+}
+
 // presenceOf computes a session's presence across all of an owner's connected
 // harnesses: held if any holds it, running if any has a process for it.
 func (h *Hub) presenceOf(ownerID, sessionID string) (held, running bool) {
@@ -341,6 +365,14 @@ func (c *harnessConn) send(v any) {
 	default:
 		c.Close() // wedged; reap it
 	}
+}
+
+// drop forgets a session on this connection (both held and running).
+func (c *harnessConn) drop(session string) {
+	c.mu.Lock()
+	delete(c.sessions, session)
+	delete(c.running, session)
+	c.mu.Unlock()
 }
 
 func (c *harnessConn) holds(session string) bool {

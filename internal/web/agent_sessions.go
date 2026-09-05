@@ -283,7 +283,7 @@ func knownBackend(b string) bool {
 
 func (h *handlers) agentSessionDelete(w http.ResponseWriter, r *http.Request) {
 	p := principalFrom(r.Context())
-	err := h.agentSessions.Delete(r.Context(), r.PathValue("id"), p.ID)
+	err := h.agentHub.Delete(r.Context(), p.ID, r.PathValue("id"))
 	if err != nil && !errors.Is(err, agentsession.ErrNotFound) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
