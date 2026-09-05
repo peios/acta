@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"html/template"
 	"net/http"
 	"sort"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/peios/acta/internal/agentsession"
+	"github.com/peios/acta/internal/agentsession/model"
 	"github.com/peios/acta/internal/identity"
 	"github.com/peios/acta/internal/store"
 )
@@ -255,6 +257,14 @@ func (h *handlers) agentSessionCreate(w http.ResponseWriter, r *http.Request) {
 	if pm := strings.TrimSpace(r.PostFormValue("permission_mode")); pm != "" {
 		options["permission_mode"] = pm
 	}
+	// A model or effort named at creation starts the session on it (the
+	// picker in the session changes it later).
+	if m := strings.TrimSpace(r.PostFormValue("model")); m != "" && len(m) < 80 {
+		options["model"] = m
+	}
+	if e := strings.TrimSpace(r.PostFormValue("effort")); e != "" && len(e) < 20 {
+		options["effort"] = e
+	}
 
 	as, err := h.agentSessions.Create(r.Context(), p.ID, backend, cwd, title, options)
 	if err != nil {
@@ -295,22 +305,14 @@ type agentSessionData struct {
 	chrome
 	Principal *identity.Principal
 	Session   store.AgentSession
-	Frames    []agentFrameView
-	LastSeq   int64
-	Live      bool // held by a connected harness
-	Running   bool // process running right now
-	Err       string
-}
-
-// agentFrameView is one transcript frame rendered into the page — the verbatim
-// payload as a compact JSON string plus its kind and sequence, so the initial
-// server render and the live websocket frames render through the same client
-// code.
-type agentFrameView struct {
-	Seq     int64
-	Kind    string
-	Payload string // compact JSON
-	At      string
+	// EventsJSON is the session's transcript projected into the common event
+	// model, as a JSON array the page hydrates from — the same shape the
+	// websocket then streams, so one client renderer serves both.
+	EventsJSON template.JS
+	LastSeq    int64
+	Live       bool // held by a connected harness
+	Running    bool // process running right now
+	Err        string
 }
 
 func (h *handlers) agentSessionPage(w http.ResponseWriter, r *http.Request) {
@@ -333,21 +335,20 @@ func (h *handlers) agentSessionPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	evs, err := h.agentSessions.Events(r.Context(), as.ID, 0, 0)
+	evs, last, err := h.agentHub.History(r.Context(), as, 0)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	frames := make([]agentFrameView, 0, len(evs))
-	var last int64
-	for _, e := range evs {
-		frames = append(frames, agentFrameView{
-			Seq:     e.Seq,
-			Kind:    e.Kind,
-			Payload: string(e.Payload),
-			At:      e.CreatedAt.UTC().Format(time.RFC3339),
-		})
-		last = e.Seq
+	if evs == nil {
+		evs = []model.Event{}
+	}
+	// json.Marshal escapes <, > and & so the array is safe inside a script
+	// element; template.JS keeps html/template from escaping it again.
+	ej, err := json.Marshal(evs)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
 	}
 	live, running := false, false
 	for _, row := range rows {
@@ -356,14 +357,14 @@ func (h *handlers) agentSessionPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	render(w, http.StatusOK, "agent_session.html", agentSessionData{
-		chrome:    ch,
-		Principal: p,
-		Session:   as,
-		Frames:    frames,
-		LastSeq:   last,
-		Live:      live,
-		Running:   running,
-		Err:       agentSessionErr(r.URL.Query().Get("err")),
+		chrome:     ch,
+		Principal:  p,
+		Session:    as,
+		EventsJSON: template.JS(ej),
+		LastSeq:    last,
+		Live:       live,
+		Running:    running,
+		Err:        agentSessionErr(r.URL.Query().Get("err")),
 	})
 }
 
@@ -398,17 +399,16 @@ func (h *handlers) agentSessionBrowserWS(w http.ResponseWriter, r *http.Request)
 	defer h.agentHub.DetachBrowser(bc)
 	go keepalive(c, bc.Closed())
 
-	// Replay any frames the page doesn't already have (?after=<seq>).
+	// Replay the events of any frames the page doesn't already have
+	// (?after=<seq>); the projection runs from the start regardless, since an
+	// event's shape depends on what came before it.
 	after := int64(0)
 	if v := r.URL.Query().Get("after"); v != "" {
 		after, _ = strconv.ParseInt(v, 10, 64)
 	}
-	if evs, err := h.agentSessions.Events(r.Context(), as.ID, after, 0); err == nil {
+	if evs, _, err := h.agentHub.History(r.Context(), as, after); err == nil {
 		for _, e := range evs {
-			b, _ := json.Marshal(map[string]any{
-				"seq": e.Seq, "kind": e.Kind, "payload": json.RawMessage(e.Payload),
-				"at": e.CreatedAt.UTC().Format("2006-01-02T15:04:05.000Z"),
-			})
+			b, _ := json.Marshal(e)
 			_ = c.Write(r.Context(), websocket.MessageText, b)
 		}
 	}

@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/peios/acta/internal/agentsession/model"
 	"github.com/peios/acta/internal/id"
 	"github.com/peios/acta/internal/store"
 )
@@ -41,11 +42,12 @@ type Hub struct {
 	// and no browser is looking at it, so the web layer can notify them.
 	alert func(ownerID string, as store.AgentSession, verb, summary string)
 
-	mu        sync.Mutex
-	harness   map[string]map[string]*harnessConn // ownerID -> connID -> conn
-	browsers  map[string]map[string]*browserConn // sessionID -> connID -> conn
-	titling   map[string]bool                    // sessions with a title request in flight
-	pendingLs map[string]chan Inbound            // ListDirs requests awaiting a harness answer
+	mu         sync.Mutex
+	harness    map[string]map[string]*harnessConn // ownerID -> connID -> conn
+	browsers   map[string]map[string]*browserConn // sessionID -> connID -> conn
+	titling    map[string]bool                    // sessions with a title request in flight
+	pendingLs  map[string]chan Inbound            // ListDirs requests awaiting a harness answer
+	projectors map[string]*sessionProjector       // live projectors by session
 }
 
 // ErrNoHarness is returned when no connected harness can take a request.
@@ -287,6 +289,7 @@ func (h *Hub) Delete(ctx context.Context, ownerID, sessionID string) error {
 	if err := h.svc.Delete(ctx, sessionID, ownerID); err != nil {
 		return err
 	}
+	h.dropProjector(sessionID)
 	h.mu.Lock()
 	var conns []*harnessConn
 	for _, c := range h.harness[ownerID] {
@@ -618,14 +621,14 @@ func (h *Hub) HarnessFrame(ctx context.Context, c *harnessConn, in Inbound) {
 		if kind == "task_output" && !taskOutputDone(in.Payload) {
 			// A background shell's output as it runs: relayed live, not
 			// stored — the frame marked done carries the whole output.
-			h.fanout(in.Session, store.AgentSessionEvent{SessionID: in.Session, Kind: kind, Payload: in.Payload, CreatedAt: time.Now()})
+			h.emit(ctx, in.Session, store.AgentSessionEvent{SessionID: in.Session, Kind: kind, Payload: in.Payload, CreatedAt: time.Now()}, false)
 			return
 		}
 		if kind == "stream_event" {
 			// Partial-message deltas: relayed live so a reply can grow on
 			// screen, but not stored — the assistant frame that follows
 			// carries the complete message, so nothing is lost.
-			h.fanout(in.Session, store.AgentSessionEvent{SessionID: in.Session, Kind: kind, Payload: in.Payload, CreatedAt: time.Now()})
+			h.emit(ctx, in.Session, store.AgentSessionEvent{SessionID: in.Session, Kind: kind, Payload: in.Payload, CreatedAt: time.Now()}, false)
 			return
 		}
 		h.record(ctx, in.Session, kind, in.Payload)
@@ -781,14 +784,15 @@ func taskOutputDone(payload json.RawMessage) bool {
 	return json.Unmarshal(payload, &p) == nil && p.Done
 }
 
-// record persists a transcript frame and fans it out to the session's browsers.
+// record persists a transcript frame and fans its projection out to the
+// session's browsers.
 func (h *Hub) record(ctx context.Context, sessionID, kind string, payload json.RawMessage) {
 	ev, err := h.svc.Append(ctx, sessionID, kind, payload)
 	if err != nil {
 		slog.Error("agent session append", "session", sessionID, "err", err)
 		return
 	}
-	h.fanout(sessionID, ev)
+	h.emit(ctx, sessionID, ev, true)
 }
 
 func (h *Hub) recordState(ctx context.Context, sessionID string, m map[string]any) {
@@ -796,10 +800,9 @@ func (h *Hub) recordState(ctx context.Context, sessionID string, m map[string]an
 	h.record(ctx, sessionID, "state", raw)
 }
 
-// fanout marshals a stored frame into the browser wire shape and delivers it to
-// every browser watching the session.
-func (h *Hub) fanout(sessionID string, ev store.AgentSessionEvent) {
-	b, err := json.Marshal(browserFrameOf(ev))
+// fanout delivers one model event to every browser watching the session.
+func (h *Hub) fanout(sessionID string, e model.Event) {
+	b, err := json.Marshal(e)
 	if err != nil {
 		return
 	}
@@ -812,17 +815,4 @@ func (h *Hub) fanout(sessionID string, ev store.AgentSessionEvent) {
 	for _, c := range conns {
 		c.send(b)
 	}
-}
-
-// browserFrame is the shape the chat view renders from — one transcript frame,
-// with its store sequence for ordering and its verbatim payload.
-type browserFrame struct {
-	Seq     int64           `json:"seq"`
-	Kind    string          `json:"kind"`
-	Payload json.RawMessage `json:"payload"`
-	At      string          `json:"at"`
-}
-
-func browserFrameOf(ev store.AgentSessionEvent) browserFrame {
-	return browserFrame{Seq: ev.Seq, Kind: ev.Kind, Payload: json.RawMessage(ev.Payload), At: ev.CreatedAt.UTC().Format("2006-01-02T15:04:05.000Z")}
 }

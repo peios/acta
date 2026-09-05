@@ -95,11 +95,8 @@
 
   {{if .Err}}<p class="alert" role="alert" style="margin: .8rem 1rem;">{{.Err}}</p>{{end}}
 
-  <div class="chat-log" data-chat-log>
-    {{range .Frames}}
-    <div class="frame" data-seq="{{.Seq}}" data-kind="{{.Kind}}" data-payload="{{.Payload}}" data-at="{{.At}}"></div>
-    {{end}}
-  </div>
+  <div class="chat-log" data-chat-log></div>
+  <script type="application/json" data-chat-events>{{.EventsJSON}}</script>
 
   <div class="lightbox" data-lightbox hidden><img alt=""></div>
 
