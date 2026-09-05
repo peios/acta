@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,7 +10,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -21,9 +19,12 @@ import (
 )
 
 // cmdHarness runs the Acta harness: it connects out to Acta over a websocket,
-// announces this machine and the sessions it holds, and spawns/drives Claude
-// Code processes on demand. Acta never runs Claude — the harness holds the
-// credentials and this machine's shell. See ACT-36.
+// announces this machine and the sessions it holds, and supervises backend
+// processes on demand. The harness knows nothing about any backend: Acta
+// composes the command to run and every line written to it, and the harness
+// pipes bytes both ways, tails files it is asked to tail, and reports exits.
+// Acta never runs an agent itself — the harness holds the credentials and
+// this machine's shell. See ACT-36 and ACT-37.
 func cmdHarness(args []string) error {
 	cfg := loadConfig()
 	token := os.Getenv("ACTA_TOKEN")
@@ -48,10 +49,10 @@ func cmdHarness(args []string) error {
 		// Outbound frames outlive a connection: what a running process says
 		// while the server is away queues here (up to the buffer) and is
 		// flushed on reconnect instead of being lost with the socket.
-		out:     make(chan []byte, 256),
-		procs:   map[string]*claudeProc{},
-		pending: map[string][]byte{},
-		stateP:  harnessStatePath(),
+		out:    make(chan []byte, 256),
+		procs:  map[string]*proc{},
+		tails:  map[string]chan struct{}{},
+		stateP: harnessStatePath(),
 	}
 	h.sessions = loadHarnessState(h.stateP)
 
@@ -71,36 +72,31 @@ func cmdHarness(args []string) error {
 	}
 }
 
-// sessionState is what the harness must remember to resume a session it
-// spawned earlier: where it ran and how. The id is the map key (and Claude's
-// own session id, so `--resume <id>` finds the transcript).
-type sessionState struct {
-	Backend string          `json:"backend"`
-	Cwd     string          `json:"cwd"`
-	Options json.RawMessage `json:"options,omitempty"`
-	// Conversation is Claude's own id for the transcript when it differs from
-	// the session id: /clear starts a fresh conversation, and the frames that
-	// follow carry its session_id (the transcript file's name, which is not
-	// the reset's new_conversation_id). A later resume must continue that
-	// one, not the transcript from before the clear.
-	Conversation string `json:"conversation,omitempty"`
-}
+// protocolVersion is what the hello announces. Acta composes every process
+// and every stdin line from version 2 on; the harness keeps no per-backend
+// knowledge and no per-session state beyond which sessions it holds.
+const protocolVersion = 2
 
 type harness struct {
 	base, token, label string
 	stateP             string
 
 	mu       sync.Mutex
-	sessions map[string]sessionState // sessions this harness has spawned, by id
-	procs    map[string]*claudeProc
-	pending  map[string][]byte // last message per session, until the process answers
+	sessions map[string]bool // sessions this harness has run, by id (offered as resumable on hello)
+	procs    map[string]*proc
+	tails    map[string]chan struct{} // session/task id -> closed when the tail should stop
 
 	conn *websocket.Conn
 	out  chan []byte
 
-	tails map[string]chan struct{} // session/task_id -> closed when the background task ends
-
 	forgotten map[string]bool // sessions Acta deleted: nothing more is sent about them
+}
+
+type proc struct {
+	session string
+	cmd     *exec.Cmd
+	stdin   *bufio.Writer
+	stdinMu sync.Mutex
 }
 
 func hostLabel() string {
@@ -113,6 +109,19 @@ func hostLabel() string {
 		return u
 	}
 	return u + "@" + host
+}
+
+// backendsAvailable lists the backends whose command is on this host's PATH.
+// Acta decides how each backend runs; the harness only says which commands
+// it could start.
+func backendsAvailable() []string {
+	var out []string
+	for _, b := range []struct{ name, bin string }{{"claude-code", "claude"}, {"codex", "codex"}} {
+		if _, err := exec.LookPath(b.bin); err == nil {
+			out = append(out, b.name)
+		}
+	}
+	return out
 }
 
 func (h *harness) connectAndServe(ctx context.Context) error {
@@ -147,7 +156,7 @@ func (h *harness) connectAndServe(ctx context.Context) error {
 	cwd, _ := os.Getwd()
 	home, _ := os.UserHomeDir()
 	hello, _ := json.Marshal(map[string]any{
-		"t": "hello", "label": h.label, "backends": []string{"claude-code"},
+		"t": "hello", "v": protocolVersion, "label": h.label, "backends": backendsAvailable(),
 		"sessions": sessions, "running": running, "cwd": cwd, "home": home,
 	})
 	if err := conn.Write(ctx, websocket.MessageText, hello); err != nil {
@@ -182,9 +191,7 @@ func (h *harness) connectAndServe(ctx context.Context) error {
 	// restart behind a proxy, a laptop that slept) leaves the read blocked
 	// for good; a failed ping closes the connection so the read fails and the
 	// reconnect loop takes over.
-	pingDone := make(chan struct{})
 	go func() {
-		defer close(pingDone)
 		t := time.NewTicker(20 * time.Second)
 		defer t.Stop()
 		for {
@@ -213,16 +220,17 @@ func (h *harness) connectAndServe(ctx context.Context) error {
 			break
 		}
 		var f struct {
-			T       string          `json:"t"`
-			Session string          `json:"session"`
-			Backend string          `json:"backend"`
-			Cwd     string          `json:"cwd"`
-			Options json.RawMessage `json:"options"`
-			Text    string          `json:"text"`
-			Images  []harnessImage  `json:"images"`
-			Payload json.RawMessage `json:"payload"`
-			ID      string          `json:"id"`
-			Path    string          `json:"path"`
+			T       string            `json:"t"`
+			Session string            `json:"session"`
+			Cwd     string            `json:"cwd"`
+			Cmd     string            `json:"cmd"`
+			Args    []string          `json:"args"`
+			Env     map[string]string `json:"env"`
+			Resume  bool              `json:"resume"`
+			Styles  bool              `json:"styles"`
+			Line    string            `json:"line"`
+			ID      string            `json:"id"`
+			Path    string            `json:"path"`
 		}
 		if json.Unmarshal(data, &f) != nil {
 			continue
@@ -231,15 +239,17 @@ func (h *harness) connectAndServe(ctx context.Context) error {
 		case "ls":
 			go h.listDirs(f.ID, f.Path)
 		case "spawn":
-			h.spawn(ctx, f.Session, f.Backend, f.Cwd, f.Options)
-		case "input":
-			h.input(f.Session, f.Text, f.Images)
+			h.spawn(f.Session, f.Cwd, f.Cmd, f.Args, f.Env, f.Resume, f.Styles)
+		case "write":
+			h.write(f.Session, f.Line)
 		case "stop":
 			h.stopSession(f.Session)
 		case "forget":
 			h.forget(f.Session)
-		case "control":
-			h.control(f.Session, f.Payload)
+		case "tail":
+			h.tail(f.Session, f.ID, f.Path)
+		case "untail":
+			h.untail(f.Session, f.ID)
 		}
 	}
 	close(readDone)
@@ -330,119 +340,61 @@ func (h *harness) send(v any) {
 	}
 }
 
-// --- claude code adapter ---
+// --- processes ---
 
-type claudeProc struct {
-	session string
-	cmd     *exec.Cmd
-	stdin   *bufio.Writer
-	stdinMu sync.Mutex
-}
-
-func (h *harness) spawn(ctx context.Context, session, backend, cwd string, options json.RawMessage) {
-	if backend == "" {
-		backend = "claude-code"
-	}
-	if backend != "claude-code" {
-		h.send(map[string]any{"t": "spawn_error", "session": session, "error": "unsupported backend " + backend})
-		return
-	}
-	st := sessionState{Backend: backend, Cwd: cwd, Options: options}
-	h.mu.Lock()
-	h.sessions[session] = st
-	h.mu.Unlock()
-	h.saveState()
-	h.startProc(session, st, false)
-}
-
-// startProc launches Claude Code for a session. resume=false starts a fresh
-// session under Acta's id (--session-id); resume=true continues the transcript
-// Claude already has for that id (--resume). Either way the process is the
-// same shape: stream-json in and out, kept alive by an open stdin.
-func (h *harness) startProc(session string, st sessionState, resume bool) bool {
+// spawn runs the process Acta composed for a session, in cwd, and streams
+// its stdout lines back verbatim. Every line is one frame; Acta labels it.
+func (h *harness) spawn(session, cwd, command string, args []string, env map[string]string, resume, styles bool) {
 	h.mu.Lock()
 	if _, running := h.procs[session]; running {
 		h.mu.Unlock()
-		return true
+		return
 	}
+	h.sessions[session] = true
+	delete(h.forgotten, session)
 	h.mu.Unlock()
+	h.saveState()
 
-	var opts struct {
-		PermissionMode string `json:"permission_mode"`
-		Model          string `json:"model"`
-		Effort         string `json:"effort"`
+	if command == "" {
+		h.send(map[string]any{"t": "spawn_error", "session": session, "error": "no command to run"})
+		return
 	}
-	_ = json.Unmarshal(st.Options, &opts)
-
-	args := []string{
-		"-p",
-		"--input-format", "stream-json",
-		"--output-format", "stream-json",
-		"--verbose",
-		"--replay-user-messages",
-		// Route permission prompts over the stream as control_request frames,
-		// so Acta can show them as a modal and answer with a control_response.
-		"--permission-prompt-tool", "stdio",
-		// Stream text as it is written (stream_event frames) so the browser can
-		// show a reply growing instead of waiting for the whole message.
-		"--include-partial-messages",
-		// Fast mode is refused in SDK/print mode unless the flag settings opt
-		// in; with this it becomes a per-session /fast toggle (still subject to
-		// the account's own availability, reported in init.fast_mode_state).
-		"--settings", `{"fastMode":true}`,
+	cmd := exec.Command(command, args...)
+	cmd.Dir = expandHome(cwd)
+	cmd.Env = os.Environ()
+	for k, v := range env {
+		cmd.Env = append(cmd.Env, k+"="+v)
 	}
-	if resume {
-		if st.Conversation != "" {
-			args = append(args, "--resume", st.Conversation)
-		} else {
-			args = append(args, "--resume", session)
-		}
-	} else {
-		args = append(args, "--session-id", session)
-	}
-	if opts.PermissionMode != "" {
-		args = append(args, "--permission-mode", opts.PermissionMode)
-	}
-	if opts.Model != "" {
-		args = append(args, "--model", opts.Model)
-	}
-	if opts.Effort != "" {
-		args = append(args, "--effort", opts.Effort)
-	}
-
-	cmd := exec.Command("claude", args...)
-	cmd.Dir = expandHome(st.Cwd)
-	// File checkpointing is off by default outside the TUI; with it on, a
-	// rewind can restore the files a turn changed.
-	cmd.Env = append(os.Environ(), "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING=1")
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
 		h.send(map[string]any{"t": "spawn_error", "session": session, "error": err.Error()})
-		return false
+		return
 	}
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		h.send(map[string]any{"t": "spawn_error", "session": session, "error": err.Error()})
-		return false
+		return
 	}
-	// Keep stderr visible, but also remember the tail: a resume of a session
-	// that never had a turn fails there with "No conversation found".
+	// Keep stderr visible, but also remember the tail: Acta reads it on exit
+	// (a resume of a session that never had a turn fails there).
 	var errTail strings.Builder
 	cmd.Stderr = io.MultiWriter(os.Stderr, &limitedWriter{w: &errTail, n: 4 << 10})
 
 	if err := cmd.Start(); err != nil {
 		h.send(map[string]any{"t": "spawn_error", "session": session, "error": err.Error()})
-		return false
+		return
 	}
 
-	proc := &claudeProc{session: session, cmd: cmd, stdin: bufio.NewWriter(stdinPipe)}
+	p := &proc{session: session, cmd: cmd, stdin: bufio.NewWriter(stdinPipe)}
 	h.mu.Lock()
-	h.procs[session] = proc
+	h.procs[session] = p
 	h.mu.Unlock()
-	h.send(map[string]any{"t": "spawned", "session": session, "resumed": resume, "styles": outputStyles(st.Cwd)})
+	spawned := map[string]any{"t": "spawned", "session": session, "resumed": resume}
+	if styles {
+		spawned["styles"] = outputStyles(cwd)
+	}
+	h.send(spawned)
 
-	// stdout reader: each line is one stream-json message; forward verbatim,
-	// tagged with its Claude "type" as the frame kind.
 	go func() {
 		sc := bufio.NewScanner(stdoutPipe)
 		sc.Buffer(make([]byte, 0, 1<<20), 16<<20)
@@ -451,21 +403,16 @@ func (h *harness) startProc(session string, st sessionState, resume bool) bool {
 			if len(strings.TrimSpace(string(line))) == 0 || h.isForgotten(session) {
 				continue
 			}
-			kind := messageType(line)
-			// Only a real answer proves the message landed: a resume that finds
-			// no conversation still emits an empty result before dying.
-			if kind == "assistant" {
-				h.mu.Lock()
-				delete(h.pending, session)
-				h.mu.Unlock()
-			}
-			h.noteBackgroundTask(session, kind, line)
-			if kind == "system" {
-				h.noteConversationID(session, line)
+			if !json.Valid(line) {
+				// a stray non-JSON line (a warning printed to stdout): keep it
+				// as a note so nothing said is lost
+				note, _ := json.Marshal(map[string]any{"state": "stdout", "text": string(line)})
+				h.send(map[string]any{"t": "event", "session": session, "kind": "state", "payload": json.RawMessage(note)})
+				continue
 			}
 			payload := make([]byte, len(line))
 			copy(payload, line)
-			h.send(map[string]any{"t": "event", "session": session, "kind": kind, "payload": json.RawMessage(payload)})
+			h.send(map[string]any{"t": "event", "session": session, "payload": json.RawMessage(payload)})
 		}
 		err := cmd.Wait()
 		code := 0
@@ -478,97 +425,111 @@ func (h *harness) startProc(session string, st sessionState, resume bool) bool {
 		if h.isForgotten(session) {
 			return // Acta deleted it; the exit is expected and unreported
 		}
-		// Claude Code writes a session's conversation only once it has taken a
-		// turn, so resuming one that was spawned but never used fails outright.
-		// Start it fresh under the same id instead of leaving it unusable.
-		if resume && code != 0 && strings.Contains(errTail.String(), "No conversation found") {
-			h.send(map[string]any{"t": "event", "session": session, "kind": "state",
-				"payload": json.RawMessage(`{"state":"resume_failed","reason":"no stored conversation; starting fresh under the same id"}`)})
-			if h.startProc(session, st, false) {
-				h.mu.Lock()
-				msg, ok := h.pending[session]
-				fresh := h.procs[session]
-				h.mu.Unlock()
-				if ok && fresh != nil {
-					h.writeStdin(fresh, msg)
-				}
-				return
-			}
-		}
-		h.send(map[string]any{"t": "exit", "session": session, "code": code})
+		h.send(map[string]any{"t": "exit", "session": session, "code": code, "stderr": errTail.String()})
 	}()
-	return true
 }
 
-// --- background shell output ---
-//
-// A Bash call run in the background answers at once with the task id and the
-// file its output is written to; Claude only reads that file when it asks.
-// The harness tails it meanwhile so the browser can watch the command run:
-// live chunks are relayed (not stored), and when the task ends one frame
-// with the whole output (tail-capped) is sent for the transcript.
+// write sends one composed line to a session's process. A line for a session
+// with no process is dropped: Acta spawns before it writes.
+func (h *harness) write(session, line string) {
+	h.mu.Lock()
+	p := h.procs[session]
+	h.mu.Unlock()
+	if p == nil || line == "" {
+		return
+	}
+	p.stdinMu.Lock()
+	defer p.stdinMu.Unlock()
+	_, _ = p.stdin.WriteString(line)
+	_ = p.stdin.WriteByte('\n')
+	_ = p.stdin.Flush()
+}
 
-var bgTaskRe = regexp.MustCompile(`Command running in background with ID: (\S+)\. Output is being written to: (\S+?)\.?(?:\s|$)`)
+// stopSession interrupts a session's process. Acta prefers the backend's own
+// interrupt line (written like any other); this is the fallback.
+func (h *harness) stopSession(session string) {
+	h.mu.Lock()
+	p := h.procs[session]
+	h.mu.Unlock()
+	if p == nil || p.cmd.Process == nil {
+		return
+	}
+	_ = p.cmd.Process.Signal(syscall.SIGINT)
+}
 
-const (
-	bgLiveCap = 256 << 10 // bytes relayed live per task
-	bgKeepCap = 128 << 10 // bytes kept in the stored final frame
-)
-
-func (h *harness) noteBackgroundTask(session, kind string, line []byte) {
-	switch kind {
-	case "user":
-		if !bytes.Contains(line, []byte("Command running in background with ID")) {
-			return
-		}
-		m := bgTaskRe.FindSubmatch(line)
-		if m == nil {
-			return
-		}
-		taskID, path := string(m[1]), string(m[2])
-		done := make(chan struct{})
-		h.mu.Lock()
-		if h.tails == nil {
-			h.tails = map[string]chan struct{}{}
-		}
-		if _, dup := h.tails[session+"/"+taskID]; dup {
-			h.mu.Unlock()
-			return
-		}
-		h.tails[session+"/"+taskID] = done
-		h.mu.Unlock()
-		go h.tailTask(session, taskID, path, done)
-	case "system":
-		var m struct {
-			Subtype string `json:"subtype"`
-			TaskID  string `json:"task_id"`
-			Status  string `json:"status"`
-			Patch   struct {
-				Status string `json:"status"`
-			} `json:"patch"`
-		}
-		if json.Unmarshal(line, &m) != nil || m.TaskID == "" {
-			return
-		}
-		ended := m.Subtype == "task_notification" || (m.Subtype == "task_updated" && m.Patch.Status != "" && m.Patch.Status != "running")
-		if !ended {
-			return
-		}
-		h.mu.Lock()
-		done := h.tails[session+"/"+m.TaskID]
-		delete(h.tails, session+"/"+m.TaskID)
-		h.mu.Unlock()
-		if done != nil {
+// forget drops a session Acta has deleted: its process is killed and its
+// record removed, so a later hello no longer offers it and nothing more is
+// reported about it. The backend's own transcript on disk stays.
+func (h *harness) forget(session string) {
+	h.mu.Lock()
+	p := h.procs[session]
+	delete(h.sessions, session)
+	if h.forgotten == nil {
+		h.forgotten = map[string]bool{}
+	}
+	h.forgotten[session] = true
+	for k, done := range h.tails {
+		if strings.HasPrefix(k, session+"/") {
 			close(done)
+			delete(h.tails, k)
 		}
+	}
+	h.mu.Unlock()
+	h.saveState()
+	if p != nil && p.cmd.Process != nil {
+		_ = p.cmd.Process.Kill()
 	}
 }
 
-func (h *harness) tailTask(session, taskID, path string, done <-chan struct{}) {
+func (h *harness) isForgotten(session string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.forgotten[session]
+}
+
+// --- tailing files ---
+//
+// A backend that runs a command in the background writes its output to a
+// file and only reads it back when asked. Acta recognises that and asks the
+// harness to tail the file meanwhile, so the browser can watch the command
+// run: live chunks are relayed as it grows, and when Acta says the task ended
+// one frame with the whole output (tail-capped) is sent for the transcript.
+
+const (
+	tailLiveCap = 256 << 10 // bytes relayed live per task
+	tailKeepCap = 128 << 10 // bytes kept in the final frame
+)
+
+func (h *harness) tail(session, id, path string) {
+	if id == "" || path == "" {
+		return
+	}
+	done := make(chan struct{})
+	h.mu.Lock()
+	if _, dup := h.tails[session+"/"+id]; dup {
+		h.mu.Unlock()
+		return
+	}
+	h.tails[session+"/"+id] = done
+	h.mu.Unlock()
+	go h.tailFile(session, id, path, done)
+}
+
+func (h *harness) untail(session, id string) {
+	h.mu.Lock()
+	done := h.tails[session+"/"+id]
+	delete(h.tails, session+"/"+id)
+	h.mu.Unlock()
+	if done != nil {
+		close(done)
+	}
+}
+
+func (h *harness) tailFile(session, id, path string, done <-chan struct{}) {
 	var offset int64
 	var sent int
 	send := func(text string, final bool) {
-		msg := map[string]any{"task_id": taskID, "text": text}
+		msg := map[string]any{"task_id": id, "text": text}
 		if final {
 			msg["done"] = true
 		}
@@ -576,7 +537,7 @@ func (h *harness) tailTask(session, taskID, path string, done <-chan struct{}) {
 		h.send(map[string]any{"t": "event", "session": session, "kind": "task_output", "payload": json.RawMessage(payload)})
 	}
 	read := func() {
-		if sent >= bgLiveCap {
+		if sent >= tailLiveCap {
 			return
 		}
 		f, err := os.Open(path)
@@ -587,7 +548,7 @@ func (h *harness) tailTask(session, taskID, path string, done <-chan struct{}) {
 		if _, err := f.Seek(offset, io.SeekStart); err != nil {
 			return
 		}
-		b, _ := io.ReadAll(io.LimitReader(f, int64(bgLiveCap-sent)))
+		b, _ := io.ReadAll(io.LimitReader(f, int64(tailLiveCap-sent)))
 		if len(b) == 0 {
 			return
 		}
@@ -605,13 +566,14 @@ func (h *harness) tailTask(session, taskID, path string, done <-chan struct{}) {
 		case <-done:
 			read()
 			full, _ := os.ReadFile(path)
-			if len(full) > bgKeepCap {
-				full = append([]byte("… (earlier output dropped)\n"), full[len(full)-bgKeepCap:]...)
+			if len(full) > tailKeepCap {
+				full = append([]byte("… (earlier output dropped)\n"), full[len(full)-tailKeepCap:]...)
 			}
 			send(string(full), true)
 			return
 		case <-deadline:
 			send("", true)
+			h.untail(session, id)
 			return
 		}
 	}
@@ -620,7 +582,9 @@ func (h *harness) tailTask(session, taskID, path string, done <-chan struct{}) {
 // outputStyles lists the output styles a session in cwd can use: the
 // built-ins plus any custom ones in the user's and the project's
 // .claude/output-styles directories (name and description from the front
-// matter, else the file name).
+// matter, else the file name). Reported when a spawn asks for it: the one
+// piece of local Claude Code knowledge the harness keeps, because it is a
+// question about this host's filesystem.
 func outputStyles(cwd string) []map[string]string {
 	out := []map[string]string{
 		{"name": "default", "description": "Claude Code's normal engineering voice", "source": "built-in"},
@@ -628,7 +592,7 @@ func outputStyles(cwd string) []map[string]string {
 		{"name": "Learning", "description": "hands small pieces of the work back to you to write", "source": "built-in"},
 	}
 	home, _ := os.UserHomeDir()
-	for _, d := range []struct{ dir, source string }{{filepath.Join(home, ".claude", "output-styles"), "user"}, {filepath.Join(cwd, ".claude", "output-styles"), "project"}} {
+	for _, d := range []struct{ dir, source string }{{filepath.Join(home, ".claude", "output-styles"), "user"}, {filepath.Join(expandHome(cwd), ".claude", "output-styles"), "project"}} {
 		entries, err := os.ReadDir(d.dir)
 		if err != nil {
 			continue
@@ -686,217 +650,12 @@ func (l *limitedWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func messageType(line []byte) string {
-	var m struct {
-		Type string `json:"type"`
-	}
-	if json.Unmarshal(line, &m) == nil && m.Type != "" {
-		return m.Type
-	}
-	return "event"
-}
-
-// harnessImage is a picture attached to a message, relayed as-is into the
-// backend's image content block.
-type harnessImage struct {
-	MediaType string `json:"media_type"`
-	Data      string `json:"data"`
-}
-
-// userContent builds the message content: plain text when there are no
-// pictures (what every consumer of the transcript expects), else the block
-// array with the images first and the text after.
-func userContent(text string, images []harnessImage) any {
-	if len(images) == 0 {
-		return text
-	}
-	blocks := make([]map[string]any, 0, len(images)+1)
-	for _, im := range images {
-		blocks = append(blocks, map[string]any{"type": "image", "source": map[string]any{"type": "base64", "media_type": im.MediaType, "data": im.Data}})
-	}
-	if strings.TrimSpace(text) != "" {
-		blocks = append(blocks, map[string]any{"type": "text", "text": text})
-	}
-	return blocks
-}
-
-func (h *harness) input(session, text string, images []harnessImage) {
-	// "/effort <level>" is a Claude Code local command that only lasts the
-	// process; remember it so a resume relaunches with --effort.
-	if lvl := effortCommand(text); lvl != "" {
-		h.rememberOption(session, "effort", lvl)
-	}
-	h.mu.Lock()
-	proc := h.procs[session]
-	st, known := h.sessions[session]
-	h.mu.Unlock()
-	if proc == nil {
-		// No process: resume it if this harness spawned it before, otherwise say
-		// so in the transcript rather than dropping the message silently.
-		if !known {
-			h.send(map[string]any{"t": "event", "session": session, "kind": "state",
-				"payload": map[string]any{"state": "undelivered", "reason": "this harness has no record of the session"}})
-			return
-		}
-		if !h.startProc(session, st, true) {
-			return
-		}
-		h.mu.Lock()
-		proc = h.procs[session]
-		h.mu.Unlock()
-		if proc == nil {
-			return
-		}
-	}
-	msg, _ := json.Marshal(map[string]any{
-		"type":               "user",
-		"message":            map[string]any{"role": "user", "content": userContent(text, images)},
-		"parent_tool_use_id": nil,
-	})
-	// Remember it until the process has clearly taken it: if this spawn turns
-	// out to be a resume of a session with no stored conversation, the process
-	// dies immediately and the message must go to its replacement.
-	h.mu.Lock()
-	h.pending[session] = msg
-	h.mu.Unlock()
-	h.writeStdin(proc, msg)
-}
-
-// writeStdin sends one already-marshalled stream-json line to a process.
-func (h *harness) writeStdin(proc *claudeProc, msg []byte) {
-	proc.stdinMu.Lock()
-	defer proc.stdinMu.Unlock()
-	_, _ = proc.stdin.Write(append(msg, '\n'))
-	_ = proc.stdin.Flush()
-}
-
-// control writes a control-protocol message to the session's process verbatim.
-// A set_permission_mode or set_model request is also folded into the
-// remembered options so a later resume starts in the chosen mode / on the
-// chosen model; a control_response for a session with no process is
-// meaningless and dropped.
-func (h *harness) control(session string, payload json.RawMessage) {
-	var probe struct {
-		Type    string `json:"type"`
-		Request struct {
-			Subtype string `json:"subtype"`
-			Mode    string `json:"mode"`
-			Model   string `json:"model"`
-		} `json:"request"`
-	}
-	_ = json.Unmarshal(payload, &probe)
-	var key, val string
-	switch {
-	case probe.Type != "control_request":
-	case probe.Request.Subtype == "set_permission_mode" && probe.Request.Mode != "":
-		key, val = "permission_mode", probe.Request.Mode
-	case probe.Request.Subtype == "set_model" && probe.Request.Model != "":
-		key, val = "model", probe.Request.Model
-	}
-	if key != "" {
-		h.rememberOption(session, key, val)
-	}
-	h.mu.Lock()
-	proc := h.procs[session]
-	h.mu.Unlock()
-	if proc == nil {
-		return
-	}
-	proc.stdinMu.Lock()
-	defer proc.stdinMu.Unlock()
-	_, _ = proc.stdin.Write(append(append([]byte{}, payload...), '\n'))
-	_ = proc.stdin.Flush()
-}
-
-// rememberOption folds a per-session choice (permission mode, model, effort)
-// into the state file so a later resume starts with it.
-func (h *harness) rememberOption(session, key, val string) {
-	h.mu.Lock()
-	st, ok := h.sessions[session]
-	if ok {
-		var opts map[string]any
-		_ = json.Unmarshal(st.Options, &opts)
-		if opts == nil {
-			opts = map[string]any{}
-		}
-		if val == "default" && key == "model" {
-			delete(opts, key)
-		} else {
-			opts[key] = val
-		}
-		st.Options, _ = json.Marshal(opts)
-		h.sessions[session] = st
-	}
-	h.mu.Unlock()
-	if ok {
-		h.saveState()
-	}
-}
-
-// effortCommand returns the level named by a "/effort <level>" message, or "".
-func effortCommand(text string) string {
-	f := strings.Fields(strings.TrimSpace(text))
-	if len(f) != 2 || f[0] != "/effort" {
-		return ""
-	}
-	switch f[1] {
-	case "low", "medium", "high", "xhigh", "max":
-		return f[1]
-	}
-	return ""
-}
-
-func (h *harness) stopSession(session string) {
-	h.mu.Lock()
-	proc := h.procs[session]
-	h.mu.Unlock()
-	if proc == nil || proc.cmd.Process == nil {
-		return
-	}
-	// An interrupt control_request ends the current turn but keeps the process
-	// (and its warm context) alive, so the next message needs no resume. SIGINT
-	// is the fallback if stdin is gone; it ends the turn but exits the process.
-	if proc.stdin != nil {
-		line := fmt.Sprintf(`{"type":"control_request","request_id":"interrupt-%d","request":{"subtype":"interrupt"}}`+"\n", time.Now().UnixMilli())
-		proc.stdinMu.Lock()
-		_, err := proc.stdin.WriteString(line)
-		if err == nil {
-			err = proc.stdin.Flush()
-		}
-		proc.stdinMu.Unlock()
-		if err == nil {
-			return
-		}
-	}
-	_ = proc.cmd.Process.Signal(syscall.SIGINT)
-}
-
-// forget drops a session Acta has deleted: its process is killed and its
-// record removed, so a later hello no longer offers it and nothing more is
-// reported about it. Claude Code's own transcript on disk stays.
-func (h *harness) forget(session string) {
-	h.mu.Lock()
-	proc := h.procs[session]
-	delete(h.sessions, session)
-	delete(h.pending, session)
-	if h.forgotten == nil {
-		h.forgotten = map[string]bool{}
-	}
-	h.forgotten[session] = true
-	h.mu.Unlock()
-	h.saveState()
-	if proc != nil && proc.cmd.Process != nil {
-		_ = proc.cmd.Process.Kill()
-	}
-}
-
-func (h *harness) isForgotten(session string) bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.forgotten[session]
-}
-
 // --- local state ---
+//
+// The only thing the harness remembers across runs is which sessions it has
+// run, so the next hello can offer them as resumable. Everything a resume
+// needs (working directory, options, the backend's conversation id) is
+// Acta's, and comes down with the spawn.
 
 func harnessStatePath() string {
 	dir := os.Getenv("XDG_CONFIG_HOME")
@@ -907,57 +666,50 @@ func harnessStatePath() string {
 	return filepath.Join(dir, "acta", "harness-sessions.json")
 }
 
-func loadHarnessState(path string) map[string]sessionState {
-	out := map[string]sessionState{}
+type harnessState struct {
+	V        int      `json:"v"`
+	Sessions []string `json:"sessions"`
+}
+
+func loadHarnessState(path string) map[string]bool {
+	out := map[string]bool{}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return out
 	}
-	if json.Unmarshal(data, &out) == nil {
+	var st harnessState
+	if json.Unmarshal(data, &st) == nil && st.V >= 2 {
+		for _, s := range st.Sessions {
+			out[s] = true
+		}
 		return out
 	}
-	// Older files held a bare list of ids; keep them resumable with unknown cwd.
+	// Earlier files: a map of id -> per-session details (which Acta now
+	// owns), or before that a bare list of ids. Keep the ids.
+	var m map[string]json.RawMessage
+	if json.Unmarshal(data, &m) == nil {
+		for s := range m {
+			out[s] = true
+		}
+		return out
+	}
 	var ids []string
 	if json.Unmarshal(data, &ids) == nil {
 		for _, s := range ids {
-			out[s] = sessionState{Backend: "claude-code"}
+			out[s] = true
 		}
 	}
 	return out
 }
 
-// noteConversationID records the session id Claude reports in an init frame
-// when it is not the one this session was spawned under: after a /clear the
-// process moves to a fresh transcript, and a resume must name that one.
-func (h *harness) noteConversationID(session string, line []byte) {
-	var m struct {
-		Subtype   string `json:"subtype"`
-		SessionID string `json:"session_id"`
-	}
-	if json.Unmarshal(line, &m) != nil || m.Subtype != "init" || m.SessionID == "" || m.SessionID == session {
-		return
-	}
-	h.mu.Lock()
-	st, ok := h.sessions[session]
-	changed := ok && st.Conversation != m.SessionID
-	if changed {
-		st.Conversation = m.SessionID
-		h.sessions[session] = st
-	}
-	h.mu.Unlock()
-	if changed {
-		h.saveState()
-	}
-}
-
 func (h *harness) saveState() {
 	h.mu.Lock()
-	snapshot := make(map[string]sessionState, len(h.sessions))
-	for k, v := range h.sessions {
-		snapshot[k] = v
+	st := harnessState{V: protocolVersion, Sessions: make([]string, 0, len(h.sessions))}
+	for s := range h.sessions {
+		st.Sessions = append(st.Sessions, s)
 	}
 	h.mu.Unlock()
-	data, _ := json.MarshalIndent(snapshot, "", "  ")
+	data, _ := json.MarshalIndent(st, "", "  ")
 	_ = os.MkdirAll(filepath.Dir(h.stateP), 0o700)
 	_ = os.WriteFile(h.stateP, data, 0o600)
 }

@@ -72,6 +72,26 @@ func (s *Service) SetTitle(ctx context.Context, id, ownerID, title string) (stor
 	return s.store.UpdateAgentSessionTitle(ctx, id, title, s.now())
 }
 
+// SetOption folds one key into a session's options (a resume starts with
+// them). An empty value drops the key.
+func (s *Service) SetOption(ctx context.Context, id, key string, value any) error {
+	as, err := s.store.AgentSessionByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	opts := map[string]any{}
+	for k, v := range as.Options {
+		opts[k] = v
+	}
+	if value == nil || value == "" {
+		delete(opts, key)
+	} else {
+		opts[key] = value
+	}
+	_, err = s.store.UpdateAgentSessionOptions(ctx, id, opts, s.now())
+	return err
+}
+
 // Append stores one transcript frame verbatim. payload is raw JSON; kind is the
 // coarse filter label ("event"|"input"|"state").
 func (s *Service) Append(ctx context.Context, sessionID, kind string, payload json.RawMessage) (store.AgentSessionEvent, error) {

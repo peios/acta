@@ -32,21 +32,24 @@ const (
 
 // Frame kinds sent by Acta to a harness.
 const (
-	// FrameSpawn asks the harness to start a backend process for an
-	// Acta-minted session id (passed to the backend as its own session id).
+	// FrameSpawn asks the harness to run the process the Driver composed
+	// (cmd, args, env, in cwd) for a session.
 	FrameSpawn = "spawn"
-	// FrameInput injects a user message into a running session.
-	FrameInput = "input"
-	// FrameStop ends a session's current turn / process.
+	// FrameStop signals a session's process (the fallback when the backend
+	// has no interrupt line of its own).
 	FrameStop = "stop"
 	// FrameForget tells the harness a session has been deleted: kill its
 	// process and drop it from the harness's records. The backend's own
 	// transcript on the host is left alone.
 	FrameForget = "forget"
-	// FrameControl carries a control-protocol message for the backend verbatim
-	// (a control_response answering a permission prompt, or a control_request
-	// such as set_permission_mode). The harness writes it to the process as-is.
-	FrameControl = "control"
+	// FrameWrite carries one stdin line, composed by Acta from the backend's
+	// Driver, for the harness to write to the session's process unchanged.
+	// The harness never composes a line itself.
+	FrameWrite = "write"
+	// FrameTail / FrameUntail ask the harness to stream a file on its host
+	// as it grows (a background command's output) and to stop.
+	FrameTail   = "tail"
+	FrameUntail = "untail"
 	// Ls asks the harness to complete a directory path on its host (the
 	// working-directory picker); LsResult is the harness's answer.
 	FrameLs       = "ls"
@@ -57,6 +60,7 @@ const (
 // are set; Payload holds a FrameEvent's verbatim body.
 type Inbound struct {
 	T        string          `json:"t"`
+	V        int             `json:"v,omitempty"` // hello: protocol version (2)
 	Session  string          `json:"session,omitempty"`
 	Label    string          `json:"label,omitempty"`
 	Backends []string        `json:"backends,omitempty"`
@@ -70,24 +74,29 @@ type Inbound struct {
 	Exists   bool            `json:"exists,omitempty"`  // ls_result: the path itself is a directory
 	Styles   json.RawMessage `json:"styles,omitempty"`  // spawned: the output styles the session can use
 	Resumed  bool            `json:"resumed,omitempty"` // spawned: the process was resumed, not freshly started
-	Kind     string          `json:"kind,omitempty"`
+	Kind     string          `json:"kind,omitempty"`    // event: set only for harness-authored notices (task_output); Acta labels backend lines
 	Payload  json.RawMessage `json:"payload,omitempty"`
 	Error    string          `json:"error,omitempty"`
 	Code     *int            `json:"code,omitempty"`
+	Stderr   string          `json:"stderr,omitempty"` // exit: the tail of the process's stderr
 }
 
 // Outbound is a frame written to a harness.
 type Outbound struct {
-	T       string          `json:"t"`
-	Session string          `json:"session,omitempty"`
-	Backend string          `json:"backend,omitempty"`
-	Cwd     string          `json:"cwd,omitempty"`
-	Options json.RawMessage `json:"options,omitempty"`
-	Text    string          `json:"text,omitempty"`
-	Images  []ImageIn       `json:"images,omitempty"`  // input: pictures sent with the text
-	Payload json.RawMessage `json:"payload,omitempty"` // control: the backend message verbatim
-	ID      string          `json:"id,omitempty"`      // ls: request id echoed in the ls_result
-	Path    string          `json:"path,omitempty"`    // ls: the (partial) directory path to complete
+	T       string `json:"t"`
+	Session string `json:"session,omitempty"`
+	Backend string `json:"backend,omitempty"`
+	Cwd     string `json:"cwd,omitempty"`
+	ID      string `json:"id,omitempty"`   // ls: request id echoed in the ls_result; tail: the task id
+	Path    string `json:"path,omitempty"` // ls: the (partial) directory path to complete; tail: the file
+	// spawn: the process to run, composed by the backend's Driver.
+	Cmd    string            `json:"cmd,omitempty"`
+	Args   []string          `json:"args,omitempty"`
+	Env    map[string]string `json:"env,omitempty"`
+	Resume bool              `json:"resume,omitempty"` // the process continues an earlier conversation
+	Styles bool              `json:"styles,omitempty"` // report the output styles available in cwd
+	// write: one stdin line, without its newline.
+	Line string `json:"line,omitempty"`
 }
 
 // BrowserIn is a frame read from a browser chat connection.

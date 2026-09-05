@@ -146,40 +146,85 @@ func (h *Hub) pushRename(ownerID, sessionID, title string) {
 // no live process simply has nothing to rename).
 func (h *Hub) sendRename(ownerID, sessionID, title string) {
 	c := h.harnessFor(ownerID, sessionID)
-	if c == nil {
+	if c == nil || !c.isRunning(sessionID) {
 		return
 	}
-	payload, err := json.Marshal(map[string]any{
-		"type":       "control_request",
-		"request_id": "acta-rename-" + strconv.FormatInt(time.Now().UnixNano(), 36),
-		"request":    map[string]any{"subtype": "rename_session", "title": title},
-	})
-	if err != nil {
-		return
-	}
-	c.send(Outbound{T: FrameControl, Session: sessionID, Payload: payload})
-	c.mu.Lock()
-	running := c.running[sessionID]
-	c.mu.Unlock()
-	if running {
-		h.sendNameCommand(context.Background(), c, sessionID, title)
-	}
+	h.sendNameCommand(context.Background(), c, sessionID, title)
 }
 
-// sendNameCommand names the live Claude Code process after the session. The
-// rename_session control only retitles the transcript; the "/rename" command
-// also sets the name peers see (ListAgents, SendMessage), so a message
-// addressed by Acta title reaches the right session. It goes in as an input
-// frame, so the transcript shows the rename like any other command.
+// driverOf returns the driver for a session's backend, or nil.
+func (h *Hub) driverOf(ctx context.Context, sessionID string) Driver {
+	as, err := h.svc.store.AgentSessionByID(ctx, sessionID)
+	if err != nil {
+		return nil
+	}
+	return DriverFor(as.Backend)
+}
+
+// sendNameCommand names the live backend process after the session, with
+// whatever lines its driver says (for Claude Code: a rename control for the
+// transcript's title and a "/rename" command for the name peers see). The
+// driver may name an input text to record, so the transcript shows the
+// rename like any other command.
 func (h *Hub) sendNameCommand(ctx context.Context, c *harnessConn, sessionID, title string) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return
 	}
-	text := "/rename " + title
-	raw, _ := json.Marshal(map[string]any{"text": text})
-	h.record(ctx, sessionID, "input", raw)
-	c.send(Outbound{T: FrameInput, Session: sessionID, Text: text})
+	d := h.driverOf(ctx, sessionID)
+	if d == nil {
+		return
+	}
+	lines, echo := d.Rename(title)
+	if echo != "" {
+		raw, _ := json.Marshal(map[string]any{"text": echo})
+		h.record(ctx, sessionID, "input", raw)
+	}
+	for _, l := range lines {
+		c.write(sessionID, l)
+	}
+}
+
+// deliver hands a user message to the harness holding a session: Acta
+// composes the backend's line, starting the process first when none is
+// running.
+func (h *Hub) deliver(ctx context.Context, c *harnessConn, sessionID, text string, images []ImageIn) {
+	as, err := h.svc.store.AgentSessionByID(ctx, sessionID)
+	if err != nil {
+		return
+	}
+	d := DriverFor(as.Backend)
+	if d == nil {
+		h.recordState(ctx, sessionID, map[string]any{"state": "undelivered", "reason": "no driver for backend " + as.Backend})
+		return
+	}
+	if !c.isRunning(sessionID) {
+		h.spawn(c, as, true)
+	}
+	line := d.InputLine(text, images)
+	// Remember it until the process has clearly taken it: if this spawn turns
+	// out to be a resume of a session with no stored conversation, the
+	// process dies at once and the message must go to its replacement.
+	c.mu.Lock()
+	c.pending[sessionID] = line
+	c.mu.Unlock()
+	c.write(sessionID, line)
+}
+
+// spawn asks a harness to run a session's process, composed by its driver.
+// resume continues the backend's own conversation.
+func (h *Hub) spawn(c *harnessConn, as store.AgentSession, resume bool) {
+	d := DriverFor(as.Backend)
+	if d == nil {
+		h.recordState(context.Background(), as.ID, map[string]any{"state": "spawn_error", "error": "no driver for backend " + as.Backend})
+		return
+	}
+	l := d.Launch(as, resume)
+	c.mu.Lock()
+	c.sessions[as.ID] = true
+	c.resuming[as.ID] = resume
+	c.mu.Unlock()
+	c.send(Outbound{T: FrameSpawn, Session: as.ID, Backend: as.Backend, Cwd: as.Cwd, Cmd: l.Cmd, Args: l.Args, Env: l.Env, Resume: resume, Styles: l.Styles})
 }
 
 // maybeAutoTitle names a session that has never been named, once its first
@@ -216,15 +261,18 @@ func (h *Hub) maybeAutoTitle(ctx context.Context, ownerID, sessionID string) {
 		h.mu.Unlock()
 		return
 	}
-	payload, err := json.Marshal(map[string]any{
-		"type":       "control_request",
-		"request_id": titleRequestPrefix + strconv.FormatInt(time.Now().UnixNano(), 36),
-		"request":    map[string]any{"subtype": "generate_session_title", "description": desc, "persist": true},
-	})
-	if err != nil {
+	d := h.driverOf(ctx, sessionID)
+	if d == nil {
 		return
 	}
-	c.send(Outbound{T: FrameControl, Session: sessionID, Payload: payload})
+	line := d.TitleRequest(titleRequestPrefix+strconv.FormatInt(time.Now().UnixNano(), 36), desc)
+	if line == nil {
+		h.mu.Lock()
+		delete(h.titling, sessionID)
+		h.mu.Unlock()
+		return
+	}
+	c.write(sessionID, line)
 }
 
 // firstInputText is the text of the session's first message, which is what a
@@ -250,29 +298,18 @@ func (h *Hub) firstInputText(ctx context.Context, sessionID string) string {
 
 // applyTitleAnswer takes the title from an answer to our own request. It
 // reports whether the frame was ours (and so should not reach the transcript).
-func (h *Hub) applyTitleAnswer(ctx context.Context, ownerID, sessionID string, payload json.RawMessage) bool {
-	var m struct {
-		Type     string `json:"type"`
-		Response struct {
-			RequestID string `json:"request_id"`
-			Subtype   string `json:"subtype"`
-			Response  struct {
-				Title string `json:"title"`
-			} `json:"response"`
-		} `json:"response"`
-	}
-	if json.Unmarshal(payload, &m) != nil || m.Type != "control_response" {
+func (h *Hub) applyTitleAnswer(ctx context.Context, d Driver, ownerID, sessionID, kind string, payload json.RawMessage) bool {
+	if d == nil {
 		return false
 	}
-	rid := m.Response.RequestID
-	if !strings.HasPrefix(rid, titleRequestPrefix) && !strings.HasPrefix(rid, "acta-rename-") {
+	rid, title, ok := d.TitleAnswer(kind, payload)
+	if !ok {
 		return false
 	}
 	if strings.HasPrefix(rid, titleRequestPrefix) {
 		h.mu.Lock()
 		delete(h.titling, sessionID)
 		h.mu.Unlock()
-		title := strings.TrimSpace(m.Response.Response.Title)
 		if title != "" {
 			if _, err := h.svc.SetTitle(ctx, sessionID, ownerID, title); err == nil {
 				h.pushRename(ownerID, sessionID, title)
@@ -341,13 +378,25 @@ type harnessConn struct {
 	backends []string
 	cwd      string
 	home     string
+	v        int // protocol version from the hello (2: writes what Acta composes)
 	out      chan []byte
 	closed   chan struct{}
 	once     sync.Once
 
 	mu       sync.Mutex
-	sessions map[string]bool // session ids this harness holds (can resume)
-	running  map[string]bool // the subset with a live process right now
+	sessions map[string]bool   // session ids this harness holds (can resume)
+	running  map[string]bool   // the subset with a live process right now
+	resuming map[string]bool   // sessions whose current process is a resume (an early exit may mean "nothing to resume")
+	pending  map[string][]byte // the last input line per session until the backend has clearly taken it
+	retried  map[string]bool   // sessions whose pending line was already re-sent once after an exit
+}
+
+// write sends one composed stdin line to the harness for a session.
+func (c *harnessConn) write(session string, line []byte) {
+	if len(line) == 0 {
+		return
+	}
+	c.send(Outbound{T: FrameWrite, Session: session, Line: string(line)})
 }
 
 func (c *harnessConn) Close() { c.once.Do(func() { close(c.closed) }) }
@@ -375,7 +424,16 @@ func (c *harnessConn) drop(session string) {
 	c.mu.Lock()
 	delete(c.sessions, session)
 	delete(c.running, session)
+	delete(c.resuming, session)
+	delete(c.pending, session)
+	delete(c.retried, session)
 	c.mu.Unlock()
+}
+
+func (c *harnessConn) isRunning(session string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.running[session]
 }
 
 func (c *harnessConn) holds(session string) bool {
@@ -460,10 +518,14 @@ func (h *Hub) AttachHarness(ownerID string, in Inbound) *harnessConn {
 		backends: in.Backends,
 		cwd:      in.Cwd,
 		home:     in.Home,
+		v:        in.V,
 		out:      make(chan []byte, sendQueue),
 		closed:   make(chan struct{}),
 		sessions: map[string]bool{},
 		running:  map[string]bool{},
+		resuming: map[string]bool{},
+		pending:  map[string][]byte{},
+		retried:  map[string]bool{},
 	}
 	for _, s := range in.Sessions {
 		c.sessions[s] = true
@@ -478,7 +540,7 @@ func (h *Hub) AttachHarness(ownerID string, in Inbound) *harnessConn {
 	}
 	h.harness[ownerID][c.id] = c
 	h.mu.Unlock()
-	slog.Info("harness attached", "owner", ownerID, "label", c.label, "backends", c.backends, "sessions", len(c.sessions))
+	slog.Info("harness attached", "owner", ownerID, "label", c.label, "v", c.v, "backends", c.backends, "sessions", len(c.sessions))
 	for _, id := range c.heldIDs() {
 		h.notify(ownerID, id)
 	}
@@ -608,35 +670,47 @@ func (h *Hub) HarnessFrame(ctx context.Context, c *harnessConn, in Inbound) {
 		if c.setRunning(in.Session, true) { // an event means the process is alive
 			h.notify(c.ownerID, in.Session)
 		}
-		kind := in.Kind
+		d := h.driverOf(ctx, in.Session)
+		kind := in.Kind // a harness-authored notice names its own kind (task_output)
+		if kind == "" && d != nil {
+			kind = d.Kind(in.Payload)
+		}
 		if kind == "" {
 			kind = "event"
 		}
-		if kind == "control_response" && h.applyTitleAnswer(ctx, c.ownerID, in.Session, in.Payload) {
+		if h.applyTitleAnswer(ctx, d, c.ownerID, in.Session, kind, in.Payload) {
 			return // our own naming traffic, not part of the conversation
 		}
 		if kind == "result" {
 			go h.maybeAutoTitle(context.Background(), c.ownerID, in.Session)
 		}
-		if kind == "task_output" && !taskOutputDone(in.Payload) {
-			// A background shell's output as it runs: relayed live, not
-			// stored — the frame marked done carries the whole output.
-			h.emit(ctx, in.Session, store.AgentSessionEvent{SessionID: in.Session, Kind: kind, Payload: in.Payload, CreatedAt: time.Now()}, false)
-			return
+		stored := true
+		if d != nil {
+			stored = d.Stored(kind, in.Payload)
+		} else {
+			stored = !(kind == "stream_event" || (kind == "task_output" && !taskOutputDone(in.Payload)))
 		}
-		if kind == "stream_event" {
-			// Partial-message deltas: relayed live so a reply can grow on
-			// screen, but not stored — the assistant frame that follows
-			// carries the complete message, so nothing is lost.
+		if !stored {
+			// Streamed deltas and a background command's output as it runs:
+			// relayed live so the screen moves, not stored — the settled
+			// frame that follows carries everything they said.
 			h.emit(ctx, in.Session, store.AgentSessionEvent{SessionID: in.Session, Kind: kind, Payload: in.Payload, CreatedAt: time.Now()}, false)
 			return
 		}
 		h.record(ctx, in.Session, kind, in.Payload)
 		h.maybeAlert(c.ownerID, in.Session, kind, in.Payload)
+		if d != nil {
+			h.afterFrame(ctx, c, d, in.Session, kind, in.Payload)
+		}
 	case FrameSpawned:
 		if c.setRunning(in.Session, true) {
 			h.notify(c.ownerID, in.Session)
 		}
+		c.mu.Lock()
+		if !in.Resumed {
+			delete(c.resuming, in.Session)
+		}
+		c.mu.Unlock()
 		spawned := map[string]any{"state": "spawned", "resumed": in.Resumed}
 		if len(in.Styles) > 0 {
 			spawned["styles"] = in.Styles
@@ -668,9 +742,43 @@ func (h *Hub) HarnessFrame(ctx context.Context, c *harnessConn, in Inbound) {
 		if c.setRunning(in.Session, false) {
 			h.notify(c.ownerID, in.Session)
 		}
+		c.mu.Lock()
+		wasResume := c.resuming[in.Session]
+		delete(c.resuming, in.Session)
+		held := c.pending[in.Session]
+		retried := c.retried[in.Session]
+		c.mu.Unlock()
+		if wasResume {
+			// A backend that has nothing to resume (a session spawned but never
+			// used) dies at once: start it fresh under the same id instead of
+			// leaving it unusable, and hand it the message that was waiting.
+			if d := h.driverOf(ctx, in.Session); d != nil && d.ResumeFailed(code, in.Stderr) {
+				h.recordState(ctx, in.Session, map[string]any{"state": "resume_failed", "reason": "no stored conversation; starting fresh under the same id"})
+				if as, err := h.svc.store.AgentSessionByID(ctx, in.Session); err == nil {
+					h.spawn(c, as, false)
+					if len(held) > 0 {
+						c.write(in.Session, held)
+					}
+				}
+				return
+			}
+		}
 		h.recordState(ctx, in.Session, map[string]any{"state": "exit", "code": code})
 		raw, _ := json.Marshal(map[string]any{"state": "exit", "code": code})
 		h.maybeAlert(c.ownerID, in.Session, "state", raw)
+		if len(held) > 0 && !retried {
+			// The process died holding a message it never answered (it was
+			// written in the moment between the death and its report): start
+			// the conversation again and hand the message over, once — a
+			// process that dies on every attempt is not retried forever.
+			if as, err := h.svc.store.AgentSessionByID(ctx, in.Session); err == nil {
+				c.mu.Lock()
+				c.retried[in.Session] = true
+				c.mu.Unlock()
+				h.spawn(c, as, true)
+				c.write(in.Session, held)
+			}
+		}
 	default:
 		// Unknown harness frame — record it verbatim so nothing is lost.
 		raw, _ := json.Marshal(in)
@@ -724,8 +832,13 @@ func (h *Hub) Input(ctx context.Context, ownerID, sessionID, text string, images
 	}
 	raw, _ := json.Marshal(m)
 	h.record(ctx, sessionID, "input", raw)
+	if d := h.driverOf(ctx, sessionID); d != nil {
+		if k, v, ok := d.Option("input", raw); ok {
+			_ = h.svc.SetOption(ctx, sessionID, k, v)
+		}
+	}
 	if c := h.harnessFor(ownerID, sessionID); c != nil {
-		c.send(Outbound{T: FrameInput, Session: sessionID, Text: text, Images: images})
+		h.deliver(ctx, c, sessionID, text, images)
 		return nil
 	}
 	h.recordState(ctx, sessionID, map[string]any{"state": "undelivered", "reason": "no harness connected"})
@@ -743,18 +856,37 @@ func (h *Hub) Mark(ctx context.Context, sessionID, kind string, payload json.Raw
 // a mode change) and forwards it to the harness holding the session.
 func (h *Hub) Control(ctx context.Context, ownerID, sessionID string, payload json.RawMessage) {
 	h.record(ctx, sessionID, "control", payload)
+	d := h.driverOf(ctx, sessionID)
+	if d != nil {
+		if k, v, ok := d.Option("control", payload); ok {
+			_ = h.svc.SetOption(ctx, sessionID, k, v)
+		}
+	}
 	if c := h.harnessFor(ownerID, sessionID); c != nil {
-		c.send(Outbound{T: FrameControl, Session: sessionID, Payload: payload})
+		// a control for a session with no process (an answer to a prompt
+		// that died with it) has nothing to reach
+		if d != nil && c.isRunning(sessionID) {
+			c.write(sessionID, d.ControlLine(payload))
+		}
 		return
 	}
 	h.recordState(ctx, sessionID, map[string]any{"state": "undelivered", "reason": "no harness connected"})
 }
 
-// Stop asks the harness to end the session's current turn or process.
+// Stop ends the session's current turn: the backend's own interrupt when it
+// has one (the process, and its warm context, survive), else a signal.
 func (h *Hub) Stop(ownerID, sessionID string) {
-	if c := h.harnessFor(ownerID, sessionID); c != nil {
-		c.send(Outbound{T: FrameStop, Session: sessionID})
+	c := h.harnessFor(ownerID, sessionID)
+	if c == nil {
+		return
 	}
+	if d := h.driverOf(context.Background(), sessionID); d != nil && c.isRunning(sessionID) {
+		if line := d.InterruptLine(); line != nil {
+			c.write(sessionID, line)
+			return
+		}
+	}
+	c.send(Outbound{T: FrameStop, Session: sessionID})
 }
 
 // Spawn routes a spawn request to a connected harness of the session's owner,
@@ -769,11 +901,31 @@ func (h *Hub) Spawn(as store.AgentSession, target string) bool {
 	if c == nil {
 		return false
 	}
-	opts, _ := json.Marshal(as.Options)
-	c.add(as.ID)
-	c.send(Outbound{T: FrameSpawn, Session: as.ID, Backend: as.Backend, Cwd: as.Cwd, Options: opts})
+	h.spawn(c, as, false)
 	h.notify(as.OwnerID, as.ID)
 	return true
+}
+
+// afterFrame applies the driver's rules to a stored frame: remember the
+// backend's conversation id for resume, drop the held message once taken,
+// and have the harness tail (or stop tailing) a background task's output.
+func (h *Hub) afterFrame(ctx context.Context, c *harnessConn, d Driver, session, kind string, payload json.RawMessage) {
+	if cid := d.Conversation(session, kind, payload); cid != "" {
+		_ = h.svc.SetOption(ctx, session, "conversation", cid)
+	}
+	if d.Acknowledged(kind, payload) {
+		c.mu.Lock()
+		delete(c.pending, session)
+		delete(c.resuming, session)
+		delete(c.retried, session)
+		c.mu.Unlock()
+	}
+	if id, path, ok := d.BackgroundTask(kind, payload); ok {
+		c.send(Outbound{T: FrameTail, Session: session, ID: id, Path: path})
+	}
+	if id, ok := d.TaskEnded(kind, payload); ok {
+		c.send(Outbound{T: FrameUntail, Session: session, ID: id})
+	}
 }
 
 // taskOutputDone reports whether a task_output frame is the final one.

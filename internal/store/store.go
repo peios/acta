@@ -846,6 +846,10 @@ type Store interface {
 	AgentSessionByID(ctx context.Context, id string) (AgentSession, error)
 	AgentSessionsByOwner(ctx context.Context, ownerID string) ([]AgentSession, error)
 	UpdateAgentSessionTitle(ctx context.Context, id, title string, updatedAt time.Time) (AgentSession, error)
+	// UpdateAgentSessionOptions replaces a session's options (the settings a
+	// resume starts with: permission mode, model, effort, the backend's own
+	// conversation id).
+	UpdateAgentSessionOptions(ctx context.Context, id string, options map[string]any, updatedAt time.Time) (AgentSession, error)
 	DeleteAgentSession(ctx context.Context, id string) error
 	AppendAgentSessionEvent(ctx context.Context, e AgentSessionEvent) (AgentSessionEvent, error)
 	AgentSessionEvents(ctx context.Context, sessionID string, afterSeq int64, limit int) ([]AgentSessionEvent, error)

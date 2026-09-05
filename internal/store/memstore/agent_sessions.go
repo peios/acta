@@ -65,6 +65,19 @@ func (s *Store) UpdateAgentSessionTitle(_ context.Context, id, title string, upd
 	return as, nil
 }
 
+func (s *Store) UpdateAgentSessionOptions(_ context.Context, id string, options map[string]any, updatedAt time.Time) (store.AgentSession, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	as, ok := s.agentSessions[id]
+	if !ok {
+		return store.AgentSession{}, store.ErrAgentSessionNotFound
+	}
+	as.Options = options
+	as.UpdatedAt = updatedAt
+	s.agentSessions[id] = as
+	return as, nil
+}
+
 func (s *Store) DeleteAgentSession(_ context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

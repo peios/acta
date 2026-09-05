@@ -81,6 +81,22 @@ func (p *Postgres) UpdateAgentSessionTitle(ctx context.Context, id, title string
 	return as, err
 }
 
+func (p *Postgres) UpdateAgentSessionOptions(ctx context.Context, id string, options map[string]any, updatedAt time.Time) (store.AgentSession, error) {
+	if options == nil {
+		options = map[string]any{}
+	}
+	opts, err := json.Marshal(options)
+	if err != nil {
+		return store.AgentSession{}, err
+	}
+	const q = `UPDATE agent_sessions SET options = $2, updated_at = $3 WHERE id = $1 RETURNING ` + agentSessionCols
+	as, err := scanAgentSession(p.pool.QueryRow(ctx, q, id, opts, updatedAt))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.AgentSession{}, store.ErrAgentSessionNotFound
+	}
+	return as, err
+}
+
 func (p *Postgres) DeleteAgentSession(ctx context.Context, id string) error {
 	ct, err := p.pool.Exec(ctx, `DELETE FROM agent_sessions WHERE id = $1`, id)
 	if err != nil {

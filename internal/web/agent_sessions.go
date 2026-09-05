@@ -20,10 +20,9 @@ import (
 	"github.com/peios/acta/internal/store"
 )
 
-// knownBackends are the backends the harness can spawn. Claude Code is the only
-// one today; the list is here so the new-session form and the harness advertise
-// the same vocabulary.
-var knownBackends = []string{"claude-code"}
+// knownBackends are the backends Acta has drivers for, as the new-session
+// form offers them.
+var knownBackends = func() []string { b := agentsession.Backends(); sort.Strings(b); return b }()
 
 type agentSessionsData struct {
 	chrome
