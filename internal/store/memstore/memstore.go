@@ -16,66 +16,70 @@ import (
 )
 
 type Store struct {
-	mu           sync.Mutex
-	users        map[string]store.User
-	sessions     map[string]store.Session
-	credentials  map[string]store.Credential
-	challenges   map[string]store.Challenge
-	workspaces   map[string]store.Workspace
-	itemSeq      map[string]int // per-workspace monotonic counter for item ref numbers
-	boards       map[string]store.Board
-	statuses     map[string]store.Status
-	boardViews   map[string]store.BoardView
-	items        map[string]store.Item
-	comments     map[string]store.Comment
-	documents    map[string]store.Document
-	memories     map[string]store.Memory
-	apiTokens    map[string]store.APIToken
-	settings     map[string]string
-	mcpPrompts   map[string]store.MCPPrompt
-	events       map[string]store.Event
-	notifs       map[string]store.Notification
-	pushSubs     map[string]store.PushSubscription // keyed by endpoint
-	projects     map[string]store.Project
-	subs         map[string]store.Subscription // keyed by id
-	facts        map[int64]store.Fact
-	factSeq      int64
-	statusFacts  map[string][]int64                  // status id -> ordered gating fact ids
-	itemFacts    map[string]map[int64]store.FactTick // item id -> fact id -> tick
-	releases     map[string]store.Release
-	itemReleases map[string]map[string]bool        // item id -> set of release ids
-	snapshots    map[string]store.ProgressSnapshot // "type\x00id\x00YYYY-MM-DD" -> row
+	mu            sync.Mutex
+	users         map[string]store.User
+	sessions      map[string]store.Session
+	credentials   map[string]store.Credential
+	challenges    map[string]store.Challenge
+	workspaces    map[string]store.Workspace
+	itemSeq       map[string]int // per-workspace monotonic counter for item ref numbers
+	boards        map[string]store.Board
+	statuses      map[string]store.Status
+	boardViews    map[string]store.BoardView
+	items         map[string]store.Item
+	comments      map[string]store.Comment
+	documents     map[string]store.Document
+	memories      map[string]store.Memory
+	apiTokens     map[string]store.APIToken
+	settings      map[string]string
+	mcpPrompts    map[string]store.MCPPrompt
+	events        map[string]store.Event
+	notifs        map[string]store.Notification
+	pushSubs      map[string]store.PushSubscription // keyed by endpoint
+	projects      map[string]store.Project
+	subs          map[string]store.Subscription // keyed by id
+	facts         map[int64]store.Fact
+	factSeq       int64
+	statusFacts   map[string][]int64                  // status id -> ordered gating fact ids
+	itemFacts     map[string]map[int64]store.FactTick // item id -> fact id -> tick
+	releases      map[string]store.Release
+	itemReleases  map[string]map[string]bool        // item id -> set of release ids
+	snapshots     map[string]store.ProgressSnapshot // "type\x00id\x00YYYY-MM-DD" -> row
+	agentSessions map[string]store.AgentSession
+	agentEvents   []store.AgentSessionEvent // append-only, seq ascending
+	agentEventSeq int64
 }
 
 func New() *Store {
 	return &Store{
-		users:        map[string]store.User{},
-		sessions:     map[string]store.Session{},
-		credentials:  map[string]store.Credential{},
-		challenges:   map[string]store.Challenge{},
-		workspaces:   map[string]store.Workspace{},
-		itemSeq:      map[string]int{},
-		boards:       map[string]store.Board{},
-		statuses:     map[string]store.Status{},
-		boardViews:   map[string]store.BoardView{},
-		items:        map[string]store.Item{},
-		comments:     map[string]store.Comment{},
-		documents:    map[string]store.Document{},
-		memories:     map[string]store.Memory{},
-		apiTokens:    map[string]store.APIToken{},
-		settings:     map[string]string{},
-		mcpPrompts:   map[string]store.MCPPrompt{},
-		events:       map[string]store.Event{},
-		notifs:       map[string]store.Notification{},
-		pushSubs:     map[string]store.PushSubscription{},
-		projects:     map[string]store.Project{},
-		subs:         map[string]store.Subscription{},
-		facts:        map[int64]store.Fact{},
-		statusFacts:  map[string][]int64{},
-		itemFacts:    map[string]map[int64]store.FactTick{},
-		releases:     map[string]store.Release{},
-		itemReleases: map[string]map[string]bool{},
-		snapshots:    map[string]store.ProgressSnapshot{},
+		users:         map[string]store.User{},
+		sessions:      map[string]store.Session{},
+		credentials:   map[string]store.Credential{},
+		challenges:    map[string]store.Challenge{},
+		workspaces:    map[string]store.Workspace{},
+		itemSeq:       map[string]int{},
+		boards:        map[string]store.Board{},
+		statuses:      map[string]store.Status{},
+		boardViews:    map[string]store.BoardView{},
+		items:         map[string]store.Item{},
+		comments:      map[string]store.Comment{},
+		documents:     map[string]store.Document{},
+		memories:      map[string]store.Memory{},
+		apiTokens:     map[string]store.APIToken{},
+		settings:      map[string]string{},
+		mcpPrompts:    map[string]store.MCPPrompt{},
+		events:        map[string]store.Event{},
+		notifs:        map[string]store.Notification{},
+		pushSubs:      map[string]store.PushSubscription{},
+		projects:      map[string]store.Project{},
+		subs:          map[string]store.Subscription{},
+		facts:         map[int64]store.Fact{},
+		statusFacts:   map[string][]int64{},
+		itemFacts:     map[string]map[int64]store.FactTick{},
+		releases:      map[string]store.Release{},
+		itemReleases:  map[string]map[string]bool{},
+		snapshots:     map[string]store.ProgressSnapshot{},
+		agentSessions: map[string]store.AgentSession{},
 	}
 }
 
@@ -1871,6 +1875,19 @@ func (s *Store) MarkAllNotificationsRead(_ context.Context, recipientID string) 
 	now := time.Now()
 	for id, n := range s.notifs {
 		if n.RecipientID == recipientID && n.ReadAt == nil {
+			n.ReadAt = &now
+			s.notifs[id] = n
+		}
+	}
+	return nil
+}
+
+func (s *Store) MarkNotificationsReadByItem(_ context.Context, recipientID, itemID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	for id, n := range s.notifs {
+		if n.RecipientID == recipientID && n.ItemID == itemID && n.ReadAt == nil {
 			n.ReadAt = &now
 			s.notifs[id] = n
 		}

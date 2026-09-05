@@ -9,6 +9,7 @@ import (
 
 	"github.com/peios/acta/internal/account"
 	"github.com/peios/acta/internal/agent"
+	"github.com/peios/acta/internal/agentsession"
 	"github.com/peios/acta/internal/apitoken"
 	"github.com/peios/acta/internal/authn"
 	"github.com/peios/acta/internal/board"
@@ -25,20 +26,22 @@ import (
 )
 
 type handlers struct {
-	sessions   *session.Manager
-	provider   authn.Provider
-	passkeys   *passkey.Service
-	tokens     *apitoken.Service
-	agents     *agent.Service
-	accounts   *account.Service
-	workspaces *workspace.Service
-	board      *board.Service
-	memories   *memory.Service
-	mcpcfg     *mcpcfg.Service
-	live       live.Broker  // fans mutations to browsers over SSE; nil disables live updates
-	push       *push.Sender // Web Push delivery; nil disables push (no VAPID keys)
-	secure     bool
-	publicURL  string // browser-facing origin, for building item permalinks
+	sessions      *session.Manager
+	provider      authn.Provider
+	passkeys      *passkey.Service
+	tokens        *apitoken.Service
+	agents        *agent.Service
+	accounts      *account.Service
+	workspaces    *workspace.Service
+	board         *board.Service
+	memories      *memory.Service
+	mcpcfg        *mcpcfg.Service
+	live          live.Broker  // fans mutations to browsers over SSE; nil disables live updates
+	push          *push.Sender // Web Push delivery; nil disables push (no VAPID keys)
+	agentSessions *agentsession.Service
+	agentHub      *agentsession.Hub
+	secure        bool
+	publicURL     string // browser-facing origin, for building item permalinks
 }
 
 // tokensView is the data a token-management section renders from. The same
@@ -76,6 +79,22 @@ type chrome struct {
 	Unread        int
 	Notifications []notifView
 	Path          string
+	// AgentMode swaps the sidebar body from the workspace nav to a list of the
+	// user's agent sessions (the "My Agents" side of the sidebar's mode switch).
+	// AgentSessions is that list; ActiveSession is the id of the session the
+	// page is showing, "" on the list page.
+	AgentMode     bool
+	AgentSessions []agentSessionNav
+	ActiveSession string
+}
+
+// agentSessionNav is one sidebar row in agent mode: the session's label and
+// whether a harness currently holds it.
+type agentSessionNav struct {
+	ID      string
+	Title   string
+	Live    bool // held by a connected harness (resumable)
+	Running bool // a process is running right now
 }
 
 // boardNav is one sidebar board link. Href is the board's canonical view URL —
@@ -111,7 +130,9 @@ func buildNotifViews(notes []store.Notification) []notifView {
 	out := make([]notifView, 0, len(notes))
 	for _, n := range notes {
 		to := "/"
-		if n.WorkspaceSlug != "" && n.ItemID != "" {
+		if n.Kind == store.NotificationSession && n.ItemID != "" {
+			to = "/account/sessions/" + n.ItemID
+		} else if n.WorkspaceSlug != "" && n.ItemID != "" {
 			to = "/" + n.WorkspaceSlug + "?item=" + n.ItemID
 		}
 		out = append(out, notifView{

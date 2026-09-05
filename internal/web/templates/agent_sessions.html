@@ -1,0 +1,116 @@
+{{define "title"}}My Agents · Acta{{end}}
+{{define "content"}}
+<main class="agents-page">
+  <div class="reveal d1">
+    <div class="agents-head">
+      <div>
+        <h2 class="title">My Agents</h2>
+        <p class="subtitle">
+          A session is a Claude Code process on one of your machines, driven from here instead of a terminal.
+          Run <code>acta harness</code> on that machine to connect it.
+        </p>
+      </div>
+    </div>
+
+    {{if .Err}}<p class="alert" role="alert" style="margin-bottom: 1.2rem;">{{.Err}}</p>{{end}}
+
+    <div class="agents-grid">
+      <section class="agents-card">
+        <p class="section-title">Connected harnesses{{if .Harnesses}} <span class="count">{{len .Harnesses}}</span>{{end}}</p>
+        {{if .Harnesses}}
+        <div class="harness-list">
+          {{range .Harnesses}}
+          <div class="harness">
+            <span class="live-dot is-running" title="connected"></span>
+            <span class="harness-name">{{.Label}}</span>
+            <span class="harness-chips">{{range .Backends}}<span class="chip">{{.}}</span>{{end}}</span>
+            {{if .Cwd}}<span class="harness-cwd" title="{{.Cwd}}">{{.Cwd}}</span>{{end}}
+            <span class="harness-meta">{{len .Running}} running · {{len .Sessions}} held</span>
+          </div>
+          {{end}}
+        </div>
+        {{else}}
+        <div class="empty-block">
+          No harness connected. On the machine you want to work on, run <code>acta harness</code> and it will appear here.
+        </div>
+        {{end}}
+      </section>
+
+      <section class="agents-card">
+        <p class="section-title">New session</p>
+        <form class="new-session" method="post" action="/account/sessions" data-new-session data-picks="{{.PicksJSON}}">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <input type="hidden" name="harness" value="" data-harness-id>
+          <div class="fieldlbl span2">
+            <span>Harness</span>
+            {{if .Picks}}
+            <div class="hpicks" role="radiogroup" aria-label="Harness" data-hpicks>
+              {{range .Picks}}
+              <button type="button" class="hpick{{if .Recent}} is-on{{end}}" role="radio" aria-checked="{{if .Recent}}true{{else}}false{{end}}" data-hpick="{{.ID}}" title="{{.Cwd}}">
+                <span class="live-dot is-running"></span>
+                <span class="hpick-label">{{.Label}}</span>
+                <span class="hpick-meta">{{if .Running}}{{.Running}} running{{else if .Held}}{{.Held}} held{{else}}idle{{end}}</span>
+              </button>
+              {{end}}
+            </div>
+            {{else}}
+            <div class="empty-block">Connect a harness first: run <code>acta harness</code> on the machine you want to work on.</div>
+            {{end}}
+          </div>
+          <label class="fieldlbl">
+            <span>Title</span>
+            <div class="input-wrap"><input class="input" name="title" placeholder="Optional" maxlength="120" autocomplete="off"></div>
+          </label>
+          <label class="fieldlbl">
+            <span>Backend</span>
+            <select class="input" name="backend" data-backend>{{range .Backends}}<option value="{{.}}">{{.}}</option>{{end}}</select>
+          </label>
+          <div class="fieldlbl span2 cwd-field" data-cwd-field>
+            <span>Working directory</span>
+            <div class="input-wrap"><input class="input" name="cwd" placeholder="~/projects" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" data-cwd></div>
+            <div class="cwd-menu" data-cwd-menu hidden role="listbox"></div>
+          </div>
+          <div class="new-session-actions">
+            <span class="new-session-hint" data-cwd-hint>{{if .Picks}}Starts where the harness runs unless you pick a directory.{{else}}Connect a harness first.{{end}}</span>
+            <button class="btn-primary" type="submit"{{if not .Picks}} disabled{{end}}>Start session</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="agents-card">
+        <p class="section-title">Your sessions{{if .Sessions}} <span class="count">{{len .Sessions}}</span>{{end}}</p>
+        {{if .Sessions}}
+        <div class="sess-list">
+          {{range .Sessions}}
+          <div class="sess">
+            <span class="live-dot{{if .Running}} is-running{{else if .Live}} is-held{{end}}" data-session-dot="{{.ID}}" title="{{if .Running}}running{{else if .Live}}idle (harness connected){{else}}offline{{end}}"></span>
+            <div class="sess-main">
+              <div class="sess-title">
+                <a href="/account/sessions/{{.ID}}" data-session-name="{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.Backend}} session{{end}}</a>
+                <span class="{{if .Running}}badge-live{{else if .Live}}badge-held{{else}}badge-off{{end}}" data-session-badge="{{.ID}}">{{if .Running}}running{{else if .Live}}idle{{else}}offline{{end}}</span>
+              </div>
+              <div class="sess-meta">
+                <span class="chip">{{.Backend}}</span>
+                {{if .Cwd}}<span class="sess-cwd" title="{{.Cwd}}">{{.Cwd}}</span>{{end}}
+                <span title="{{.UpdatedAt.Format "2 Jan 2006, 15:04"}}">{{ago .UpdatedAt}}</span>
+              </div>
+            </div>
+            <div class="sess-actions">
+              <a class="btn-secondary" href="/account/sessions/{{.ID}}">Open</a>
+              <form method="post" action="/account/sessions/{{.ID}}/delete">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <button class="link-danger" type="submit">Delete</button>
+              </form>
+            </div>
+          </div>
+          {{end}}
+        </div>
+        {{else}}
+        <div class="empty-block">No sessions yet. Start one above and it will show up here and in the sidebar.</div>
+        {{end}}
+      </section>
+    </div>
+  </div>
+</main>
+{{end}}
+{{define "scripts"}}<script src="{{asset "/static/agent-sessions.js"}}"></script>{{end}}

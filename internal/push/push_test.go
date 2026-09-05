@@ -186,3 +186,25 @@ func TestToMessage(t *testing.T) {
 		t.Errorf("body = %q, want item title + excerpt", m.Body)
 	}
 }
+
+func TestToMessageSession(t *testing.T) {
+	m := toMessage(store.Notification{
+		Kind: store.NotificationSession, ItemID: "s1", ItemTitle: "Fix the build",
+		ActorName: "Claude", Verb: "permission", Summary: "needs permission for Bash: git push",
+	})
+	if m.Title != "Fix the build" {
+		t.Errorf("title = %q, want the session title", m.Title)
+	}
+	if m.Body != "Claude needs permission for Bash: git push" {
+		t.Errorf("body = %q", m.Body)
+	}
+	if m.URL != "/account/sessions/s1" {
+		t.Errorf("url = %q, want the session page", m.URL)
+	}
+	if m.Tag != "session-s1" {
+		t.Errorf("tag = %q, want per-session collapse", m.Tag)
+	}
+	if m := toMessage(store.Notification{Kind: store.NotificationSession, ItemID: "s2", ActorName: "Claude", Summary: "finished a turn"}); m.Title != "Claude session" {
+		t.Errorf("untitled session title = %q", m.Title)
+	}
+}

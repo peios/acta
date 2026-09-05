@@ -25,6 +25,7 @@ import (
 
 	"github.com/peios/acta/internal/account"
 	"github.com/peios/acta/internal/agent"
+	"github.com/peios/acta/internal/agentsession"
 	"github.com/peios/acta/internal/apitoken"
 	"github.com/peios/acta/internal/authn/local"
 	"github.com/peios/acta/internal/board"
@@ -146,6 +147,8 @@ func runServe(args []string) error {
 	boards := board.New(pg, boardOpts...)
 	tokens := apitoken.New(pg)
 	agents := agent.New(pg)
+	agentSessions := agentsession.New(pg)
+	agentHub := agentsession.NewHub(agentSessions)
 	accounts := account.New(pg)
 	memories := memory.New(pg)
 	mcpConfig := mcpcfg.New(pg)
@@ -160,7 +163,7 @@ func runServe(args []string) error {
 		BackoffMax:  cfg.LoginBackoffMax,
 	})
 	provider := local.NewProvider(pg, sessions, passkeys, cfg.CookieSecure(), local.WithThrottle(guard))
-	app := web.NewHandler(cfg, sessions, provider, passkeys, tokens, agents, accounts, workspaces, boards, memories, mcpConfig, pushSender)
+	app := web.NewHandler(cfg, sessions, provider, passkeys, tokens, agents, agentSessions, agentHub, accounts, workspaces, boards, memories, mcpConfig, pushSender)
 
 	// Health probes mount ahead of the app handler, so they skip auth, CSRF, and
 	// the access log. /readyz pings the database.

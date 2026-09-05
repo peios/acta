@@ -64,7 +64,7 @@
     line.className = 'notif-line';
     const actor = document.createElement('b');
     actor.textContent = msg.actor || 'Someone';
-    if (msg.nkind === 'activity') {
+    if (msg.nkind === 'activity' || msg.nkind === 'session') {
       // "<actor> moved to Doing" — the phrase is already rendered server-side.
       line.append(actor, document.createTextNode(' ' + (msg.summary || '')));
     } else {
@@ -75,7 +75,7 @@
     main.appendChild(line);
 
     // Sub-line: the item title for an activity row, the comment excerpt for a mention.
-    const sub = msg.nkind === 'activity' ? msg.title : msg.excerpt;
+    const sub = msg.nkind === 'activity' || msg.nkind === 'session' ? msg.title : msg.excerpt;
     if (sub) {
       const ex = document.createElement('span');
       ex.className = 'notif-ex';
@@ -91,6 +91,24 @@
     list.insertBefore(a, list.firstChild);
   }
 
+  // --- agent session presence ---
+  //
+  // Sidebar dots and list badges for agent sessions: grey = no harness holds
+  // it, blue = held (resumable) but no process, green = running.
+
+  function applyPresence(msg) {
+    const state = msg.running ? 'running' : msg.held ? 'held' : 'off';
+    document.querySelectorAll('[data-session-dot="' + msg.id + '"]').forEach((dot) => {
+      dot.classList.toggle('is-running', state === 'running');
+      dot.classList.toggle('is-held', state === 'held');
+      dot.title = state === 'running' ? 'running' : state === 'held' ? 'idle (harness connected)' : 'offline';
+    });
+    document.querySelectorAll('[data-session-badge="' + msg.id + '"]').forEach((b) => {
+      b.className = state === 'running' ? 'badge-live' : state === 'held' ? 'badge-held' : 'badge-off';
+      b.textContent = state === 'running' ? 'running' : state === 'held' ? 'idle' : 'offline';
+    });
+  }
+
   // --- event stream ---
 
   function handle(msg) {
@@ -100,6 +118,24 @@
     if (msg.kind === 'notif.add') {
       if (typeof msg.count === 'number') setBellCount(msg.count);
       prependNotif(msg);
+      return;
+    }
+    if (msg.kind === 'session.presence') {
+      applyPresence(msg);
+      return;
+    }
+    if (msg.kind === 'notif.count') {
+      // the unread set changed without a new row (a session's rows read by opening it)
+      setBellCount(msg.count);
+      return;
+    }
+    if (msg.kind === 'session.renamed') {
+      document.querySelectorAll('[data-session-name="' + msg.id + '"]').forEach((el) => {
+        if (el.matches('[data-rename-input]')) return;
+        el.textContent = msg.title;
+        if (el.title) el.title = msg.title;
+      });
+      if (document.querySelector('.chat-stage[data-session="' + msg.id + '"]')) document.title = msg.title + ' · Acta';
       return;
     }
     // Board + modal events are applied by board.js when it's present.

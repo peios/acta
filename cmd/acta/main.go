@@ -77,6 +77,8 @@ func run(cmd string, args []string) error {
 		return cmdUnsubscribe(args)
 	case "mcp":
 		return cmdMCP(args)
+	case "harness":
+		return cmdHarness(args)
 	case "version", "--version", "-v":
 		fmt.Println(version)
 		return nil
@@ -109,6 +111,7 @@ Usage:
   acta unsubscribe <type> <ref>   stop following (alias: unwatch) [--workspace slug]
   acta mcp install                wire an MCP client to Acta
   acta mcp proxy [profile]        bridge stdio MCP to Acta's HTTP MCP endpoint
+  acta harness                    run the agent harness (browser-driven Claude Code sessions)
 
 Environment (override the stored login):
   ACTA_URL        server base URL (default http://localhost:8080)

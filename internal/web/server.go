@@ -4,11 +4,14 @@
 package web
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/peios/acta/internal/account"
 	"github.com/peios/acta/internal/agent"
+	"github.com/peios/acta/internal/agentsession"
 	"github.com/peios/acta/internal/apitoken"
 	"github.com/peios/acta/internal/authn"
 	"github.com/peios/acta/internal/board"
@@ -19,6 +22,7 @@ import (
 	"github.com/peios/acta/internal/passkey"
 	"github.com/peios/acta/internal/push"
 	"github.com/peios/acta/internal/session"
+	"github.com/peios/acta/internal/store"
 	"github.com/peios/acta/internal/workspace"
 )
 
@@ -28,27 +32,56 @@ import (
 const maxBodyBytes = 1 << 20
 
 // NewHandler builds the application handler.
-func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Provider, passkeys *passkey.Service, tokens *apitoken.Service, agents *agent.Service, accounts *account.Service, workspaces *workspace.Service, boards *board.Service, memories *memory.Service, mcpConfig *mcpcfg.Service, pushSender *push.Sender) http.Handler {
+func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Provider, passkeys *passkey.Service, tokens *apitoken.Service, agents *agent.Service, agentSessions *agentsession.Service, agentHub *agentsession.Hub, accounts *account.Service, workspaces *workspace.Service, boards *board.Service, memories *memory.Service, mcpConfig *mcpcfg.Service, pushSender *push.Sender) http.Handler {
 	h := &handlers{
-		sessions:   sessions,
-		provider:   provider,
-		passkeys:   passkeys,
-		tokens:     tokens,
-		agents:     agents,
-		accounts:   accounts,
-		workspaces: workspaces,
-		board:      boards,
-		memories:   memories,
-		mcpcfg:     mcpConfig,
-		live:       live.NewHub(),
-		push:       pushSender,
-		secure:     cfg.CookieSecure(),
-		publicURL:  strings.TrimRight(cfg.RPOrigin, "/"),
+		sessions:      sessions,
+		provider:      provider,
+		passkeys:      passkeys,
+		tokens:        tokens,
+		agents:        agents,
+		agentSessions: agentSessions,
+		agentHub:      agentHub,
+		accounts:      accounts,
+		workspaces:    workspaces,
+		board:         boards,
+		memories:      memories,
+		mcpcfg:        mcpConfig,
+		live:          live.NewHub(),
+		push:          pushSender,
+		secure:        cfg.CookieSecure(),
+		publicURL:     strings.TrimRight(cfg.RPOrigin, "/"),
 	}
 	// Attach the live bell as a board notifier now that the hub exists, so
 	// subscription notifications (filed deep in the board) reach the bell over
 	// SSE the same way Web Push reaches it out of band.
 	boards.AddNotifier(newLiveNotifier(h.live, boards))
+	// Session presence (held/running) rides the owner's SSE user topic so the
+	// sidebar dots and list badges update without a reload.
+	if agentHub != nil {
+		agentHub.SetRenameNotifier(func(ownerID, sessionID, title string) {
+			h.publishLive(userTopic(ownerID), "session.renamed", "", map[string]any{"id": sessionID, "title": title})
+		})
+		// A session needing its owner files a notification, which the bell,
+		// the live stream and Web Push then deliver exactly as they would a
+		// mention — no channel of its own.
+		agentHub.SetAlertNotifier(func(ownerID string, as store.AgentSession, verb, summary string) {
+			title := as.Title
+			if title == "" {
+				title = as.Backend + " session"
+			}
+			if _, err := boards.File(context.Background(), store.Notification{
+				RecipientID: ownerID, Kind: store.NotificationSession,
+				ItemID: as.ID, ItemTitle: title, ActorName: "Claude", Verb: verb, Summary: summary,
+			}); err != nil {
+				slog.Error("session alert", "session", as.ID, "err", err)
+			}
+		})
+		agentHub.SetPresenceNotifier(func(ownerID, sessionID string, held, running bool) {
+			h.publishLive(userTopic(ownerID), "session.presence", "", map[string]any{
+				"id": sessionID, "held": held, "running": running,
+			})
+		})
+	}
 	mux := http.NewServeMux()
 
 	// Public routes.
@@ -192,6 +225,19 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("GET /account/memories/{mid}", protected(h.accountMemoryEdit))
 	mux.Handle("POST /account/memories/{mid}", protected(h.accountMemoryUpdate))
 	mux.Handle("POST /account/memories/{mid}/delete", protected(h.accountMemoryDelete))
+	// Agent sessions: browser-driven Claude Code (and later other backends)
+	// sessions relayed to a harness on the owner's machine. The list + chat
+	// pages and the browser chat websocket are cookie-authed UI; the harness
+	// websocket is Bearer-authed and mounts on the root mux (below), like the
+	// REST API, since a harness carries a token, not a cookie.
+	mux.Handle("GET /account/sessions", protected(h.agentSessionsPage))
+	mux.Handle("POST /account/sessions", protected(h.agentSessionCreate))
+	mux.Handle("GET /account/harnesses/{id}/dirs", protected(h.agentHarnessDirs))
+	mux.Handle("GET /account/sessions/lookup", protected(h.agentSessionLookup))
+	mux.Handle("GET /account/sessions/{id}", protected(h.agentSessionPage))
+	mux.Handle("POST /account/sessions/{id}/delete", protected(h.agentSessionDelete))
+	mux.Handle("POST /account/sessions/{id}/title", protected(h.agentSessionRename))
+	mux.Handle("GET /account/sessions/{id}/ws", protected(h.agentSessionBrowserWS))
 	mux.Handle("GET /account/agents", protected(h.accountAgents))
 	mux.Handle("POST /account/agents", protected(h.agentCreate))
 	mux.Handle("GET /account/agents/{id}", protected(h.agentDetail))
@@ -259,6 +305,8 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	api.HandleFunc("POST /api/v1/agents", h.apiCreateAgent)
 	api.HandleFunc("POST /api/v1/agents/{id}/tokens", h.apiCreateAgentToken)
 	api.HandleFunc("POST /api/v1/tokens", h.apiCreateSelfToken)
+	// Harness relay: a harness dials in here and holds the connection open.
+	api.HandleFunc("GET /api/v1/harness/ws", h.harnessWS)
 
 	// Model Context Protocol endpoint (Streamable HTTP). Like the REST API it is
 	// Bearer-authed and carries no cookies, so it mounts outside CSRF.

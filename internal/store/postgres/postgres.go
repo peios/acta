@@ -1999,6 +1999,13 @@ func (p *Postgres) MarkAllNotificationsRead(ctx context.Context, recipientID str
 	return err
 }
 
+func (p *Postgres) MarkNotificationsReadByItem(ctx context.Context, recipientID, itemID string) error {
+	const q = `UPDATE notifications SET read_at = now()
+	           WHERE recipient_id = $1 AND item_id = $2 AND read_at IS NULL`
+	_, err := p.pool.Exec(ctx, q, recipientID, itemID)
+	return err
+}
+
 // --- subscriptions ---
 
 const subCols = `id::text, subscriber_id::text, subject_type, subject_id, events, created_at`

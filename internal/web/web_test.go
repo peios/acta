@@ -14,6 +14,7 @@ import (
 
 	"github.com/peios/acta/internal/account"
 	"github.com/peios/acta/internal/agent"
+	"github.com/peios/acta/internal/agentsession"
 	"github.com/peios/acta/internal/apitoken"
 	"github.com/peios/acta/internal/authn/local"
 	"github.com/peios/acta/internal/board"
@@ -116,6 +117,8 @@ func buildTestHandlerStore(t *testing.T) (http.Handler, *memstore.Store) {
 	}
 	tokens := apitoken.New(ms)
 	agents := agent.New(ms)
+	agentSessions := agentsession.New(ms)
+	agentHub := agentsession.NewHub(agentSessions)
 	accounts := account.New(ms)
 	memories := memory.New(ms)
 	mcpConfig := mcpcfg.New(ms)
@@ -123,7 +126,7 @@ func buildTestHandlerStore(t *testing.T) (http.Handler, *memstore.Store) {
 		t.Fatal(err)
 	}
 	provider := local.NewProvider(ms, sessions, passkeys, false)
-	return web.NewHandler(config.Config{Env: "dev", RPOrigin: "http://localhost:8080"}, sessions, provider, passkeys, tokens, agents, accounts, workspaces, boards, memories, mcpConfig, pushSender), ms
+	return web.NewHandler(config.Config{Env: "dev", RPOrigin: "http://localhost:8080"}, sessions, provider, passkeys, tokens, agents, agentSessions, agentHub, accounts, workspaces, boards, memories, mcpConfig, pushSender), ms
 }
 
 func newTestClient() *http.Client {

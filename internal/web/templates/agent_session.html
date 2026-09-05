@@ -1,0 +1,168 @@
+{{define "title"}}{{if .Session.Title}}{{.Session.Title}}{{else}}Session{{end}} · Acta{{end}}
+{{define "content"}}
+<div class="chat-split" data-chat-split>
+<main class="chat-stage" data-csrf="{{.CSRFToken}}" data-session="{{.Session.ID}}" data-last-seq="{{.LastSeq}}" data-live="{{if .Live}}1{{else}}0{{end}}" data-running="{{if .Running}}1{{else}}0{{end}}" data-mode="{{with .Session.Options}}{{index . "permission_mode"}}{{end}}">
+  <header class="chat-head">
+    <div class="chat-head-main">
+      <div class="chat-title">
+        <button type="button" class="chat-name" data-session-name="{{.Session.ID}}" data-chat-rename title="Rename this session">{{if .Session.Title}}{{.Session.Title}}{{else}}{{.Session.Backend}} session{{end}}</button>
+        <input class="chat-name-edit" data-rename-input maxlength="120" hidden aria-label="Session title">
+        <span class="live-dot{{if .Running}} is-running{{else if .Live}} is-held{{end}}" data-session-dot="{{.Session.ID}}" title="{{if .Running}}running{{else if .Live}}idle (harness connected){{else}}offline{{end}}"></span>
+        <span class="chat-conn" data-chat-conn>&hellip;</span>
+        <button type="button" class="plan-pill" data-plan-pill hidden title="Show the plan"><svg class="ico" viewBox="0 0 16 16"><path d="M3 4h10M3 8h6M3 12h4"/><path d="m10.5 11 1.5 1.5L15 9.5"/></svg><span data-plan-pill-text>Plan</span></button>
+        <button type="button" class="plan-pill task-pill" data-task-pill hidden title="Jump to the task list"><svg class="ico" viewBox="0 0 16 16"><path d="M3 4h10M3 8h6M3 12h4"/><path d="m10.5 11 1.5 1.5L15 9.5"/></svg><span data-task-pill-text>Tasks</span></button>
+        <button type="button" class="plan-pill goal-pill" data-goal-pill hidden title="Show the goal" aria-haspopup="dialog" aria-expanded="false"><svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2.5"/><path d="M8 2.5V1M8 15v-1.5M2.5 8H1M15 8h-1.5"/></svg><span data-goal-pill-text>Goal</span></button>
+      </div>
+      <div class="goal-pop" data-goal-pop hidden role="dialog" aria-label="Goal">
+        <div class="goal-pop-cond" data-goal-cond></div>
+        <div class="goal-pop-status" data-goal-status></div>
+        <div class="goal-pop-last" data-goal-last hidden></div>
+        <div class="goal-pop-actions">
+          <button type="button" class="btn-secondary" data-goal-check title="Ask Claude Code to check the goal now">Check</button>
+          <span class="plan-foot-gap"></span>
+          <button type="button" class="btn-secondary" data-goal-clear>Clear goal</button>
+        </div>
+      </div>
+      <div class="chat-meta">
+        <code>{{.Session.Backend}}</code>
+        {{if .Session.Cwd}}<span class="chat-cwd" title="{{.Session.Cwd}}">{{.Session.Cwd}}</span>{{end}}
+      </div>
+    </div>
+    <div class="chat-gauges" data-gauges>
+      <div class="gauge" data-gauge="weekly" title="Weekly usage limit">
+        <div class="gauge-ring"><svg viewBox="0 0 44 44"><circle class="gauge-track" cx="22" cy="22" r="18"/><circle class="gauge-arc" cx="22" cy="22" r="18" style="stroke-dasharray:0 113.1" data-arc/></svg><span class="gauge-value" data-value>&ndash;</span></div>
+        <span class="gauge-label">Weekly</span>
+      </div>
+      <div class="gauge" data-gauge="fivehour" title="5-hour usage limit">
+        <div class="gauge-ring"><svg viewBox="0 0 44 44"><circle class="gauge-track" cx="22" cy="22" r="18"/><circle class="gauge-arc" cx="22" cy="22" r="18" style="stroke-dasharray:0 113.1" data-arc/></svg><span class="gauge-value" data-value>&ndash;</span></div>
+        <span class="gauge-label">5h</span>
+      </div>
+      <div class="gauge" data-gauge="context" title="Context window in use">
+        <div class="gauge-ring"><svg viewBox="0 0 44 44"><circle class="gauge-track" cx="22" cy="22" r="18"/><circle class="gauge-arc" cx="22" cy="22" r="18" style="stroke-dasharray:0 113.1" data-arc/></svg><span class="gauge-value" data-value>&ndash;</span></div>
+        <span class="gauge-label" data-label>Context</span>
+      </div>
+      <div class="gauge-pop" data-gauge-pop hidden role="dialog" aria-label="Context and usage">
+        <div class="gpop-sec">
+          <div class="gpop-head"><span class="pick-title">Context window</span><span class="gpop-sub" data-gpop-ctx></span><button type="button" class="gpop-refresh" data-gpop-refresh title="Refresh"><svg class="ico" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.6"/><path d="M13 2.5v3h-3"/></svg></button></div>
+          <div class="gpop-body" data-gpop-context><div class="pick-note">Loads when the session is idle.</div></div>
+        </div>
+        <div class="gpop-sec">
+          <div class="gpop-head"><span class="pick-title">Usage limits</span></div>
+          <div class="gpop-body gpop-text" data-gpop-usage><div class="pick-note">Loads when the session is idle.</div></div>
+        </div>
+        <div class="gpop-sec">
+          <div class="gpop-head"><span class="pick-title">Auto-compact</span><span class="gpop-sub" data-gpop-ac></span></div>
+          <div class="gpop-ac">
+            <button type="button" class="pick-toggle" data-gpop-ac-on>
+              <span class="pick-toggle-body"><span class="pick-toggle-name">Enabled</span><span class="pick-note" data-gpop-ac-note>summarise automatically when the window fills</span></span>
+              <span class="pick-switch" aria-hidden="true"></span>
+            </button>
+            <div class="gpop-window">
+              <span class="gpop-window-label">Window</span>
+              <button type="button" class="pick-seg-btn" data-gpop-ac-auto>auto</button>
+              <input class="gpop-num" data-gpop-ac-num placeholder="tokens" inputmode="numeric" aria-label="Auto-compact window in tokens">
+              <button type="button" class="btn-secondary gpop-set" data-gpop-ac-set>Set</button>
+            </div>
+          </div>
+        </div>
+        <div class="gpop-foot">
+          <span class="pick-note" data-gpop-note></span>
+          <button type="button" class="btn-secondary" data-gpop-compact title="Summarise the conversation so far to free up context">Compact now</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="perm-modal" data-perm-modal hidden>
+    <div class="perm-backdrop"></div>
+    <div class="perm-panel" role="dialog" aria-modal="true" aria-label="Permission request">
+      <div class="perm-head">
+        <span class="perm-ico"><svg class="ico" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></svg></span>
+        <span class="perm-title">Permission request</span>
+        <span class="perm-count" data-perm-count></span>
+      </div>
+      <div class="perm-tool"><span class="tool-name" data-perm-tool></span> <span class="perm-desc" data-perm-desc></span></div>
+      <div class="perm-input" data-perm-input></div>
+      <div class="perm-suggest" data-perm-suggest></div>
+      <input class="perm-msg" data-perm-msg placeholder="Optional message to Claude (used when denying)">
+      <div class="perm-actions">
+        <button type="button" class="btn-secondary perm-cancel" data-perm-cancel hidden title="Dismiss without answering">Cancel</button>
+        <button type="button" class="btn-secondary perm-deny" data-perm-deny>Deny</button>
+        <button type="button" class="btn-primary" data-perm-allow>Allow</button>
+      </div>
+    </div>
+  </div>
+
+  {{if .Err}}<p class="alert" role="alert" style="margin: .8rem 1rem;">{{.Err}}</p>{{end}}
+
+  <div class="chat-log" data-chat-log>
+    {{range .Frames}}
+    <div class="frame" data-seq="{{.Seq}}" data-kind="{{.Kind}}" data-payload="{{.Payload}}" data-at="{{.At}}"></div>
+    {{end}}
+  </div>
+
+  <div class="lightbox" data-lightbox hidden><img alt=""></div>
+
+  <form class="chat-input" data-chat-form>
+    <div class="slash-menu" data-slash-menu hidden role="listbox" aria-label="Commands"></div>
+    <div class="chat-attach" data-chat-attach hidden></div>
+    <textarea class="chat-box" data-chat-box rows="1" placeholder="Message the session&hellip;"></textarea>
+    <div class="chat-actions">
+      <span class="chat-hint">Enter to send &middot; Shift+Enter for a new line &middot; paste or drop images</span>
+      <div class="chat-actions-r">
+        <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple data-attach-file hidden>
+        <button type="button" class="btn-secondary chat-stop attach-btn" data-attach-btn title="Attach an image"><svg class="ico" viewBox="0 0 16 16"><rect x="2.5" y="3.5" width="11" height="9" rx="1.5"/><path d="m2.5 10.5 3-3 2.5 2.5 2-2 3.5 3.5"/><circle cx="10.5" cy="6.5" r="1"/></svg></button>
+        <div class="pick" data-model-pick>
+          <button type="button" class="mode-select pick-btn" data-model-btn title="Model, effort and fast mode for this session" aria-haspopup="dialog" aria-expanded="false">
+            <svg class="ico" viewBox="0 0 16 16"><path d="M8 2.5 9.4 6.6 13.5 8 9.4 9.4 8 13.5 6.6 9.4 2.5 8l4.1-1.4z"/></svg>
+            <span data-model-label>model&hellip;</span>
+          </button>
+          <div class="pick-pop" data-model-pop hidden role="dialog" aria-label="Model settings">
+            <div class="pick-sec"><div class="pick-title">Model</div><div class="pick-list" data-pick-models></div></div>
+            <div class="pick-sec"><div class="pick-title">Effort <span class="pick-sub">this session</span></div><div class="pick-seg" data-pick-effort></div></div>
+            <div class="pick-sec"><div class="pick-title">Output style <span class="pick-sub">this project</span></div><div class="pick-list" data-pick-styles></div></div>
+            <div class="pick-sec">
+              <button type="button" class="pick-toggle" data-pick-fast>
+                <span class="pick-toggle-body"><span class="pick-toggle-name">Fast mode</span><span class="pick-note" data-pick-fast-note></span></span>
+                <span class="pick-switch" aria-hidden="true"></span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <label class="mode-ctl" title="Permission mode for this session">
+          <svg class="ico" viewBox="0 0 16 16"><path d="M8 2.5 3.5 4.3v3.4c0 2.6 1.9 4.6 4.5 5.8 2.6-1.2 4.5-3.2 4.5-5.8V4.3z"/><path d="M6 8l1.5 1.5L10.2 6.7"/></svg>
+          <select class="mode-select" data-mode-select>
+            <option value="default">default (ask)</option>
+            <option value="acceptEdits">acceptEdits</option>
+            <option value="plan">plan</option>
+            <option value="auto">auto</option>
+          </select>
+        </label>
+        <button type="button" class="btn-secondary chat-stop" data-chat-stop title="End the current turn"><svg class="ico" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="1.5" fill="currentColor" stroke="none"/></svg>Stop</button>
+        <button type="submit" class="btn-primary chat-send">Send<svg class="ico" viewBox="0 0 16 16"><path d="M2.5 8h11M9 3.5 13.5 8 9 12.5"/></svg></button>
+      </div>
+    </div>
+  </form>
+</main>
+<aside class="plan-panel" data-plan-panel hidden aria-label="Plan">
+  <div class="plan-head">
+    <span class="plan-ico"><svg class="ico" viewBox="0 0 16 16"><path d="M3 4h10M3 8h6M3 12h4"/><path d="m10.5 11 1.5 1.5L15 9.5"/></svg></span>
+    <span class="plan-head-title">Plan</span>
+    <span class="plan-status" data-plan-status></span>
+    <button type="button" class="plan-close" data-plan-close aria-label="Close the plan"><svg class="ico" viewBox="0 0 16 16"><path d="M4 4 12 12M12 4 4 12"/></svg></button>
+  </div>
+  <div class="plan-body" data-plan-body></div>
+  <div class="plan-foot" data-plan-foot hidden>
+    <textarea class="plan-feedback" data-plan-feedback rows="2" placeholder="What should change? (sent back to Claude when you request changes)"></textarea>
+    <div class="plan-foot-actions">
+      <button type="button" class="btn-secondary" data-plan-changes>Request changes</button>
+      <span class="plan-foot-gap"></span>
+      <button type="button" class="btn-secondary" data-plan-approve-edits title="Approve and let Claude edit files without asking">Approve &amp; accept edits</button>
+      <button type="button" class="btn-primary" data-plan-approve>Approve</button>
+    </div>
+  </div>
+</aside>
+<div class="plan-backdrop" data-plan-backdrop hidden></div>
+</div>
+{{end}}
+{{define "scripts"}}<script src="{{asset "/static/agent-session.js"}}"></script>{{end}}

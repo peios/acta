@@ -208,6 +208,16 @@ type message struct {
 }
 
 func toMessage(n store.Notification) message {
+	if n.Kind == store.NotificationSession {
+		// The session is the subject: its title heads the push, the phrase
+		// ("needs permission for Bash: git push") is the body, and repeated
+		// pings about one session collapse into the latest.
+		title := n.ItemTitle
+		if title == "" {
+			title = "Claude session"
+		}
+		return message{Title: title, Body: n.ActorName + " " + n.Summary, URL: "/account/sessions/" + n.ItemID, Tag: "session-" + n.ItemID}
+	}
 	title := n.ActorName
 	switch n.Kind {
 	case store.NotificationMention:

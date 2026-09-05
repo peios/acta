@@ -1403,6 +1403,24 @@ func (s *Service) MarkNotificationRead(ctx context.Context, id, recipientID stri
 }
 
 // MarkAllNotificationsRead clears the recipient's whole unread set.
+// File writes a notification that originates outside the board (an agent
+// session needing its owner) and delivers it to every attached channel, the
+// same path a mention or a subscription hit takes. Best-effort like those: a
+// failed write is returned for the caller to log, never to surface.
+func (s *Service) File(ctx context.Context, n store.Notification) (store.Notification, error) {
+	n, err := s.store.CreateNotification(ctx, n)
+	if err != nil {
+		return n, err
+	}
+	s.notify(ctx, n.RecipientID, n)
+	return n, nil
+}
+
+// MarkItemNotificationsRead clears the recipient's unread rows about one item.
+func (s *Service) MarkItemNotificationsRead(ctx context.Context, recipientID, itemID string) error {
+	return s.store.MarkNotificationsReadByItem(ctx, recipientID, itemID)
+}
+
 func (s *Service) MarkAllNotificationsRead(ctx context.Context, recipientID string) error {
 	return s.store.MarkAllNotificationsRead(ctx, recipientID)
 }

@@ -5,12 +5,15 @@ import (
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"log/slog"
 	"mime"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 )
 
 func init() {
@@ -69,7 +72,25 @@ func refID(prefix string, num int) string {
 	return prefix + "-" + strconv.Itoa(num)
 }
 
-var funcMap = template.FuncMap{"asset": assetURL, "ref": refID}
+var funcMap = template.FuncMap{"asset": assetURL, "ref": refID, "hasPrefix": strings.HasPrefix, "ago": ago}
+
+// ago renders a time as a coarse relative phrase for list rows ("just now",
+// "4m ago", "3d ago"); the exact stamp belongs in a title attribute beside it.
+func ago(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	case d < 30*24*time.Hour:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	default:
+		return t.Format("2 Jan 2006")
+	}
+}
 
 // staticHandler serves the embedded /static assets. They're same-origin (so the
 // default-src 'self' CSP already permits them) and addressed with a content
@@ -99,7 +120,7 @@ func staticHandler() http.Handler {
 // across pages.
 var pages = func() map[string]*template.Template {
 	m := map[string]*template.Template{}
-	for _, name := range []string{"login.html", "board.html", "account.html", "workspaces.html", "principals.html", "settings_guide.html", "settings_prompts.html", "settings_prompt_form.html", "welcome.html", "archive.html", "activity.html", "projects.html", "project.html", "releases.html", "release.html", "agents.html", "agent_detail.html", "account_memories.html", "account_memory_edit.html", "workspace_memories.html", "workspace_memory_edit.html", "project_memories.html", "project_memory_edit.html", "settings_memories.html", "settings_memory_edit.html", "cli_authorize.html"} {
+	for _, name := range []string{"login.html", "board.html", "account.html", "workspaces.html", "principals.html", "settings_guide.html", "settings_prompts.html", "settings_prompt_form.html", "welcome.html", "archive.html", "activity.html", "projects.html", "project.html", "releases.html", "release.html", "agents.html", "agent_detail.html", "account_memories.html", "account_memory_edit.html", "workspace_memories.html", "workspace_memory_edit.html", "project_memories.html", "project_memory_edit.html", "settings_memories.html", "settings_memory_edit.html", "cli_authorize.html", "agent_sessions.html", "agent_session.html"} {
 		m[name] = template.Must(
 			template.New(name).Funcs(funcMap).ParseFS(templatesFS,
 				"templates/base.html", "templates/item_modal.html", "templates/tokens.html", "templates/"+name),

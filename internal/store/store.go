@@ -35,6 +35,7 @@ var (
 	ErrReleaseNotFound      = errors.New("store: release not found")
 	ErrReleaseNameTaken     = errors.New("store: release name already taken")
 	ErrMemoryNotFound       = errors.New("store: memory not found")
+	ErrAgentSessionNotFound = errors.New("store: agent session not found")
 )
 
 // MCPPrompt is a user-defined Model Context Protocol prompt: a named, optionally
@@ -477,6 +478,7 @@ type Memory struct {
 const (
 	NotificationMention  = "mention"  // someone @mentioned the recipient in a comment
 	NotificationActivity = "activity" // a subscription the recipient holds matched an event
+	NotificationSession  = "session"  // an agent session the recipient owns needs them, or stopped
 )
 
 // Subscription subject types — the kind of thing a principal can subscribe to.
@@ -541,6 +543,38 @@ type PushSubscription struct {
 	UserID    string
 	P256dh    string
 	Auth      string
+	CreatedAt time.Time
+}
+
+// AgentSession is a browser-driven agent session — a Claude Code (or, later,
+// another backend's) process that a harness on the owner's machine runs and
+// that Acta relays a chat to. ID is a UUID minted by Acta at creation and
+// passed to the backend as its own session id, so the two are one string and
+// resume needs no mapping. Backend names the adapter ("claude-code"); Cwd is
+// the directory the process runs in; Options is the backend-specific spawn
+// configuration (permission mode, say) as a JSON object, stored verbatim.
+type AgentSession struct {
+	ID        string
+	OwnerID   string
+	Backend   string
+	Cwd       string
+	Title     string
+	Options   map[string]any
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// AgentSessionEvent is one frame of a session's transcript: a wire message
+// between the harness and Acta, stored verbatim so the browser can render
+// exactly what was said and nothing is lost to a schema the renderer hasn't
+// caught up with. Seq is the append order (monotonic per store, not per
+// session). Kind is a coarse label for filtering ("event" for a backend event,
+// "input" for a user message, "state" for a harness lifecycle notice).
+type AgentSessionEvent struct {
+	Seq       int64
+	SessionID string
+	Kind      string
+	Payload   []byte // raw JSON
 	CreatedAt time.Time
 }
 
@@ -802,6 +836,20 @@ type Store interface {
 	// agent is deleted. Deleting zero rows is not an error.
 	DeleteMemoriesByScope(ctx context.Context, scope, scopeID string) error
 
+	// Agent sessions and their transcripts. CreateAgentSession requires the
+	// caller to have set ID (a UUID). AgentSessionsByOwner returns most
+	// recently updated first. AppendAgentSessionEvent stores one frame and
+	// bumps the session's updated_at; AgentSessionEvents returns a session's
+	// frames with seq > afterSeq in seq order (limit <= 0 means no cap).
+	// DeleteAgentSession removes the session and its transcript.
+	CreateAgentSession(ctx context.Context, s AgentSession) (AgentSession, error)
+	AgentSessionByID(ctx context.Context, id string) (AgentSession, error)
+	AgentSessionsByOwner(ctx context.Context, ownerID string) ([]AgentSession, error)
+	UpdateAgentSessionTitle(ctx context.Context, id, title string, updatedAt time.Time) (AgentSession, error)
+	DeleteAgentSession(ctx context.Context, id string) error
+	AppendAgentSessionEvent(ctx context.Context, e AgentSessionEvent) (AgentSessionEvent, error)
+	AgentSessionEvents(ctx context.Context, sessionID string, afterSeq int64, limit int) ([]AgentSessionEvent, error)
+
 	// Activity log. RecordEvent appends an entry (assigning its id). The two
 	// readers return newest-first, capped at limit (a non-positive limit is
 	// clamped to a sane default).
@@ -834,6 +882,10 @@ type Store interface {
 	UnreadNotificationCount(ctx context.Context, recipientID string) (int, error)
 	MarkNotificationRead(ctx context.Context, id, recipientID string) error
 	MarkAllNotificationsRead(ctx context.Context, recipientID string) error
+	// MarkNotificationsReadByItem clears the recipient's unread rows about one
+	// item (an agent session's id, for a session notification): opening the
+	// thing itself reads everything said about it.
+	MarkNotificationsReadByItem(ctx context.Context, recipientID, itemID string) error
 
 	// Subscriptions: a principal's standing interests, keyed by the unique triple
 	// (subscriber, subject_type, subject_id). EnsureSubscription inserts with the

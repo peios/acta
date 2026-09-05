@@ -11,5 +11,8 @@ services:
     volumes:
       - .:/src
     environment:
+      # The bind mount is owned by the host user, so git inside the container
+      # refuses it ("dubious ownership") and Go's VCS stamping fails the build.
+      GOFLAGS: -buildvcs=false
       ACTA_RP_ID: localhost
       ACTA_RP_ORIGIN: http://localhost:8080
