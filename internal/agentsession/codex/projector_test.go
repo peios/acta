@@ -256,3 +256,29 @@ func TestWire(t *testing.T) {
 		t.Errorf("stored")
 	}
 }
+
+func TestModelSwitchFollowsThreadSettings(t *testing.T) {
+	fs := frames(
+		"", `{"id":"acta-thread-start","result":{"thread":{"id":"`+thread+`"},"model":"gpt-6-astra","reasoningEffort":"high","serviceTier":"default","approvalPolicy":"on-request","approvalsReviewer":"auto_review","sandbox":{"type":"workspaceWrite"}}}`,
+		"", `{"method":"thread/settings/updated","params":{"threadSettings":{"model":"gpt-6-astra","effort":"high","serviceTier":"default","approvalPolicy":"on-request","approvalsReviewer":"auto_review","sandboxPolicy":{"type":"workspaceWrite"}}}}`,
+		"control", `{"id":"model-1","op":"setting","key":"model","value":"gpt-5.6-luna"}`,
+		"input", `{"text":"hi"}`,
+		"", `{"method":"thread/settings/updated","params":{"threadSettings":{"model":"gpt-5.6-luna","effort":"high","personality":"pragmatic","serviceTier":"default","approvalPolicy":"on-request","approvalsReviewer":"auto_review","sandboxPolicy":{"type":"workspaceWrite"}}}}`,
+		"", `{"method":"item/completed","params":{"item":{"type":"agentMessage","id":"m1","text":"hello","phase":"final_answer"},"turnId":"T1"}}`,
+	)
+	evs := run(t, fs)
+	nothingLost(t, fs, evs)
+	want := "session.init fold setting input setting→setting:3 setting assistant"
+	if got := kinds(evs); got != want {
+		t.Errorf("kinds:\n got %s\nwant %s", got, want)
+	}
+	last := evs[len(evs)-1]
+	if last.Data["model"] != "gpt-5.6-luna" {
+		t.Errorf("assistant model after switch = %v", last.Data["model"])
+	}
+	for _, e := range evs {
+		if e.T == model.Setting && e.To == "setting:3" && (e.Data["key"] != "model" || e.Data["value"] != "gpt-5.6-luna" || e.Data["requested"] != nil) {
+			t.Errorf("confirmation: %v", e.Data)
+		}
+	}
+}

@@ -480,6 +480,7 @@
     const note = el('div', 'frame-note');
     let label, value = d.value;
     if (d.key === 'permission_mode') { note.appendChild(svg(ICONS.shield)); label = 'permissions set to '; }
+    else if (d.key === 'personality') { note.appendChild(svg(ICONS.spark)); label = 'personality set to '; }
     else if (d.key === 'model') { note.appendChild(svg(ICONS.spark)); label = 'model set to '; const hit = catalogEntry(d.value) || modelCatalog.find(m => m.value === d.value); value = hit ? (hit.displayName || hit.value) : (d.value === 'default' ? 'default' : modelName(d.value)); }
     else if (d.key === 'output_style') { note.appendChild(svg(ICONS.spark)); label = 'output style set to '; }
     else { note.appendChild(svg(ICONS.spark)); label = (d.key || 'setting').replace(/_/g, ' ') + ' set to '; }
@@ -3123,7 +3124,8 @@
       case 'turn.end': return renderTurnEnd(ev);
       case 'setting': {
         if (d.key === 'permission_mode' && d.value && !d.requested) setMode(d.value);
-        if (d.key === 'output_style' && d.value) noteStyle(d.value);
+        if ((d.key === 'output_style' || d.key === 'personality') && d.value) noteStyle(d.value);
+        if (d.key === 'model' && d.value) { curModel = d.value === 'default' ? '' : d.value; paintModelSelect(); }
         const host = ev.to ? nodes.get(ev.to) : null;
         if (host && host.isConnected) { attachRaws(host, ev, 'response'); if (d.error) { host.classList.add('is-error'); host.querySelector('.frame-note').appendChild(el('span', 'local-text', ' · ' + d.error)); } return null; }
         return settingMarker(d);

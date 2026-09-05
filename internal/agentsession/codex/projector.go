@@ -30,7 +30,11 @@ type Projector struct {
 	compact     *compaction
 	lastDiff    string
 	goal        *goal
-	goalRef     string // the /goal marker the next goal notification folds into
+	goalRef     string            // the /goal marker the next goal notification folds into
+	settingRef  map[string]string // key -> the browser's setting marker awaiting the thread's confirmation
+	effort      string
+	personality string
+	tier        string
 	initDone    bool
 	initRef     string // where the thread's opening frames fold
 	turnHasEcho bool
@@ -57,7 +61,7 @@ type goal struct {
 
 // New returns a projector for one Codex session.
 func New() *Projector {
-	return &Projector{items: map[string]*item{}, approvals: map[string]*approval{}}
+	return &Projector{items: map[string]*item{}, approvals: map[string]*approval{}, settingRef: map[string]string{}}
 }
 
 func obj(raw json.RawMessage) map[string]any {
@@ -256,9 +260,14 @@ func (p *Projector) control(f model.Frame) []model.Event {
 			e.Ref = ref("setting", f)
 			return []model.Event{e}
 		}
-		// applied from the next turn, without a confirmation of its own
-		e := model.New(model.Setting, f).Set("key", key).Set("value", val)
+		// applied from the next turn; the thread reports its settings then,
+		// which confirms (or corrects) the marker
+		e := model.New(model.Setting, f).Set("key", key).Set("value", val).Set("requested", true)
 		e.Ref = ref("setting", f)
+		p.settingRef[key] = e.Ref
+		if key == "model" && val != "" {
+			p.model = val
+		}
 		return []model.Event{e}
 	case "catalog", "rewind", "rewind_files", "side_question":
 		return []model.Event{model.FoldTo(f, "", strings.ReplaceAll(op, "_", " "))}
@@ -479,6 +488,8 @@ func (p *Projector) threadOpened(f model.Frame, result, thread map[string]any, r
 		mdl = str(thread, "model")
 	}
 	p.model = mdl
+	p.effort = firstStr(str(result, "reasoningEffort"), str(thread, "reasoningEffort"))
+	p.tier = str(result, "serviceTier")
 	sb := sub(result, "sandbox")
 	mode := ModeName(str(result, "approvalPolicy"), str(sb, "type"), str(result, "approvalsReviewer"))
 	e := model.NewLabelled(model.SessionInit, f, "thread").Set("model", mdl).Set("permission_mode", mode).Set("cwd", firstStr(str(result, "cwd"), str(thread, "cwd"))).Set("conversation", p.thread).Set("effort", firstStr(str(result, "reasoningEffort"), str(thread, "reasoningEffort")))
@@ -823,7 +834,9 @@ func (p *Projector) notification(f model.Frame, m map[string]any) []model.Event 
 	case "model/rerouted":
 		p.model = str(params, "toModel")
 		return []model.Event{model.New(model.Notice, f).Set("level", "info").Set("text", "model rerouted from "+str(params, "fromModel")+" to "+str(params, "toModel")).Set("model", p.model).Set("subtype", method)}
-	case "thread/name/updated", "thread/settings/updated", "thread/status/changed", "mcpServer/startupStatus/updated", "remoteControl/status/changed",
+	case "thread/settings/updated":
+		return p.settingsUpdated(f, sub(params, "threadSettings"))
+	case "thread/name/updated", "thread/status/changed", "mcpServer/startupStatus/updated", "remoteControl/status/changed",
 		"deprecationNotice", "configWarning", "thread/closed", "thread/queue/changed", "skills/changed", "account/updated", "app/list/updated", "thread/environment/connected", "thread/environment/disconnected":
 		return []model.Event{model.FoldTo(f, "", strings.TrimPrefix(method, "thread/"))}
 	case "thread/compacted":
@@ -833,6 +846,58 @@ func (p *Projector) notification(f model.Frame, m map[string]any) []model.Event 
 		return []model.Event{model.FoldTo(f, "", "compacted")}
 	}
 	return []model.Event{model.New(model.Unknown, f).Set("kind", method).Set("text", method)}
+}
+
+// settingsUpdated: the thread reporting its settings (after every turn
+// start). Each changed one becomes a setting event: confirming the marker
+// the browser drew when it asked, or standing alone when the change came
+// from elsewhere. The first report (before anything changed) folds away.
+func (p *Projector) settingsUpdated(f model.Frame, ts map[string]any) []model.Event {
+	sb := sub(ts, "sandboxPolicy")
+	cur := map[string]string{
+		"model":           str(ts, "model"),
+		"effort":          str(ts, "effort"),
+		"personality":     str(ts, "personality"),
+		"service_tier":    str(ts, "serviceTier"),
+		"permission_mode": ModeName(str(ts, "approvalPolicy"), str(sb, "type"), str(ts, "approvalsReviewer")),
+	}
+	prev := map[string]string{"model": p.model, "effort": p.effort, "personality": p.personality, "service_tier": p.tier}
+	first := p.effort == "" && p.personality == "" && p.tier == ""
+	p.model, p.effort, p.personality, p.tier = cur["model"], cur["effort"], cur["personality"], cur["service_tier"]
+	var out []model.Event
+	carried := false
+	for _, key := range []string{"model", "effort", "personality", "service_tier", "permission_mode"} {
+		val := cur[key]
+		to := p.settingRef[key]
+		changed := key != "permission_mode" && val != "" && val != prev[key]
+		if to == "" && (!changed || first) {
+			continue
+		}
+		delete(p.settingRef, key)
+		var e model.Event
+		switch key {
+		case "effort":
+			e = model.New(model.Effort, f).Set("value", val)
+		case "service_tier":
+			e = model.New(model.Fast, f).Set("on", val == "priority")
+		default:
+			e = model.New(model.Setting, f).Set("key", key).Set("value", val)
+		}
+		if carried {
+			e.Raw = nil // the frame rides the first event
+		}
+		carried = true
+		if to != "" {
+			e.To = to
+		} else {
+			e.Ref = ref("setting", f)
+		}
+		out = append(out, e)
+	}
+	if !carried {
+		return []model.Event{model.FoldTo(f, "", "settings")}
+	}
+	return out
 }
 
 // actionSummary names the tool and input of an automatic review's target.
