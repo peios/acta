@@ -1,97 +1,87 @@
 package agentsession
 
 import (
-	"encoding/json"
 	"path"
 	"strconv"
 	"strings"
+
+	"github.com/peios/acta/internal/agentsession/model"
 )
 
 // Alerts are the moments a session's owner should hear about when they are not
-// looking at it: Claude is blocked on them (a permission, a question, a plan,
-// an MCP elicitation), or the session stopped (a turn ended, an error, the
-// process died). Everything else is just the transcript moving.
+// looking at it: the agent is blocked on them (a permission, a question, a
+// plan, an MCP elicitation), or the session stopped (a turn ended, an error,
+// the process died). Everything else is just the transcript moving. They are
+// read off the model events, so every backend rings the same bell.
 
-// alertFor classifies one stored frame. verb is a short stable key (drives
-// glyphs and tests), summary the phrase the bell shows after "Claude".
-func alertFor(kind string, payload json.RawMessage) (verb, summary string, ok bool) {
-	switch kind {
-	case "control_request":
-		var p struct {
-			Request struct {
-				Subtype  string `json:"subtype"`
-				ToolName string `json:"tool_name"`
-				Display  string `json:"display_name"`
-				Server   string `json:"mcp_server_name"`
-				Message  string `json:"message"`
-				Desc     string `json:"description"`
-				Input    struct {
-					Command   string `json:"command"`
-					FilePath  string `json:"file_path"`
-					Desc      string `json:"description"`
-					Questions []struct {
-						Question string `json:"question"`
-					} `json:"questions"`
-				} `json:"input"`
-			} `json:"request"`
+// alertFor classifies one projected event. verb is a short stable key (drives
+// glyphs and tests), summary the phrase the bell shows after the agent's name.
+func alertFor(e model.Event) (verb, summary string, ok bool) {
+	d := e.Data
+	s := func(k string) string {
+		if d == nil {
+			return ""
 		}
-		if json.Unmarshal(payload, &p) != nil {
-			return "", "", false
+		v, _ := d[k].(string)
+		return v
+	}
+	switch e.T {
+	case model.ApprovalRequest:
+		if b, _ := d["auto"].(bool); b {
+			return "", "", false // the backend's own reviewer is deciding it
 		}
-		r := p.Request
-		switch r.Subtype {
+		switch s("kind") {
 		case "elicitation":
-			return "elicitation", "needs input for " + firstNonEmpty(r.Server, "an MCP server") + clip(r.Message, 80), true
-		case "can_use_tool":
-			switch r.ToolName {
-			case "AskUserQuestion":
-				q := ""
-				if len(r.Input.Questions) > 0 {
-					q = r.Input.Questions[0].Question
+			return "elicitation", "needs input for " + firstNonEmpty(s("server"), "an MCP server") + clip(s("message"), 80), true
+		case "question":
+			q := ""
+			if qs, _ := d["questions"].([]any); len(qs) > 0 {
+				if qm, _ := qs[0].(map[string]any); qm != nil {
+					q, _ = qm["question"].(string)
 				}
-				return "question", "has a question" + clip(q, 100), true
-			case "ExitPlanMode":
-				return "plan", "wants approval for a plan", true
-			case "":
-				return "", "", false
 			}
-			name := firstNonEmpty(r.Display, r.ToolName)
-			detail := firstNonEmpty(r.Input.Command, path.Base(r.Input.FilePath), r.Input.Desc, r.Desc)
+			return "question", "has a question" + clip(q, 100), true
+		case "plan":
+			return "plan", "wants approval for a plan", true
+		case "tool":
+			name := firstNonEmpty(s("display"), s("tool"), "a tool")
+			detail := s("description")
+			if in, _ := d["input"].(map[string]any); in != nil {
+				cmd, _ := in["command"].(string)
+				fp, _ := in["file_path"].(string)
+				desc, _ := in["description"].(string)
+				if fp != "" {
+					fp = path.Base(fp)
+				}
+				detail = firstNonEmpty(cmd, fp, desc, detail)
+			}
 			return "permission", "needs permission for " + name + clip(detail, 80), true
 		}
-	case "result":
-		var p struct {
-			Subtype string `json:"subtype"`
-			IsError bool   `json:"is_error"`
-			Result  string `json:"result"`
-			Errors  []any  `json:"errors"`
-		}
-		if json.Unmarshal(payload, &p) != nil {
-			return "", "", false
-		}
-		if p.IsError || strings.HasPrefix(p.Subtype, "error") {
-			return "failed", "stopped on an error (" + strings.ReplaceAll(strings.TrimPrefix(p.Subtype, "error_"), "_", " ") + ")", true
-		}
-		return "turn_ended", "finished a turn" + clip(p.Result, 100), true
-	case "state":
-		var p struct {
-			State string `json:"state"`
-			Code  int    `json:"code"`
-			Error string `json:"error"`
-		}
-		if json.Unmarshal(payload, &p) != nil {
-			return "", "", false
-		}
-		switch p.State {
-		case "exit":
-			if p.Code != 0 {
-				return "exited", "exited with code " + itoa(p.Code), true
+		return "", "", false
+	case model.TurnEnd:
+		if okv, _ := d["ok"].(bool); !okv {
+			if b, _ := d["interrupted"].(bool); b {
+				return "", "", false // the owner stopped it
 			}
-		case "spawn_error":
-			return "failed", "couldn't start" + clip(p.Error, 100), true
-		case "resume_failed":
-			return "failed", "couldn't resume the conversation and started fresh", true
+			return "failed", "stopped on an error" + clip(s("error"), 80), true
 		}
+		return "turn_ended", "finished a turn" + clip(s("result"), 100), true
+	case model.SessionExit:
+		code := 0
+		switch v := d["code"].(type) {
+		case int:
+			code = v
+		case float64:
+			code = int(v)
+		}
+		if b, _ := d["expected"].(bool); b || code == 0 {
+			return "", "", false
+		}
+		return "exited", "exited with code " + strconv.Itoa(code), true
+	case model.SessionSpawnError:
+		return "failed", "couldn't start" + clip(s("error"), 100), true
+	case model.SessionResumeFail:
+		return "failed", "couldn't resume the conversation and started fresh", true
 	}
 	return "", "", false
 }
@@ -119,5 +109,3 @@ func firstNonEmpty(xs ...string) string {
 	}
 	return ""
 }
-
-func itoa(n int) string { return strconv.Itoa(n) }

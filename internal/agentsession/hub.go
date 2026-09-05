@@ -97,22 +97,23 @@ func (h *Hub) focused(sessionID string) bool {
 	return false
 }
 
-// maybeAlert raises an alert for a frame that warrants one, unless the owner
-// is watching. Session lookup and delivery run off the relay path.
-func (h *Hub) maybeAlert(ownerID, sessionID, kind string, payload json.RawMessage) {
+// maybeAlert raises an alert for a projected event that warrants one,
+// unless the owner is watching. Session lookup and delivery run off the
+// relay path.
+func (h *Hub) maybeAlert(sessionID string, e model.Event) {
 	if h.alert == nil {
 		return
 	}
-	verb, summary, ok := alertFor(kind, payload)
+	verb, summary, ok := alertFor(e)
 	if !ok || h.focused(sessionID) {
 		return
 	}
 	go func() {
-		as, err := h.svc.Get(context.Background(), sessionID, ownerID)
+		as, err := h.svc.store.AgentSessionByID(context.Background(), sessionID)
 		if err != nil {
 			return
 		}
-		h.alert(ownerID, as, verb, summary)
+		h.alert(as.OwnerID, as, verb, summary)
 	}()
 }
 
@@ -702,7 +703,6 @@ func (h *Hub) HarnessFrame(ctx context.Context, c *harnessConn, in Inbound) {
 			return
 		}
 		h.record(ctx, in.Session, kind, in.Payload)
-		h.maybeAlert(c.ownerID, in.Session, kind, in.Payload)
 		if d != nil {
 			h.afterFrame(ctx, c, d, in.Session, kind, in.Payload)
 		}
@@ -745,8 +745,6 @@ func (h *Hub) HarnessFrame(ctx context.Context, c *harnessConn, in Inbound) {
 		}
 	case FrameSpawnError:
 		h.recordState(ctx, in.Session, map[string]any{"state": "spawn_error", "error": in.Error})
-		raw, _ := json.Marshal(map[string]any{"state": "spawn_error", "error": in.Error})
-		h.maybeAlert(c.ownerID, in.Session, "state", raw)
 	case FrameExit:
 		code := 0
 		if in.Code != nil {
@@ -777,8 +775,6 @@ func (h *Hub) HarnessFrame(ctx context.Context, c *harnessConn, in Inbound) {
 			}
 		}
 		h.recordState(ctx, in.Session, map[string]any{"state": "exit", "code": code})
-		raw, _ := json.Marshal(map[string]any{"state": "exit", "code": code})
-		h.maybeAlert(c.ownerID, in.Session, "state", raw)
 		if len(held) > 0 && !retried {
 			// The process died holding a message it never answered (it was
 			// written in the moment between the death and its report): start

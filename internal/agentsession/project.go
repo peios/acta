@@ -93,6 +93,9 @@ func (h *Hub) emit(ctx context.Context, sessionID string, ev store.AgentSessionE
 	sp.mu.Unlock()
 	for _, e := range evs {
 		h.fanout(sessionID, e)
+		if stored {
+			h.maybeAlert(sessionID, e)
+		}
 	}
 }
 
