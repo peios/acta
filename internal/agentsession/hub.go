@@ -175,7 +175,11 @@ func (h *Hub) sendNameCommand(ctx context.Context, c *harnessConn, sessionID, ti
 	if d == nil {
 		return
 	}
-	lines, echo := d.Rename(title)
+	as, err := h.svc.store.AgentSessionByID(ctx, sessionID)
+	if err != nil {
+		return
+	}
+	lines, echo := d.Rename(as, title)
 	if echo != "" {
 		raw, _ := json.Marshal(map[string]any{"text": echo})
 		h.record(ctx, sessionID, "input", raw)
@@ -201,7 +205,7 @@ func (h *Hub) deliver(ctx context.Context, c *harnessConn, sessionID, text strin
 	if !c.isRunning(sessionID) {
 		h.spawn(c, as, true)
 	}
-	line := d.InputLine(text, images)
+	line := d.InputLine(as, text, images)
 	// Remember it until the process has clearly taken it: if this spawn turns
 	// out to be a resume of a session with no stored conversation, the
 	// process dies at once and the message must go to its replacement.
@@ -711,6 +715,15 @@ func (h *Hub) HarnessFrame(ctx context.Context, c *harnessConn, in Inbound) {
 			delete(c.resuming, in.Session)
 		}
 		c.mu.Unlock()
+		// the backend's opening lines (a handshake, the thread to open or
+		// resume) go in before anything else
+		if d := h.driverOf(ctx, in.Session); d != nil {
+			if as, err := h.svc.store.AgentSessionByID(ctx, in.Session); err == nil {
+				for _, l := range d.StartLines(as, in.Resumed) {
+					c.write(in.Session, l)
+				}
+			}
+		}
 		spawned := map[string]any{"state": "spawned", "resumed": in.Resumed}
 		if len(in.Styles) > 0 {
 			spawned["styles"] = in.Styles
@@ -852,9 +865,10 @@ func (h *Hub) Mark(ctx context.Context, sessionID, kind string, payload json.Raw
 	h.record(ctx, sessionID, kind, payload)
 }
 
-// Control persists a browser-authored control message (a permission answer or
-// a mode change) and forwards it to the harness holding the session.
-func (h *Hub) Control(ctx context.Context, ownerID, sessionID string, payload json.RawMessage) {
+// Control persists a browser operation (an approval answer, a setting
+// change, a catalogue request, a rewind step) and forwards the lines the
+// session's driver makes of it to the harness holding the session.
+func (h *Hub) Control(ctx context.Context, ownerID, sessionID string, op BrowserOp, payload json.RawMessage) {
 	h.record(ctx, sessionID, "control", payload)
 	d := h.driverOf(ctx, sessionID)
 	if d != nil {
@@ -862,15 +876,23 @@ func (h *Hub) Control(ctx context.Context, ownerID, sessionID string, payload js
 			_ = h.svc.SetOption(ctx, sessionID, k, v)
 		}
 	}
-	if c := h.harnessFor(ownerID, sessionID); c != nil {
-		// a control for a session with no process (an answer to a prompt
-		// that died with it) has nothing to reach
-		if d != nil && c.isRunning(sessionID) {
-			c.write(sessionID, d.ControlLine(payload))
-		}
+	c := h.harnessFor(ownerID, sessionID)
+	if c == nil {
+		h.recordState(ctx, sessionID, map[string]any{"state": "undelivered", "reason": "no harness connected"})
 		return
 	}
-	h.recordState(ctx, sessionID, map[string]any{"state": "undelivered", "reason": "no harness connected"})
+	// an operation for a session with no process (an answer to a prompt
+	// that died with it) has nothing to reach; a setting is still remembered
+	if d == nil || !c.isRunning(sessionID) {
+		return
+	}
+	as, err := h.svc.store.AgentSessionByID(ctx, sessionID)
+	if err != nil {
+		return
+	}
+	for _, l := range d.ControlLines(as, op) {
+		c.write(sessionID, l)
+	}
 }
 
 // Stop ends the session's current turn: the backend's own interrupt when it
@@ -881,9 +903,11 @@ func (h *Hub) Stop(ownerID, sessionID string) {
 		return
 	}
 	if d := h.driverOf(context.Background(), sessionID); d != nil && c.isRunning(sessionID) {
-		if line := d.InterruptLine(); line != nil {
-			c.write(sessionID, line)
-			return
+		if as, err := h.svc.store.AgentSessionByID(context.Background(), sessionID); err == nil {
+			if line := d.InterruptLine(as); line != nil {
+				c.write(sessionID, line)
+				return
+			}
 		}
 	}
 	c.send(Outbound{T: FrameStop, Session: sessionID})
@@ -910,8 +934,8 @@ func (h *Hub) Spawn(as store.AgentSession, target string) bool {
 // backend's conversation id for resume, drop the held message once taken,
 // and have the harness tail (or stop tailing) a background task's output.
 func (h *Hub) afterFrame(ctx context.Context, c *harnessConn, d Driver, session, kind string, payload json.RawMessage) {
-	if cid := d.Conversation(session, kind, payload); cid != "" {
-		_ = h.svc.SetOption(ctx, session, "conversation", cid)
+	for k, v := range d.Notes(session, kind, payload) {
+		_ = h.svc.SetOption(ctx, session, k, v)
 	}
 	if d.Acknowledged(kind, payload) {
 		c.mu.Lock()

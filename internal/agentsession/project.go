@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/peios/acta/internal/agentsession/claude"
 	"github.com/peios/acta/internal/agentsession/model"
 	"github.com/peios/acta/internal/store"
 )
@@ -19,9 +18,8 @@ import (
 // NewProjector returns a fresh projector for a backend, or nil for one Acta
 // cannot project (its frames then reach the browser as "unknown" events).
 func NewProjector(backend string) model.Projector {
-	switch backend {
-	case "claude-code":
-		return claude.New()
+	if d := DriverFor(backend); d != nil {
+		return d.Projector()
 	}
 	return nil
 }

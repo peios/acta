@@ -464,10 +464,12 @@ func (h *handlers) agentSessionBrowserWS(w http.ResponseWriter, r *http.Request)
 				h.agentHub.Mark(context.Background(), as.ID, "rewind", in.Payload)
 			}
 		case "control":
-			// Must be a JSON object, and small: a permission answer or a mode
-			// change, never a bulk payload.
-			if len(in.Payload) > 0 && len(in.Payload) < 64<<10 && json.Valid(in.Payload) && strings.HasPrefix(strings.TrimSpace(string(in.Payload)), "{") {
-				h.agentHub.Control(context.Background(), p.ID, as.ID, in.Payload)
+			// A browser operation: must be a small JSON object naming an op.
+			if len(in.Payload) > 0 && len(in.Payload) < 64<<10 {
+				var op agentsession.BrowserOp
+				if json.Unmarshal(in.Payload, &op) == nil && op.Op != "" {
+					h.agentHub.Control(context.Background(), p.ID, as.ID, op, in.Payload)
+				}
 			}
 		}
 	}

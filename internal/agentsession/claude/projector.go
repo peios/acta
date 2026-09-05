@@ -341,6 +341,10 @@ func (p *Projector) input(f model.Frame) []model.Event {
 
 func (p *Projector) control(f model.Frame) []model.Event {
 	m := obj(f.Payload)
+	if op := str(m, "op"); op != "" {
+		return p.browserOp(f, m, op)
+	}
+	// older transcripts hold Claude Code's own control shapes
 	switch str(m, "type") {
 	case "control_response":
 		resp := sub(m, "response")
@@ -379,6 +383,58 @@ func (p *Projector) control(f model.Frame) []model.Event {
 		return []model.Event{e}
 	}
 	return []model.Event{model.New(model.Unknown, f).Set("kind", "control")}
+}
+
+// browserOp projects a neutral browser operation (see agentsession.BrowserOp).
+func (p *Projector) browserOp(f model.Frame, m map[string]any, op string) []model.Event {
+	id := str(m, "id")
+	switch op {
+	case "answer":
+		// the same resolution the driver's control_response gets
+		r := map[string]any{}
+		switch str(m, "outcome") {
+		case "accept", "decline", "cancel":
+			r["action"] = str(m, "outcome")
+			if c, ok := m["content"]; ok {
+				r["content"] = c
+			}
+		case "deny":
+			r["behavior"] = "deny"
+			r["message"] = str(m, "message")
+		default:
+			r["behavior"] = "allow"
+			in := sub(m, "input")
+			if in == nil {
+				in = map[string]any{}
+			}
+			if a := sub(m, "answers"); a != nil {
+				in["answers"] = a
+			}
+			r["updatedInput"] = in
+			if perms, ok := m["permissions"]; ok {
+				r["updatedPermissions"] = perms
+			}
+		}
+		return p.approvalAnswer(f, id, r, true)
+	case "setting":
+		key, val := str(m, "key"), str(m, "value")
+		switch key {
+		case "effort":
+			return []model.Event{model.FoldTo(f, "", "effort")}
+		case "fast":
+			return []model.Event{model.FoldTo(f, "", "fast")}
+		}
+		e := model.New(model.Setting, f).Set("key", key).Set("value", val).Set("requested", true)
+		e.Ref = ref("setting", f)
+		if id != "" {
+			p.settingIDs[id] = e.Ref
+		}
+		p.lastMode = e.Ref
+		return []model.Event{e}
+	case "catalog", "rewind", "rewind_files", "side_question":
+		return []model.Event{model.FoldTo(f, "", strings.ReplaceAll(op, "_", " "))}
+	}
+	return []model.Event{model.New(model.Unknown, f).Set("kind", "control").Set("text", "browser operation: "+op)}
 }
 
 // approvalAnswer resolves an approval from an answer: ours (mine=true) or
@@ -737,6 +793,11 @@ func (p *Projector) assistant(f model.Frame) []model.Event {
 			if c != nil {
 				c.replied = true
 				e.To = c.ref
+			} else {
+				// asked through the picker (no input marker): the reply is the
+				// marker, and the empty result that follows folds into it
+				e.Ref = ref("cmd", f)
+				p.cmds = append(p.cmds, &cmd{ref: e.Ref, name: "effort", kind: "effort", replied: true})
 			}
 			return []model.Event{e}
 		}
@@ -751,6 +812,9 @@ func (p *Projector) assistant(f model.Frame) []model.Event {
 			if c != nil {
 				c.replied = true
 				e.To = c.ref
+			} else {
+				e.Ref = ref("cmd", f)
+				p.cmds = append(p.cmds, &cmd{ref: e.Ref, name: "fast", kind: "fast", replied: true})
 			}
 			return []model.Event{e}
 		}

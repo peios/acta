@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/peios/acta/internal/agentsession/claude"
+	"github.com/peios/acta/internal/agentsession/codex"
 	"github.com/peios/acta/internal/agentsession/model"
 	"github.com/peios/acta/internal/store"
 )
@@ -28,18 +29,24 @@ type Driver interface {
 	// Acknowledged reports whether a line proves the backend took the last
 	// message, so a message held back for a failed resume can be dropped.
 	Acknowledged(kind string, payload json.RawMessage) bool
-	// InputLine composes the stdin line that delivers a user message.
-	InputLine(text string, images []ImageIn) []byte
+	// StartLines are written as soon as the process is up: a handshake, a
+	// thread to open or resume. Nil for a backend that needs none.
+	StartLines(as store.AgentSession, resume bool) [][]byte
+	// InputLine composes the stdin line that delivers a user message (the
+	// session's options say which conversation and turn it belongs to).
+	InputLine(as store.AgentSession, text string, images []ImageIn) []byte
 	// InterruptLine composes the stdin line that ends the current turn while
 	// keeping the process; nil when the backend has none (signal instead).
-	InterruptLine() []byte
-	// ControlLine composes the stdin line for a browser-authored control
-	// payload (a permission answer, a mode change), or nil to drop it.
-	ControlLine(payload json.RawMessage) []byte
-	// Conversation extracts the backend's own conversation id from a stored
-	// frame, when it differs from the session id (after a /clear, say), so a
-	// later resume continues the right one. "" when the frame names none.
-	Conversation(sessionID, kind string, payload json.RawMessage) string
+	InterruptLine(as store.AgentSession) []byte
+	// ControlLines composes the stdin lines for a browser operation (see
+	// BrowserOp): an approval answer, a setting change, a catalogue request,
+	// a rewind step. Nil drops it.
+	ControlLines(as store.AgentSession, op BrowserOp) [][]byte
+	// Notes extracts, from a stored frame, what the session must remember
+	// for later lines: the backend's own conversation id (for a resume), the
+	// active turn (for an interrupt). Keys go into the session's options; an
+	// empty value removes the key.
+	Notes(sessionID, kind string, payload json.RawMessage) map[string]string
 	// Option extracts a setting change from an outgoing line (a mode or
 	// model control, an /effort message) to remember for the next resume.
 	Option(kind string, payload json.RawMessage) (key, value string, ok bool)
@@ -54,7 +61,7 @@ type Driver interface {
 	// Rename composes the lines that give the backend's own session Acta's
 	// title, plus the input text to record in the transcript for them ("" to
 	// record nothing).
-	Rename(title string) (lines [][]byte, echo string)
+	Rename(as store.AgentSession, title string) (lines [][]byte, echo string)
 	// TitleRequest composes a line asking the backend to name the session
 	// after its first message; nil when the backend cannot. TitleAnswer
 	// recognises the reply (by the request id), so it never reaches the
@@ -78,6 +85,7 @@ type Launch struct {
 // drivers is the registry of backends Acta can run.
 var drivers = map[string]Driver{
 	"claude-code": claudeDriver{},
+	"codex":       codexDriver{},
 }
 
 // DriverFor returns the driver for a backend name, or nil.
@@ -105,17 +113,23 @@ func (claudeDriver) Stored(kind string, p json.RawMessage) bool { return claude.
 func (claudeDriver) Acknowledged(kind string, _ json.RawMessage) bool {
 	return kind == "assistant"
 }
-func (claudeDriver) InputLine(text string, images []ImageIn) []byte {
+func (claudeDriver) StartLines(store.AgentSession, bool) [][]byte { return nil }
+func (claudeDriver) InputLine(_ store.AgentSession, text string, images []ImageIn) []byte {
 	imgs := make([]claude.Image, 0, len(images))
 	for _, im := range images {
 		imgs = append(imgs, claude.Image{MediaType: im.MediaType, Data: im.Data})
 	}
 	return claude.InputLine(text, imgs)
 }
-func (claudeDriver) InterruptLine() []byte                { return claude.InterruptLine() }
-func (claudeDriver) ControlLine(p json.RawMessage) []byte { return claude.ControlLine(p) }
-func (claudeDriver) Conversation(id, kind string, p json.RawMessage) string {
-	return claude.Conversation(id, kind, p)
+func (claudeDriver) InterruptLine(store.AgentSession) []byte { return claude.InterruptLine() }
+func (claudeDriver) ControlLines(_ store.AgentSession, op BrowserOp) [][]byte {
+	return claude.ControlLines(claude.Op{Op: op.Op, ID: op.ID, Outcome: op.Outcome, Message: op.Message, Input: op.Input, Permissions: op.Permissions, Answers: op.Answers, Content: op.Content, Key: op.Key, Value: op.Value, Target: op.Target, DryRun: op.DryRun, Question: op.Question})
+}
+func (claudeDriver) Notes(id, kind string, p json.RawMessage) map[string]string {
+	if c := claude.Conversation(id, kind, p); c != "" {
+		return map[string]string{"conversation": c}
+	}
+	return nil
 }
 func (claudeDriver) Option(kind string, p json.RawMessage) (string, string, bool) {
 	return claude.Option(kind, p)
@@ -129,7 +143,7 @@ func (claudeDriver) TaskEnded(kind string, p json.RawMessage) (string, bool) {
 func (claudeDriver) ResumeFailed(code int, stderr string) bool {
 	return claude.ResumeFailed(code, stderr)
 }
-func (claudeDriver) Rename(title string) ([][]byte, string) {
+func (claudeDriver) Rename(_ store.AgentSession, title string) ([][]byte, string) {
 	return [][]byte{claude.RenameLine(title), claude.InputLine("/rename "+title, nil)}, "/rename " + title
 }
 func (claudeDriver) TitleRequest(id, desc string) []byte { return claude.TitleRequestLine(id, desc) }
@@ -137,3 +151,51 @@ func (claudeDriver) TitleAnswer(kind string, p json.RawMessage) (string, string,
 	return claude.TitleAnswer(kind, p)
 }
 func (claudeDriver) Projector() model.Projector { return claude.New() }
+
+// codexDriver adapts the codex package to the Driver interface.
+type codexDriver struct{}
+
+func (codexDriver) Launch(as store.AgentSession, _ bool) Launch {
+	l := codex.Launch()
+	return Launch{Cmd: l.Cmd, Args: l.Args, Env: l.Env}
+}
+func (codexDriver) Kind(p json.RawMessage) string              { return codex.Kind(p) }
+func (codexDriver) Stored(kind string, p json.RawMessage) bool { return codex.Stored(kind, p) }
+func (codexDriver) Acknowledged(kind string, p json.RawMessage) bool {
+	return codex.Acknowledged(kind, p)
+}
+func (codexDriver) StartLines(as store.AgentSession, resume bool) [][]byte {
+	return codex.StartLines(as.ID, as.Options, as.Cwd, resume)
+}
+func (codexDriver) InputLine(as store.AgentSession, text string, images []ImageIn) []byte {
+	imgs := make([]codex.Image, 0, len(images))
+	for _, im := range images {
+		imgs = append(imgs, codex.Image{MediaType: im.MediaType, Data: im.Data})
+	}
+	return codex.InputLine(as.Options, text, imgs)
+}
+func (codexDriver) InterruptLine(as store.AgentSession) []byte {
+	return codex.InterruptLine(as.Options)
+}
+func (codexDriver) ControlLines(as store.AgentSession, op BrowserOp) [][]byte {
+	return codex.ControlLines(as.Options, codex.Op{Op: op.Op, ID: op.ID, Kind: op.Kind, Outcome: op.Outcome, Message: op.Message, Input: op.Input, Permissions: op.Permissions, Answers: op.Answers, Content: op.Content, Key: op.Key, Value: op.Value, Target: op.Target, DryRun: op.DryRun, Question: op.Question})
+}
+func (codexDriver) Notes(_, kind string, p json.RawMessage) map[string]string {
+	return codex.Notes(kind, p)
+}
+func (codexDriver) Option(kind string, p json.RawMessage) (string, string, bool) {
+	return codex.Option(kind, p)
+}
+func (codexDriver) BackgroundTask(string, json.RawMessage) (string, string, bool) {
+	return "", "", false
+}
+func (codexDriver) TaskEnded(string, json.RawMessage) (string, bool) { return "", false }
+func (codexDriver) ResumeFailed(int, string) bool                    { return false }
+func (codexDriver) Rename(as store.AgentSession, title string) ([][]byte, string) {
+	return [][]byte{codex.RenameLine(as.Options, title)}, ""
+}
+func (codexDriver) TitleRequest(string, string) []byte { return nil }
+func (codexDriver) TitleAnswer(string, json.RawMessage) (string, string, bool) {
+	return "", "", false
+}
+func (codexDriver) Projector() model.Projector { return codex.New() }

@@ -1,7 +1,7 @@
 {{define "title"}}{{if .Session.Title}}{{.Session.Title}}{{else}}Session{{end}} · Acta{{end}}
 {{define "content"}}
 <div class="chat-split" data-chat-split>
-<main class="chat-stage" data-csrf="{{.CSRFToken}}" data-session="{{.Session.ID}}" data-last-seq="{{.LastSeq}}" data-live="{{if .Live}}1{{else}}0{{end}}" data-running="{{if .Running}}1{{else}}0{{end}}" data-mode="{{with .Session.Options}}{{index . "permission_mode"}}{{end}}">
+<main class="chat-stage" data-csrf="{{.CSRFToken}}" data-session="{{.Session.ID}}" data-last-seq="{{.LastSeq}}" data-live="{{if .Live}}1{{else}}0{{end}}" data-running="{{if .Running}}1{{else}}0{{end}}" data-mode="{{with .Session.Options}}{{index . "permission_mode"}}{{end}}" data-effort="{{with .Session.Options}}{{index . "effort"}}{{end}}" data-backend="{{.Session.Backend}}">
   <header class="chat-head">
     <div class="chat-head-main">
       <div class="chat-title">
@@ -10,6 +10,7 @@
         <span class="live-dot{{if .Running}} is-running{{else if .Live}} is-held{{end}}" data-session-dot="{{.Session.ID}}" title="{{if .Running}}running{{else if .Live}}idle (harness connected){{else}}offline{{end}}"></span>
         <span class="chat-conn" data-chat-conn>&hellip;</span>
         <button type="button" class="plan-pill" data-plan-pill hidden title="Show the plan"><svg class="ico" viewBox="0 0 16 16"><path d="M3 4h10M3 8h6M3 12h4"/><path d="m10.5 11 1.5 1.5L15 9.5"/></svg><span data-plan-pill-text>Plan</span></button>
+        <button type="button" class="plan-pill diff-pill" data-diff-pill hidden title="Show what this turn changed"><svg class="ico" viewBox="0 0 16 16"><path d="M4 2.5h5.5L12.5 5.5v8H4z"/><path d="M6 8h4M8 6v4"/></svg><span data-diff-pill-text>Diff</span></button>
         <button type="button" class="plan-pill task-pill" data-task-pill hidden title="Jump to the task list"><svg class="ico" viewBox="0 0 16 16"><path d="M3 4h10M3 8h6M3 12h4"/><path d="m10.5 11 1.5 1.5L15 9.5"/></svg><span data-task-pill-text>Tasks</span></button>
         <button type="button" class="plan-pill goal-pill" data-goal-pill hidden title="Show the goal" aria-haspopup="dialog" aria-expanded="false"><svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2.5"/><path d="M8 2.5V1M8 15v-1.5M2.5 8H1M15 8h-1.5"/></svg><span data-goal-pill-text>Goal</span></button>
       </div>
@@ -84,7 +85,7 @@
       <div class="perm-tool"><span class="tool-name" data-perm-tool></span> <span class="perm-desc" data-perm-desc></span></div>
       <div class="perm-input" data-perm-input></div>
       <div class="perm-suggest" data-perm-suggest></div>
-      <input class="perm-msg" data-perm-msg placeholder="Optional message to Claude (used when denying)">
+      <input class="perm-msg" data-perm-msg placeholder="Optional message to the agent (used when denying)">
       <div class="perm-actions">
         <button type="button" class="btn-secondary perm-cancel" data-perm-cancel hidden title="Dismiss without answering">Cancel</button>
         <button type="button" class="btn-secondary perm-deny" data-perm-deny>Deny</button>
@@ -158,6 +159,15 @@
       <button type="button" class="btn-primary" data-plan-approve>Approve</button>
     </div>
   </div>
+</aside>
+<aside class="plan-panel diff-panel" data-diff-panel hidden aria-label="Turn diff">
+  <div class="plan-head">
+    <span class="plan-ico"><svg class="ico" viewBox="0 0 16 16"><path d="M4 2.5h5.5L12.5 5.5v8H4z"/><path d="M6 8h4M8 6v4"/></svg></span>
+    <span class="plan-head-title">What this turn changed</span>
+    <span class="plan-status" data-diff-status></span>
+    <button type="button" class="plan-close" data-diff-close aria-label="Close the diff"><svg class="ico" viewBox="0 0 16 16"><path d="M4 4 12 12M12 4 4 12"/></svg></button>
+  </div>
+  <div class="plan-body" data-diff-body></div>
 </aside>
 <div class="plan-backdrop" data-plan-backdrop hidden></div>
 </div>

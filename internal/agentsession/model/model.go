@@ -150,6 +150,9 @@ const (
 	// Tasks (the checklist the model keeps).
 	Tasks = "tasks" // list []{id,subject,description,status,active_form}, done, total, all_done bool (just became so)
 
+	// The turn's aggregate diff, when the backend keeps one (Codex does).
+	TurnDiff = "turn.diff" // text (unified diff), turn
+
 	// Plans.
 	PlanUpdate  = "plan.update"  // key, text, revisions
 	PlanSubmit  = "plan.submit"  // key, text, call_id

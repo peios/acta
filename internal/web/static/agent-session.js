@@ -15,6 +15,8 @@
   const stage = document.querySelector('.chat-stage');
   if (!stage) return;
   const sessionID = stage.dataset.session;
+  const backend = stage.dataset.backend || 'claude-code';
+  const agentName = backend === 'codex' ? 'Codex' : 'Claude';
   const log = stage.querySelector('[data-chat-log]');
   const form = stage.querySelector('[data-chat-form]');
   const box = stage.querySelector('[data-chat-box]');
@@ -237,6 +239,7 @@
       case 'thinking':
         if (!cur.think) cur.think = { start: ts(ev.at), tokens: 0, last: null, frames: 0 };
         cur.think.tokens = d.tokens || cur.think.tokens;
+        if (!d.tokens) { setActivity('Thinking'); if (hydrated) liveThought(cur); return; }
         cur.think.last = ev.raw && ev.raw[0] ? ev.raw[0].payload : null;
         cur.think.frames = (cur.think.frames || 0) + 1;
         setActivity('Thinking · ' + cur.think.tokens.toLocaleString() + ' tokens');
@@ -341,14 +344,15 @@
   const permByID = new Map();         // request id -> {req, node, status, review, state, ...}
   let permShowing = null;
 
-  function sendControl(payload) {
-    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: 'control', payload }));
+  // sendOp sends a browser operation in neutral terms; the server's driver
+  // for the session's backend turns it into that backend's own lines.
+  function sendOp(op) {
+    if (!op.id) op.id = (op.op === 'answer' ? '' : op.op + '-') + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: 'control', payload: op }));
   }
+  function setSetting(key, value) { sendOp({ op: 'setting', id: key.replace(/_/g, '') + '-' + Date.now().toString(36), key, value }); }
 
-  if (modeSelect) modeSelect.addEventListener('change', () => {
-    sendControl({ type: 'control_request', request_id: 'mode-' + Date.now().toString(36),
-      request: { subtype: 'set_permission_mode', mode: modeSelect.value } });
-  });
+  if (modeSelect) modeSelect.addEventListener('change', () => setSetting('permission_mode', modeSelect.value));
   // --- model / effort / fast-mode picker ---
   //
   // The catalogue (models, commands, styles, fast-mode availability) arrives
@@ -363,7 +367,7 @@
   const pickLabel = stage.querySelector('[data-model-label]');
   let modelCatalog = [];
   let modelsAsked = false;
-  let curEffort = '';          // level chosen this session, else the settings default
+  let curEffort = stage.dataset.effort || '';  // level chosen this session, else the settings default
   let defaultEffort = '';
   let fastOn = false;
   let fastReason = '';
@@ -373,16 +377,15 @@
   function requestModels() {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     modelsAsked = true;
-    sendControl({ type: 'control_request', request_id: 'models-' + Date.now().toString(36), request: { subtype: 'list_models' } });
-    sendControl({ type: 'control_request', request_id: 'settings-' + Date.now().toString(36), request: { subtype: 'get_settings' } });
-    sendControl({ type: 'control_request', request_id: 'init-' + Date.now().toString(36), request: { subtype: 'initialize' } });
+    sendOp({ op: 'catalog', id: Date.now().toString(36) });
   }
   function noteCatalog(d) {
     if (Array.isArray(d.models)) modelCatalog = d.models;
     if (Array.isArray(d.commands)) noteCommands(d.commands);
     if (typeof d.fast_mode === 'string') { fastOn = d.fast_mode === 'on'; fastReason = fastOn ? '' : (d.fast_reason || ''); }
     if (typeof d.default_effort === 'string') defaultEffort = d.default_effort;
-    if (Array.isArray(d.output_styles) && !styleCatalog.length) styleCatalog = d.output_styles.map(s => (typeof s === 'string' ? { name: s, description: '' } : s));
+    if (Array.isArray(d.output_styles) && (!styleCatalog.length || backend !== 'claude-code')) styleCatalog = d.output_styles.map(s => (typeof s === 'string' ? { name: s, description: '' } : s));
+    if (Array.isArray(d.models) && !defaultEffort) { const hit = catalogEntry(curModel) || d.models[0]; if (hit && hit.defaultEffort) defaultEffort = hit.defaultEffort; }
     if (typeof d.output_style === 'string' && !curStyle) curStyle = d.output_style;
     if (typeof d.permission_mode === 'string') setMode(d.permission_mode);
     paintModelSelect();
@@ -412,20 +415,17 @@
       row.appendChild(el('span', 'pick-row-name', m.displayName || m.value));
       row.appendChild(svg(ICONS.check));
       if (m.description) row.appendChild(el('span', 'pick-row-desc', m.description));
-      row.addEventListener('click', () => {
-        sendControl({ type: 'control_request', request_id: 'model-' + Date.now().toString(36), request: { subtype: 'set_model', model: m.value } });
-        closePick();
-      });
+      row.addEventListener('click', () => { setSetting('model', m.value); closePick(); });
       list.appendChild(row);
     }
     const seg = pickPop.querySelector('[data-pick-effort]');
     seg.textContent = '';
     const allowed = hit && Array.isArray(hit.supportedEffortLevels) && hit.supportedEffortLevels.length ? hit.supportedEffortLevels : EFFORTS;
-    for (const lvl of EFFORTS) {
+    for (const lvl of (allowed.length > EFFORTS.length || allowed.some(l => !EFFORTS.includes(l)) ? allowed : EFFORTS)) {
       const b = el('button', 'pick-seg-btn' + (effortNow() === lvl ? ' is-current' : ''), lvl);
       b.type = 'button';
       b.disabled = !allowed.includes(lvl);
-      b.addEventListener('click', () => { if (effortNow() !== lvl) send('/effort ' + lvl); closePick(); });
+      b.addEventListener('click', () => { if (effortNow() !== lvl) setSetting('effort', lvl); closePick(); });
       seg.appendChild(b);
     }
     const fast = pickPop.querySelector('[data-pick-fast]');
@@ -457,7 +457,7 @@
       if (s.description) row.appendChild(el('span', 'pick-row-desc', s.description));
       row.addEventListener('click', () => {
         if (String(s.name).toLowerCase() !== c) {
-          sendControl({ type: 'control_request', request_id: 'style-' + Date.now().toString(36), request: { subtype: 'update_settings', source: 'localSettings', settings: { outputStyle: s.name } } });
+          setSetting('output_style', s.name);
           curStyle = s.name;
           paintModelSelect();
         }
@@ -470,7 +470,7 @@
   function closePick() { pickPop.hidden = true; pickBtn.setAttribute('aria-expanded', 'false'); }
   if (pickBtn) {
     pickBtn.addEventListener('click', () => { if (pickPop.hidden) { paintModelSelect(); openPick(); } else closePick(); });
-    pickPop.querySelector('[data-pick-fast]').addEventListener('click', () => { send('/fast'); closePick(); });
+    pickPop.querySelector('[data-pick-fast]').addEventListener('click', () => { setSetting('fast', fastOn ? 'off' : 'on'); closePick(); });
     document.addEventListener('click', (e) => { if (!pickPop.hidden && !pick.contains(e.target)) closePick(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pickPop.hidden) closePick(); });
   }
@@ -515,6 +515,7 @@
   // the call it belongs to); the modal is opened separately while pending.
   function renderApproval(ev) {
     const d = ev.d || {};
+    if (d.auto) return renderAutoReview(ev);
     if (d.kind === 'plan') return renderPlanPerm(ev);
     if (d.kind === 'elicitation') return renderElicitation(ev);
     if (d.kind === 'other') return bubble('control request', 'control', el('div', 'frame-note', (d.subtype || 'request').replace(/_/g, ' ')), null);
@@ -548,7 +549,7 @@
     wrap.appendChild(head);
     const line = el('div', 'perm-line');
     line.appendChild(toolIcon(d.tool));
-    line.appendChild(el('span', 'tool-name', isAsk ? 'Claude asks' : (d.display || d.tool || 'tool')));
+    line.appendChild(el('span', 'tool-name', isAsk ? agentName + ' asks' : (d.display || d.tool || 'tool')));
     const sum = permSummary(d);
     if (sum) { const a = el('code', 'tool-arg', String(sum).slice(0, 160)); a.title = String(sum); line.appendChild(a); }
     const status = permStatusNode('pending');
@@ -560,6 +561,37 @@
     wrap.appendChild(line);
     permByID.set(d.id, { req: d, node: wrap, status, review, state: 'pending' });
     permQueue.push(d.id);
+    return wrap;
+  }
+
+  // renderAutoReview: a backend's own reviewer deciding an approval (Codex's
+  // auto review). Shown like a permission on the call it concerns, with the
+  // reviewer's verdict and reasoning once decided; never a modal.
+  function renderAutoReview(ev) {
+    const d = ev.d || {};
+    const pill = ev.to ? pillOf(ev.to) : null;
+    const status = permStatusNode('reviewing');
+    if (pill && !pill.querySelector('.tool-perm')) {
+      pill.classList.add('has-perm', 'is-pending');
+      const boxEl = el('span', 'tool-perm is-auto');
+      boxEl.appendChild(status);
+      pill.appendChild(boxEl);
+      attachRaws(pill.closest('.frame'), ev, 'auto review');
+      permByID.set(d.id, { req: d, node: pill.closest('.frame'), pill, status, review: el('span'), state: 'pending', auto: true });
+      return null;
+    }
+    const wrap = el('div', 'frame frame--perm is-auto');
+    const head = el('div', 'frame-head');
+    head.appendChild(el('span', 'frame-kind', 'auto review'));
+    wrap.appendChild(head);
+    const line = el('div', 'perm-line');
+    line.appendChild(toolIcon(d.tool));
+    line.appendChild(el('span', 'tool-name', d.display || d.tool || 'tool'));
+    const sum = permSummary(d);
+    if (sum) { const a = el('code', 'tool-arg', String(sum).slice(0, 160)); a.title = String(sum); line.appendChild(a); }
+    line.appendChild(status);
+    wrap.appendChild(line);
+    permByID.set(d.id, { req: d, node: wrap, status, review: el('span'), state: 'pending', auto: true });
     return wrap;
   }
 
@@ -632,7 +664,7 @@
     const inp = req.input || {};
     const isAsk = req.kind === 'question' && Array.isArray(req.questions);
     modal.classList.toggle('is-ask', isAsk);
-    modal.querySelector('.perm-title').textContent = isAsk ? 'Claude has a question' : 'Permission request';
+    modal.querySelector('.perm-title').textContent = isAsk ? agentName + ' has a question' : 'Permission request';
     modal.querySelector('[data-perm-allow]').textContent = isAsk ? 'Answer' : 'Allow';
     modal.querySelector('[data-perm-deny]').textContent = isAsk ? 'Skip' : 'Deny';
     modal.querySelector('[data-perm-msg]').hidden = isAsk;
@@ -717,7 +749,7 @@
         } else picked.push(ctl.value);
       }
       if (!picked.length) return null;
-      answers[q.question] = picked.join(', ');
+      answers[q.id || q.question] = picked.join(', ');
     }
     return answers;
   }
@@ -732,23 +764,19 @@
       if (allow) {
         const answers = collectAnswers(e.req.questions);
         if (!answers) { modal.querySelector('.perm-title').textContent = 'Answer every question first'; return; }
-        sendControl({ type: 'control_response', response: { subtype: 'success', request_id: id,
-          response: { behavior: 'allow', updatedInput: Object.assign({}, e.req.input, { answers }) } } });
+        sendOp({ op: 'answer', id, kind: e.req.subtype, outcome: 'allow', input: e.req.input || {}, answers });
         showAnswers(e.req.call_id, answers);
         resolvePerm(id, 'answered');
       } else {
-        sendControl({ type: 'control_response', response: { subtype: 'success', request_id: id,
-          response: { behavior: 'deny', message: 'The user skipped the question in Acta' } } });
+        sendOp({ op: 'answer', id, kind: e.req.subtype, outcome: 'deny', message: 'The user skipped the question in Acta' });
         resolvePerm(id, 'skipped');
       }
       return;
     }
     const chosen = [...modal.querySelectorAll('[data-perm-suggest] input:checked')].map(cb => (e.req.suggestions || [])[Number(cb.dataset.idx)]).filter(Boolean);
-    const response = allow
-      ? { behavior: 'allow', updatedInput: e.req.input || {} }
-      : { behavior: 'deny', message: msg || 'Denied by the user in Acta' };
-    if (allow && chosen.length) response.updatedPermissions = chosen;
-    sendControl({ type: 'control_response', response: { subtype: 'success', request_id: id, response } });
+    const op = allow ? { op: 'answer', id, kind: e.req.subtype, outcome: 'allow', input: e.req.input || {} } : { op: 'answer', id, kind: e.req.subtype, outcome: 'deny', message: msg || 'Denied by the user in Acta' };
+    if (allow && chosen.length) op.permissions = chosen;
+    sendOp(op);
     resolvePerm(id, allow ? 'allowed' : 'denied');
   }
   if (modal) {
@@ -762,7 +790,13 @@
   function renderAnswer(ev) {
     const d = ev.d || {};
     const e = permByID.get(d.id);
-    if (e && e.node && e.node.isConnected) attachRaws(e.node, ev, 'answer');
+    if (e && e.node && e.node.isConnected) attachRaws(e.node, ev, d.auto ? 'auto review' : 'answer');
+    if (e && e.auto) {
+      const verdict = d.outcome === 'allowed' ? 'auto-approved' : 'auto-denied';
+      e.status.title = [d.message, d.risk ? 'risk: ' + d.risk : '', d.by ? 'decided by ' + d.by : ''].filter(Boolean).join(' · ');
+      resolvePerm(d.id, verdict);
+      return null;
+    }
     if (e && e.plan && d.outcome === 'denied' && d.message) e.plan.feedback = d.message;
     if (e && e.elicit) { showElicitAnswer(d.id, d); }
     if (d.answers && e) showAnswers(e.req.call_id, d.answers);
@@ -999,7 +1033,7 @@
   // "Claude Fable 5.1"; "gpt-5.4-mini" → "GPT-5.4 Mini".
   let curModel = '';
   function modelName(id) {
-    if (!id) return 'Claude';
+    if (!id) return agentName;
     if (/^</.test(id)) return 'Claude Code';
     if (/^(gpt|o\d)/i.test(id)) return String(id).replace(/^gpt/i, 'GPT').replace(/-(mini|nano|codex|spark|pro)\b/gi, (m, w) => ' ' + w.charAt(0).toUpperCase() + w.slice(1));
     return String(id).replace(/\[[^\]]*\]$/, '')
@@ -1019,7 +1053,7 @@
     const node = el('div', 'msg-ask');
     const head = el('div', 'ask-head');
     head.appendChild(svg(ICONS.question));
-    head.appendChild(el('span', 'tool-name', 'Claude asks'));
+    head.appendChild(el('span', 'tool-name', agentName + ' asks'));
     node.appendChild(head);
     const items = new Map();
     for (const q of inp.questions || []) {
@@ -1188,14 +1222,14 @@
     const id = permShowing;
     const e = permByID.get(id);
     if (!e || !e.elicit) return;
-    let response = { action };
+    const op = { op: 'answer', id, kind: e.req.subtype, outcome: action };
     if (action === 'accept') {
       const content = collectElicit();
       if (!content) { modal.querySelector('.perm-title').textContent = 'Fill in the required fields first'; return; }
-      response = { action: 'accept', content };
+      op.content = content;
     }
-    sendControl({ type: 'control_response', response: { subtype: 'success', request_id: id, response } });
-    showElicitAnswer(id, { outcome: action === 'accept' ? 'answered' : action === 'decline' ? 'declined' : 'cancelled', content: response.content });
+    sendOp(op);
+    showElicitAnswer(id, { outcome: action === 'accept' ? 'answered' : action === 'decline' ? 'declined' : 'cancelled', content: op.content });
     resolvePerm(id, action === 'accept' ? 'answered' : action === 'decline' ? 'declined' : 'cancelled');
   }
 
@@ -1440,7 +1474,7 @@
     const plan = planFor(d.key);
     if (d.state) plan.state = d.state;
     if (d.feedback) plan.feedback = d.feedback;
-    plan.verdict = plan.state === 'approved' ? 'Approved · Claude is implementing it' : plan.state === 'rejected' ? 'Changes requested' + (plan.feedback ? ' · ' + plan.feedback : '') : '';
+    plan.verdict = plan.state === 'approved' ? 'Approved · ' + agentName + ' is implementing it' : plan.state === 'rejected' ? 'Changes requested' + (plan.feedback ? ' · ' + plan.feedback : '') : '';
     repaintPlan(plan);
     const f = planFrame(plan);
     if (f) attachRaws(f, ev, 'verdict'); else foldIntoLast(ev, 'verdict');
@@ -1479,7 +1513,7 @@
   }
   function planResolved(plan, outcome) {
     plan.reqID = null;
-    if (outcome === 'allowed') { plan.state = 'approved'; plan.verdict = 'Approved · Claude is implementing it'; }
+    if (outcome === 'allowed') { plan.state = 'approved'; plan.verdict = 'Approved · ' + agentName + ' is implementing it'; }
     else if (outcome === 'denied') { plan.state = 'rejected'; plan.verdict = 'Changes requested' + (plan.feedback ? ' · ' + plan.feedback : ''); }
     else if (plan.state === 'pending') { plan.state = 'stale'; plan.verdict = ''; }
     repaintPlan(plan);
@@ -1492,16 +1526,16 @@
     if (!e || e.state !== 'pending') return;
     const fb = planPanel.querySelector('[data-plan-feedback]');
     const msg = fb.value.trim();
-    let response;
+    let op;
     if (how === 'changes') {
       if (!msg) { fb.focus(); fb.placeholder = 'Say what should change first'; return; }
       plan.feedback = msg;
-      response = { behavior: 'deny', message: msg };
+      op = { op: 'answer', id, kind: e.req.subtype, outcome: 'deny', message: msg };
     } else {
-      response = { behavior: 'allow', updatedInput: e.req.input || {} };
-      if (how === 'approve-edits') response.updatedPermissions = [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }];
+      op = { op: 'answer', id, kind: e.req.subtype, outcome: 'allow', input: e.req.input || {} };
+      if (how === 'approve-edits') op.permissions = [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }];
     }
-    sendControl({ type: 'control_response', response: { subtype: 'success', request_id: id, response } });
+    sendOp(op);
     fb.value = '';
     resolvePerm(id, how === 'changes' ? 'denied' : 'allowed');
   }
@@ -1909,7 +1943,8 @@
       for (const l of diff.text.split('\n')) {
         const hm = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(l);
         if (hm) { o = +hm[1]; n = +hm[2]; rows.appendChild(el('div', 'diff-hunk', l)); continue; }
-        if (/^(diff |index |--- |\+\+\+ )/.test(l)) continue;
+        if (/^(diff |index |--- |\+\+\+ |new file mode|deleted file mode|old mode|new mode|similarity index|rename from|rename to|Binary files)/.test(l)) continue;
+        if (l === '' ) continue;
         const sign = l.charAt(0), text = l.slice(1);
         if (sign === '+') { rows.appendChild(diffLine('+', null, n++, text)); add++; }
         else if (sign === '-') { rows.appendChild(diffLine('-', o++, null, text)); del++; }
@@ -1946,6 +1981,15 @@
     return wrap;
   }
 
+  // renderToolCall: a call that arrives on its own (Codex reports each tool
+  // as an item, not inside a message): a frame holding the pill.
+  function renderToolCall(ev) {
+    const d = ev.d || {};
+    const body = el('div', 'frame-body');
+    body.appendChild(toolRow({ id: d.id, name: d.name, input: d.input || {}, role: d.role }));
+    return bubble(modelName(curModel), 'assistant', body, null);
+  }
+
   // renderToolResult: one frame per result. When the call's pill is the last
   // thing on screen the pill moves in as the result frame's header, and the
   // assistant frame it came from is hidden if that emptied it. Otherwise the
@@ -1955,8 +1999,10 @@
     const pill = pillOf(ev.to);
     if (d.role === 'acta' && pill && actaCards.has(d.call_id)) return actaResult(actaCards.get(d.call_id), ev);
     const body = el('div', 'frame-body');
-    if (!d.error && d.diff) body.appendChild(diffBlock(d.diff));
+    if (!d.error && Array.isArray(d.diffs) && d.diffs.length > 1) { for (const df of d.diffs) body.appendChild(diffBlock(df)); }
+    else if (!d.error && d.diff) body.appendChild(diffBlock(d.diff));
     else body.appendChild(resultBlock(d.text || '', !!d.error));
+    if (d.exit_code) body.appendChild(el('div', 'you-status', 'exit code ' + d.exit_code));
     const node = bubble(d.name ? d.name + ' result' : 'result', 'toolresult', body, null);
     if (d.error) node.classList.add('is-error');
     if (pill && pill.classList.contains('msg-tool')) {
@@ -2053,7 +2099,9 @@
       compact.stats.textContent = d.error || '';
     } else {
       const bits = [];
-      if (d.pre || d.post) bits.push((d.pre ? fmtTokens(d.pre) : '?') + ' → ' + (d.post ? fmtTokens(d.post) : '?') + ' tokens');
+      if (d.pre && d.post) bits.push(fmtTokens(d.pre) + ' → ' + fmtTokens(d.post) + ' tokens');
+      else if (d.pre) bits.push('from ' + fmtTokens(d.pre) + ' tokens');
+      else if (d.post) bits.push('to ' + fmtTokens(d.post) + ' tokens');
       if (typeof d.duration_ms === 'number' && d.duration_ms) bits.push((d.duration_ms / 1000).toFixed(1) + 's');
       if (d.trigger) bits.push(d.trigger);
       compact.title.textContent = 'Compacted context';
@@ -2217,6 +2265,7 @@
     const d = ev.d || {};
     if (d.permission_mode) setMode(d.permission_mode);
     if (d.model) { curModel = d.model; paintModelSelect(); }
+    if (d.effort) { defaultEffort = d.effort; paintModelSelect(); }
     if (d.output_style) noteStyle(d.output_style);
     if (typeof d.fast_mode === 'string') { fastOn = d.fast_mode === 'on'; fastReason = fastOn ? '' : (d.fast_reason || ''); paintModelSelect(); }
     procAlive = true;
@@ -2432,6 +2481,8 @@
     goal = d.state && d.state !== 'cleared' ? { cond: d.cond || '', state: d.state, turns: d.turns || 0, last: d.last || '' } : null;
     paintGoal();
     if (!ev.raw || !ev.raw.length) return null;
+    const host = ev.to ? nodes.get(ev.to) : null;
+    if (host && host.isConnected) { attachRaws(host, ev, 'goal'); return null; }
     const note = el('div', 'frame-note');
     note.appendChild(svg(ICONS.goal));
     const txt = d.text || '';
@@ -2774,13 +2825,13 @@
   // what was discarded, and the client collapses that stretch into a branch.
   const pendingCtl = new Map(); // request id -> resolve
 
-  function control(request, timeout) {
+  function control(op, timeout) {
     return new Promise((resolve) => {
       const id = 'rw-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
       const done = (v) => { if (pendingCtl.delete(id)) resolve(v); };
       pendingCtl.set(id, done);
       setTimeout(() => done(null), timeout || 30000);
-      sendControl({ type: 'control_request', request_id: id, request });
+      sendOp(Object.assign({ id }, op));
     });
   }
   function renderReply(ev) {
@@ -2826,14 +2877,14 @@
     let summary = '';
     if (mode === 'summarise') {
       rewindBusy(node, 'Summarising this stretch…');
-      const r = await control({ subtype: 'side_question', question: 'Summarise, in a short paragraph, everything that has happened in this conversation since (and including) my message: "' + entry.text.slice(0, 400) + '". Cover what was tried, what was learned, and anything still outstanding.' }, 120000);
+      const r = await control({ op: 'side_question', question: 'Summarise, in a short paragraph, everything that has happened in this conversation since (and including) my message: "' + entry.text.slice(0, 400) + '". Cover what was tried, what was learned, and anything still outstanding.' }, 120000);
       summary = (r && (r.response || r.answer)) || '';
       if (!summary) { rewindBusy(node, 'Could not summarise; nothing was rewound.'); setTimeout(() => rewindBusy(node, ''), 4000); return; }
     }
     let files = null;
     if (mode === 'files' || mode === 'both') {
       rewindBusy(node, 'Checking which files would change…');
-      const dry = await control({ subtype: 'rewind_files', user_message_id: entry.id, dry_run: true });
+      const dry = await control({ op: 'rewind_files', target: entry.id, dry_run: true });
       const changed = (dry && dry.filesChanged) || [];
       if (!dry || dry.canRewind === false) {
         rewindBusy(node, 'Files cannot be rewound' + (dry && dry.error ? ' · ' + dry.error : '') + '.');
@@ -2847,7 +2898,7 @@
         const n = changed.length;
         if (!confirm('Restore ' + n + (n === 1 ? ' file' : ' files') + ' to their state before this message?\n\n' + changed.join('\n') + '\n\n+' + (dry.insertions || 0) + ' / -' + (dry.deletions || 0))) { rewindBusy(node, ''); return; }
         rewindBusy(node, 'Restoring files…');
-        const done = await control({ subtype: 'rewind_files', user_message_id: entry.id, dry_run: false });
+        const done = await control({ op: 'rewind_files', target: entry.id, dry_run: false });
         files = { changed: changed, insertions: dry.insertions || 0, deletions: dry.deletions || 0, ok: !!done };
       }
     }
@@ -2855,7 +2906,7 @@
     if (mode !== 'files') {
       for (let i = echoed.length - 1; i >= idx; i--) {
         rewindBusy(node, 'Rewinding the conversation… ' + (echoed.length - i) + ' of ' + (echoed.length - idx));
-        const r = await control({ subtype: 'rewind_conversation', target_message_uuid: echoed[i].id });
+        const r = await control({ op: 'rewind', target: echoed[i].id });
         if (!r || r.rewound !== true) {
           rewindBusy(node, 'Rewind stopped' + (r && r.error ? ' · ' + r.error : '') + '.');
           setTimeout(() => rewindBusy(node, ''), 6000);
@@ -2958,7 +3009,13 @@
       return null;
     }
     if (ev.t === 'stream.delta') {
-      if (!lane.liveBlocks) return null;
+      if (!lane.liveBlocks) {
+        // a backend that streams without announcing the message (Codex)
+        liveFrame(lane);
+        const b0 = { type: 'text', text: '', node: mdRender(''), raf: 0 };
+        lane.live.querySelector('.frame-body').appendChild(b0.node);
+        lane.liveBlocks.set(d.index, b0);
+      }
       const b = lane.liveBlocks.get(d.index);
       if (!b || b.type === 'thinking') return null;
       if (typeof d.text === 'string') { b.text += d.text; paintLiveBlock(lane, b); setActivity('Writing'); }
@@ -3052,7 +3109,9 @@
       case 'notice': if (d.model) { curModel = d.model; paintModelSelect(); } return notice(d.level || 'info', d.text || '');
       case 'api.retry': return renderApiRetry(ev);
       case 'api.error': return renderApiError(ev);
+      case 'tool.call': return renderToolCall(ev);
       case 'tool.result': return renderToolResult(ev);
+      case 'turn.diff': return renderTurnDiff(ev);
       case 'tool.denied': return renderToolDenied(ev);
       case 'tool.background': return renderToolBackground(ev);
       case 'tool.output': return renderToolOutput(ev);
@@ -3239,7 +3298,7 @@
     const text = alertText(ev);
     if (!text) return;
     const title = (stage.querySelector('[data-chat-rename]') || {}).textContent || 'Agent session';
-    const opts = { body: 'Claude ' + text, tag: 'session-' + sessionID, icon: '/static/icon-192.png' };
+    const opts = { body: agentName + ' ' + text, tag: 'session-' + sessionID, icon: '/static/icon-192.png' };
     try {
       const reg = navigator.serviceWorker && navigator.serviceWorker.controller ? navigator.serviceWorker.ready : null;
       if (reg) reg.then(r => r.showNotification(title.trim(), opts)).catch(() => {});
@@ -3375,7 +3434,11 @@
   const hintEl = stage.querySelector('.chat-hint');
   const HINT_DEFAULT = hintEl ? hintEl.textContent : '';
   const HIDDEN_CMDS = new Set(['context', 'usage', 'cost', 'stats', 'model', 'effort', 'fast', 'autocompact', 'color', 'agents', 'extra-usage', '__remote-workflow', 'workflow-launch-exec', 'heapdump']);
-  const ACTA_CMDS = [
+  const ACTA_CMDS = backend === 'codex' ? [
+    { cmd: 'compact', description: 'Free up context by summarising the conversation so far', argumentHint: '' },
+    { cmd: 'rename', description: 'Rename this session, here and in Codex', argumentHint: '<name>' },
+    { cmd: 'goal', description: 'Set a goal: Codex keeps working until the objective is met', argumentHint: '<objective> | clear' },
+  ] : [
     { cmd: 'clear', description: 'Start over with an empty context; what came before folds away', argumentHint: '' },
     { cmd: 'compact', description: 'Free up context by summarising the conversation so far', argumentHint: '[instructions for the summary]' },
     { cmd: 'recap', description: 'A one-line recap of the session so far', argumentHint: '' },
@@ -3523,6 +3586,46 @@
     return false;
   }
 
+  // --- turn diff: pill + aside ---
+  //
+  // A backend that keeps an aggregate diff of what the turn changed (Codex)
+  // pushes it as turn.diff; the pill opens it in a side panel, rendered like
+  // any other diff.
+  const diffPill = stage.querySelector('[data-diff-pill]');
+  const diffPanel = document.querySelector('[data-diff-panel]');
+  let turnDiff = '';
+  function paintDiffPanel() {
+    if (!diffPanel || diffPanel.hidden) return;
+    const body = diffPanel.querySelector('[data-diff-body]');
+    body.textContent = '';
+    if (!turnDiff) { body.appendChild(el('div', 'plan-empty', 'No changes yet.')); return; }
+    const files = turnDiff.split(/^(?=diff --git )/m).filter(s => s.trim());
+    for (const f of files) {
+      const m = /^diff --git a\/(\S+) b\/(\S+)/.exec(f);
+      body.appendChild(diffBlock({ kind: 'unified', file: m ? m[2] : '', text: f }));
+    }
+    diffPanel.querySelector('[data-diff-status]').textContent = files.length + (files.length === 1 ? ' file' : ' files');
+  }
+  function openDiff() { if (!diffPanel) return; diffPanel.hidden = false; if (planBackdrop) planBackdrop.hidden = false; paintDiffPanel(); diffPill.classList.add('is-open'); }
+  function closeDiff() { if (!diffPanel) return; diffPanel.hidden = true; if (planBackdrop && (!planPanel || planPanel.hidden)) planBackdrop.hidden = true; diffPill.classList.remove('is-open'); }
+  if (diffPill && diffPanel) {
+    diffPill.addEventListener('click', () => { if (diffPanel.hidden) openDiff(); else closeDiff(); });
+    diffPanel.querySelector('[data-diff-close]').addEventListener('click', closeDiff);
+    if (planBackdrop) planBackdrop.addEventListener('click', closeDiff);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !diffPanel.hidden) closeDiff(); });
+  }
+  function renderTurnDiff(ev) {
+    const d = ev.d || {};
+    turnDiff = d.text || '';
+    if (diffPill) {
+      const files = (turnDiff.match(/^diff --git /gm) || []).length;
+      diffPill.hidden = !turnDiff;
+      diffPill.querySelector('[data-diff-pill-text]').textContent = 'Diff · ' + files + (files === 1 ? ' file' : ' files');
+    }
+    paintDiffPanel();
+    return foldIntoLast(ev, 'diff');
+  }
+
   // --- goal pill + popover ---
   const goalPill = stage.querySelector('[data-goal-pill]');
   const goalPop = stage.querySelector('[data-goal-pop]');
@@ -3597,12 +3700,15 @@
     if (document.activeElement !== num) num.value = ac.window && ac.window !== 'auto' ? ac.window.replace(/k$/i, '000').replace(/[^\d]/g, '') : '';
     const note = gaugePop.querySelector('[data-gpop-note]');
     const at = Math.max(reports.context ? reports.context.at : 0, reports.usage ? reports.usage.at : 0);
-    note.textContent = mainTurnActive ? 'turn in progress · refreshes when it ends' : cmdQueue.length || queuedNow ? 'refreshing…' : !procAlive ? 'session not running · refresh starts it' : at ? 'as of ' + fmtAgo(at) : '';
+    note.textContent = backend !== 'claude-code' ? agentName + ' reports usage after every turn' : mainTurnActive ? 'turn in progress · refreshes when it ends' : cmdQueue.length || queuedNow ? 'refreshing…' : !procAlive ? 'session not running · refresh starts it' : at ? 'as of ' + fmtAgo(at) : '';
+    for (const sec of gaugePop.querySelectorAll('.gpop-sec')) { if (backend !== 'claude-code' && !sec.querySelector('[data-gpop-ctx]')) sec.hidden = true; }
+    if (backend !== 'claude-code') { const c = gaugePop.querySelector('[data-gpop-context]'); c.textContent = ''; c.appendChild(el('div', 'pick-note', contextUsed ? 'Last request: ' + contextUsed.toLocaleString() + ' tokens of ' + win.toLocaleString() : 'No turn yet.')); }
     const rf = gaugePop.querySelector('[data-gpop-refresh]');
     rf.classList.toggle('is-busy', !!(cmdQueue.length || queuedNow));
   }
   function gaugeRefresh(force) {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (backend !== 'claude-code') { paintGaugePop(); return; } // other backends report usage after every turn
     if (!procAlive && !force) { paintGaugePop(); return; }
     const stale = k => !reports[k] || reports[k].at < lastTurnEnd || force;
     if (stale('context')) queueCmd('/context');

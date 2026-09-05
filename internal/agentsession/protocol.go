@@ -99,6 +99,33 @@ type Outbound struct {
 	Line string `json:"line,omitempty"`
 }
 
+// BrowserOp is a browser-authored operation on the session, in neutral terms
+// the backend's Driver turns into its own lines. It is recorded verbatim as a
+// "control" frame so the transcript shows what was asked.
+//
+//	answer        id, outcome (allow|deny|accept|decline|cancel), message, input, permissions, answers, content
+//	setting       id, key (permission_mode|model|output_style|effort|fast|personality|service_tier), value
+//	catalog       id — ask for the models, commands and settings the pickers show
+//	rewind        id, target (a user message id) — drop the conversation from there
+//	rewind_files  id, target, dry_run — restore the files a message changed
+//	side_question id, question — ask the model something off the record
+type BrowserOp struct {
+	Op          string          `json:"op"`
+	ID          string          `json:"id,omitempty"`
+	Kind        string          `json:"kind,omitempty"` // answer: the request's subtype, for a backend whose answers differ by kind
+	Outcome     string          `json:"outcome,omitempty"`
+	Message     string          `json:"message,omitempty"`
+	Input       json.RawMessage `json:"input,omitempty"`
+	Permissions json.RawMessage `json:"permissions,omitempty"`
+	Answers     json.RawMessage `json:"answers,omitempty"`
+	Content     json.RawMessage `json:"content,omitempty"`
+	Key         string          `json:"key,omitempty"`
+	Value       string          `json:"value,omitempty"`
+	Target      string          `json:"target,omitempty"`
+	DryRun      bool            `json:"dry_run,omitempty"`
+	Question    string          `json:"question,omitempty"`
+}
+
 // BrowserIn is a frame read from a browser chat connection.
 type BrowserIn struct {
 	T       string          `json:"t"`                 // "input" | "stop" | "control" | "mark" | "focus"

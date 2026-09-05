@@ -134,8 +134,81 @@ func InterruptLine() []byte {
 	return []byte(fmt.Sprintf(`{"type":"control_request","request_id":"interrupt-%d","request":{"subtype":"interrupt"}}`, time.Now().UnixMilli()))
 }
 
-// ControlLine passes a control-protocol message through verbatim.
-func ControlLine(payload json.RawMessage) []byte { return append([]byte{}, payload...) }
+// Op mirrors agentsession.BrowserOp (the package stays free of hub types).
+type Op struct {
+	Op, ID, Outcome, Message, Key, Value, Target, Question string
+	Input, Permissions, Answers, Content                   json.RawMessage
+	DryRun                                                 bool
+}
+
+// ControlLines turns a browser operation into Claude Code's control protocol.
+func ControlLines(op Op) [][]byte {
+	line := func(v any) []byte { b, _ := json.Marshal(v); return b }
+	req := func(id string, request map[string]any) []byte {
+		return line(map[string]any{"type": "control_request", "request_id": id, "request": request})
+	}
+	switch op.Op {
+	case "answer":
+		var resp map[string]any
+		switch op.Outcome {
+		case "accept", "decline", "cancel":
+			resp = map[string]any{"action": op.Outcome}
+			if op.Outcome == "accept" && len(op.Content) > 0 {
+				resp["content"] = op.Content
+			}
+		case "deny":
+			resp = map[string]any{"behavior": "deny", "message": op.Message}
+			if resp["message"] == "" {
+				resp["message"] = "Denied by the user in Acta"
+			}
+		default:
+			input := json.RawMessage(op.Input)
+			if len(op.Answers) > 0 {
+				var in map[string]any
+				_ = json.Unmarshal(op.Input, &in)
+				if in == nil {
+					in = map[string]any{}
+				}
+				in["answers"] = op.Answers
+				input, _ = json.Marshal(in)
+			}
+			if len(input) == 0 {
+				input = json.RawMessage(`{}`)
+			}
+			resp = map[string]any{"behavior": "allow", "updatedInput": input}
+			if len(op.Permissions) > 0 {
+				resp["updatedPermissions"] = op.Permissions
+			}
+		}
+		return [][]byte{line(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "success", "request_id": op.ID, "response": resp}})}
+	case "setting":
+		switch op.Key {
+		case "permission_mode":
+			return [][]byte{req(op.ID, map[string]any{"subtype": "set_permission_mode", "mode": op.Value})}
+		case "model":
+			return [][]byte{req(op.ID, map[string]any{"subtype": "set_model", "model": op.Value})}
+		case "output_style":
+			return [][]byte{req(op.ID, map[string]any{"subtype": "update_settings", "source": "localSettings", "settings": map[string]any{"outputStyle": op.Value}})}
+		case "effort":
+			return [][]byte{InputLine("/effort "+op.Value, nil)}
+		case "fast":
+			return [][]byte{InputLine("/fast", nil)}
+		}
+	case "catalog":
+		return [][]byte{
+			req("models-"+op.ID, map[string]any{"subtype": "list_models"}),
+			req("settings-"+op.ID, map[string]any{"subtype": "get_settings"}),
+			req("init-"+op.ID, map[string]any{"subtype": "initialize"}),
+		}
+	case "rewind":
+		return [][]byte{req(op.ID, map[string]any{"subtype": "rewind_conversation", "target_message_uuid": op.Target})}
+	case "rewind_files":
+		return [][]byte{req(op.ID, map[string]any{"subtype": "rewind_files", "user_message_id": op.Target, "dry_run": op.DryRun})}
+	case "side_question":
+		return [][]byte{req(op.ID, map[string]any{"subtype": "side_question", "question": op.Question})}
+	}
+	return nil
+}
 
 // Conversation: the session id an init frame reports, when it is not the one
 // the session was spawned under (a /clear moved the process to a fresh
@@ -159,6 +232,21 @@ func Conversation(sessionID, kind string, line json.RawMessage) string {
 func Option(kind string, line json.RawMessage) (key, value string, ok bool) {
 	switch kind {
 	case "control":
+		var op struct {
+			Op, Key, Value string
+		}
+		if json.Unmarshal(line, &op) == nil && op.Op == "setting" {
+			switch op.Key {
+			case "permission_mode", "effort":
+				return op.Key, op.Value, true
+			case "model":
+				if op.Value == "default" {
+					return "model", "", true
+				}
+				return "model", op.Value, true
+			}
+			return "", "", false
+		}
 		var probe struct {
 			Type    string `json:"type"`
 			Request struct {
