@@ -378,6 +378,7 @@
     if (secs) bits.push('for ' + (secs < 10 ? secs.toFixed(1) : Math.round(secs)) + 's');
     if (tokens) bits.push('~' + tokens.toLocaleString() + ' tokens');
     const wrap = el('div', 'frame frame--thought');
+    wrap.dataset.thoughts = '1'; wrap.dataset.secs = String(secs || 0); wrap.dataset.tokens = String(tokens || 0);
     const line = el('div', 'thought-line');
     line.appendChild(svg(ICONS.spark));
     line.appendChild(el('span', 'thought-text', bits.join(' · ')));
@@ -392,6 +393,34 @@
     else if (think && think.lastSeq) attachRaw(wrap, null, 'raw (thinking tokens · ' + (think.frames || 0) + ' frames)', think.lastSeq);
     cur.think = null;
     return wrap;
+  }
+
+  // mergeThought folds a thought chip into the one just before it in the
+  // lane, so a run of reasoning steps (Codex thinks between every tool
+  // call) reads as one "Thought ×N" line with all the texts behind it,
+  // rather than a column of identical chips. Returns the chip it merged
+  // into, or null when the previous frame is not a settled thought.
+  function mergeThought(node, lane) {
+    let prev = lane.log.lastElementChild;
+    while (prev && (prev === lane.activity || (typeof laterEl !== 'undefined' && prev === laterEl) || prev.classList.contains('is-live') || prev.classList.contains('is-streaming'))) prev = prev.previousElementSibling;
+    if (!prev || !prev.classList.contains('frame--thought') || !prev.dataset.thoughts) return null;
+    const n = Number(prev.dataset.thoughts) + Number(node.dataset.thoughts || 1);
+    const secs = Number(prev.dataset.secs || 0) + Number(node.dataset.secs || 0);
+    const tokens = Number(prev.dataset.tokens || 0) + Number(node.dataset.tokens || 0);
+    prev.dataset.thoughts = String(n); prev.dataset.secs = String(secs); prev.dataset.tokens = String(tokens);
+    const bits = ['Thought ×' + n];
+    if (secs) bits.push('for ' + (secs < 10 ? secs.toFixed(1) : Math.round(secs)) + 's');
+    if (tokens) bits.push('~' + tokens.toLocaleString() + ' tokens');
+    prev.querySelector('.thought-text').textContent = bits.join(' · ');
+    const texts = [...node.querySelectorAll('.thought-body .msg-think')];
+    if (texts.length) {
+      let det = prev.querySelector('.thought-body');
+      if (!det) { det = el('details', 'thought-body'); det.appendChild(el('summary', null, 'show thinking')); prev.appendChild(det); }
+      for (const t of texts) det.appendChild(t);
+      det.querySelector('summary').textContent = 'show thinking (' + det.querySelectorAll('.msg-think').length + ')';
+    }
+    mergeRaw(node, prev);
+    return prev;
   }
 
   // --- permissions: mode control + approval modal ---
@@ -3391,7 +3420,10 @@
       const live = cur.log.querySelector(':scope > .is-streaming, :scope > .is-live');
       const mark = dayMark(cur, ev.at);
       if (mark) cur.log.insertBefore(mark, live);
-      cur.log.insertBefore(node, live);
+      // a settled thought straight after another joins it as "Thought ×N"
+      const merged = !mark && node.classList.contains('frame--thought') && !node.classList.contains('is-live') ? mergeThought(node, cur) : null;
+      if (merged) { if (ev.ref) nodes.set(ev.ref, merged); }
+      else cur.log.insertBefore(node, live);
       if (!cold && !detached) placeActivity();
       // hydrate scrolls once at the end: a scroll per frame forces a layout
       // per frame, and the page is built from hundreds of them
