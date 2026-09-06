@@ -227,31 +227,68 @@ func turnsOf(evs []model.Event) [][]model.Event {
 // long; and a single turn beyond twice the frame budget is cut regardless.
 // Zero means no bound.
 
+// frameCount is how many of a turn's events the page draws as frames: a
+// fold attaches to a frame already drawn and costs next to nothing, so a
+// turn of token-usage and status folds does not spend the budget.
+func frameCount(t []model.Event) int {
+	n := 0
+	for _, e := range t {
+		if e.T != model.Fold {
+			n++
+		}
+	}
+	return n
+}
+
 // Tail is the last turns that fit the budgets.
 func Tail(evs []model.Event, turns, frames int) Window {
 	ts := turnsOf(evs)
-	n, count := 0, 0
+	n, count, drawn := 0, 0, 0
 	for n < len(ts) {
 		t := ts[len(ts)-1-n]
-		if n > 0 && ((turns > 0 && n >= turns) || (frames > 0 && count+len(t) > frames)) {
+		if n > 0 && ((turns > 0 && n >= turns) || (frames > 0 && drawn+frameCount(t) > frames)) {
 			break
 		}
 		n++
 		count += len(t)
+		drawn += frameCount(t)
 	}
 	more := n < len(ts)
-	if more && frames > 0 && count < frames/2 && (turns <= 0 || n < turns) {
-		count = frames // the rest comes from inside the turn before
-	}
-	if count > len(evs) {
-		count = len(evs)
-	}
 	out := evs[len(evs)-count:]
-	if frames > 0 && len(out) > 2*frames {
-		out = out[len(out)-frames:]
-		more = true
+	if more && frames > 0 && drawn < frames/2 && (turns <= 0 || n < turns) {
+		out = lastDrawn(evs, frames) // the rest comes from inside the turn before
 	}
-	return Window{Events: out, More: more}
+	if frames > 0 && frameCount(out) > 2*frames {
+		out = lastDrawn(out, frames)
+	}
+	return Window{Events: out, More: len(out) < len(evs)}
+}
+
+// lastDrawn is the suffix of evs that draws n frames (its folds ride
+// along); all of evs when it draws fewer.
+func lastDrawn(evs []model.Event, n int) []model.Event {
+	d := 0
+	for i := len(evs) - 1; i >= 0; i-- {
+		if evs[i].T != model.Fold {
+			if d++; d >= n {
+				return evs[i:]
+			}
+		}
+	}
+	return evs
+}
+
+// firstDrawn is the prefix of evs that draws n frames.
+func firstDrawn(evs []model.Event, n int) []model.Event {
+	d := 0
+	for i := range evs {
+		if evs[i].T != model.Fold {
+			if d++; d >= n {
+				return evs[:i+1]
+			}
+		}
+	}
+	return evs
 }
 
 // Before is the turns that end before the event with seq (exclusive) and
@@ -279,28 +316,25 @@ func After(evs []model.Event, seq int64, turns, frames int) Window {
 	}
 	rest := evs[start:]
 	ts := turnsOf(rest)
-	n, count := 0, 0
+	n, count, drawn := 0, 0, 0
 	for n < len(ts) {
 		t := ts[n]
-		if n > 0 && ((turns > 0 && n >= turns) || (frames > 0 && count+len(t) > frames)) {
+		if n > 0 && ((turns > 0 && n >= turns) || (frames > 0 && drawn+frameCount(t) > frames)) {
 			break
 		}
 		n++
 		count += len(t)
+		drawn += frameCount(t)
 	}
 	more := n < len(ts)
-	if more && frames > 0 && count < frames/2 && (turns <= 0 || n < turns) {
-		count = frames // the rest comes from inside the turn after
-	}
-	if count > len(rest) {
-		count = len(rest)
-	}
 	out := rest[:count]
-	if frames > 0 && len(out) > 2*frames {
-		out = out[:frames]
-		more = true
+	if more && frames > 0 && drawn < frames/2 && (turns <= 0 || n < turns) {
+		out = firstDrawn(rest, frames) // the rest comes from inside the turn after
 	}
-	return Window{Events: out, More: more}
+	if frames > 0 && frameCount(out) > 2*frames {
+		out = firstDrawn(out, frames)
+	}
+	return Window{Events: out, More: len(out) < len(rest)}
 }
 
 func countOf(turns [][]model.Event) int {

@@ -3552,6 +3552,18 @@
       pruneBottom();
     } catch (err) { console.error('earlier', err); }
     finally { loadingWin = false; }
+    // a chunk that adds little to this lane (its events were folds, or a
+    // subagent's) leaves the sentinel in view, and the observer, which
+    // fires on change, would not fire again: keep going until the log is
+    // taller than its viewport or nothing earlier is left
+    if (hasEarlier && sentinelInView(earlierEl)) requestAnimationFrame(loadEarlier);
+  }
+  // sentinelInView says whether a scroll sentinel is within the log's
+  // viewport (plus the observer's margin) in the lane on screen.
+  function sentinelInView(el) {
+    if (el.hidden || mainLane.log.hidden) return false;
+    const r = el.getBoundingClientRect(), b = mainLane.log.getBoundingClientRect();
+    return r.bottom >= b.top - 300 && r.top <= b.bottom + 300;
   }
   async function loadLater() {
     if (!tailDetached || loadingWin) return;
@@ -3561,6 +3573,7 @@
       applyLanes(j.lanes);
       renderChunk(j.events || [], 'bottom');
       if (j.events && j.events.length) tailSeq = j.events[j.events.length - 1].seq;
+      if (j.more && sentinelInView(laterEl)) requestAnimationFrame(loadLater);
       if (!j.more) reattachTail();
       pruneTop();
     } catch (err) { console.error('later', err); }

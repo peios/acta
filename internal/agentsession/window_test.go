@@ -151,3 +151,34 @@ func TestLanesSummariseFromOutsideTheWindow(t *testing.T) {
 		t.Error("a window with no lane events summarises nothing")
 	}
 }
+
+// TestWindowsDoNotSpendTheBudgetOnFolds checks turns made of folds cost
+// nothing against the frame budget, so a page over a fold-heavy stretch
+// still opens on a screenful of frames.
+func TestWindowsDoNotSpendTheBudgetOnFolds(t *testing.T) {
+	var evs []model.Event
+	seq := int64(0)
+	turn := func(frames, folds int) {
+		for i := 0; i < frames; i++ {
+			seq++
+			evs = append(evs, model.Event{Seq: seq, T: model.Assistant})
+		}
+		for i := 0; i < folds; i++ {
+			seq++
+			evs = append(evs, model.Event{Seq: seq, T: model.Fold})
+		}
+		seq++
+		evs = append(evs, model.Event{Seq: seq, T: model.TurnIdle})
+	}
+	for i := 0; i < 5; i++ {
+		turn(3, 40) // 44 events, 4 frames each
+	}
+	w := Tail(evs, 40, 15)
+	if len(w.Events) != 3*44 || !w.More {
+		t.Errorf("Tail 15 frames: %d events, more=%v (want three whole turns)", len(w.Events), w.More)
+	}
+	w = After(evs, 0, 40, 15)
+	if len(w.Events) != 3*44 || !w.More {
+		t.Errorf("After 15 frames: %d events, more=%v", len(w.Events), w.More)
+	}
+}
