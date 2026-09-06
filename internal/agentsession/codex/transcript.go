@@ -474,8 +474,40 @@ func (p *Projector) synthRaw(f model.Frame, method string, params map[string]any
 // records it stores.
 func (p *Projector) transcriptState(f model.Frame, m map[string]any) []model.Event {
 	e := model.NewLabelled(model.SessionCatchup, f, str(m, "state")).Set("source", str(m, "state")).Set("count", int(num(m, "count"))).Set("from", str(m, "from")).Set("to", str(m, "to"))
+	if sk := num(m, "skipped"); sk > 0 {
+		e.Set("skipped", int64(sk))
+	}
 	e.Ref = ref("catchup", f)
 	return []model.Event{e}
+}
+
+// KeepLine says whether a rollout line can be part of the conversation at
+// all (ChainRecords keeps event_msg and turn_context records), so a reader
+// can drop the rest, response items, compaction snapshots and token
+// bookkeeping, which is most of a long rollout, before holding it.
+func KeepLine(line []byte) bool {
+	var r struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(line, &r) != nil {
+		return false
+	}
+	return r.Type == "event_msg" || r.Type == "turn_context"
+}
+
+// TurnStart says whether a rollout line begins a turn (the task_started
+// event), the place a reader may cut a long rollout without splitting one.
+func TurnStart(line []byte) bool {
+	var r struct {
+		Type    string `json:"type"`
+		Payload struct {
+			Type string `json:"type"`
+		} `json:"payload"`
+	}
+	if json.Unmarshal(line, &r) != nil {
+		return false
+	}
+	return r.Type == "event_msg" && r.Payload.Type == "task_started"
 }
 
 // v2Item spells a core item (as the rollout records it) the way the

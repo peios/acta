@@ -57,13 +57,16 @@ type Hub struct {
 // over the whole batch, not line by line.
 type transcriptRead struct {
 	source string // "catchup" (before a resume) or "import"
+	conn   *harnessConn
 	lines  []json.RawMessage
 	bytes  int
 	over   bool // the batch outgrew readCap and is dropped
 }
 
-// readCap bounds one transcript read held in memory. A transcript is a few
-// megabytes; one that large is a session of thousands of turns.
+// readCap bounds one transcript read held in memory. The harness keeps what
+// it sends under its own cap (the newest turns of a transcript, trimmed of
+// oversized strings), so this is a backstop against an older harness that
+// sends the file whole.
 const readCap = 96 << 20
 
 // ErrNoHarness is returned when no connected harness can take a request.
@@ -256,22 +259,45 @@ func (h *Hub) spawn(c *harnessConn, as store.AgentSession, resume bool) {
 	if resume && c.v >= 3 { // an older harness does not read transcripts
 		if evs, err := h.svc.Events(context.Background(), as.ID, 0, 0); err == nil {
 			if x, ok := d.Transcript(as, evs); ok {
+				x.Backend = as.Backend
 				cu = &x
-				h.openRead(as.ID, "catchup", "catchup")
+				h.openRead(as.ID, "catchup", "catchup", c)
 			}
 		}
 	}
 	c.send(Outbound{T: FrameSpawn, Session: as.ID, Backend: as.Backend, Cwd: as.Cwd, Cmd: l.Cmd, Args: l.Args, Env: l.Env, Resume: resume, Styles: l.Styles, Catchup: cu})
 }
 
-// openRead prepares to gather the lines of a transcript read.
-func (h *Hub) openRead(sessionID, reqID, source string) {
+// openRead prepares to gather the lines of a transcript read from harness c.
+func (h *Hub) openRead(sessionID, reqID, source string, c *harnessConn) {
 	h.mu.Lock()
 	if h.reads == nil {
 		h.reads = map[string]*transcriptRead{}
 	}
-	h.reads[sessionID+"/"+reqID] = &transcriptRead{source: source}
+	h.reads[sessionID+"/"+reqID] = &transcriptRead{source: source, conn: c}
 	h.mu.Unlock()
+}
+
+// dropReads fails every read in flight from harness c: what arrived is let
+// go, and the session says why nothing came of it, instead of holding a
+// partial transcript in memory for good.
+func (h *Hub) dropReads(ctx context.Context, c *harnessConn) {
+	h.mu.Lock()
+	var gone []string
+	var sources []string
+	for key, r := range h.reads {
+		if r.conn == c {
+			gone = append(gone, key)
+			sources = append(sources, r.source)
+			delete(h.reads, key)
+		}
+	}
+	h.mu.Unlock()
+	for i, key := range gone {
+		session := key[:strings.LastIndex(key, "/")]
+		h.recordState(ctx, session, map[string]any{"state": sources[i] + "_failed", "reason": "the harness disconnected during the read"})
+		slog.Warn("transcript read dropped", "session", session, "source", sources[i])
+	}
 }
 
 // gatherRead adds a batch of lines to a read in flight.
@@ -341,6 +367,9 @@ func (h *Hub) finishRead(ctx context.Context, c *harnessConn, in Inbound) {
 		divider["from"] = first.UTC().Format(time.RFC3339)
 		divider["to"] = last.UTC().Format(time.RFC3339)
 	}
+	if in.Skipped > 0 {
+		divider["skipped"] = in.Skipped
+	}
 	raw, _ := json.Marshal(divider)
 	batch := make([]store.AgentSessionEvent, 0, len(recs)+1)
 	batch = append(batch, store.AgentSessionEvent{SessionID: in.Session, Kind: "state", Payload: raw, CreatedAt: first})
@@ -350,6 +379,7 @@ func (h *Hub) finishRead(ctx context.Context, c *harnessConn, in Inbound) {
 	stored, err := h.svc.AppendBatch(ctx, batch)
 	if err != nil {
 		slog.Error("agent session append batch", "session", in.Session, "err", err)
+		h.recordState(ctx, in.Session, map[string]any{"state": r.source + "_failed", "reason": "the records could not be stored: " + err.Error()})
 		return
 	}
 	for _, ev := range stored {
@@ -426,8 +456,8 @@ func (h *Hub) Import(ownerID, harnessID string, as store.AgentSession) error {
 	if !ok {
 		return errors.New("backend " + as.Backend + " keeps no transcript to import")
 	}
-	h.openRead(as.ID, "import", "import")
-	c.send(Outbound{T: FrameRead, Session: as.ID, ID: "import", Path: cu.Path, Key: cu.Key, Hold: true})
+	h.openRead(as.ID, "import", "import", c)
+	c.send(Outbound{T: FrameRead, Session: as.ID, ID: "import", Backend: as.Backend, Path: cu.Path, Key: cu.Key, Hold: true})
 	return nil
 }
 
@@ -762,6 +792,7 @@ func (h *Hub) DetachHarness(c *harnessConn) {
 	}
 	h.mu.Unlock()
 	c.Close()
+	h.dropReads(context.Background(), c)
 	slog.Info("harness detached", "owner", c.ownerID, "label", c.label)
 	for _, id := range c.heldIDs() {
 		h.notify(c.ownerID, id)

@@ -2459,6 +2459,7 @@
       const day = (t) => t.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: t.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
       bits.push(day(a) === day(b) ? day(a) : day(a) + ' – ' + day(b));
     }
+    if (d.skipped) bits.push('older history left on the harness (' + (d.skipped < 1048576 ? Math.max(1, Math.round(d.skipped / 1024)) + ' KB' : (d.skipped / 1048576).toFixed(0) + ' MB') + ')');
     return divider(d.source === 'import' ? 'imported from the local transcript' : 'caught up from the local transcript', bits, 'frame--session frame--catchup');
   }
   function renderStateNote(ev) {

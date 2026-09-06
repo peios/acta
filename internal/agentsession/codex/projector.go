@@ -317,6 +317,15 @@ func (p *Projector) state(f model.Frame) []model.Event {
 		return []model.Event{e}
 	case "resume_failed":
 		return []model.Event{model.New(model.SessionResumeFail, f).Set("reason", str(m, "reason"))}
+	case "import_failed", "catchup_failed":
+		what := "import failed"
+		if st == "catchup_failed" {
+			what = "catch-up failed"
+		}
+		if r := str(m, "reason"); r != "" {
+			what += ": " + r
+		}
+		return []model.Event{model.New(model.SessionState, f).Set("text", what).Set("error", true)}
 	case "stdout":
 		return []model.Event{model.New(model.SessionState, f).Set("text", str(m, "text"))}
 	}

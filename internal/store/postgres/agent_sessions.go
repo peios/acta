@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -116,8 +117,37 @@ func scanAgentEvent(row interface{ Scan(...any) error }) (store.AgentSessionEven
 	return e, err
 }
 
+// nulEscape is the JSON escape for a NUL character: backslash, u, 0000.
+var nulEscape = []byte{'\\', 'u', '0', '0', '0', '0'}
+
+// jsonbSafe makes a JSON payload storable as jsonb: Postgres refuses the
+// NUL escape in a string (tool output that dumped a binary file carries
+// them), so it becomes the replacement character. Every other escape,
+// including an escaped backslash before "u0000", is left alone.
+func jsonbSafe(payload []byte) []byte {
+	if !bytes.Contains(payload, nulEscape) {
+		return payload
+	}
+	out := make([]byte, 0, len(payload))
+	for i := 0; i < len(payload); i++ {
+		b := payload[i]
+		if b != '\\' || i+1 >= len(payload) {
+			out = append(out, b)
+			continue
+		}
+		if payload[i+1] == 'u' && i+5 < len(payload) && string(payload[i+2:i+6]) == "0000" {
+			out = append(out, `�`...)
+			i += 5
+			continue
+		}
+		out = append(out, b, payload[i+1]) // any other escape, kept whole
+		i++
+	}
+	return out
+}
+
 func (p *Postgres) AppendAgentSessionEvent(ctx context.Context, e store.AgentSessionEvent) (store.AgentSessionEvent, error) {
-	payload := e.Payload
+	payload := jsonbSafe(e.Payload)
 	if len(payload) == 0 {
 		payload = []byte("null")
 	}
@@ -149,7 +179,7 @@ func (p *Postgres) AppendAgentSessionEvents(ctx context.Context, events []store.
 	err := p.inTx(ctx, func(tx pgx.Tx) error {
 		latest := map[string]time.Time{}
 		for _, e := range events {
-			payload := e.Payload
+			payload := jsonbSafe(e.Payload)
 			if len(payload) == 0 {
 				payload = []byte("null")
 			}

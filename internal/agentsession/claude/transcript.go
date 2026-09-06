@@ -539,8 +539,63 @@ func (p *Projector) synth(f model.Frame, kind string, payload map[string]any, fn
 // records it stores: where they came from and how many.
 func (p *Projector) transcriptState(f model.Frame, m map[string]any) []model.Event {
 	e := model.NewLabelled(model.SessionCatchup, f, str(m, "state")).Set("source", str(m, "state")).Set("count", int(num(m, "count"))).Set("from", str(m, "from")).Set("to", str(m, "to"))
+	if sk := num(m, "skipped"); sk > 0 {
+		e.Set("skipped", int64(sk))
+	}
 	e.Ref = ref("catchup", f)
 	return []model.Event{e}
+}
+
+// KeepLine says whether a transcript line can matter to the conversation:
+// the records ChainRecords keeps (user, assistant, system) and any record
+// with a uuid, since the chain is walked through parent links and an
+// attachment record sits between messages. Snapshots and bookkeeping
+// records are dropped before a reader holds them.
+func KeepLine(line []byte) bool {
+	var r struct {
+		Type string `json:"type"`
+		UUID string `json:"uuid"`
+	}
+	if json.Unmarshal(line, &r) != nil {
+		return false
+	}
+	switch r.Type {
+	case "user", "assistant", "system":
+		return true
+	}
+	return r.UUID != ""
+}
+
+// TurnStart says whether a transcript line is a prompt the user typed, the
+// place a reader may cut a long transcript without splitting a turn: a user
+// record that carries text rather than tool results, and is not a meta or
+// sidechain record.
+func TurnStart(line []byte) bool {
+	var r struct {
+		Type        string `json:"type"`
+		IsMeta      bool   `json:"isMeta"`
+		IsSidechain bool   `json:"isSidechain"`
+		Message     struct {
+			Content json.RawMessage `json:"content"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(line, &r) != nil || r.Type != "user" || r.IsMeta || r.IsSidechain {
+		return false
+	}
+	c := bytes.TrimSpace(r.Message.Content)
+	if len(c) == 0 {
+		return false
+	}
+	if c[0] == '"' {
+		return true
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(c, &blocks) != nil || len(blocks) == 0 {
+		return false
+	}
+	return blocks[0].Type == "text"
 }
 
 func cloneMap(m map[string]any) map[string]any {

@@ -250,7 +250,7 @@ func (h *harness) connectAndServe(ctx context.Context) error {
 		case "scan":
 			go h.scan(f.ID, f.Backend)
 		case "read":
-			go h.read(f.Session, f.ID, readReq{Path: f.Path, Key: f.Key, After: f.After}, f.Hold)
+			go h.read(f.Session, f.ID, readReq{Backend: f.Backend, Path: f.Path, Key: f.Key, After: f.After}, f.Hold)
 		case "spawn":
 			h.spawn(f.Session, f.Cwd, f.Cmd, f.Args, f.Env, f.Resume, f.Styles, f.Catchup)
 		case "write":
@@ -381,13 +381,16 @@ func (h *harness) sendWait(v any) bool {
 // readReq names a transcript read: the file (a glob, ~ allowed), the field
 // that identifies a line, and the value of the last line already held.
 type readReq struct {
-	Path  string `json:"path"`
-	Key   string `json:"key"`
-	After string `json:"after"`
+	Backend string `json:"backend"`
+	Path    string `json:"path"`
+	Key     string `json:"key"`
+	After   string `json:"after"`
 }
 
 const (
-	readFileCap  = 128 << 20 // bytes of transcript read at most
+	readLineCap  = 32 << 20  // longest transcript line read
+	readKeepCap  = 64 << 20  // bytes of conversation sent at most: the newest turns that fit
+	readStrCap   = 256 << 10 // longest string value sent; longer ones are cut with a marker
 	readBatchCap = 768 << 10 // bytes of lines per records frame
 )
 
@@ -425,14 +428,6 @@ func (h *harness) read(session, id string, req readReq, hold bool) {
 	if newest == "" {
 		return
 	}
-	st, err := os.Stat(newest)
-	if err != nil {
-		return
-	}
-	if st.Size() > readFileCap {
-		done["error"] = fmt.Sprintf("transcript is %d MB, more than the %d MB limit", st.Size()>>20, readFileCap>>20)
-		return
-	}
 	f, err := os.Open(newest)
 	if err != nil {
 		done["error"] = err.Error()
@@ -444,10 +439,11 @@ func (h *harness) read(session, id string, req readReq, hold bool) {
 		key = "uuid"
 	}
 	needle := []byte(`"` + req.After + `"`)
-	var pending [][]byte // the lines since the last match (all lines when nothing is to be matched)
+	keep, turnStart := lineRules(req.Backend)
+	var pending [][]byte // the conversation lines since the last match (all when nothing is to be matched)
 	found := req.After == ""
 	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 1<<20), 32<<20)
+	sc.Buffer(make([]byte, 0, 1<<20), readLineCap)
 	for sc.Scan() {
 		line := sc.Bytes()
 		if len(strings.TrimSpace(string(line))) == 0 {
@@ -459,6 +455,11 @@ func (h *harness) read(session, id string, req readReq, hold bool) {
 				pending = pending[:0]
 				continue
 			}
+		}
+		// only lines that can be conversation are held: a rollout is mostly
+		// bookkeeping, and it is the held bytes that bound memory here
+		if !keep(line) {
+			continue
 		}
 		cp := make([]byte, len(line))
 		copy(cp, line)
@@ -472,6 +473,17 @@ func (h *harness) read(session, id string, req readReq, hold bool) {
 		return
 	}
 	done["found"] = true
+	// a transcript longer than Acta will take is sent from its newest turns
+	// back, whole turns only; what is left behind is reported so the
+	// divider can say so
+	var skipped int64
+	pending, skipped = tailCut(pending, readKeepCap, turnStart)
+	if skipped > 0 {
+		done["skipped"] = skipped
+	}
+	for i, line := range pending {
+		pending[i] = trimStrings(line, readStrCap)
+	}
 	count := 0
 	var batch []json.RawMessage
 	size := 0
@@ -501,6 +513,105 @@ func (h *harness) read(session, id string, req readReq, hold bool) {
 		return
 	}
 	done["count"] = count
+}
+
+// lineRules picks a backend's notion of which transcript lines can be
+// conversation and which begin a turn. An unknown backend keeps every line
+// and never cuts.
+func lineRules(backend string) (keep, turnStart func([]byte) bool) {
+	switch backend {
+	case "claude-code":
+		return claude.KeepLine, claude.TurnStart
+	case "codex":
+		return codex.KeepLine, codex.TurnStart
+	}
+	return func([]byte) bool { return true }, func([]byte) bool { return false }
+}
+
+// tailCut keeps the newest lines that fit in max bytes, cutting only where
+// turnStart says a turn begins so no turn is sent in part; the bytes left
+// behind are returned. With no turn boundary inside the budget nothing is
+// cut: a single turn that large is still sent whole.
+func tailCut(lines [][]byte, max int, turnStart func([]byte) bool) ([][]byte, int64) {
+	total := 0
+	for _, l := range lines {
+		total += len(l)
+	}
+	if total <= max {
+		return lines, 0
+	}
+	// walk back to the last line the budget still covers, then forward to
+	// the first turn start at or after it
+	size := 0
+	from := len(lines)
+	for from > 0 && size+len(lines[from-1]) <= max {
+		from--
+		size += len(lines[from])
+	}
+	for from < len(lines) && !turnStart(lines[from]) {
+		from++
+	}
+	if from >= len(lines) {
+		return lines, 0
+	}
+	var skipped int64
+	for _, l := range lines[:from] {
+		skipped += int64(len(l))
+	}
+	return lines[from:], skipped
+}
+
+// trimStrings cuts every string value in a JSON line longer than max, with
+// a marker saying how much went; a line with nothing that long is returned
+// as it is. The line is re-encoded when cut, so key order may change.
+func trimStrings(line []byte, max int) []byte {
+	if len(line) <= max {
+		return line
+	}
+	var v any
+	dec := json.NewDecoder(strings.NewReader(string(line)))
+	dec.UseNumber() // numbers round-trip as written, not as floats
+	if dec.Decode(&v) != nil {
+		return line
+	}
+	cut := false
+	v = trimValue(v, max, &cut)
+	if !cut {
+		return line
+	}
+	var buf strings.Builder
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return line
+	}
+	return []byte(strings.TrimRight(buf.String(), "\n"))
+}
+
+func trimValue(v any, max int, cut *bool) any {
+	switch t := v.(type) {
+	case map[string]any:
+		for k, x := range t {
+			t[k] = trimValue(x, max, cut)
+		}
+		return t
+	case []any:
+		for i, x := range t {
+			t[i] = trimValue(x, max, cut)
+		}
+		return t
+	case string:
+		if len(t) <= max {
+			return t
+		}
+		*cut = true
+		end := max
+		for end > 0 && end < len(t) && t[end]&0xC0 == 0x80 { // do not split a UTF-8 sequence
+			end--
+		}
+		return t[:end] + fmt.Sprintf("\n… [%d KB cut by the Acta harness]", (len(t)-end)>>10)
+	}
+	return v
 }
 
 // fieldString reads a string field of a JSON line by a dotted path

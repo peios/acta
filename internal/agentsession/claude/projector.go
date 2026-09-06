@@ -2259,8 +2259,23 @@ func (p *Projector) stateEvents(f model.Frame, m map[string]any, st string) []mo
 		return []model.Event{e}
 	case "resume_failed":
 		return []model.Event{model.New(model.SessionResumeFail, f).Set("reason", firstStr(str(m, "reason"), "resume failed; starting fresh"))}
+	case "import_failed", "catchup_failed":
+		return []model.Event{model.New(model.SessionState, f).Set("text", readFailedText(st, str(m, "reason"))).Set("error", true)}
 	}
 	return []model.Event{model.New(model.SessionState, f).Set("text", firstStr(st, "state"))}
+}
+
+// readFailedText words a transcript read that came to nothing, with the
+// harness's reason when it gave one.
+func readFailedText(st, reason string) string {
+	what := "import failed"
+	if st == "catchup_failed" {
+		what = "catch-up failed"
+	}
+	if reason == "" {
+		return what
+	}
+	return what + ": " + reason
 }
 
 // --- reset, lifecycle, goal, reports ---

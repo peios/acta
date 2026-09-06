@@ -81,9 +81,10 @@ const (
 // session: the file (a glob, ~ allowed), the field that names a line, and
 // the value of the last line Acta already holds ("" for everything).
 type Catchup struct {
-	Path  string `json:"path"`
-	Key   string `json:"key,omitempty"`
-	After string `json:"after,omitempty"`
+	Backend string `json:"backend,omitempty"` // whose transcript: decides which lines matter
+	Path    string `json:"path"`
+	Key     string `json:"key,omitempty"`
+	After   string `json:"after,omitempty"`
 }
 
 // TranscriptRecord is one line of a backend's transcript worth storing, with
@@ -115,11 +116,12 @@ type Inbound struct {
 	Payload  json.RawMessage   `json:"payload,omitempty"`
 	Error    string            `json:"error,omitempty"`
 	Code     *int              `json:"code,omitempty"`
-	Stderr   string            `json:"stderr,omitempty"` // exit: the tail of the process's stderr
-	Lines    []json.RawMessage `json:"lines,omitempty"`  // records: transcript lines, verbatim
-	Count    int               `json:"count,omitempty"`  // read_done: lines sent
-	Found    bool              `json:"found,omitempty"`  // read_done: the file (and the line to start after) existed
-	Items    json.RawMessage   `json:"items,omitempty"`  // scan_result: the transcripts found, in the backend's shape
+	Stderr   string            `json:"stderr,omitempty"`  // exit: the tail of the process's stderr
+	Lines    []json.RawMessage `json:"lines,omitempty"`   // records: transcript lines, verbatim
+	Count    int               `json:"count,omitempty"`   // read_done: lines sent
+	Found    bool              `json:"found,omitempty"`   // read_done: the file (and the line to start after) existed
+	Skipped  int64             `json:"skipped,omitempty"` // read_done: bytes of older history left behind to fit the read cap
+	Items    json.RawMessage   `json:"items,omitempty"`   // scan_result: the transcripts found, in the backend's shape
 }
 
 // Outbound is a frame written to a harness.
