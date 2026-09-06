@@ -104,61 +104,63 @@ func (h *Hub) emit(ctx context.Context, sessionID string, ev store.AgentSessionE
 // from the beginning: its state at frame N depends on frames 1..N-1.
 func (h *Hub) History(ctx context.Context, as store.AgentSession, afterSeq int64) ([]model.Event, int64, error) {
 	// A page open is followed by scroll fetches and a socket replay, each
-	// wanting the same projection of the same transcript; a long one costs a
-	// second to load and project, so the last few are kept, in wire form
-	// (payloads dropped: the frames endpoint fetches those by seq), and
-	// reused while the transcript has not grown.
+	// wanting the same projection of the same transcript, and the next open
+	// of the same session wants it again with a few frames more (the open
+	// itself records a catalogue request). A long transcript costs most of
+	// a second to load and project, so recent sessions' projections are
+	// kept with the projector that made them, in wire form (payloads
+	// dropped: the frames endpoint fetches those by seq), and only the
+	// frames stored since are projected onto them. A projector's state at
+	// frame N depends on frames 1..N-1, which is why the instance is kept
+	// rather than restarted.
 	h.histMu.Lock()
+	defer h.histMu.Unlock()
 	ent, ok := h.hist[as.ID]
-	h.histMu.Unlock()
-	if ok {
-		if more, err := h.svc.Events(ctx, as.ID, ent.last, 1); err == nil && len(more) == 0 {
-			return afterOf(ent.events, afterSeq), ent.last, nil
+	if !ok {
+		p := NewProjector(as.Backend)
+		if p == nil {
+			p = unknownProjector{}
 		}
+		ent = &histEntry{proj: p}
 	}
-	evs, err := h.svc.Events(ctx, as.ID, 0, 0)
+	more, err := h.svc.Events(ctx, as.ID, ent.last, 0)
 	if err != nil {
 		return nil, 0, err
 	}
-	p := NewProjector(as.Backend)
-	if p == nil {
-		p = unknownProjector{}
-	}
-	var out []model.Event
-	var last int64
-	for _, ev := range evs {
-		last = ev.Seq
-		for _, e := range p.Project(frameOf(ev, true)) {
-			out = append(out, e.Wire())
+	for _, ev := range more {
+		ent.last = ev.Seq
+		for _, e := range ent.proj.Project(frameOf(ev, true)) {
+			ent.events = append(ent.events, e.Wire())
 		}
 	}
-	h.histMu.Lock()
-	if h.hist == nil {
-		h.hist = map[string]histEntry{}
-	}
-	if len(h.hist) >= histKeep {
-		for id := range h.hist { // any one: the set is tiny
-			if id != as.ID {
+	if !ok {
+		if h.hist == nil {
+			h.hist = map[string]*histEntry{}
+		}
+		if len(h.hist) >= histKeep {
+			for id := range h.hist { // any one: the set is small
 				delete(h.hist, id)
 				break
 			}
 		}
+		h.hist[as.ID] = ent
 	}
-	h.hist[as.ID] = histEntry{last: last, events: out}
-	h.histMu.Unlock()
-	return afterOf(out, afterSeq), last, nil
+	return afterOf(ent.events, afterSeq), ent.last, nil
 }
 
 // histEntry is a session's projected transcript, in wire form, as of the
-// stored frame last.
+// stored frame last, with the projector that produced it ready for the
+// frames after.
 type histEntry struct {
 	last   int64
 	events []model.Event
+	proj   model.Projector
 }
 
-// histKeep is how many sessions' projections are kept; a reader has one or
-// two open at a time, and each is a few megabytes at most.
-const histKeep = 4
+// histKeep is how many sessions' projections are kept: enough for a reader
+// to switch among the sessions they have open without any being rebuilt;
+// each is a few megabytes at most.
+const histKeep = 16
 
 // afterOf is the events past a stored frame's seq.
 func afterOf(evs []model.Event, afterSeq int64) []model.Event {
