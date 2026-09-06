@@ -113,6 +113,30 @@ func (s *Store) AppendAgentSessionEvent(_ context.Context, e store.AgentSessionE
 	return e, nil
 }
 
+func (s *Store) AppendAgentSessionEvents(_ context.Context, events []store.AgentSessionEvent) ([]store.AgentSessionEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]store.AgentSessionEvent, 0, len(events))
+	for _, e := range events {
+		as, ok := s.agentSessions[e.SessionID]
+		if !ok {
+			return nil, store.ErrAgentSessionNotFound
+		}
+		s.agentEventSeq++
+		e.Seq = s.agentEventSeq
+		if e.CreatedAt.IsZero() {
+			e.CreatedAt = time.Now()
+		}
+		s.agentEvents = append(s.agentEvents, e)
+		if e.CreatedAt.After(as.UpdatedAt) {
+			as.UpdatedAt = e.CreatedAt
+			s.agentSessions[as.ID] = as
+		}
+		out = append(out, e)
+	}
+	return out, nil
+}
+
 func (s *Store) AgentSessionEvents(_ context.Context, sessionID string, afterSeq int64, limit int) ([]store.AgentSessionEvent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

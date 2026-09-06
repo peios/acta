@@ -78,7 +78,42 @@
       </section>
 
       <section class="agents-card">
-        <p class="section-title">Your sessions{{if .Sessions}} <span class="count">{{len .Sessions}}</span>{{end}}</p>
+        <p class="section-title">Your sessions{{if .Sessions}} <span class="count">{{len .Sessions}}</span>{{end}}
+          {{if .Picks}}<button type="button" class="btn-secondary import-open" data-import-open title="Bring conversations kept on a harness into Acta">Import…</button>{{end}}
+        </p>
+        {{if .Picks}}
+        <form class="import-panel" method="post" action="/account/sessions/import" data-import data-picks="{{.PicksJSON}}" hidden>
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <input type="hidden" name="harness" value="" data-import-harness>
+          <input type="hidden" name="backend" value="claude-code">
+          <div class="import-head">
+            <div>
+              <div class="import-title">Import Claude Code conversations</div>
+              <p class="import-sub">Conversations kept on <b data-import-host>the harness</b>. Each one you pick becomes a session here, with its whole history, that you can carry on from Acta or from a terminal.</p>
+            </div>
+            {{if gt (len .Picks) 1}}
+            <div class="hpicks" role="radiogroup" aria-label="Harness" data-import-picks>
+              {{range .Picks}}
+              <button type="button" class="hpick" role="radio" aria-checked="false" data-import-pick="{{.ID}}" title="{{.Cwd}}">
+                <span class="live-dot is-running"></span>
+                <span class="hpick-label">{{.Label}}</span>
+              </button>
+              {{end}}
+            </div>
+            {{end}}
+            <div class="import-tools">
+              <div class="input-wrap import-filter"><svg class="ico" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg><input class="input" placeholder="Filter by title, first message or directory" autocomplete="off" data-import-filter></div>
+              <button type="button" class="link-btn" data-import-all>Select all shown</button>
+            </div>
+          </div>
+          <div class="import-list" data-import-list><div class="import-empty">Looking on the harness…</div></div>
+          <div class="import-foot">
+            <span class="import-hint" data-import-hint></span>
+            <button type="button" class="btn-secondary" data-import-cancel>Cancel</button>
+            <button class="btn-primary" type="submit" disabled data-import-submit>Import selected</button>
+          </div>
+        </form>
+        {{end}}
         {{if .Sessions}}
         <div class="sess-list">
           {{range .Sessions}}

@@ -852,6 +852,10 @@ type Store interface {
 	UpdateAgentSessionOptions(ctx context.Context, id string, options map[string]any, updatedAt time.Time) (AgentSession, error)
 	DeleteAgentSession(ctx context.Context, id string) error
 	AppendAgentSessionEvent(ctx context.Context, e AgentSessionEvent) (AgentSessionEvent, error)
+	// AppendAgentSessionEvents stores a run of frames in order (a transcript
+	// caught up from the backend's own record), each at its own CreatedAt
+	// when set, and moves the session's updated_at forward to the latest.
+	AppendAgentSessionEvents(ctx context.Context, events []AgentSessionEvent) ([]AgentSessionEvent, error)
 	AgentSessionEvents(ctx context.Context, sessionID string, afterSeq int64, limit int) ([]AgentSessionEvent, error)
 
 	// Activity log. RecordEvent appends an entry (assigning its id). The two

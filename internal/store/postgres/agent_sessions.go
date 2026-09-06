@@ -141,6 +141,52 @@ func (p *Postgres) AppendAgentSessionEvent(ctx context.Context, e store.AgentSes
 	return out, err
 }
 
+func (p *Postgres) AppendAgentSessionEvents(ctx context.Context, events []store.AgentSessionEvent) ([]store.AgentSessionEvent, error) {
+	if len(events) == 0 {
+		return nil, nil
+	}
+	out := make([]store.AgentSessionEvent, 0, len(events))
+	err := p.inTx(ctx, func(tx pgx.Tx) error {
+		latest := map[string]time.Time{}
+		for _, e := range events {
+			payload := e.Payload
+			if len(payload) == 0 {
+				payload = []byte("null")
+			}
+			var at *time.Time
+			if !e.CreatedAt.IsZero() {
+				t := e.CreatedAt
+				at = &t
+			}
+			const q = `INSERT INTO agent_session_events (session_id, kind, payload, created_at)
+			           VALUES ($1, $2, $3, COALESCE($4, now()))
+			           RETURNING ` + agentEventCols
+			row, err := scanAgentEvent(tx.QueryRow(ctx, q, e.SessionID, e.Kind, payload, at))
+			if err != nil {
+				var pgErr *pgconn.PgError
+				if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+					return store.ErrAgentSessionNotFound
+				}
+				return err
+			}
+			out = append(out, row)
+			if row.CreatedAt.After(latest[e.SessionID]) {
+				latest[e.SessionID] = row.CreatedAt
+			}
+		}
+		for id, at := range latest {
+			if _, err := tx.Exec(ctx, `UPDATE agent_sessions SET updated_at = GREATEST(updated_at, $2) WHERE id = $1`, id, at); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (p *Postgres) AgentSessionEvents(ctx context.Context, sessionID string, afterSeq int64, limit int) ([]store.AgentSessionEvent, error) {
 	if _, err := p.AgentSessionByID(ctx, sessionID); err != nil {
 		return nil, err

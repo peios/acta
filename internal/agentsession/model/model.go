@@ -89,6 +89,7 @@ const (
 	SessionReset       = "session.reset"         // conversation id
 	SessionCatalog     = "session.catalog"       // models []model, commands []command, styles, fast_mode, fast_reason, default_effort
 	SessionState       = "session.state"         // a harness state note with no better home: text, error bool
+	SessionCatchup     = "session.catchup"       // messages taken from the backend's own transcript: source (catchup|import), count, from, to
 
 	// The user's side.
 	Input       = "input"        // text, images []{media_type,data}, cmd {name,args} when the text is a slash command

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"html/template"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -214,12 +215,162 @@ func (h *handlers) agentHarnessDirs(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"dirs": dirs, "exists": exists})
 }
 
+// transcriptItem is one conversation a harness found on its host, as the
+// import picker lists it: the backend's own listing plus whether Acta
+// already holds a session under that id.
+type transcriptItem struct {
+	ID      string    `json:"id"`
+	Path    string    `json:"path"`
+	Cwd     string    `json:"cwd"`
+	Title   string    `json:"title"`
+	First   string    `json:"first"`
+	Started time.Time `json:"started"`
+	Updated time.Time `json:"updated"`
+	Size    int64     `json:"size"`
+	Mode    string    `json:"permission_mode"`
+	Held    bool      `json:"held"`
+}
+
+// scanTranscripts asks a harness for a backend's transcripts and marks the
+// ones this principal already has a session for.
+func (h *handlers) scanTranscripts(ctx context.Context, ownerID, harnessID, backend string) ([]transcriptItem, error) {
+	raw, err := h.agentHub.ScanTranscripts(ctx, ownerID, harnessID, backend)
+	if err != nil {
+		return nil, err
+	}
+	var items []transcriptItem
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &items); err != nil {
+			return nil, err
+		}
+	}
+	have := map[string]bool{}
+	if list, err := h.agentSessions.List(ctx, ownerID); err == nil {
+		for _, as := range list {
+			have[as.ID] = true
+		}
+	}
+	for i := range items {
+		items[i].Held = have[items[i].ID]
+	}
+	return items, nil
+}
+
+// agentHarnessTranscripts lists the transcripts a backend keeps on a
+// harness's host, for the import picker.
+func (h *handlers) agentHarnessTranscripts(w http.ResponseWriter, r *http.Request) {
+	p := principalFrom(r.Context())
+	backend := strings.TrimSpace(r.URL.Query().Get("backend"))
+	if backend == "" {
+		backend = "claude-code"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if !knownBackend(backend) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []transcriptItem{}, "error": "unknown backend"})
+		return
+	}
+	items, err := h.scanTranscripts(r.Context(), p.ID, r.PathValue("id"), backend)
+	if err != nil {
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []transcriptItem{}, "error": err.Error()})
+		return
+	}
+	if items == nil {
+		items = []transcriptItem{}
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"items": items})
+}
+
+var transcriptIDRe = regexp.MustCompile(`^[0-9a-fA-F-]{8,64}$`)
+
+// agentSessionImport records a session for each chosen transcript, under
+// the transcript's own id, and has the harness read it in. The harness is
+// asked again which transcripts it has, so the file read is one it listed,
+// never a path the browser named.
+func (h *handlers) agentSessionImport(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	p := principalFrom(r.Context())
+	harnessID := strings.TrimSpace(r.PostFormValue("harness"))
+	backend := strings.TrimSpace(r.PostFormValue("backend"))
+	if backend == "" {
+		backend = "claude-code"
+	}
+	if !knownBackend(backend) {
+		http.Redirect(w, r, "/account/sessions?err=bad_backend", http.StatusSeeOther)
+		return
+	}
+	want := map[string]bool{}
+	for _, id := range r.PostForm["transcript"] {
+		if transcriptIDRe.MatchString(id) {
+			want[id] = true
+		}
+	}
+	if len(want) == 0 {
+		http.Redirect(w, r, "/account/sessions", http.StatusSeeOther)
+		return
+	}
+	items, err := h.scanTranscripts(r.Context(), p.ID, harnessID, backend)
+	if errors.Is(err, agentsession.ErrHarnessTooOld) {
+		http.Redirect(w, r, "/account/sessions?err=old_harness", http.StatusSeeOther)
+		return
+	}
+	if err != nil {
+		http.Redirect(w, r, "/account/sessions?err=no_harness", http.StatusSeeOther)
+		return
+	}
+	var created []string
+	for _, it := range items {
+		if !want[it.ID] || it.Held {
+			continue
+		}
+		options := map[string]any{"permission_mode": "default"}
+		switch it.Mode {
+		case "default", "acceptEdits", "plan", "bypassPermissions", "auto":
+			options["permission_mode"] = it.Mode
+		}
+		title := it.Title
+		if title == "" {
+			title = clipTitle(it.First, 80)
+		}
+		as, err := h.agentSessions.CreateWithID(r.Context(), it.ID, p.ID, backend, it.Cwd, title, options)
+		if err != nil {
+			continue
+		}
+		if err := h.agentHub.Import(p.ID, harnessID, as, it.Path); err != nil {
+			_, _ = h.agentSessions.Append(r.Context(), as.ID, "state",
+				json.RawMessage(`{"state":"import_failed","reason":"no harness connected"}`))
+		}
+		created = append(created, as.ID)
+	}
+	if len(created) == 1 {
+		http.Redirect(w, r, "/account/sessions/"+created[0], http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/account/sessions", http.StatusSeeOther)
+}
+
+// clipTitle keeps the first line of s, at most n runes.
+func clipTitle(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
+		s = strings.TrimSpace(s[:i])
+	}
+	if r := []rune(s); len(r) > n {
+		return string(r[:n-1]) + "…"
+	}
+	return s
+}
+
 func agentSessionErr(code string) string {
 	switch code {
 	case "no_harness":
 		return "No harness is connected. Run `acta harness` on the machine you want to work on."
 	case "bad_backend":
 		return "Unknown backend."
+	case "old_harness":
+		return "That harness runs an older acta. Update it and restart `acta harness`."
 	case "":
 		return ""
 	default:

@@ -137,3 +137,128 @@
   const first = picks.find(p => p.recent) || picks[0];
   if (first) pick(first.id, false);
 })();
+
+// The import picker: the conversations a harness's backend keeps on its host,
+// listed for choosing. Nothing is imported wholesale — a machine holds
+// hundreds of transcripts and most are throwaway — and a conversation Acta
+// already has a session for is shown but cannot be picked twice.
+(() => {
+  'use strict';
+  const form = document.querySelector('[data-import]');
+  const open = document.querySelector('[data-import-open]');
+  if (!form || !open) return;
+  let picks = [];
+  try { picks = JSON.parse(form.dataset.picks || '[]') || []; } catch (_) {}
+  const harnessInput = form.querySelector('[data-import-harness]');
+  const host = form.querySelector('[data-import-host]');
+  const list = form.querySelector('[data-import-list]');
+  const filter = form.querySelector('[data-import-filter]');
+  const hint = form.querySelector('[data-import-hint]');
+  const submit = form.querySelector('[data-import-submit]');
+  const all = form.querySelector('[data-import-all]');
+  let cur = null;
+  let items = [];
+  let seq = 0;
+
+  function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+  function tilde(p) { return cur && cur.home && p && p.startsWith(cur.home + '/') ? '~' + p.slice(cur.home.length) : (cur && p === cur.home ? '~' : (p || '')); }
+  function ago(iso) {
+    const t = new Date(iso).getTime(); if (!t) return '';
+    const s = Math.max(0, (Date.now() - t) / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.floor(s / 60) + ' min ago';
+    if (s < 86400) return Math.floor(s / 3600) + ' h ago';
+    if (s < 86400 * 14) return Math.floor(s / 86400) + ' d ago';
+    const d = new Date(t);
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+  }
+  function size(n) { return n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; }
+
+  function count() {
+    const n = form.querySelectorAll('input[name="transcript"]:checked').length;
+    submit.disabled = n === 0;
+    submit.textContent = n ? 'Import selected (' + n + ')' : 'Import selected';
+  }
+  function row(it) {
+    const lab = el('label', 'import-row' + (it.held ? ' is-held' : ''));
+    const cb = el('input'); cb.type = 'checkbox'; cb.name = 'transcript'; cb.value = it.id; cb.disabled = !!it.held;
+    cb.addEventListener('change', count);
+    lab.appendChild(cb);
+    const main = el('div', 'import-main');
+    main.appendChild(el('div', 'import-name', it.title || it.first || it.id));
+    if (it.title && it.first) main.appendChild(el('div', 'import-first', it.first));
+    const meta = el('div', 'import-meta');
+    if (it.cwd) { const c = el('span', 'import-cwd', tilde(it.cwd)); c.title = it.cwd; meta.appendChild(c); }
+    const when = el('span', null, ago(it.updated)); when.title = new Date(it.updated).toLocaleString(); meta.appendChild(when);
+    meta.appendChild(el('span', null, size(it.size || 0)));
+    main.appendChild(meta);
+    lab.appendChild(main);
+    lab.appendChild(el('span', 'import-state', it.held ? 'in Acta' : ''));
+    lab.dataset.text = ((it.title || '') + ' ' + (it.first || '') + ' ' + (it.cwd || '')).toLowerCase();
+    return lab;
+  }
+  function paint() {
+    list.textContent = '';
+    if (!items.length) { list.appendChild(el('div', 'import-empty', 'No conversations found on ' + (cur ? cur.label : 'the harness') + '.')); hint.textContent = ''; return; }
+    for (const it of items) list.appendChild(row(it));
+    applyFilter();
+  }
+  function applyFilter() {
+    const q = filter.value.trim().toLowerCase();
+    let shown = 0;
+    for (const r of list.querySelectorAll('.import-row')) { const on = !q || r.dataset.text.includes(q); r.hidden = !on; if (on) shown++; }
+    hint.textContent = items.length ? (q ? shown + ' of ' + items.length : items.length) + (items.length === 1 ? ' conversation' : ' conversations') : '';
+  }
+  async function load() {
+    if (!cur) return;
+    harnessInput.value = cur.id;
+    host.textContent = cur.label;
+    list.textContent = '';
+    list.appendChild(el('div', 'import-empty', 'Looking on ' + cur.label + '…'));
+    hint.textContent = '';
+    const my = ++seq;
+    let got = [];
+    let err = '';
+    try {
+      const r = await fetch('/account/harnesses/' + encodeURIComponent(cur.id) + '/transcripts?backend=claude-code', { credentials: 'same-origin' });
+      const j = await r.json();
+      got = j.items || [];
+      err = j.error || '';
+    } catch (e) { err = 'could not reach Acta'; }
+    if (my !== seq) return;
+    items = got;
+    if (err) { list.textContent = ''; list.appendChild(el('div', 'import-empty', 'Could not list conversations: ' + err)); return; }
+    paint();
+    count();
+  }
+  function pick(id) {
+    cur = picks.find(p => p.id === id) || null;
+    for (const b of form.querySelectorAll('[data-import-pick]')) {
+      const on = cur && b.dataset.importPick === cur.id;
+      b.classList.toggle('is-on', !!on);
+      b.setAttribute('aria-checked', on ? 'true' : 'false');
+    }
+    load();
+  }
+  for (const b of form.querySelectorAll('[data-import-pick]')) b.addEventListener('click', () => pick(b.dataset.importPick));
+  open.addEventListener('click', () => {
+    const was = form.hidden;
+    form.hidden = !was;
+    open.setAttribute('aria-expanded', was ? 'true' : 'false');
+    if (was) {
+      // the harness the new-session form has on is the natural default
+      const onForm = document.querySelector('[data-hpick].is-on');
+      pick(onForm ? onForm.dataset.hpick : (picks.find(p => p.recent) || picks[0] || {}).id);
+      filter.focus();
+    }
+  });
+  form.querySelector('[data-import-cancel]').addEventListener('click', () => { form.hidden = true; open.setAttribute('aria-expanded', 'false'); });
+  filter.addEventListener('input', applyFilter);
+  all.addEventListener('click', () => {
+    const boxes = [...list.querySelectorAll('.import-row:not([hidden]) input:not(:disabled)')];
+    const every = boxes.length && boxes.every(b => b.checked);
+    for (const b of boxes) b.checked = !every;
+    count();
+  });
+  form.addEventListener('submit', () => { submit.disabled = true; submit.textContent = 'Importing…'; });
+})();

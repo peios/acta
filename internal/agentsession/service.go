@@ -26,11 +26,18 @@ var ErrNotFound = store.ErrAgentSessionNotFound
 // Create records a new session owned by ownerID and mints its id — a UUID, so
 // it can be handed to the backend as its own --session-id with no mapping.
 func (s *Service) Create(ctx context.Context, ownerID, backend, cwd, title string, options map[string]any) (store.AgentSession, error) {
+	return s.CreateWithID(ctx, uuid.NewString(), ownerID, backend, cwd, title, options)
+}
+
+// CreateWithID records a session under an id the backend already knows: a
+// transcript imported from the host keeps the backend's own session id, so
+// a later resume finds it with no mapping.
+func (s *Service) CreateWithID(ctx context.Context, id, ownerID, backend, cwd, title string, options map[string]any) (store.AgentSession, error) {
 	if options == nil {
 		options = map[string]any{}
 	}
 	return s.store.CreateAgentSession(ctx, store.AgentSession{
-		ID:      uuid.NewString(),
+		ID:      id,
 		OwnerID: ownerID,
 		Backend: backend,
 		Cwd:     cwd,
@@ -103,6 +110,18 @@ func (s *Service) Append(ctx context.Context, sessionID, kind string, payload js
 		Kind:      kind,
 		Payload:   payload,
 	})
+}
+
+// AppendBatch stores a run of frames in order, each at its own time (a
+// transcript caught up from the backend's record carries the moments things
+// were said, not the moment Acta heard of them).
+func (s *Service) AppendBatch(ctx context.Context, events []store.AgentSessionEvent) ([]store.AgentSessionEvent, error) {
+	for i := range events {
+		if len(events[i].Payload) == 0 {
+			events[i].Payload = json.RawMessage("null")
+		}
+	}
+	return s.store.AppendAgentSessionEvents(ctx, events)
 }
 
 // Events returns a session's transcript frames with seq > afterSeq.

@@ -44,6 +44,7 @@ type Projector struct {
 	// The current turn: has a message entered it (later echoes are steers)?
 	turnHasEcho bool
 	turnActive  bool
+	importTurn  bool // a turn opened by a transcript record, closed by synthesis (see transcript.go)
 
 	hooks            map[string]bool // hook ids seen (a duplicate response folds)
 	peerRef          string          // latest peer bubble, for the lifecycle frame that closes it
@@ -261,6 +262,8 @@ func (p *Projector) Project(f model.Frame) []model.Event {
 		out = p.lifecycle(f)
 	case "stream_event":
 		out = p.stream(f)
+	case TranscriptKind:
+		out = p.transcript(f)
 	default:
 		e := model.New(model.Unknown, f).Set("kind", f.Kind)
 		out = []model.Event{e}
@@ -1506,6 +1509,9 @@ func (p *Projector) echo(f model.Frame, m map[string]any, content any) []model.E
 		}
 		return []model.Event{model.FoldTo(f, to, "echo")}
 	}
+	if strings.HasPrefix(t, "<task-notification>") {
+		return p.taskNotice(f, t)
+	}
 	if strings.HasPrefix(t, "<local-command-stdout>") {
 		to := ""
 		for _, c := range p.cmds {
@@ -2090,6 +2096,39 @@ func (p *Projector) taskFrame(f model.Frame, m map[string]any, st, laneID string
 	return []model.Event{model.FoldTo(f, l.ref, label)}
 }
 
+var taskNoticeRe = regexp.MustCompile(`<tool-use-id>([^<]+)</tool-use-id>[\s\S]*?<status>([^<]+)</status>(?:[\s\S]*?<summary>([\s\S]*?)</summary>)?`)
+
+// taskNotice is the text Claude Code hands the model when a background
+// agent finishes (a user message beginning <task-notification>). Live, the
+// system task_notification frame before it has already ended the lane and
+// this folds into that; read off the transcript, where only the message
+// exists, it ends the lane itself.
+func (p *Projector) taskNotice(f model.Frame, t string) []model.Event {
+	m := taskNoticeRe.FindStringSubmatch(t)
+	if m == nil {
+		return []model.Event{model.FoldTo(f, "", "task notification")}
+	}
+	l := p.lanes[strings.TrimSpace(m[1])]
+	if l == nil {
+		return []model.Event{model.FoldTo(f, "", "task notification")}
+	}
+	if l.doneRef != "" {
+		return []model.Event{model.FoldTo(f, l.doneRef, "task notification")}
+	}
+	status := strings.TrimSpace(m[2])
+	if status == "" || status == "running" {
+		return []model.Event{model.FoldTo(f, l.ref, "task notification")}
+	}
+	l.status = status
+	l.doneRef = "lane-done:" + l.id
+	e := model.NewLabelled(model.AgentEnd, f, "task notification").Set("id", l.id).Set("status", status).Set("type", l.typ).Set("description", l.desc).Set("card", true)
+	e.Ref = l.doneRef
+	if sm := strings.TrimSpace(m[3]); sm != "" {
+		e.Set("summary", sm)
+	}
+	return []model.Event{e}
+}
+
 func (p *Projector) newestLane(runningOnly bool) *lane {
 	var best *lane
 	for _, l := range p.lanes {
@@ -2159,8 +2198,23 @@ func (p *Projector) rateLimit(f model.Frame) []model.Event {
 func (p *Projector) state(f model.Frame) []model.Event {
 	m := obj(f.Payload)
 	st := str(m, "state")
+	// a turn a transcript record opened has no result of its own: the
+	// process starting or ending, or another read, closes it
+	var pre []model.Event
+	if p.importTurn {
+		switch st {
+		case "spawned", "exit", "catchup", "import":
+			pre = p.transcriptResult(f, 0, false)
+		}
+	}
+	return append(pre, p.stateEvents(f, m, st)...)
+}
+
+func (p *Projector) stateEvents(f model.Frame, m map[string]any, st string) []model.Event {
 	stale := model.Event{T: model.TurnIdle, Seq: f.Seq, At: f.At.UTC().Format(model.Fmt)}
 	switch st {
+	case "catchup", "import":
+		return p.transcriptState(f, m)
 	case "spawned":
 		for _, a := range p.approvals {
 			a.done = true

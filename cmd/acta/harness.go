@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
+	"github.com/peios/acta/internal/agentsession/claude"
 )
 
 // cmdHarness runs the Acta harness: it connects out to Acta over a websocket,
@@ -74,8 +76,9 @@ func cmdHarness(args []string) error {
 
 // protocolVersion is what the hello announces. Acta composes every process
 // and every stdin line from version 2 on; the harness keeps no per-backend
-// knowledge and no per-session state beyond which sessions it holds.
-const protocolVersion = 2
+// knowledge and no per-session state beyond which sessions it holds. From
+// version 3 the harness reads and scans a backend's transcripts on request.
+const protocolVersion = 3
 
 type harness struct {
 	base, token, label string
@@ -231,6 +234,11 @@ func (h *harness) connectAndServe(ctx context.Context) error {
 			Line    string            `json:"line"`
 			ID      string            `json:"id"`
 			Path    string            `json:"path"`
+			Backend string            `json:"backend"`
+			Key     string            `json:"key"`
+			After   string            `json:"after"`
+			Hold    bool              `json:"hold"`
+			Catchup *readReq          `json:"catchup"`
 		}
 		if json.Unmarshal(data, &f) != nil {
 			continue
@@ -238,8 +246,12 @@ func (h *harness) connectAndServe(ctx context.Context) error {
 		switch f.T {
 		case "ls":
 			go h.listDirs(f.ID, f.Path)
+		case "scan":
+			go h.scan(f.ID, f.Backend)
+		case "read":
+			go h.read(f.Session, f.ID, readReq{Path: f.Path, Key: f.Key, After: f.After}, f.Hold)
 		case "spawn":
-			h.spawn(f.Session, f.Cwd, f.Cmd, f.Args, f.Env, f.Resume, f.Styles)
+			h.spawn(f.Session, f.Cwd, f.Cmd, f.Args, f.Env, f.Resume, f.Styles, f.Catchup)
 		case "write":
 			h.write(f.Session, f.Line)
 		case "stop":
@@ -340,11 +352,182 @@ func (h *harness) send(v any) {
 	}
 }
 
+// sendWait queues a frame that must not be dropped (a transcript's records:
+// a gap breaks the chain), waiting for room; it gives up only when the
+// outbound queue has been stuck for a long time (the server is gone).
+func (h *harness) sendWait(v any) bool {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return false
+	}
+	select {
+	case h.out <- b:
+		return true
+	case <-time.After(60 * time.Second):
+		return false
+	}
+}
+
+// --- transcripts ---
+//
+// A backend keeps its own record of each conversation on this host. Acta
+// asks for it in two ways: a read (before a resume, or for an import) sends
+// a JSONL file's lines up verbatim, all of them or those after a named
+// line; a scan lists the transcripts a backend has here, for the import
+// picker. What the records mean is Acta's business; how a backend lays its
+// files out on this host is the harness's, like the output styles above.
+
+// readReq names a transcript read: the file (a glob, ~ allowed), the field
+// that identifies a line, and the value of the last line already held.
+type readReq struct {
+	Path  string `json:"path"`
+	Key   string `json:"key"`
+	After string `json:"after"`
+}
+
+const (
+	readFileCap  = 128 << 20 // bytes of transcript read at most
+	readBatchCap = 768 << 10 // bytes of lines per records frame
+)
+
+// read sends the lines of a transcript up in batches, then read_done. With
+// After set, only the lines after the last one whose Key field equals it
+// are sent, and none when no line does (found: false). hold records the
+// session as one this harness can resume.
+func (h *harness) read(session, id string, req readReq, hold bool) {
+	if hold {
+		h.mu.Lock()
+		h.sessions[session] = true
+		delete(h.forgotten, session)
+		h.mu.Unlock()
+		h.saveState()
+	}
+	done := map[string]any{"t": "read_done", "session": session, "id": id, "count": 0, "found": false}
+	defer func() { h.sendWait(done) }()
+	path := expandHome(req.Path)
+	matches, _ := filepath.Glob(path)
+	if len(matches) == 0 {
+		if _, err := os.Stat(path); err != nil {
+			return
+		}
+		matches = []string{path}
+	}
+	// the same id under two project directories is not expected; the
+	// newest wins if it happens
+	var newest string
+	var newestAt time.Time
+	for _, m := range matches {
+		if st, err := os.Stat(m); err == nil && (newest == "" || st.ModTime().After(newestAt)) {
+			newest, newestAt = m, st.ModTime()
+		}
+	}
+	if newest == "" {
+		return
+	}
+	st, err := os.Stat(newest)
+	if err != nil {
+		return
+	}
+	if st.Size() > readFileCap {
+		done["error"] = fmt.Sprintf("transcript is %d MB, more than the %d MB limit", st.Size()>>20, readFileCap>>20)
+		return
+	}
+	f, err := os.Open(newest)
+	if err != nil {
+		done["error"] = err.Error()
+		return
+	}
+	defer f.Close()
+	key := req.Key
+	if key == "" {
+		key = "uuid"
+	}
+	needle := []byte(`"` + req.After + `"`)
+	var pending [][]byte // the lines since the last match (all lines when nothing is to be matched)
+	found := req.After == ""
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 1<<20), 32<<20)
+	for sc.Scan() {
+		line := sc.Bytes()
+		if len(strings.TrimSpace(string(line))) == 0 {
+			continue
+		}
+		if req.After != "" && strings.Contains(string(line), string(needle)) {
+			var m map[string]json.RawMessage
+			if json.Unmarshal(line, &m) == nil {
+				var v string
+				if json.Unmarshal(m[key], &v) == nil && v == req.After {
+					found = true
+					pending = pending[:0]
+					continue
+				}
+			}
+		}
+		cp := make([]byte, len(line))
+		copy(cp, line)
+		pending = append(pending, cp)
+	}
+	if err := sc.Err(); err != nil {
+		done["error"] = err.Error()
+		return
+	}
+	if !found {
+		return
+	}
+	done["found"] = true
+	count := 0
+	var batch []json.RawMessage
+	size := 0
+	flush := func() bool {
+		if len(batch) == 0 {
+			return true
+		}
+		ok := h.sendWait(map[string]any{"t": "records", "session": session, "id": id, "lines": batch})
+		batch, size = nil, 0
+		return ok
+	}
+	for _, line := range pending {
+		if h.isForgotten(session) {
+			done["error"] = "session deleted during the read"
+			return
+		}
+		if size+len(line) > readBatchCap && !flush() {
+			done["error"] = "connection stalled during the read"
+			return
+		}
+		batch = append(batch, json.RawMessage(line))
+		size += len(line)
+		count++
+	}
+	if !flush() {
+		done["error"] = "connection stalled during the read"
+		return
+	}
+	done["count"] = count
+}
+
+// scan lists the transcripts a backend keeps on this host.
+func (h *harness) scan(reqID, backend string) {
+	reply := map[string]any{"t": "scan_result", "id": reqID, "backend": backend}
+	home, _ := os.UserHomeDir()
+	switch backend {
+	case "claude-code":
+		items := claude.ScanTranscripts(home)
+		if items == nil {
+			items = []claude.Transcript{}
+		}
+		reply["items"] = items
+	default:
+		reply["error"] = "no transcripts known for backend " + backend
+	}
+	h.send(reply)
+}
+
 // --- processes ---
 
 // spawn runs the process Acta composed for a session, in cwd, and streams
 // its stdout lines back verbatim. Every line is one frame; Acta labels it.
-func (h *harness) spawn(session, cwd, command string, args []string, env map[string]string, resume, styles bool) {
+func (h *harness) spawn(session, cwd, command string, args []string, env map[string]string, resume, styles bool, catchup *readReq) {
 	h.mu.Lock()
 	if _, running := h.procs[session]; running {
 		h.mu.Unlock()
@@ -354,6 +537,12 @@ func (h *harness) spawn(session, cwd, command string, args []string, env map[str
 	delete(h.forgotten, session)
 	h.mu.Unlock()
 	h.saveState()
+
+	// What the backend's own transcript holds beyond Acta's copy (turns taken
+	// in a terminal) goes up first, so it lands ahead of the new process.
+	if catchup != nil {
+		h.read(session, "catchup", *catchup, false)
+	}
 
 	if command == "" {
 		h.send(map[string]any{"t": "spawn_error", "session": session, "error": "no command to run"})

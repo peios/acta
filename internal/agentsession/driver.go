@@ -68,6 +68,14 @@ type Driver interface {
 	// transcript.
 	TitleRequest(requestID, description string) []byte
 	TitleAnswer(kind string, payload json.RawMessage) (requestID, title string, ok bool)
+	// Transcript is the backend's own record of a session on the host, for
+	// the harness to read before a resume: the file (a glob) and the last
+	// line Acta already holds, found among the session's stored frames. ok
+	// is false for a backend without such a record.
+	Transcript(as store.AgentSession, events []store.AgentSessionEvent) (Catchup, bool)
+	// TranscriptRecords picks, from lines read off that record, the ones
+	// worth storing (the live branch of the conversation), in order.
+	TranscriptRecords(lines []json.RawMessage) []TranscriptRecord
 	// Projector returns a fresh projector for the backend's frames.
 	Projector() model.Projector
 }
@@ -150,6 +158,21 @@ func (claudeDriver) TitleRequest(id, desc string) []byte { return claude.TitleRe
 func (claudeDriver) TitleAnswer(kind string, p json.RawMessage) (string, string, bool) {
 	return claude.TitleAnswer(kind, p)
 }
+func (claudeDriver) Transcript(as store.AgentSession, events []store.AgentSessionEvent) (Catchup, bool) {
+	after := ""
+	for i := len(events) - 1; i >= 0 && after == ""; i-- {
+		after = claude.Leaf(events[i].Kind, events[i].Payload)
+	}
+	return Catchup{Path: claude.TranscriptGlob(as.ID, as.Options), Key: "uuid", After: after}, true
+}
+func (claudeDriver) TranscriptRecords(lines []json.RawMessage) []TranscriptRecord {
+	recs := claude.ChainRecords(lines)
+	out := make([]TranscriptRecord, 0, len(recs))
+	for _, r := range recs {
+		out = append(out, TranscriptRecord{Payload: r.Payload, At: r.At})
+	}
+	return out
+}
 func (claudeDriver) Projector() model.Projector { return claude.New() }
 
 // codexDriver adapts the codex package to the Driver interface.
@@ -198,4 +221,8 @@ func (codexDriver) TitleRequest(string, string) []byte { return nil }
 func (codexDriver) TitleAnswer(string, json.RawMessage) (string, string, bool) {
 	return "", "", false
 }
-func (codexDriver) Projector() model.Projector { return codex.New() }
+func (codexDriver) Transcript(store.AgentSession, []store.AgentSessionEvent) (Catchup, bool) {
+	return Catchup{}, false
+}
+func (codexDriver) TranscriptRecords([]json.RawMessage) []TranscriptRecord { return nil }
+func (codexDriver) Projector() model.Projector                             { return codex.New() }

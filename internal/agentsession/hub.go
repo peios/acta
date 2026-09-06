@@ -46,12 +46,32 @@ type Hub struct {
 	harness    map[string]map[string]*harnessConn // ownerID -> connID -> conn
 	browsers   map[string]map[string]*browserConn // sessionID -> connID -> conn
 	titling    map[string]bool                    // sessions with a title request in flight
-	pendingLs  map[string]chan Inbound            // ListDirs requests awaiting a harness answer
+	pendingLs  map[string]chan Inbound            // ListDirs / ScanTranscripts requests awaiting a harness answer
+	reads      map[string]*transcriptRead         // transcript reads in flight, by session/id
 	projectors map[string]*sessionProjector       // live projectors by session
 }
 
+// transcriptRead gathers the lines a harness sends for one read of a
+// backend's transcript (see FrameRead) until the read_done that ends it:
+// which lines are conversation, and where the live branch runs, is decided
+// over the whole batch, not line by line.
+type transcriptRead struct {
+	source string // "catchup" (before a resume) or "import"
+	lines  []json.RawMessage
+	bytes  int
+	over   bool // the batch outgrew readCap and is dropped
+}
+
+// readCap bounds one transcript read held in memory. A transcript is a few
+// megabytes; one that large is a session of thousands of turns.
+const readCap = 96 << 20
+
 // ErrNoHarness is returned when no connected harness can take a request.
 var ErrNoHarness = errors.New("no such harness connected")
+
+// ErrHarnessTooOld is returned when the harness asked cannot do what is
+// asked: it runs an older acta than the server (restart it after updating).
+var ErrHarnessTooOld = errors.New("the harness runs an older acta; update and restart it")
 
 // sendQueue is the per-connection outbound buffer. A chat is low-rate, so this
 // only ever absorbs short bursts; a full buffer means the socket is wedged.
@@ -229,7 +249,178 @@ func (h *Hub) spawn(c *harnessConn, as store.AgentSession, resume bool) {
 	c.sessions[as.ID] = true
 	c.resuming[as.ID] = resume
 	c.mu.Unlock()
-	c.send(Outbound{T: FrameSpawn, Session: as.ID, Backend: as.Backend, Cwd: as.Cwd, Cmd: l.Cmd, Args: l.Args, Env: l.Env, Resume: resume, Styles: l.Styles})
+	// A resume first catches up on what the backend's own record holds that
+	// Acta does not (turns taken in a terminal): the harness reads the
+	// transcript from the last message Acta has before it starts the process.
+	var cu *Catchup
+	if resume && c.v >= 3 { // an older harness does not read transcripts
+		if evs, err := h.svc.Events(context.Background(), as.ID, 0, 0); err == nil {
+			if x, ok := d.Transcript(as, evs); ok {
+				cu = &x
+				h.openRead(as.ID, "catchup", "catchup")
+			}
+		}
+	}
+	c.send(Outbound{T: FrameSpawn, Session: as.ID, Backend: as.Backend, Cwd: as.Cwd, Cmd: l.Cmd, Args: l.Args, Env: l.Env, Resume: resume, Styles: l.Styles, Catchup: cu})
+}
+
+// openRead prepares to gather the lines of a transcript read.
+func (h *Hub) openRead(sessionID, reqID, source string) {
+	h.mu.Lock()
+	if h.reads == nil {
+		h.reads = map[string]*transcriptRead{}
+	}
+	h.reads[sessionID+"/"+reqID] = &transcriptRead{source: source}
+	h.mu.Unlock()
+}
+
+// gatherRead adds a batch of lines to a read in flight.
+func (h *Hub) gatherRead(sessionID, reqID string, lines []json.RawMessage) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	r := h.reads[sessionID+"/"+reqID]
+	if r == nil || r.over {
+		return
+	}
+	for _, l := range lines {
+		r.bytes += len(l)
+	}
+	if r.bytes > readCap {
+		r.over = true
+		r.lines = nil
+		return
+	}
+	r.lines = append(r.lines, lines...)
+}
+
+// finishRead stores what a completed transcript read found: a divider
+// saying where the records came from, then the records themselves, each at
+// the moment it was written, and projects them for anyone watching.
+func (h *Hub) finishRead(ctx context.Context, c *harnessConn, in Inbound) {
+	h.mu.Lock()
+	r := h.reads[in.Session+"/"+in.ID]
+	delete(h.reads, in.Session+"/"+in.ID)
+	h.mu.Unlock()
+	if r == nil {
+		return
+	}
+	if r.source == "import" {
+		c.mu.Lock()
+		c.sessions[in.Session] = true
+		c.mu.Unlock()
+		h.notify(c.ownerID, in.Session)
+	}
+	if in.Error != "" || r.over {
+		reason := in.Error
+		if r.over {
+			reason = "the transcript is too large to read"
+		}
+		h.recordState(ctx, in.Session, map[string]any{"state": r.source + "_failed", "reason": reason})
+		slog.Warn("transcript read failed", "session", in.Session, "source", r.source, "reason", reason)
+		return
+	}
+	d := h.driverOf(ctx, in.Session)
+	if d == nil || !in.Found || len(r.lines) == 0 {
+		return
+	}
+	recs := d.TranscriptRecords(r.lines)
+	if len(recs) == 0 {
+		return
+	}
+	first, last := recs[0].At, recs[len(recs)-1].At
+	for _, rec := range recs {
+		if !rec.At.IsZero() && (first.IsZero() || rec.At.Before(first)) {
+			first = rec.At
+		}
+		if rec.At.After(last) {
+			last = rec.At
+		}
+	}
+	divider := map[string]any{"state": r.source, "count": len(recs)}
+	if !first.IsZero() {
+		divider["from"] = first.UTC().Format(time.RFC3339)
+		divider["to"] = last.UTC().Format(time.RFC3339)
+	}
+	raw, _ := json.Marshal(divider)
+	batch := make([]store.AgentSessionEvent, 0, len(recs)+1)
+	batch = append(batch, store.AgentSessionEvent{SessionID: in.Session, Kind: "state", Payload: raw, CreatedAt: first})
+	for _, rec := range recs {
+		batch = append(batch, store.AgentSessionEvent{SessionID: in.Session, Kind: TranscriptKind, Payload: rec.Payload, CreatedAt: rec.At})
+	}
+	stored, err := h.svc.AppendBatch(ctx, batch)
+	if err != nil {
+		slog.Error("agent session append batch", "session", in.Session, "err", err)
+		return
+	}
+	for _, ev := range stored {
+		h.emit(ctx, in.Session, ev, true)
+	}
+	if r.source == "import" && !last.IsZero() {
+		// the session is as old as its last message, not as new as the import
+		if as, err := h.svc.store.AgentSessionByID(ctx, in.Session); err == nil {
+			_, _ = h.svc.store.UpdateAgentSessionOptions(ctx, as.ID, as.Options, last)
+		}
+	}
+}
+
+// TranscriptKind labels a stored frame read off a backend's own transcript
+// rather than heard from a live process; the backend's projector knows its
+// records.
+const TranscriptKind = "transcript"
+
+// ScanTranscripts asks a harness for the transcripts a backend keeps on its
+// host and waits for the list, in the backend's own shape.
+func (h *Hub) ScanTranscripts(ctx context.Context, ownerID, harnessID, backend string) (json.RawMessage, error) {
+	c := h.harnessByID(ownerID, harnessID)
+	if c == nil {
+		return nil, ErrNoHarness
+	}
+	if c.v < 3 {
+		return nil, ErrHarnessTooOld
+	}
+	reqID := id.New()
+	ch := make(chan Inbound, 1)
+	h.mu.Lock()
+	if h.pendingLs == nil {
+		h.pendingLs = map[string]chan Inbound{}
+	}
+	h.pendingLs[reqID] = ch
+	h.mu.Unlock()
+	defer func() {
+		h.mu.Lock()
+		delete(h.pendingLs, reqID)
+		h.mu.Unlock()
+	}()
+	c.send(Outbound{T: FrameScan, ID: reqID, Backend: backend})
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	select {
+	case r := <-ch:
+		if r.Error != "" {
+			return nil, errors.New(r.Error)
+		}
+		return r.Items, nil
+	case <-c.Closed():
+		return nil, ErrNoHarness
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// Import has a harness read a whole transcript on its host into a session
+// Acta has just recorded under the transcript's own id, and hold the session
+// so it can be resumed there. The records arrive as the read runs.
+func (h *Hub) Import(ownerID, harnessID string, as store.AgentSession, path string) error {
+	c := h.harnessByID(ownerID, harnessID)
+	if c == nil {
+		return ErrNoHarness
+	}
+	if c.v < 3 {
+		return ErrHarnessTooOld
+	}
+	h.openRead(as.ID, "import", "import")
+	c.send(Outbound{T: FrameRead, Session: as.ID, ID: "import", Path: path, Key: "uuid", Hold: true})
+	return nil
 }
 
 // maybeAutoTitle names a session that has never been named, once its first
@@ -710,6 +901,10 @@ func (h *Hub) HarnessFrame(ctx context.Context, c *harnessConn, in Inbound) {
 		if c.setRunning(in.Session, true) {
 			h.notify(c.ownerID, in.Session)
 		}
+		// a catch-up the harness was asked for has finished by now
+		h.mu.Lock()
+		delete(h.reads, in.Session+"/catchup")
+		h.mu.Unlock()
 		c.mu.Lock()
 		if !in.Resumed {
 			delete(c.resuming, in.Session)
@@ -733,7 +928,11 @@ func (h *Hub) HarnessFrame(ctx context.Context, c *harnessConn, in Inbound) {
 		if as, err := h.svc.Get(ctx, in.Session, c.ownerID); err == nil && as.Title != "" {
 			h.sendNameCommand(ctx, c, in.Session, as.Title)
 		}
-	case FrameLsResult:
+	case FrameRecords:
+		h.gatherRead(in.Session, in.ID, in.Lines)
+	case FrameReadDone:
+		h.finishRead(ctx, c, in)
+	case FrameLsResult, FrameScanResult:
 		h.mu.Lock()
 		ch := h.pendingLs[in.ID]
 		h.mu.Unlock()

@@ -437,6 +437,39 @@
   .sess-actions { display: flex; align-items: center; gap: .3rem; }
   .sess-actions .btn-secondary { font-size: .8rem; padding: .32rem .7rem; }
   .sess-actions form { margin: 0; }
+  /* the import picker: a panel under the sessions title, rows to tick */
+  .agents-card .section-title .import-open { margin-left: auto; font-size: .78rem; padding: .28rem .7rem; letter-spacing: 0; text-transform: none; font-weight: 500; }
+  .import-panel { display: grid; gap: .75rem; margin: 0 0 .9rem; padding: .9rem 1rem 1rem; border: 1px solid var(--accent-line); border-radius: 10px; background: color-mix(in srgb, var(--accent) 4%, var(--field)); animation: perm-in .16s cubic-bezier(.2,.7,.2,1); }
+  .import-panel[hidden] { display: none; }
+  .import-head { display: grid; gap: .6rem; }
+  .import-title { font-weight: 600; font-size: .92rem; }
+  .import-sub { margin: .2rem 0 0; color: var(--muted); font-size: .82rem; line-height: 1.5; max-width: 40rem; }
+  .import-sub b { font-family: var(--mono); font-weight: 600; color: var(--text); font-size: .8rem; }
+  .import-tools { display: flex; align-items: center; gap: .6rem; }
+  .import-filter { flex: 1; padding: 0 .7rem; }
+  .import-filter .ico { width: 14px; height: 14px; color: var(--faint); flex: none; }
+  .import-filter .input { font-size: .84rem; padding: .45rem 0; }
+  .link-btn { font: inherit; font-size: .78rem; color: var(--accent-hi); background: none; border: 0; padding: .2rem .1rem; cursor: pointer; white-space: nowrap; }
+  .link-btn:hover { text-decoration: underline; }
+  .import-list { display: grid; gap: .3rem; max-height: 22rem; overflow: auto; padding: .1rem; scrollbar-width: thin; }
+  .import-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .7rem; padding: .5rem .7rem; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--field); cursor: pointer; transition: border-color .14s, background .14s; }
+  .import-row:hover { border-color: var(--border-str); }
+  .import-row:has(input:checked) { border-color: var(--accent); background: var(--accent-weak); }
+  .import-row.is-held { cursor: default; opacity: .55; }
+  .import-row[hidden] { display: none; }
+  .import-row input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; }
+  .import-main { min-width: 0; display: grid; gap: .12rem; }
+  .import-name { font-weight: 600; font-size: .88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .import-first { color: var(--muted); font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .import-meta { display: flex; align-items: center; gap: .55rem; color: var(--faint); font-size: .74rem; min-width: 0; }
+  .import-meta > * { flex: none; white-space: nowrap; }
+  .import-meta .import-cwd { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; }
+  .import-state { font-size: .62rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; color: var(--faint); white-space: nowrap; }
+  .import-state:empty { display: none; }
+  .import-empty { color: var(--faint); font-size: .84rem; padding: 1rem .4rem; text-align: center; }
+  .import-foot { display: flex; align-items: center; justify-content: flex-end; gap: .6rem; }
+  .import-foot .btn-primary { width: auto; min-width: 9rem; }
+  .import-hint { margin-right: auto; color: var(--faint); font-size: .78rem; }
 
   /* ---- agent session chat view ---- */
   /* The stage and the plan panel sit in a row centred as a unit: on a wide
@@ -1197,6 +1230,9 @@
     .agents-head { flex-direction: column; align-items: flex-start; }
     .sess { grid-template-columns: auto minmax(0, 1fr); }
     .sess-actions { grid-column: 2; justify-content: flex-end; }
+    .import-tools { flex-wrap: wrap; }
+    .import-foot { flex-wrap: wrap; }
+    .import-hint { flex: 1 1 100%; }
   }
   .token-reveal { margin: 0 0 1.1rem; padding: .8rem .9rem; background: var(--field); border: 1px solid var(--accent); border-radius: 8px; }
   .token-reveal-label { font-size: .82rem; color: var(--accent-hi); margin-bottom: .55rem; }

@@ -5,7 +5,10 @@
 // backend) credentials and dials in. See ACT-36 for the design.
 package agentsession
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 // The wire protocol is deliberately thin: Acta forwards a backend's events
 // through in an envelope and lets the common shape emerge once a second backend
@@ -28,6 +31,13 @@ const (
 	FrameSpawnError = "spawn_error"
 	// FrameExit reports that a session's process ended.
 	FrameExit = "exit"
+	// FrameRecords carries lines read off a transcript on the host (see
+	// FrameRead), a batch at a time; FrameReadDone ends the read with a
+	// count, or says the file or the line to start after was not found.
+	FrameRecords  = "records"
+	FrameReadDone = "read_done"
+	// FrameScanResult answers a FrameScan with the transcripts on the host.
+	FrameScanResult = "scan_result"
 )
 
 // Frame kinds sent by Acta to a harness.
@@ -54,31 +64,62 @@ const (
 	// working-directory picker); LsResult is the harness's answer.
 	FrameLs       = "ls"
 	FrameLsResult = "ls_result"
+	// FrameRead asks the harness to read a JSONL transcript on its host (a
+	// glob, ~ allowed) and send its lines up as records: every line, or only
+	// those after the last line whose Key field equals After. Hold marks
+	// the session as one the harness holds (an import becomes resumable).
+	// A spawn can carry the same request as Catchup: the harness reads
+	// before it starts the process, so what was said outside Acta lands in
+	// the transcript ahead of the new turn.
+	FrameRead = "read"
+	// FrameScan asks the harness to list the transcripts a backend keeps on
+	// its host, for the import picker.
+	FrameScan = "scan"
 )
+
+// Catchup is a transcript read a harness performs before it resumes a
+// session: the file (a glob, ~ allowed), the field that names a line, and
+// the value of the last line Acta already holds ("" for everything).
+type Catchup struct {
+	Path  string `json:"path"`
+	Key   string `json:"key,omitempty"`
+	After string `json:"after,omitempty"`
+}
+
+// TranscriptRecord is one line of a backend's transcript worth storing, with
+// the moment it was written.
+type TranscriptRecord struct {
+	Payload json.RawMessage
+	At      time.Time
+}
 
 // Inbound is a frame read from a harness. Only the fields relevant to a kind
 // are set; Payload holds a FrameEvent's verbatim body.
 type Inbound struct {
-	T        string          `json:"t"`
-	V        int             `json:"v,omitempty"` // hello: protocol version (2)
-	Session  string          `json:"session,omitempty"`
-	Label    string          `json:"label,omitempty"`
-	Backends []string        `json:"backends,omitempty"`
-	Sessions []string        `json:"sessions,omitempty"`
-	Running  []string        `json:"running,omitempty"` // hello: the subset of Sessions with a live process
-	Cwd      string          `json:"cwd,omitempty"`     // hello: where the harness itself runs
-	Home     string          `json:"home,omitempty"`    // hello: the harness user's home, for ~ expansion
-	ID       string          `json:"id,omitempty"`      // ls_result: the request it answers
-	Path     string          `json:"path,omitempty"`    // ls_result: the path that was listed
-	Dirs     []string        `json:"dirs,omitempty"`    // ls_result: matching directories, absolute
-	Exists   bool            `json:"exists,omitempty"`  // ls_result: the path itself is a directory
-	Styles   json.RawMessage `json:"styles,omitempty"`  // spawned: the output styles the session can use
-	Resumed  bool            `json:"resumed,omitempty"` // spawned: the process was resumed, not freshly started
-	Kind     string          `json:"kind,omitempty"`    // event: set only for harness-authored notices (task_output); Acta labels backend lines
-	Payload  json.RawMessage `json:"payload,omitempty"`
-	Error    string          `json:"error,omitempty"`
-	Code     *int            `json:"code,omitempty"`
-	Stderr   string          `json:"stderr,omitempty"` // exit: the tail of the process's stderr
+	T        string            `json:"t"`
+	V        int               `json:"v,omitempty"` // hello: protocol version (2)
+	Session  string            `json:"session,omitempty"`
+	Label    string            `json:"label,omitempty"`
+	Backends []string          `json:"backends,omitempty"`
+	Sessions []string          `json:"sessions,omitempty"`
+	Running  []string          `json:"running,omitempty"` // hello: the subset of Sessions with a live process
+	Cwd      string            `json:"cwd,omitempty"`     // hello: where the harness itself runs
+	Home     string            `json:"home,omitempty"`    // hello: the harness user's home, for ~ expansion
+	ID       string            `json:"id,omitempty"`      // ls_result: the request it answers
+	Path     string            `json:"path,omitempty"`    // ls_result: the path that was listed
+	Dirs     []string          `json:"dirs,omitempty"`    // ls_result: matching directories, absolute
+	Exists   bool              `json:"exists,omitempty"`  // ls_result: the path itself is a directory
+	Styles   json.RawMessage   `json:"styles,omitempty"`  // spawned: the output styles the session can use
+	Resumed  bool              `json:"resumed,omitempty"` // spawned: the process was resumed, not freshly started
+	Kind     string            `json:"kind,omitempty"`    // event: set only for harness-authored notices (task_output); Acta labels backend lines
+	Payload  json.RawMessage   `json:"payload,omitempty"`
+	Error    string            `json:"error,omitempty"`
+	Code     *int              `json:"code,omitempty"`
+	Stderr   string            `json:"stderr,omitempty"` // exit: the tail of the process's stderr
+	Lines    []json.RawMessage `json:"lines,omitempty"`  // records: transcript lines, verbatim
+	Count    int               `json:"count,omitempty"`  // read_done: lines sent
+	Found    bool              `json:"found,omitempty"`  // read_done: the file (and the line to start after) existed
+	Items    json.RawMessage   `json:"items,omitempty"`  // scan_result: the transcripts found, in the backend's shape
 }
 
 // Outbound is a frame written to a harness.
@@ -95,6 +136,13 @@ type Outbound struct {
 	Env    map[string]string `json:"env,omitempty"`
 	Resume bool              `json:"resume,omitempty"` // the process continues an earlier conversation
 	Styles bool              `json:"styles,omitempty"` // report the output styles available in cwd
+	// spawn: a transcript to read before the process starts (see FrameRead).
+	Catchup *Catchup `json:"catchup,omitempty"`
+	// read: which lines of the file at Path to send (see Catchup), and
+	// whether the harness should hold the session afterwards.
+	Key   string `json:"key,omitempty"`
+	After string `json:"after,omitempty"`
+	Hold  bool   `json:"hold,omitempty"`
 	// write: one stdin line, without its newline.
 	Line string `json:"line,omitempty"`
 }

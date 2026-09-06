@@ -2340,6 +2340,20 @@
     node.classList.add('is-error');
     return node;
   }
+  // A catch-up or import: the messages that follow were read off the
+  // backend's own transcript on the host (taken in a terminal, or before
+  // the session was Acta's at all).
+  function renderCatchup(ev) {
+    const d = ev.d || {};
+    const bits = [];
+    if (d.count) bits.push(d.count + (d.count === 1 ? ' message' : ' messages'));
+    if (d.from) {
+      const a = new Date(d.from), b = new Date(d.to || d.from);
+      const day = (t) => t.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: t.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+      bits.push(day(a) === day(b) ? day(a) : day(a) + ' – ' + day(b));
+    }
+    return divider(d.source === 'import' ? 'imported from the local transcript' : 'caught up from the local transcript', bits, 'frame--session frame--catchup');
+  }
   function renderStateNote(ev) {
     const d = ev.d || {};
     const node = bubble('status', 'state', el('div', 'frame-note', d.text || 'state'), null);
@@ -2551,8 +2565,11 @@
       mergeRaw(f.node, node);
       f.node.remove();
     }
-    lastInput = { node, text, images, failed: false };
-    pendingInputs.push({ key: inputKey(text, images), node, record: lastInput });
+    const rec = { node, text, images, failed: false };
+    // a prompt read off the backend's transcript was never Acta's to
+    // deliver: a failure that follows belongs to the message sent from here
+    if (!d.transcript) lastInput = rec;
+    pendingInputs.push({ key: inputKey(text, images), node, record: rec });
     return node;
   }
 
@@ -3135,6 +3152,7 @@
       case 'session.reset': return renderReset(ev);
       case 'session.catalog': noteCatalog(d); return foldIntoLast(ev);
       case 'session.state': return renderStateNote(ev);
+      case 'session.catchup': return renderCatchup(ev);
       case 'input': return renderInput(ev);
       case 'user.message': return renderUserMessage(ev);
       case 'peer.message': return peerBubble(ev);
