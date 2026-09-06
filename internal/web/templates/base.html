@@ -844,8 +844,12 @@
   .frame--assistant + .frame--assistant > .frame-head { display: none; }
   .frame--assistant + .frame--assistant { margin-top: -.15rem; }
   .frame--assistant .frame-kind { color: var(--accent-hi); display: inline-flex; align-items: center; gap: .35rem; }
-  .frame--assistant .frame-kind::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--accent-weak); }
-  .frame--assistant.is-streaming .frame-kind::before { animation: act-pulse 1.2s ease-in-out infinite; }
+  /* the provider's mark, in its colour, stands before the model's name */
+  .pmark { width: 11px; height: 11px; flex: none; fill: currentColor; stroke: none; }
+  .pmark--anthropic { color: #d97757; }
+  .pmark--openai { color: #10a37f; }
+  .frame--assistant .frame-kind .pmark { width: 12px; height: 12px; }
+  .frame--assistant.is-streaming .frame-kind .pmark { animation: act-pulse 1.2s ease-in-out infinite; }
   .msg-tool.is-streaming .tool-arg { color: var(--faint); }
   .msg-text { white-space: pre-wrap; word-break: break-word; line-height: 1.5; font-size: .92rem; }
   .msg-md { white-space: normal; }
@@ -877,6 +881,7 @@
   .pick-btn { display: inline-flex; align-items: center; gap: .4rem; padding-left: .65rem; text-align: left; white-space: nowrap; max-width: 17rem; min-width: 0; flex: 1 1 auto; }
   .pick-btn > span { overflow: hidden; text-overflow: ellipsis; }
   .pick-btn .ico { position: static; width: 13px; height: 13px; color: var(--faint); }
+  .pick-btn .pmark { width: 13px; height: 13px; }
   .pick-btn:hover .ico, .pick-btn[aria-expanded="true"] .ico { color: var(--accent-hi); }
   .pick-btn[aria-expanded="true"] { border-color: var(--accent); }
   .pick-pop { position: absolute; bottom: calc(100% + .5rem); right: 0; z-index: 60; width: min(23rem, calc(100vw - 2rem)); background: linear-gradient(180deg, var(--card-top), var(--card-bot)); border: 1px solid var(--border); border-radius: 12px; padding: .55rem; display: grid; gap: .5rem; box-shadow: 0 24px 60px -20px rgba(0,0,0,.9); animation: perm-in .16s cubic-bezier(.2,.7,.2,1); text-align: left; }
