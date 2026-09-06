@@ -81,10 +81,21 @@
       : /^(Agent|Task)$/.test(n) ? 'agent' : 'tool';
     return svg(ICONS[k]);
   }
+  // A lane follows its end until the reader scrolls away, and again once they
+  // scroll back (lane.follow, kept by the log's scroll listener). While it
+  // follows, the log is pinned to its end whenever its viewport or contents
+  // change size: streamed text, a wrapped activity line, the composer growing
+  // under it, a phone keyboard. Deciding by distance at append time alone let
+  // the activity line, the last and shortest thing in the log, slip below the
+  // fold whenever the stream paused or the viewport shrank.
   function atBottom(l) {
-    return l.scrollHeight - l.scrollTop - l.clientHeight < 60;
+    return l.scrollHeight - l.scrollTop - l.clientHeight <= 16;
   }
   function scroll(l) { l.scrollTop = l.scrollHeight; }
+  function follow(lane) {
+    if (!lane.follow || lane.log.hidden || (lane === mainLane && tailDetached)) return;
+    scroll(lane.log);
+  }
 
   // A "Latest" pill floats over the composer whenever the visible lane is
   // scrolled away from its end; it turns accent when something new landed
@@ -94,14 +105,14 @@
   function paintJump() {
     if (!jump || !visible) return;
     const l = visible.log;
-    const away = (visible === mainLane && tailDetached) || (!atBottom(l) && l.scrollHeight > l.clientHeight + 60);
+    const away = (visible === mainLane && tailDetached) || (!visible.follow && l.scrollHeight > l.clientHeight + 60);
     if (!away) unread = false;
     jump.hidden = !away;
     jump.classList.toggle('has-new', unread);
     jump.querySelector('span').textContent = unread ? 'New below' : 'Latest';
   }
   function noteUnread(lane) { if (lane === visible) { unread = true; paintJump(); } }
-  if (jump) jump.addEventListener('click', () => { if (visible === mainLane && tailDetached) { reopenTail(); return; } if (visible) scroll(visible.log); unread = false; paintJump(); });
+  if (jump) jump.addEventListener('click', () => { if (visible === mainLane && tailDetached) { reopenTail(); return; } if (visible) { visible.follow = true; scroll(visible.log); } unread = false; paintJump(); });
 
   // dayMark: a dated rule the first time a day shows up in a lane, so a
   // transcript that spans days reads in order. Today at the top is implied.
@@ -227,9 +238,20 @@
     const act = makeActivity();
     const lane = { id, log: logEl, activity: act.node, actText: act.text, think: null, actBeforeHook: null,
       ctxUsed: 0, model: '', meta: { type: '', desc: '', status: 'running', last: '', taskId: null, startAt: 0, endAt: 0, summary: '', waiting: false },
-      card: null, tab: null, steps: 0, day: '' };
+      card: null, tab: null, steps: 0, day: '', follow: true, pinRaf: 0 };
     lanes.set(id, lane);
-    logEl.addEventListener('scroll', () => { if (lane === visible) paintJump(); }, { passive: true });
+    logEl.addEventListener('scroll', () => { lane.follow = atBottom(logEl); if (lane === visible) paintJump(); }, { passive: true });
+    // the scroll event lands a frame after the gesture; a wheel or touch
+    // upwards lets go at once so a frame arriving that same tick cannot
+    // yank the reader back down
+    logEl.addEventListener('wheel', (e) => { if (e.deltaY < 0) lane.follow = false; }, { passive: true });
+    logEl.addEventListener('touchmove', () => { lane.follow = false; }, { passive: true });
+    // pin on the next frame after the viewport resizes (always) or the
+    // contents change (while the lane is busy, so opening a fold in a quiet
+    // lane does not jump)
+    const pin = () => { if (lane.pinRaf) return; lane.pinRaf = requestAnimationFrame(() => { lane.pinRaf = 0; follow(lane); }); };
+    if (typeof ResizeObserver === 'function') new ResizeObserver(pin).observe(logEl);
+    if (typeof MutationObserver === 'function') new MutationObserver(() => { if (!lane.activity.hidden) pin(); }).observe(logEl, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['hidden', 'class', 'open'] });
     return lane;
   }
   const mainLane = makeLane('main', log);
@@ -324,7 +346,7 @@
       line.appendChild(svg(ICONS.spark));
       line.appendChild(el('span', 'thought-text', 'Thinking'));
       wrap.appendChild(line);
-      const stick = atBottom(lane.log);
+      const stick = lane.follow;
       lane.log.appendChild(wrap);
       placeActivity(lane);
       if (stick) scroll(lane.log);
@@ -2496,6 +2518,8 @@
         img.src = 'data:' + (im.media_type || 'image/png') + ';base64,' + im.data;
         img.alt = 'attached image';
         img.addEventListener('click', () => openLightbox(img.src));
+        const lane = cur;
+        img.addEventListener('load', () => follow(lane));
         row.appendChild(img);
       }
       body.appendChild(row);
@@ -3118,7 +3142,7 @@
     wrap.appendChild(head);
     const body = el('div', 'frame-body');
     wrap.appendChild(body);
-    const stick = atBottom(lane.log);
+    const stick = lane.follow;
     lane.log.insertBefore(wrap, lane.activity.isConnected && lane.activity.parentNode === lane.log ? lane.activity : null);
     if (stick) scroll(lane.log);
     lane.live = wrap;
@@ -3134,7 +3158,7 @@
     if (b.raf) return;
     b.raf = requestAnimationFrame(() => {
       b.raf = 0;
-      const stick = atBottom(lane.log);
+      const stick = lane.follow;
       if (b.type === 'text') { const fresh = mdRender(b.text); b.node.replaceWith(fresh); b.node = fresh; }
       if (stick) scroll(lane.log);
     });
@@ -3342,7 +3366,7 @@
       attachRaws(node, ev);
       if (ev.seq) { node.dataset.seq = String(ev.seq); node.dataset.at = ev.at || ''; }
       if (cur !== mainLane) { cur.steps++; laneHeaderRefresh(cur); }
-      const stick = !cold && !detached && atBottom(cur.log);
+      const stick = !cold && !detached && cur.follow;
       const live = cur.log.querySelector(':scope > .is-streaming, :scope > .is-live');
       const mark = dayMark(cur, ev.at);
       if (mark) cur.log.insertBefore(mark, live);
