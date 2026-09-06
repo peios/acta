@@ -55,7 +55,8 @@ type Event struct {
 type Raw struct {
 	Label   string          `json:"label,omitempty"`
 	Kind    string          `json:"kind"`
-	Payload json.RawMessage `json:"payload"`
+	Seq     int64           `json:"seq,omitempty"`     // the stored frame this is; 0 for a live-only frame
+	Payload json.RawMessage `json:"payload,omitempty"` // dropped on the wire for a stored frame (see Wire)
 }
 
 // Frame is a stored (or live, unstored) backend frame as a Projector sees it.
@@ -179,7 +180,35 @@ const Fmt = "2006-01-02T15:04:05.000Z"
 
 // New makes an Event for a frame.
 func New(t string, f Frame) Event {
-	return Event{T: t, Seq: f.Seq, At: f.At.UTC().Format(Fmt), Data: map[string]any{}, Raw: []Raw{{Kind: f.Kind, Payload: f.Payload}}}
+	return Event{T: t, Seq: f.Seq, At: f.At.UTC().Format(Fmt), Data: map[string]any{}, Raw: []Raw{RawOf(f)}}
+}
+
+// RawOf is the raw entry for a frame: its payload, and its seq when stored.
+func RawOf(f Frame) Raw {
+	r := Raw{Kind: f.Kind, Payload: f.Payload}
+	if f.Stored {
+		r.Seq = f.Seq
+	}
+	return r
+}
+
+// Wire is the event as the browser receives it: a stored frame's payload is
+// left out of its raw entry (the browser fetches it by seq when its panel is
+// opened), so a long transcript is not shipped twice over. A live-only
+// frame has no seq to fetch by and keeps its payload.
+func (e Event) Wire() Event {
+	if len(e.Raw) == 0 {
+		return e
+	}
+	raws := make([]Raw, len(e.Raw))
+	for i, r := range e.Raw {
+		if r.Seq > 0 {
+			r.Payload = nil
+		}
+		raws[i] = r
+	}
+	e.Raw = raws
+	return e
 }
 
 // NewLabelled makes an Event whose raw frame carries a label.

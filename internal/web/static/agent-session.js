@@ -278,7 +278,8 @@
         if (!cur.think) cur.think = { start: ts(ev.at), tokens: 0, last: null, frames: 0 };
         cur.think.tokens = d.tokens || cur.think.tokens;
         if (!d.tokens) { setActivity('Thinking'); if (hydrated) liveThought(cur); return; }
-        cur.think.last = ev.raw && ev.raw[0] ? ev.raw[0].payload : null;
+        cur.think.last = ev.raw && ev.raw[0] ? (ev.raw[0].payload || null) : null;
+        cur.think.lastSeq = ev.raw && ev.raw[0] ? (ev.raw[0].seq || 0) : 0;
         cur.think.frames = (cur.think.frames || 0) + 1;
         setActivity('Thinking · ' + cur.think.tokens.toLocaleString() + ' tokens');
         if (hydrated) liveThought(cur);
@@ -365,6 +366,7 @@
       wrap.appendChild(det);
     }
     if (think && think.last) attachRaw(wrap, { last_thinking_tokens: think.last, thinking_token_frames: think.frames || 0 }, 'raw (thinking tokens)');
+    else if (think && think.lastSeq) attachRaw(wrap, null, 'raw (thinking tokens · ' + (think.frames || 0) + ' frames)', think.lastSeq);
     cur.think = null;
     return wrap;
   }
@@ -868,7 +870,36 @@
   // attachRaw adds a verbatim payload to a node. The node gets one "raw"
   // button in its hover tools (with a count once it holds more than one
   // payload) that toggles a panel listing every payload folded into it.
-  function attachRaw(wrap, payload, label) {
+  // Stored frames travel without their payloads (the event names them by
+  // seq); a panel fetches what it shows the first time it opens.
+  const frameCache = new Map(); // seq -> payload
+  async function fetchFrames(seqs) {
+    const need = seqs.filter(s => !frameCache.has(s));
+    if (need.length) {
+      try {
+        const r = await fetch('/account/sessions/' + encodeURIComponent(sessionID) + '/frames?seq=' + need.join(','), { credentials: 'same-origin' });
+        const j = await r.json();
+        for (const f of (j.frames || [])) frameCache.set(f.seq, f.payload);
+      } catch (_) {}
+    }
+    return seqs.map(s => frameCache.get(s));
+  }
+  function rawText(payload) {
+    return JSON.stringify(payload, (k, v) => (k === 'data' && typeof v === 'string' && v.length > 2000) ? '<base64 · ' + Math.round(v.length * 3 / 4 / 1024) + ' KB elided>' : v, null, 2);
+  }
+  async function fillRawBox(raw) {
+    const pending = [...raw.box.querySelectorAll('.frame-json[data-seq]')].filter(pre => !pre.dataset.loaded);
+    if (!pending.length) return;
+    const seqs = [...new Set(pending.map(pre => Number(pre.dataset.seq)))];
+    const got = await fetchFrames(seqs);
+    for (const pre of pending) {
+      const payload = got[seqs.indexOf(Number(pre.dataset.seq))];
+      if (payload === undefined) { pre.textContent = '(frame ' + pre.dataset.seq + ' could not be loaded)'; continue; }
+      pre.textContent = rawText(payload);
+      pre.dataset.loaded = '1';
+    }
+  }
+  function attachRaw(wrap, payload, label, seq) {
     let tools = wrap.querySelector(':scope > .frame-tools');
     if (!tools) {
       tools = el('div', 'frame-tools');
@@ -886,6 +917,7 @@
         boxEl.hidden = !boxEl.hidden;
         btn.classList.toggle('is-open', !boxEl.hidden);
         wrap.classList.toggle('is-raw-open', !boxEl.hidden);
+        if (!boxEl.hidden) fillRawBox(raw);
       });
       tools.appendChild(btn);
       wrap.appendChild(boxEl);
@@ -896,7 +928,14 @@
     const name = label ? label.replace(/^raw\s*\(?/, '').replace(/\)$/, '').trim() : '';
     if (name) sec.appendChild(el('div', 'raw-label', name));
     const pre = el('pre', 'frame-json');
-    pre.textContent = JSON.stringify(payload, (k, v) => (k === 'data' && typeof v === 'string' && v.length > 2000) ? '<base64 · ' + Math.round(v.length * 3 / 4 / 1024) + ' KB elided>' : v, null, 2);
+    if (payload == null && seq) {
+      pre.dataset.seq = String(seq);
+      pre.textContent = '…';
+      if (!raw.box.hidden) fillRawBox(raw);
+    } else {
+      pre.textContent = rawText(payload);
+      pre.dataset.loaded = '1';
+    }
     sec.appendChild(pre);
     raw.box.appendChild(sec);
     if (raw.n > 1) {
@@ -910,8 +949,8 @@
   function attachRaws(wrap, ev, label) {
     if (!wrap || !ev || !ev.raw) return;
     for (const r of ev.raw) {
-      if (r.payload == null) continue;
-      attachRaw(wrap, r.payload, r.label ? 'raw (' + r.label + ')' : (label ? 'raw (' + label + ')' : undefined));
+      if (r.payload == null && !r.seq) continue;
+      attachRaw(wrap, r.payload == null ? null : r.payload, r.label ? 'raw (' + r.label + ')' : (label ? 'raw (' + label + ')' : undefined), r.seq);
     }
   }
 
@@ -949,9 +988,12 @@
     if (!raw || from === into) return;
     for (const sec of [...raw.box.children]) {
       const lbl = sec.querySelector('.raw-label');
+      const pre = sec.querySelector('.frame-json');
+      const name = 'raw (' + (lbl ? lbl.textContent : 'call') + ')';
+      if (pre.dataset.seq && !pre.dataset.loaded) { attachRaw(into, null, name, Number(pre.dataset.seq)); continue; }
       let payload = null;
-      try { payload = JSON.parse(sec.querySelector('.frame-json').textContent); } catch (_) { payload = sec.querySelector('.frame-json').textContent; }
-      attachRaw(into, payload, 'raw (' + (lbl ? lbl.textContent : 'call') + ')');
+      try { payload = JSON.parse(pre.textContent); } catch (_) { payload = pre.textContent; }
+      attachRaw(into, payload, name);
     }
   }
   // hideIfEmpty hides a frame whose body has nothing visible left (its

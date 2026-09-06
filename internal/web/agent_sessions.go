@@ -362,6 +362,44 @@ func (h *handlers) agentSessionImport(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/account/sessions", http.StatusSeeOther)
 }
 
+// agentSessionFrames returns stored frames by seq (?seq=1,2,3), verbatim,
+// for the raw panels: the page carries events without their payloads.
+func (h *handlers) agentSessionFrames(w http.ResponseWriter, r *http.Request) {
+	p := principalFrom(r.Context())
+	as, err := h.agentSessions.Get(r.Context(), r.PathValue("id"), p.ID)
+	if errors.Is(err, agentsession.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	type frame struct {
+		Seq     int64           `json:"seq"`
+		Kind    string          `json:"kind"`
+		At      time.Time       `json:"at"`
+		Payload json.RawMessage `json:"payload"`
+	}
+	out := []frame{}
+	seen := map[int64]bool{}
+	for _, part := range strings.Split(r.URL.Query().Get("seq"), ",") {
+		seq, err := strconv.ParseInt(strings.TrimSpace(part), 10, 64)
+		if err != nil || seq <= 0 || seen[seq] || len(out) >= 200 {
+			continue
+		}
+		seen[seq] = true
+		evs, err := h.agentSessions.Events(r.Context(), as.ID, seq-1, 1)
+		if err != nil || len(evs) == 0 || evs[0].Seq != seq {
+			continue
+		}
+		out = append(out, frame{Seq: evs[0].Seq, Kind: evs[0].Kind, At: evs[0].CreatedAt, Payload: json.RawMessage(evs[0].Payload)})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	_ = json.NewEncoder(w).Encode(map[string]any{"frames": out})
+}
+
 // clipTitle keeps the first line of s, at most n runes.
 func clipTitle(s string, n int) string {
 	s = strings.TrimSpace(s)
@@ -504,6 +542,9 @@ func (h *handlers) agentSessionPage(w http.ResponseWriter, r *http.Request) {
 	if evs == nil {
 		evs = []model.Event{}
 	}
+	for i := range evs {
+		evs[i] = evs[i].Wire()
+	}
 	// json.Marshal escapes <, > and & so the array is safe inside a script
 	// element; template.JS keeps html/template from escaping it again.
 	ej, err := json.Marshal(evs)
@@ -569,7 +610,7 @@ func (h *handlers) agentSessionBrowserWS(w http.ResponseWriter, r *http.Request)
 	}
 	if evs, _, err := h.agentHub.History(r.Context(), as, after); err == nil {
 		for _, e := range evs {
-			b, _ := json.Marshal(e)
+			b, _ := json.Marshal(e.Wire())
 			_ = c.Write(r.Context(), websocket.MessageText, b)
 		}
 	}

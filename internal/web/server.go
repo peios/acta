@@ -239,6 +239,7 @@ func NewHandler(cfg config.Config, sessions *session.Manager, provider authn.Pro
 	mux.Handle("GET /account/sessions/{id}", protected(h.agentSessionPage))
 	mux.Handle("POST /account/sessions/{id}/delete", protected(h.agentSessionDelete))
 	mux.Handle("POST /account/sessions/{id}/title", protected(h.agentSessionRename))
+	mux.Handle("GET /account/sessions/{id}/frames", protected(h.agentSessionFrames))
 	mux.Handle("GET /account/sessions/{id}/ws", protected(h.agentSessionBrowserWS))
 	mux.Handle("GET /account/agents", protected(h.accountAgents))
 	mux.Handle("POST /account/agents", protected(h.agentCreate))

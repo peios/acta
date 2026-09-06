@@ -1206,7 +1206,8 @@ func (p *Projector) taskResult(f model.Frame, callID string, call *taskCall, tur
 		}
 	}
 	e := p.tasksEvent(f, "tasks")
-	e.Raw = []model.Raw{{Label: strings.ToLower(strings.Replace(call.name, "Task", "task ", 1)) + " result", Kind: f.Kind, Payload: f.Payload}}
+	e.Raw = []model.Raw{model.RawOf(f)}
+	e.Raw[0].Label = strings.ToLower(strings.Replace(call.name, "Task", "task ", 1)) + " result"
 	return []model.Event{e}
 }
 
@@ -1493,7 +1494,9 @@ func (p *Projector) echo(f model.Frame, m map[string]any, content any) []model.E
 		e := model.New(model.PeerMessage, f).Set("from", attrs["from"]).Set("name", name).Set("mode", attrs["from-mode"]).Set("text", strings.TrimSpace(pm[2]))
 		e.Ref = ref("peer", f)
 		if p.pendingLifecycle != nil {
-			e.Raw = append(e.Raw, model.Raw{Label: "lifecycle started", Kind: p.pendingLifecycle.Kind, Payload: p.pendingLifecycle.Payload})
+			lr := model.RawOf(*p.pendingLifecycle)
+			lr.Label = "lifecycle started"
+			e.Raw = append(e.Raw, lr)
 			p.pendingLifecycle = nil
 		}
 		p.peerRef = e.Ref
@@ -1662,7 +1665,9 @@ func (p *Projector) result(f model.Frame) []model.Event {
 		e.Set("errors", msgs)
 	}
 	if p.interrupt != nil {
-		e.Raw = append(e.Raw, model.Raw{Label: "interrupt", Kind: p.interrupt.Kind, Payload: p.interrupt.Payload})
+		ir := model.RawOf(*p.interrupt)
+		ir.Label = "interrupt"
+		e.Raw = append(e.Raw, ir)
 		p.interrupt = nil
 	}
 	if interrupted {
@@ -1688,7 +1693,7 @@ func (p *Projector) system(f model.Frame) []model.Event {
 	laneID := str(m, "parent_tool_use_id")
 	switch st {
 	case "thinking_tokens":
-		e := model.Event{T: model.Thinking, Seq: f.Seq, At: f.At.UTC().Format(model.Fmt), Lane: laneID, Data: map[string]any{"tokens": int64(num(m, "estimated_tokens"))}, Raw: []model.Raw{{Kind: f.Kind, Payload: f.Payload}}}
+		e := model.Event{T: model.Thinking, Seq: f.Seq, At: f.At.UTC().Format(model.Fmt), Lane: laneID, Data: map[string]any{"tokens": int64(num(m, "estimated_tokens"))}, Raw: []model.Raw{model.RawOf(f)}}
 		return []model.Event{e}
 	case "hook_started":
 		id := str(m, "hook_id")

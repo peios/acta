@@ -1181,7 +1181,7 @@ func (h *Hub) recordState(ctx context.Context, sessionID string, m map[string]an
 
 // fanout delivers one model event to every browser watching the session.
 func (h *Hub) fanout(sessionID string, e model.Event) {
-	b, err := json.Marshal(e)
+	b, err := json.Marshal(e.Wire())
 	if err != nil {
 		return
 	}

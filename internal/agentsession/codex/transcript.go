@@ -463,6 +463,7 @@ func (p *Projector) synthRaw(f model.Frame, method string, params map[string]any
 			if evs[i].Raw[j].Kind == method && string(evs[i].Raw[j].Payload) == string(raw) {
 				evs[i].Raw[j].Kind = f.Kind
 				evs[i].Raw[j].Payload = f.Payload
+				evs[i].Raw[j].Seq = model.RawOf(f).Seq
 			}
 		}
 	}
