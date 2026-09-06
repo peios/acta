@@ -7,7 +7,7 @@
       <div class="chat-title">
         <button type="button" class="chat-name" data-session-name="{{.Session.ID}}" data-chat-rename title="Rename this session">{{if .Session.Title}}{{.Session.Title}}{{else}}{{.Session.Backend}} session{{end}}</button>
         <input class="chat-name-edit" data-rename-input maxlength="120" hidden aria-label="Session title">
-        <span class="live-dot{{if .Running}} is-running{{else if .Live}} is-held{{end}}" data-session-dot="{{.Session.ID}}" title="{{if .Running}}running{{else if .Live}}idle (harness connected){{else}}offline{{end}}"></span>
+        <span class="live-dot has-mark{{if .Running}} is-running{{else if .Live}} is-held{{end}}" data-session-dot="{{.Session.ID}}" title="{{if .Running}}running{{else if .Live}}idle (harness connected){{else}}offline{{end}}">{{template "backendmark" .Session.Backend}}</span>
         <span class="chat-conn" data-chat-conn>&hellip;</span>
         <span class="chat-pills">
         <button type="button" class="plan-pill" data-plan-pill hidden title="Show the plan"><svg class="ico" viewBox="0 0 16 16"><path d="M3 4h10M3 8h6M3 12h4"/><path d="m10.5 11 1.5 1.5L15 9.5"/></svg><span data-plan-pill-text>Plan</span></button>

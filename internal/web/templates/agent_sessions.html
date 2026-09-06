@@ -121,7 +121,7 @@
         <div class="sess-list">
           {{range .Sessions}}
           <div class="sess">
-            <span class="live-dot{{if .Running}} is-running{{else if .Live}} is-held{{end}}" data-session-dot="{{.ID}}" title="{{if .Running}}running{{else if .Live}}idle (harness connected){{else}}offline{{end}}"></span>
+            <span class="live-dot has-mark{{if .Running}} is-running{{else if .Live}} is-held{{end}}" data-session-dot="{{.ID}}" title="{{if .Running}}running{{else if .Live}}idle (harness connected){{else}}offline{{end}}">{{template "backendmark" .Backend}}</span>
             <div class="sess-main">
               <div class="sess-title">
                 <a href="/account/sessions/{{.ID}}" data-session-name="{{.ID}}">{{if .Title}}{{.Title}}{{else}}{{.Backend}} session{{end}}</a>

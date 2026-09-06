@@ -73,7 +73,7 @@ func (h *handlers) agentChrome(r *http.Request, activeID string) (chrome, []agen
 	nav := make([]agentSessionNav, 0, len(list))
 	for _, as := range list {
 		rows = append(rows, agentSessionRow{AgentSession: as, Live: liveIDs[as.ID], Running: runIDs[as.ID]})
-		nav = append(nav, agentSessionNav{ID: as.ID, Title: sessionLabel(as), Live: liveIDs[as.ID], Running: runIDs[as.ID]})
+		nav = append(nav, agentSessionNav{ID: as.ID, Title: sessionLabel(as), Backend: as.Backend, Live: liveIDs[as.ID], Running: runIDs[as.ID]})
 	}
 	ch.AgentMode = true
 	ch.AgentSessions = nav

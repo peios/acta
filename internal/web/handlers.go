@@ -93,8 +93,9 @@ type chrome struct {
 type agentSessionNav struct {
 	ID      string
 	Title   string
-	Live    bool // held by a connected harness (resumable)
-	Running bool // a process is running right now
+	Backend string // whose mark the sidebar shows (claude-code, codex)
+	Live    bool   // held by a connected harness (resumable)
+	Running bool   // a process is running right now
 }
 
 // boardNav is one sidebar board link. Href is the board's canonical view URL —
