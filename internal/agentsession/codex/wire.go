@@ -119,6 +119,11 @@ func StartLines(sessionID string, options map[string]any, cwd string, resume boo
 	}
 	if resume && opt(options, "conversation") != "" {
 		params["threadId"] = opt(options, "conversation")
+		// Acta holds its own copy of the conversation (stored frames, a
+		// catch-up read of the rollout), so the app-server need not hand the
+		// history back: hydrating a long rollout's turns takes minutes and
+		// blocks every request behind it, the turn included.
+		params["excludeTurns"] = true
 		out = append(out, request("acta-thread-resume", "thread/resume", params))
 	} else {
 		params["ephemeral"] = false
