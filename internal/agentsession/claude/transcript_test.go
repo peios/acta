@@ -71,7 +71,7 @@ func TestChainRecordsTrimsWhatIsNotConversation(t *testing.T) {
 		`{"type":"assistant","uuid":"a5","parentUuid":"u5","message":{"role":"assistant","content":[{"type":"text","text":"sure"}]}}`,
 		`{"type":"system","uuid":"td2","parentUuid":"a5","subtype":"turn_duration"}`,
 	))
-	if got, want := uuids(recs), "u5 a5"; got != want {
+	if got, want := uuids(recs), "u5 a5 td2"; got != want {
 		t.Errorf("partial chain:\n got %s\nwant %s", got, want)
 	}
 }

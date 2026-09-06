@@ -221,8 +221,19 @@ func (codexDriver) TitleRequest(string, string) []byte { return nil }
 func (codexDriver) TitleAnswer(string, json.RawMessage) (string, string, bool) {
 	return "", "", false
 }
-func (codexDriver) Transcript(store.AgentSession, []store.AgentSessionEvent) (Catchup, bool) {
-	return Catchup{}, false
+func (codexDriver) Transcript(as store.AgentSession, events []store.AgentSessionEvent) (Catchup, bool) {
+	after := ""
+	for i := len(events) - 1; i >= 0 && after == ""; i-- {
+		after = codex.Leaf(events[i].Kind, events[i].Payload)
+	}
+	return Catchup{Path: codex.TranscriptGlob(as.ID, as.Options), Key: codex.LeafKey, After: after}, true
 }
-func (codexDriver) TranscriptRecords([]json.RawMessage) []TranscriptRecord { return nil }
-func (codexDriver) Projector() model.Projector                             { return codex.New() }
+func (codexDriver) TranscriptRecords(lines []json.RawMessage) []TranscriptRecord {
+	recs := codex.ChainRecords(lines)
+	out := make([]TranscriptRecord, 0, len(recs))
+	for _, r := range recs {
+		out = append(out, TranscriptRecord{Payload: r.Payload, At: r.At})
+	}
+	return out
+}
+func (codexDriver) Projector() model.Projector { return codex.New() }

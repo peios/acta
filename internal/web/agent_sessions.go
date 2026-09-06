@@ -228,6 +228,7 @@ type transcriptItem struct {
 	Updated time.Time `json:"updated"`
 	Size    int64     `json:"size"`
 	Mode    string    `json:"permission_mode"`
+	Model   string    `json:"model"`
 	Held    bool      `json:"held"`
 }
 
@@ -326,9 +327,19 @@ func (h *handlers) agentSessionImport(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		options := map[string]any{"permission_mode": "default"}
-		switch it.Mode {
-		case "default", "acceptEdits", "plan", "bypassPermissions", "auto":
-			options["permission_mode"] = it.Mode
+		switch backend {
+		case "claude-code":
+			switch it.Mode {
+			case "default", "acceptEdits", "plan", "bypassPermissions", "auto":
+				options["permission_mode"] = it.Mode
+			}
+		case "codex":
+			// the thread is resumed by its own id; the mode is Acta's default
+			options["permission_mode"] = "auto"
+			options["conversation"] = it.ID
+			if it.Model != "" {
+				options["model"] = it.Model
+			}
 		}
 		title := it.Title
 		if title == "" {
@@ -338,7 +349,7 @@ func (h *handlers) agentSessionImport(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue
 		}
-		if err := h.agentHub.Import(p.ID, harnessID, as, it.Path); err != nil {
+		if err := h.agentHub.Import(p.ID, harnessID, as); err != nil {
 			_, _ = h.agentSessions.Append(r.Context(), as.ID, "state",
 				json.RawMessage(`{"state":"import_failed","reason":"no harness connected"}`))
 		}

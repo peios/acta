@@ -18,6 +18,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/peios/acta/internal/agentsession/claude"
+	"github.com/peios/acta/internal/agentsession/codex"
 )
 
 // cmdHarness runs the Acta harness: it connects out to Acta over a websocket,
@@ -453,14 +454,10 @@ func (h *harness) read(session, id string, req readReq, hold bool) {
 			continue
 		}
 		if req.After != "" && strings.Contains(string(line), string(needle)) {
-			var m map[string]json.RawMessage
-			if json.Unmarshal(line, &m) == nil {
-				var v string
-				if json.Unmarshal(m[key], &v) == nil && v == req.After {
-					found = true
-					pending = pending[:0]
-					continue
-				}
+			if fieldString(line, key) == req.After {
+				found = true
+				pending = pending[:0]
+				continue
 			}
 		}
 		cp := make([]byte, len(line))
@@ -506,6 +503,28 @@ func (h *harness) read(session, id string, req readReq, hold bool) {
 	done["count"] = count
 }
 
+// fieldString reads a string field of a JSON line by a dotted path
+// ("payload.item.id"); "" when absent or not a string.
+func fieldString(line []byte, path string) string {
+	var cur json.RawMessage = line
+	for _, k := range strings.Split(path, ".") {
+		var m map[string]json.RawMessage
+		if json.Unmarshal(cur, &m) != nil {
+			return ""
+		}
+		next, ok := m[k]
+		if !ok {
+			return ""
+		}
+		cur = next
+	}
+	var v string
+	if json.Unmarshal(cur, &v) != nil {
+		return ""
+	}
+	return v
+}
+
 // scan lists the transcripts a backend keeps on this host.
 func (h *harness) scan(reqID, backend string) {
 	reply := map[string]any{"t": "scan_result", "id": reqID, "backend": backend}
@@ -515,6 +534,12 @@ func (h *harness) scan(reqID, backend string) {
 		items := claude.ScanTranscripts(home)
 		if items == nil {
 			items = []claude.Transcript{}
+		}
+		reply["items"] = items
+	case "codex":
+		items := codex.ScanTranscripts(home)
+		if items == nil {
+			items = []codex.Transcript{}
 		}
 		reply["items"] = items
 	default:

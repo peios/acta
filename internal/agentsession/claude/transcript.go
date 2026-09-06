@@ -87,8 +87,9 @@ type TranscriptRecord struct {
 // lines do not hold (the record Acta already has, for a catch-up). Only the
 // user, assistant and system records are kept, in file order; the bookkeeping
 // records around them (queue operations, titles, snapshots) are not
-// conversation. Leading and trailing system records (a turn's duration, say)
-// are trimmed so that a read that finds nothing new stores nothing.
+// conversation. Leading system records, and trailing ones down to the
+// duration that closes the last turn, are trimmed so that a read that finds
+// nothing new stores nothing.
 func ChainRecords(lines []json.RawMessage) []TranscriptRecord {
 	type rec struct {
 		raw               json.RawMessage
@@ -149,10 +150,19 @@ func ChainRecords(lines []json.RawMessage) []TranscriptRecord {
 		_ = json.Unmarshal(r.Payload, &m)
 		return m.Type != "system"
 	}
+	subtype := func(r TranscriptRecord) string {
+		var m struct {
+			Subtype string `json:"subtype"`
+		}
+		_ = json.Unmarshal(r.Payload, &m)
+		return m.Subtype
+	}
 	for len(out) > 0 && !isMsg(out[0]) {
 		out = out[1:]
 	}
-	for len(out) > 0 && !isMsg(out[len(out)-1]) {
+	// trailing system records go, but the one that closes the last turn
+	// (its duration) stays, so the turn ends on the page
+	for len(out) > 0 && !isMsg(out[len(out)-1]) && subtype(out[len(out)-1]) != "turn_duration" {
 		out = out[:len(out)-1]
 	}
 	return out

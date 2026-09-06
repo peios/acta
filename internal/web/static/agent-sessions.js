@@ -156,7 +156,9 @@
   const hint = form.querySelector('[data-import-hint]');
   const submit = form.querySelector('[data-import-submit]');
   const all = form.querySelector('[data-import-all]');
+  const backendInput = form.querySelector('[data-import-backend-input]');
   let cur = null;
+  let backend = 'claude-code';
   let items = [];
   let seq = 0;
 
@@ -220,7 +222,7 @@
     let got = [];
     let err = '';
     try {
-      const r = await fetch('/account/harnesses/' + encodeURIComponent(cur.id) + '/transcripts?backend=claude-code', { credentials: 'same-origin' });
+      const r = await fetch('/account/harnesses/' + encodeURIComponent(cur.id) + '/transcripts?backend=' + encodeURIComponent(backend), { credentials: 'same-origin' });
       const j = await r.json();
       got = j.items || [];
       err = j.error || '';
@@ -231,6 +233,17 @@
     paint();
     count();
   }
+  // the backends the picked harness can run; the first is on unless the
+  // user chose another it also has
+  function paintBackends() {
+    const have = new Set(cur && cur.backends && cur.backends.length ? cur.backends : []);
+    const btns = [...form.querySelectorAll('[data-import-backend]')];
+    for (const b of btns) b.hidden = have.size > 0 && !have.has(b.dataset.importBackend);
+    const shown = btns.filter(b => !b.hidden);
+    if (!shown.some(b => b.dataset.importBackend === backend) && shown[0]) backend = shown[0].dataset.importBackend;
+    for (const b of btns) { const on = b.dataset.importBackend === backend; b.classList.toggle('is-on', on); b.setAttribute('aria-checked', on ? 'true' : 'false'); }
+    backendInput.value = backend;
+  }
   function pick(id) {
     cur = picks.find(p => p.id === id) || null;
     for (const b of form.querySelectorAll('[data-import-pick]')) {
@@ -238,9 +251,11 @@
       b.classList.toggle('is-on', !!on);
       b.setAttribute('aria-checked', on ? 'true' : 'false');
     }
+    paintBackends();
     load();
   }
   for (const b of form.querySelectorAll('[data-import-pick]')) b.addEventListener('click', () => pick(b.dataset.importPick));
+  for (const b of form.querySelectorAll('[data-import-backend]')) b.addEventListener('click', () => { backend = b.dataset.importBackend; paintBackends(); load(); });
   open.addEventListener('click', () => {
     const was = form.hidden;
     form.hidden = !was;

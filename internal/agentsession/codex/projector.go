@@ -139,6 +139,8 @@ func (p *Projector) Project(f model.Frame) []model.Event {
 		out = p.state(f)
 	case "response":
 		out = p.response(f)
+	case TranscriptKind:
+		out = p.transcript(f)
 	default:
 		m := obj(f.Payload)
 		if _, isReq := m["id"]; isReq && str(m, "method") != "" {
@@ -282,6 +284,8 @@ func (p *Projector) state(f model.Frame) []model.Event {
 	st := str(m, "state")
 	idle := bare(model.TurnIdle, f)
 	switch st {
+	case "catchup", "import":
+		return p.transcriptState(f, m)
 	case "spawned":
 		for _, a := range p.approvals {
 			a.done = true

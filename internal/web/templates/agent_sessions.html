@@ -85,12 +85,15 @@
         <form class="import-panel" method="post" action="/account/sessions/import" data-import data-picks="{{.PicksJSON}}" hidden>
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
           <input type="hidden" name="harness" value="" data-import-harness>
-          <input type="hidden" name="backend" value="claude-code">
           <div class="import-head">
             <div>
-              <div class="import-title">Import Claude Code conversations</div>
+              <div class="import-title">Import conversations</div>
               <p class="import-sub">Conversations kept on <b data-import-host>the harness</b>. Each one you pick becomes a session here, with its whole history, that you can carry on from Acta or from a terminal.</p>
             </div>
+            <div class="import-backends" role="radiogroup" aria-label="Backend" data-import-backends>
+              {{range .Backends}}<button type="button" class="hpick" role="radio" aria-checked="false" data-import-backend="{{.}}"><span class="hpick-label">{{.}}</span></button>{{end}}
+            </div>
+            <input type="hidden" name="backend" value="claude-code" data-import-backend-input>
             {{if gt (len .Picks) 1}}
             <div class="hpicks" role="radiogroup" aria-label="Harness" data-import-picks>
               {{range .Picks}}

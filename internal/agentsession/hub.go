@@ -410,7 +410,7 @@ func (h *Hub) ScanTranscripts(ctx context.Context, ownerID, harnessID, backend s
 // Import has a harness read a whole transcript on its host into a session
 // Acta has just recorded under the transcript's own id, and hold the session
 // so it can be resumed there. The records arrive as the read runs.
-func (h *Hub) Import(ownerID, harnessID string, as store.AgentSession, path string) error {
+func (h *Hub) Import(ownerID, harnessID string, as store.AgentSession) error {
 	c := h.harnessByID(ownerID, harnessID)
 	if c == nil {
 		return ErrNoHarness
@@ -418,8 +418,16 @@ func (h *Hub) Import(ownerID, harnessID string, as store.AgentSession, path stri
 	if c.v < 3 {
 		return ErrHarnessTooOld
 	}
+	d := DriverFor(as.Backend)
+	if d == nil {
+		return errors.New("no driver for backend " + as.Backend)
+	}
+	cu, ok := d.Transcript(as, nil)
+	if !ok {
+		return errors.New("backend " + as.Backend + " keeps no transcript to import")
+	}
 	h.openRead(as.ID, "import", "import")
-	c.send(Outbound{T: FrameRead, Session: as.ID, ID: "import", Path: path, Key: "uuid", Hold: true})
+	c.send(Outbound{T: FrameRead, Session: as.ID, ID: "import", Path: cu.Path, Key: cu.Key, Hold: true})
 	return nil
 }
 
