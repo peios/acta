@@ -867,6 +867,12 @@ type Store interface {
 	// AgentSessionSizes is how much transcript each of an owner's sessions
 	// holds, by session id; a session with no frames is absent.
 	AgentSessionSizes(ctx context.Context, ownerID string) (map[string]AgentSessionSize, error)
+	// UpdateAgentSessionEventPayloads rewrites the payloads of a session's
+	// frames in place, by seq (a prune: seqs, kinds and times stay).
+	UpdateAgentSessionEventPayloads(ctx context.Context, sessionID string, payloads map[int64][]byte) error
+	// DeleteAgentSessionEvents drops every frame of a session, keeping the
+	// session (a re-read from the backend's own transcript follows).
+	DeleteAgentSessionEvents(ctx context.Context, sessionID string) error
 
 	// Activity log. RecordEvent appends an entry (assigning its id). The two
 	// readers return newest-first, capped at limit (a non-positive limit is

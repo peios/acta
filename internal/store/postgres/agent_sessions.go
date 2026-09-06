@@ -240,6 +240,25 @@ func (p *Postgres) AgentSessionSizes(ctx context.Context, ownerID string) (map[s
 	return out, rows.Err()
 }
 
+func (p *Postgres) UpdateAgentSessionEventPayloads(ctx context.Context, sessionID string, payloads map[int64][]byte) error {
+	if len(payloads) == 0 {
+		return nil
+	}
+	return p.inTx(ctx, func(tx pgx.Tx) error {
+		for seq, payload := range payloads {
+			if _, err := tx.Exec(ctx, `UPDATE agent_session_events SET payload = $3 WHERE session_id = $1 AND seq = $2`, sessionID, seq, jsonbSafe(payload)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (p *Postgres) DeleteAgentSessionEvents(ctx context.Context, sessionID string) error {
+	_, err := p.pool.Exec(ctx, `DELETE FROM agent_session_events WHERE session_id = $1`, sessionID)
+	return err
+}
+
 func (p *Postgres) AgentSessionEvents(ctx context.Context, sessionID string, afterSeq int64, limit int) ([]store.AgentSessionEvent, error) {
 	if _, err := p.AgentSessionByID(ctx, sessionID); err != nil {
 		return nil, err

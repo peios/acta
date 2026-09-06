@@ -29,7 +29,7 @@
       <div class="chat-meta">
         <code>{{.Session.Backend}}</code>
         {{if .Session.Cwd}}<span class="chat-cwd" title="{{.Session.Cwd}}">{{.Session.Cwd}}</span>{{end}}
-        {{if .Frames}}<span class="chat-size" title="{{.Frames}} stored frames">{{.Size}}</span>{{end}}
+        {{if .Frames}}<button type="button" class="chat-size" data-storage-open title="{{.Frames}} stored frames · storage options">{{.Size}}</button>{{end}}
       </div>
     </div>
     <div class="chat-gauges" data-gauges>
@@ -94,6 +94,35 @@
         <button type="button" class="btn-secondary perm-deny" data-perm-deny>Deny</button>
         <button type="button" class="btn-primary" data-perm-allow>Allow</button>
       </div>
+    </div>
+  </div>
+
+  <div class="perm-modal storage-modal" data-storage-modal hidden>
+    <div class="perm-backdrop" data-storage-close></div>
+    <div class="perm-panel" role="dialog" aria-modal="true" aria-label="Storage">
+      <div class="perm-head">
+        <span class="perm-ico storage-ico"><svg class="ico" viewBox="0 0 16 16"><ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4"/><path d="M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/></svg></span>
+        <span class="perm-title">Storage</span>
+        <span class="perm-count" data-storage-total>{{.Size}}</span>
+      </div>
+      <form method="post" action="/account/sessions/{{.Session.ID}}/prune" class="storage-form" data-storage-prune>
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <p class="storage-sub">Prune takes parts out of Acta's copy of this transcript. Messages and turn markers stay, and the transcript {{.Session.Backend}} keeps on the harness is untouched, so a re-read below brings everything back.</p>
+        <div class="storage-cats" data-storage-cats><div class="import-empty">Measuring…</div></div>
+        <div class="perm-actions">
+          <button type="button" class="btn-secondary" data-storage-close>Cancel</button>
+          <button class="btn-primary" type="submit" disabled data-storage-submit>Prune</button>
+        </div>
+      </form>
+      <form method="post" action="/account/sessions/{{.Session.ID}}/reimport" class="storage-form storage-reread" data-storage-reimport>
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <div class="storage-reread-head">Re-read from the harness</div>
+        <p class="storage-sub" data-storage-reread-note>Replaces Acta's copy with the transcript as {{.Session.Backend}} keeps it on <b data-storage-harness>the harness</b>. What only Acta recorded (permission answers, harness notices) is not in it.</p>
+        <label class="storage-cat"><input type="checkbox" name="full" value="1"><span class="storage-cat-main"><span>Include everything</span><span class="storage-cat-note">The harness normally sends the newest 64 MB of conversation; this asks for the whole transcript.</span></span></label>
+        <div class="perm-actions">
+          <button class="btn-secondary" type="submit" data-storage-reread-btn>Re-read</button>
+        </div>
+      </form>
     </div>
   </div>
 

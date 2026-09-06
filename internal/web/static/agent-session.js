@@ -2667,6 +2667,7 @@
       // history: settled, never pending, never the input a failure lands on
       if (d.cmd && !images.length) return cmdMarker(d.cmd, ev);
       const node = youBubble(text, images, false);
+      if (d.images_pruned) node.appendChild(el('div', 'frame-note', d.images_pruned + (d.images_pruned === 1 ? ' image pruned' : ' images pruned')));
       coldPending.push({ key: inputKey(text, images), node });
       return node;
     }
@@ -4173,6 +4174,54 @@
     const m = /agent=([^&]+)/.exec(location.hash || '');
     showLane(m ? decodeURIComponent(m[1]) : 'main');
   });
+
+  // --- storage dialog ---
+  //
+  // The size in the header opens it: what each prune category would save
+  // (measured by the server on open), and a re-read from the harness.
+  (function storage() {
+    const modal = document.querySelector('[data-storage-modal]');
+    const open = document.querySelector('[data-storage-open]');
+    if (!modal || !open) return;
+    const cats = modal.querySelector('[data-storage-cats]');
+    const submit = modal.querySelector('[data-storage-submit]');
+    const total = modal.querySelector('[data-storage-total]');
+    const harness = modal.querySelector('[data-storage-harness]');
+    const rereadBtn = modal.querySelector('[data-storage-reread-btn]');
+    const rereadNote = modal.querySelector('[data-storage-reread-note]');
+    const fmt = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n >= 1024 ? Math.round(n / 1024) + ' KB' : n + ' B';
+    function count() { submit.disabled = !modal.querySelector('input[name="cat"]:checked'); }
+    async function load() {
+      cats.textContent = '';
+      cats.appendChild(el('div', 'import-empty', 'Measuring…'));
+      let j = null;
+      try { const r = await fetch('/account/sessions/' + encodeURIComponent(stage.dataset.session) + '/storage', { credentials: 'same-origin' }); j = await r.json(); } catch (_) {}
+      cats.textContent = '';
+      if (!j) { cats.appendChild(el('div', 'import-empty', 'Could not measure the transcript.')); return; }
+      total.textContent = fmt(j.bytes || 0) + ' before compression';
+      for (const c of j.categories || []) {
+        const lab = el('label', 'storage-cat');
+        const cb = el('input'); cb.type = 'checkbox'; cb.name = 'cat'; cb.value = c.id; cb.disabled = !c.bytes;
+        cb.addEventListener('change', count);
+        const main = el('span', 'storage-cat-main');
+        main.appendChild(el('span', null, c.label));
+        main.appendChild(el('span', 'storage-cat-note', c.note));
+        lab.append(cb, main, el('span', 'storage-cat-bytes', c.bytes ? fmt(c.bytes) + ' · ' + c.frames + (c.frames === 1 ? ' frame' : ' frames') : 'nothing'));
+        cats.appendChild(lab);
+      }
+      count();
+      if (j.harness) { harness.textContent = j.harness; rereadBtn.disabled = !!j.running; if (j.running) rereadNote.textContent = 'The session is running there; stop it before re-reading.'; }
+      else { harness.textContent = 'a harness'; rereadBtn.disabled = true; rereadNote.textContent = 'No harness is connected. Run acta harness on the machine that holds this transcript.'; }
+    }
+    open.addEventListener('click', () => { modal.hidden = false; load(); });
+    for (const b of modal.querySelectorAll('[data-storage-close]')) b.addEventListener('click', () => { modal.hidden = true; });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.hidden) modal.hidden = true; });
+    modal.querySelector('[data-storage-prune]').addEventListener('submit', () => { submit.disabled = true; submit.textContent = 'Pruning…'; });
+    modal.querySelector('[data-storage-reimport]').addEventListener('submit', (e) => {
+      if (!confirm('Replace everything Acta holds for this session with a fresh read of the transcript on ' + harness.textContent + '?')) { e.preventDefault(); return; }
+      rereadBtn.disabled = true; rereadBtn.textContent = 'Reading…';
+    });
+  })();
 
   hydrate();
   connect();

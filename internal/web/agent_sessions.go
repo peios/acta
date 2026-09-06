@@ -503,6 +503,10 @@ func agentSessionErr(code string) string {
 		return "Unknown backend."
 	case "old_harness":
 		return "That harness runs an older acta. Update it and restart `acta harness`."
+	case "running":
+		return "The session is running. Stop it before re-reading its transcript."
+	case "nothing":
+		return "Nothing was chosen to prune."
 	case "":
 		return ""
 	default:
@@ -571,6 +575,94 @@ func knownBackend(b string) bool {
 		}
 	}
 	return false
+}
+
+// agentSessionStorage answers the session's storage dialog: how much the
+// transcript holds before compression, what each prune category would save,
+// and which harness a re-read would use.
+func (h *handlers) agentSessionStorage(w http.ResponseWriter, r *http.Request) {
+	p := principalFrom(r.Context())
+	id := r.PathValue("id")
+	ests, total, err := h.agentSessions.PruneEstimates(r.Context(), id, p.ID)
+	if errors.Is(err, agentsession.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	label, running, held := h.agentHub.Holder(p.ID, id)
+	if !held {
+		label = h.agentHub.AnyHarness(p.ID)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"bytes": total, "categories": ests, "harness": label, "held": held, "running": running})
+}
+
+// agentSessionPrune rewrites the transcript with the chosen categories
+// taken out, then sends the reader back to the page, whose size shows it.
+func (h *handlers) agentSessionPrune(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	p := principalFrom(r.Context())
+	id := r.PathValue("id")
+	cats := map[string]bool{}
+	for _, c := range r.PostForm["cat"] {
+		for _, known := range model.PruneCategories {
+			if c == known {
+				cats[c] = true
+			}
+		}
+	}
+	_, err := h.agentSessions.Prune(r.Context(), id, p.ID, cats)
+	switch {
+	case errors.Is(err, agentsession.ErrNothingToPrune):
+		http.Redirect(w, r, "/account/sessions/"+id+"?err=nothing", http.StatusSeeOther)
+		return
+	case errors.Is(err, agentsession.ErrNotFound):
+		http.NotFound(w, r)
+		return
+	case err != nil:
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	h.agentHub.Invalidate(id)
+	http.Redirect(w, r, "/account/sessions/"+id, http.StatusSeeOther)
+}
+
+// agentSessionReimport replaces the stored transcript with a fresh read of
+// the backend's own record on the harness.
+func (h *handlers) agentSessionReimport(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	p := principalFrom(r.Context())
+	id := r.PathValue("id")
+	as, err := h.agentSessions.Get(r.Context(), id, p.ID)
+	if errors.Is(err, agentsession.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	err = h.agentHub.Reimport(r.Context(), p.ID, as, r.PostFormValue("full") == "1")
+	switch {
+	case errors.Is(err, agentsession.ErrNoHarness):
+		http.Redirect(w, r, "/account/sessions/"+id+"?err=no_harness", http.StatusSeeOther)
+	case errors.Is(err, agentsession.ErrHarnessTooOld):
+		http.Redirect(w, r, "/account/sessions/"+id+"?err=old_harness", http.StatusSeeOther)
+	case errors.Is(err, agentsession.ErrSessionRunning):
+		http.Redirect(w, r, "/account/sessions/"+id+"?err=running", http.StatusSeeOther)
+	case err != nil:
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	default:
+		http.Redirect(w, r, "/account/sessions/"+id, http.StatusSeeOther)
+	}
 }
 
 func (h *handlers) agentSessionDelete(w http.ResponseWriter, r *http.Request) {

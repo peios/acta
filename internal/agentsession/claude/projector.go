@@ -310,6 +310,9 @@ func (p *Projector) input(f model.Frame) []model.Event {
 	if imgs := arr(m, "images"); len(imgs) > 0 {
 		e.Set("images", imgs)
 	}
+	if n := int(num(m, "images_pruned")); n > 0 {
+		e.Set("images_pruned", n)
+	}
 	e.Ref = ref("input", f)
 	p.turnActive = true
 	// whichever node this input becomes (a bubble, a command marker, or the

@@ -52,6 +52,33 @@ func (s *Store) AgentSessionsByOwner(_ context.Context, ownerID string) ([]store
 	return out, nil
 }
 
+func (s *Store) UpdateAgentSessionEventPayloads(_ context.Context, sessionID string, payloads map[int64][]byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, e := range s.agentEvents {
+		if e.SessionID != sessionID {
+			continue
+		}
+		if p, ok := payloads[e.Seq]; ok {
+			s.agentEvents[i].Payload = p
+		}
+	}
+	return nil
+}
+
+func (s *Store) DeleteAgentSessionEvents(_ context.Context, sessionID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	kept := s.agentEvents[:0]
+	for _, e := range s.agentEvents {
+		if e.SessionID != sessionID {
+			kept = append(kept, e)
+		}
+	}
+	s.agentEvents = kept
+	return nil
+}
+
 func (s *Store) AgentSessionSizes(_ context.Context, ownerID string) (map[string]store.AgentSessionSize, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -145,6 +145,7 @@ type Outbound struct {
 	Key   string `json:"key,omitempty"`
 	After string `json:"after,omitempty"`
 	Hold  bool   `json:"hold,omitempty"`
+	Full  bool   `json:"full,omitempty"` // read: the whole transcript, not the newest turns that fit the cap
 	// write: one stdin line, without its newline.
 	Line string `json:"line,omitempty"`
 }

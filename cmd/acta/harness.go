@@ -239,6 +239,7 @@ func (h *harness) connectAndServe(ctx context.Context) error {
 			Key     string            `json:"key"`
 			After   string            `json:"after"`
 			Hold    bool              `json:"hold"`
+			Full    bool              `json:"full"`
 			Catchup *readReq          `json:"catchup"`
 		}
 		if json.Unmarshal(data, &f) != nil {
@@ -250,7 +251,7 @@ func (h *harness) connectAndServe(ctx context.Context) error {
 		case "scan":
 			go h.scan(f.ID, f.Backend)
 		case "read":
-			go h.read(f.Session, f.ID, readReq{Backend: f.Backend, Path: f.Path, Key: f.Key, After: f.After}, f.Hold)
+			go h.read(f.Session, f.ID, readReq{Backend: f.Backend, Path: f.Path, Key: f.Key, After: f.After, Full: f.Full}, f.Hold)
 		case "spawn":
 			h.spawn(f.Session, f.Cwd, f.Cmd, f.Args, f.Env, f.Resume, f.Styles, f.Catchup)
 		case "write":
@@ -385,6 +386,7 @@ type readReq struct {
 	Path    string `json:"path"`
 	Key     string `json:"key"`
 	After   string `json:"after"`
+	Full    bool   `json:"full"` // everything, not the newest turns that fit readKeepCap
 }
 
 const (
@@ -476,10 +478,12 @@ func (h *harness) read(session, id string, req readReq, hold bool) {
 	// a transcript longer than Acta will take is sent from its newest turns
 	// back, whole turns only; what is left behind is reported so the
 	// divider can say so
-	var skipped int64
-	pending, skipped = tailCut(pending, readKeepCap, turnStart)
-	if skipped > 0 {
-		done["skipped"] = skipped
+	if !req.Full {
+		var skipped int64
+		pending, skipped = tailCut(pending, readKeepCap, turnStart)
+		if skipped > 0 {
+			done["skipped"] = skipped
+		}
 	}
 	for i, line := range pending {
 		pending[i] = trimStrings(line, readStrCap)

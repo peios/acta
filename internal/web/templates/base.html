@@ -732,6 +732,20 @@
   .chat-meta code { font-family: var(--mono); font-size: .74rem; color: var(--muted); background: var(--field); border: 1px solid var(--border-soft); border-radius: 5px; padding: .03rem .35rem; }
   .chat-cwd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 22rem; font-family: var(--mono); font-size: .75rem; color: var(--faint); }
   .chat-size, .sess-size { font-variant-numeric: tabular-nums; color: var(--faint); }
+  button.chat-size { font: inherit; font-size: .75rem; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+  button.chat-size:hover { color: var(--text); }
+  .storage-ico { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-hi); }
+  .storage-form { display: grid; gap: .7rem; }
+  .storage-sub { margin: 0; color: var(--muted); font-size: .82rem; line-height: 1.45; }
+  .storage-cats { display: grid; gap: .4rem; }
+  .storage-cat { display: flex; align-items: flex-start; gap: .65rem; padding: .5rem .65rem; border: 1px solid var(--border-soft); border-radius: 9px; cursor: pointer; }
+  .storage-cat:has(input:disabled) { opacity: .55; cursor: default; }
+  .storage-cat input { margin-top: .2rem; }
+  .storage-cat-main { display: grid; gap: .1rem; flex: 1; min-width: 0; font-size: .86rem; }
+  .storage-cat-note { color: var(--faint); font-size: .76rem; }
+  .storage-cat-bytes { margin-left: auto; flex: none; font-variant-numeric: tabular-nums; color: var(--muted); font-size: .8rem; }
+  .storage-reread { border-top: 1px solid var(--border-soft); padding-top: .85rem; }
+  .storage-reread-head { font-weight: 600; font-size: .92rem; }
   .chat-conn { display: inline-flex; align-items: center; gap: .3rem; font-size: .66rem; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); border: 1px solid var(--border-soft); border-radius: 999px; padding: .06rem .5rem .06rem .4rem; }
   .chat-conn::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--dim); }
   .chat-conn--connected { color: #8fd6a6; border-color: color-mix(in srgb, #2bb86a 36%, transparent); }
