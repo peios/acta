@@ -38,6 +38,7 @@ type Projector struct {
 	initDone    bool
 	initRef     string // where the thread's opening frames fold
 	turnHasEcho bool
+	lanes       map[string]*lane // subagent thread id -> its lane
 }
 
 type item struct {
@@ -61,7 +62,159 @@ type goal struct {
 
 // New returns a projector for one Codex session.
 func New() *Projector {
-	return &Projector{items: map[string]*item{}, approvals: map[string]*approval{}, settingRef: map[string]string{}}
+	return &Projector{items: map[string]*item{}, approvals: map[string]*approval{}, settingRef: map[string]string{}, lanes: map[string]*lane{}}
+}
+
+// lane is a subagent's thread: Codex runs each subagent as a thread of its
+// own in the same app-server, whose notifications arrive on this session's
+// connection with the child's threadId, so they render in a lane of their
+// own, as Claude Code's subagents do. The parent thread hears of a
+// subagent through subAgentActivity items (kind started, then whatever
+// ends it) and its own collab tool calls (spawn, wait, send, close).
+type lane struct {
+	id   string // the subagent's thread id
+	name string // the last segment of its agent path
+	ref  string // the agent.start it opened with
+	done bool
+}
+
+// laneOf returns the lane a frame belongs to, when its threadId names a
+// known subagent thread rather than this session's own.
+func (p *Projector) laneOf(params map[string]any) *lane {
+	tid := str(params, "threadId")
+	if tid == "" || tid == p.thread {
+		return nil
+	}
+	return p.lanes[tid]
+}
+
+// subagentActivity turns a subAgentActivity item into the lane's start,
+// its end, or a note in it.
+func (p *Projector) subagentActivity(f model.Frame, it map[string]any) []model.Event {
+	tid := str(it, "agentThreadId")
+	kind := str(it, "kind")
+	if tid == "" {
+		return []model.Event{model.New(model.SessionState, f).Set("text", "subagent " + firstStr(kind, "activity"))}
+	}
+	name := str(it, "agentPath")
+	if i := strings.LastIndex(name, "/"); i >= 0 {
+		name = name[i+1:]
+	}
+	l := p.lanes[tid]
+	switch kind {
+	case "started", "resumed", "running", "":
+		if l != nil {
+			return []model.Event{p.laneFold(f, l, "subagent "+firstStr(kind, "activity"))}
+		}
+		l = &lane{id: tid, name: name, ref: ref("agent", f)}
+		p.lanes[tid] = l
+		e := model.NewLabelled(model.AgentStart, f, "subagent started").Set("id", tid).Set("type", "codex").Set("description", name)
+		e.Ref = l.ref
+		return []model.Event{e}
+	}
+	if l == nil {
+		l = &lane{id: tid, name: name, ref: ref("agent", f)}
+		p.lanes[tid] = l
+	}
+	if l.done {
+		return []model.Event{p.laneFold(f, l, "subagent "+kind)}
+	}
+	l.done = true
+	return []model.Event{p.laneEnd(f, l, kind)}
+}
+
+// laneEnd closes a lane: the card in the main lane says how it ended.
+func (p *Projector) laneEnd(f model.Frame, l *lane, kind string) model.Event {
+	status := kind
+	switch kind {
+	case "completed", "done", "finished", "closed", "shutdown", "stopped":
+		status = "completed"
+	case "failed", "error", "errored":
+		status = "failed"
+	}
+	return model.NewLabelled(model.AgentEnd, f, "subagent "+kind).Set("id", l.id).Set("status", status).Set("type", "codex").Set("description", l.name).Set("card", true)
+}
+
+// laneFold folds a frame into a subagent's lane.
+func (p *Projector) laneFold(f model.Frame, l *lane, label string) model.Event {
+	e := model.FoldTo(f, "", label)
+	e.Lane = l.id
+	return e
+}
+
+// collab handles the parent's collab tool calls: a close ends the lanes it
+// names, a wait that reports a subagent finished ends that one, and the
+// call itself folds into the lane it concerns, or into the conversation.
+func (p *Projector) collab(f model.Frame, it map[string]any) []model.Event {
+	tool := str(it, "tool")
+	receivers := strs(arr(it, "receiverThreadIds"))
+	var out []model.Event
+	end := func(tid, kind string) {
+		l := p.lanes[tid]
+		if l == nil || l.done {
+			return
+		}
+		l.done = true
+		out = append(out, p.laneEnd(f, l, kind))
+	}
+	if str(it, "status") == "completed" {
+		if tool == "close" || tool == "close_agent" || tool == "kill" {
+			for _, tid := range receivers {
+				end(tid, "closed")
+			}
+		}
+		if states, ok := it["agentsStates"].(map[string]any); ok {
+			for tid, st := range states {
+				switch strings.ToLower(anyStr(st)) {
+				case "completed", "done", "finished", "shutdown", "closed", "stopped":
+					end(tid, "completed")
+				case "failed", "error", "errored":
+					end(tid, "failed")
+				}
+			}
+		}
+	}
+	if len(out) > 0 {
+		for i := 1; i < len(out); i++ {
+			out[i].Raw = nil // one event carries the frame
+		}
+		return out
+	}
+	if len(receivers) == 1 {
+		if l := p.lanes[receivers[0]]; l != nil {
+			return []model.Event{p.laneFold(f, l, "subagent "+firstStr(tool, "call"))}
+		}
+	}
+	return []model.Event{model.FoldTo(f, "", "subagent "+firstStr(tool, "call"))}
+}
+
+// childNotification handles a frame from a subagent's thread: its items,
+// approvals and streamed output render in the lane like the session's own;
+// its turns and bookkeeping fold there, a finished turn updating the lane's
+// last word; none of it touches the session's own turn state.
+func (p *Projector) childNotification(f model.Frame, method string, params map[string]any, l *lane) []model.Event {
+	switch method {
+	case "turn/started", "thread/status/changed", "thread/tokenUsage/updated", "mcpServer/startupStatus/updated",
+		"guardianWarning", "turn/diff/updated", "thread/name/updated", "thread/goal/updated", "thread/started", "thread/settings/updated":
+		return []model.Event{p.laneFold(f, l, strings.TrimPrefix(method, "thread/"))}
+	case "turn/completed":
+		last := ""
+		for _, x := range arr(sub(params, "turn"), "items") {
+			if im, _ := x.(map[string]any); str(im, "type") == "agentMessage" {
+				last = str(im, "text")
+			}
+		}
+		e := model.NewLabelled(model.AgentProgress, f, "turn completed").Set("id", l.id).Set("last", last).Set("type", "codex")
+		e.Lane = l.id
+		return []model.Event{e}
+	}
+	evs := p.notify(f, method, params)
+	for i := range evs {
+		if evs[i].Lane == "" {
+			evs[i].Lane = l.id
+		}
+	}
+	return evs
 }
 
 func obj(raw json.RawMessage) map[string]any {
@@ -617,6 +770,14 @@ func strs(xs []any) []string {
 func (p *Projector) notification(f model.Frame, m map[string]any) []model.Event {
 	method := str(m, "method")
 	params := sub(m, "params")
+	if l := p.laneOf(params); l != nil {
+		return p.childNotification(f, method, params, l)
+	}
+	return p.notify(f, method, params)
+}
+
+// notify handles a notification of the session's own thread.
+func (p *Projector) notify(f model.Frame, method string, params map[string]any) []model.Event {
 	switch method {
 	case "thread/started":
 		return p.threadOpened(f, nil, sub(params, "thread"), false)
@@ -991,11 +1152,12 @@ func (p *Projector) itemStarted(f model.Frame, params map[string]any) []model.Ev
 		}
 		p.compact.pre = p.lastTotal
 		return []model.Event{model.FoldTo(f, p.compact.ref, "compaction started")}
-	case "subAgentActivity", "collabAgentToolCall":
+	case "subAgentActivity":
 		p.items[id] = &item{typ: typ, ref: ref("agent", f)}
-		e := model.New(model.SessionState, f).Set("text", "subagent "+firstStr(str(it, "kind"), str(it, "status"), "activity")+" · "+firstStr(str(it, "agentPath"), str(it, "agentThreadId"), strings.Join(strs(arr(it, "receiverThreadIds")), ", ")))
-		e.Ref = p.items[id].ref
-		return []model.Event{e}
+		return p.subagentActivity(f, it)
+	case "collabAgentToolCall":
+		p.items[id] = &item{typ: typ, ref: ref("agent", f)}
+		return p.collab(f, it)
 	}
 	e := model.New(model.SessionState, f).Set("text", "item "+typ)
 	return []model.Event{e}
@@ -1009,6 +1171,10 @@ func (p *Projector) itemCompleted(f model.Frame, params map[string]any) []model.
 	switch typ {
 	case "userMessage":
 		return []model.Event{model.FoldTo(f, "", "message")}
+	case "subAgentActivity":
+		return p.subagentActivity(f, it)
+	case "collabAgentToolCall":
+		return p.collab(f, it)
 	case "agentMessage":
 		text := str(it, "text")
 		e := model.New(model.Assistant, f).Set("model", p.model).Set("blocks", []map[string]any{{"type": "text", "text": text}}).Set("phase", str(it, "phase"))

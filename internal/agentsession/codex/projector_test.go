@@ -303,3 +303,58 @@ func TestTerminalInteractionFoldsIntoTheCommand(t *testing.T) {
 	}
 	nothingLost(t, fs, evs)
 }
+
+// TestSubagentThreadsBecomeLanes checks a subagent's thread gets a lane: the
+// parent's subAgentActivity opens it, the child thread's items land in it,
+// its finished turn updates the lane's last word without touching the
+// session's own turn, and the activity that ends it closes the lane.
+func TestSubagentThreadsBecomeLanes(t *testing.T) {
+	const main, child = "01a0main", "01a0child"
+	fs := frames(
+		"", `{"id":"acta-thread-resume","result":{"thread":{"id":"`+main+`"},"model":"gpt-5"}}`,
+		"", `{"method":"turn/started","params":{"turn":{"id":"T1"},"threadId":"`+main+`"}}`,
+		"", `{"method":"item/started","params":{"item":{"type":"userMessage","id":"u1","content":[{"type":"text","text":"go"}]},"threadId":"`+main+`","turnId":"T1"}}`,
+		"", `{"method":"item/completed","params":{"item":{"type":"subAgentActivity","id":"sa1","kind":"started","agentPath":"/root/gcc_resume","agentThreadId":"`+child+`"},"threadId":"`+main+`","turnId":"T1"}}`,
+		"", `{"method":"turn/started","params":{"turn":{"id":"C1"},"threadId":"`+child+`"}}`,
+		"", `{"method":"thread/settings/updated","params":{"threadId":"`+child+`","settings":{"model":"gpt-5-mini","reasoningEffort":"low"}}}`,
+		"", `{"method":"item/started","params":{"item":{"type":"commandExecution","id":"cx","command":"make","cwd":"/w","status":"inProgress","aggregatedOutput":null},"threadId":"`+child+`","turnId":"C1"}}`,
+		"", `{"method":"item/completed","params":{"item":{"type":"commandExecution","id":"cx","command":"make","cwd":"/w","status":"completed","aggregatedOutput":"ok\n","exitCode":0},"threadId":"`+child+`","turnId":"C1"}}`,
+		"", `{"method":"turn/completed","params":{"turn":{"id":"C1","status":"completed","items":[{"type":"agentMessage","id":"m9","text":"built"}]},"threadId":"`+child+`"}}`,
+		"", `{"method":"item/completed","params":{"item":{"type":"collabAgentToolCall","id":"w1","tool":"wait","status":"completed","agentsStates":{"`+child+`":"completed"},"receiverThreadIds":["`+child+`"]},"threadId":"`+main+`","turnId":"T1"}}`,
+		"", `{"method":"item/completed","params":{"item":{"type":"subAgentActivity","id":"sa2","kind":"completed","agentPath":"/root/gcc_resume","agentThreadId":"`+child+`"},"threadId":"`+main+`","turnId":"T1"}}`,
+		"", `{"method":"turn/completed","params":{"turn":{"id":"T1","status":"completed","items":[]},"threadId":"`+main+`"}}`,
+	)
+	evs := run(t, fs)
+	got := kinds(evs)
+	for _, want := range []string{"agent.start", "tool.call", "tool.result→tool:cx", "agent.progress", "agent.end", "turn.end", "turn.idle"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %s in: %s", want, got)
+		}
+	}
+	lanes := 0
+	idles := 0
+	for _, e := range evs {
+		if e.Lane == child {
+			lanes++
+		}
+		if e.T == model.TurnIdle {
+			idles++
+		}
+		if e.T == model.Setting || e.T == model.Effort {
+			t.Errorf("a subagent's settings reached the session: %v", e)
+		}
+		if e.T == model.AgentEnd && e.Data["status"] != "completed" {
+			t.Errorf("agent.end status = %v", e.Data["status"])
+		}
+	}
+	if lanes < 4 {
+		t.Errorf("only %d events in the child's lane: %s", lanes, got)
+	}
+	if idles != 1 {
+		t.Errorf("the session's own turn should idle once, got %d: %s", idles, got)
+	}
+	if strings.Count(got, "agent.end") != 1 {
+		t.Errorf("the lane should end once: %s", got)
+	}
+	nothingLost(t, fs, evs)
+}
