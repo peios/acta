@@ -234,9 +234,15 @@ func installCodex(base string) error {
 }
 
 // codexAddArgs builds the argv for `codex mcp add` for a stdio MCP server.
-// Codex starts this command automatically when it needs the server.
-func codexAddArgs(profile string) []string {
-	return []string{"mcp", "add", "acta", "--", "acta", "mcp", "proxy", profile}
+// Codex starts this command automatically when it needs the server. Under a
+// login profile the stored command carries it, so the proxy reads the same
+// config the install wrote to.
+func codexAddArgs(mcpProfile string) []string {
+	args := []string{"mcp", "add", "acta", "--", "acta"}
+	if profile != "" {
+		args = append(args, "--profile", profile)
+	}
+	return append(args, "mcp", "proxy", mcpProfile)
 }
 
 // installClaude writes the MCP server entry into Claude Code via its own CLI

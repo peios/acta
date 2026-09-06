@@ -186,6 +186,16 @@ acta login <host>     # once, if you haven't
 acta mcp install
 ```
 
+One machine can stay logged in to several servers. `--profile <name>` on any
+command (or `ACTA_PROFILE=<name>` in the environment) keeps that login, and the
+harness state that goes with it, under `~/.config/acta/profiles/<name>`, apart
+from the default login:
+
+```sh
+acta --profile local login localhost:8080
+acta --profile local harness
+```
+
 `acta mcp install` rides your login: it lets you pick or create the principal to
 act as, mints that principal's token, and writes the selected client's MCP
 config. Pick **Claude Code** or **Codex** when prompted. It uses the server and

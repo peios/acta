@@ -22,6 +22,10 @@
 //	acta item <id> project <slug>  file under a project ("none" to clear)
 //
 // Flags may appear before, after, or among the positional arguments.
+//
+// --profile <name> (or ACTA_PROFILE) on any command keeps a separate login and
+// harness state under $XDG_CONFIG_HOME/acta/profiles/<name>, so one machine can
+// be logged in to a hosted Acta and a local one at the same time.
 package main
 
 import (
@@ -41,11 +45,16 @@ import (
 var version = "dev"
 
 func main() {
-	if len(os.Args) < 2 {
+	args, err := takeProfile(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "acta: "+err.Error())
+		os.Exit(2)
+	}
+	if len(args) < 1 {
 		usage()
 		os.Exit(2)
 	}
-	if err := run(os.Args[1], os.Args[2:]); err != nil {
+	if err := run(args[0], args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "acta: "+err.Error())
 		os.Exit(1)
 	}
@@ -112,6 +121,12 @@ Usage:
   acta mcp install                wire an MCP client to Acta
   acta mcp proxy [profile]        bridge stdio MCP to Acta's HTTP MCP endpoint
   acta harness                    run the agent harness (browser-driven Claude Code sessions)
+
+Profiles (several logins on one machine):
+  acta --profile <name> <command>   use the login stored under that name;
+                                    e.g. acta --profile local login localhost:8080
+                                    then acta --profile local harness
+  ACTA_PROFILE    the same, for every command in a shell
 
 Environment (override the stored login):
   ACTA_URL        server base URL (default http://localhost:8080)

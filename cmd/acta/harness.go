@@ -872,12 +872,12 @@ func (l *limitedWriter) Write(p []byte) (int, error) {
 // Acta's, and comes down with the spawn.
 
 func harnessStatePath() string {
-	dir := os.Getenv("XDG_CONFIG_HOME")
-	if dir == "" {
+	dir, err := configDir()
+	if err != nil {
 		home, _ := os.UserHomeDir()
-		dir = filepath.Join(home, ".config")
+		dir = filepath.Join(home, ".config", "acta")
 	}
-	return filepath.Join(dir, "acta", "harness-sessions.json")
+	return filepath.Join(dir, "harness-sessions.json")
 }
 
 type harnessState struct {
