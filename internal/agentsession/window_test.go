@@ -125,3 +125,29 @@ func TestWindowsFillFromALongTurn(t *testing.T) {
 		t.Errorf("Tail 3: %d events", len(w.Events))
 	}
 }
+
+// TestLanesSummariseFromOutsideTheWindow checks a window holding only a
+// lane's later events still learns the lane's name, and its end.
+func TestLanesSummariseFromOutsideTheWindow(t *testing.T) {
+	all := []model.Event{
+		{Seq: 1, T: model.AgentStart, At: "2026-09-06T10:00:00Z", Data: map[string]any{"id": "L1", "type": "codex", "description": "gcc_resume"}},
+		{Seq: 2, T: model.ToolCall, Lane: "L1"},
+		{Seq: 3, T: model.AgentProgress, Data: map[string]any{"id": "L1", "last": "built", "type": "codex"}, Lane: "L1"},
+		{Seq: 4, T: model.ToolCall, Lane: "L1"},
+		{Seq: 5, T: model.AgentEnd, At: "2026-09-06T10:05:00Z", Data: map[string]any{"id": "L1", "status": "completed"}},
+		{Seq: 6, T: model.Input},
+	}
+	// a window of just the fourth event: the lane is running with a last word
+	got := Lanes(all, all[3:4])
+	if li := got["L1"]; li.Description != "gcc_resume" || li.Type != "codex" || li.Status != "running" || li.Last != "built" || li.StartedAt == "" {
+		t.Errorf("mid-lane window: %+v", li)
+	}
+	// a window through the end: finished, last word cleared
+	got = Lanes(all, all[3:6])
+	if li := got["L1"]; li.Status != "completed" || li.EndedAt == "" || li.Last != "" {
+		t.Errorf("window past the end: %+v", li)
+	}
+	if Lanes(all, all[5:6]) != nil {
+		t.Error("a window with no lane events summarises nothing")
+	}
+}

@@ -94,7 +94,7 @@ func (p *Projector) subagentActivity(f model.Frame, it map[string]any) []model.E
 	tid := str(it, "agentThreadId")
 	kind := str(it, "kind")
 	if tid == "" {
-		return []model.Event{model.New(model.SessionState, f).Set("text", "subagent " + firstStr(kind, "activity"))}
+		return []model.Event{model.New(model.SessionState, f).Set("text", "subagent "+firstStr(kind, "activity"))}
 	}
 	name := str(it, "agentPath")
 	if i := strings.LastIndex(name, "/"); i >= 0 {
@@ -204,7 +204,9 @@ func (p *Projector) childNotification(f model.Frame, method string, params map[s
 				last = str(im, "text")
 			}
 		}
-		e := model.NewLabelled(model.AgentProgress, f, "turn completed").Set("id", l.id).Set("last", last).Set("type", "codex")
+		// the lane's name travels with its progress too: a page that opens
+		// on a window after the lane started still labels the tab
+		e := model.NewLabelled(model.AgentProgress, f, "turn completed").Set("id", l.id).Set("last", last).Set("type", "codex").Set("description", l.name)
 		e.Lane = l.id
 		return []model.Event{e}
 	}

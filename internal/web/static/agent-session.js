@@ -1825,6 +1825,23 @@
     lane.meta.summary = text;
   }
 
+  // applyLanes takes what the server knows of the lanes a window's events
+  // belong to (the subagent's name, whether it has finished, its last
+  // word) so a lane whose opening lies outside the window still has its
+  // tab labelled and its state right.
+  function applyLanes(map) {
+    if (!map) return;
+    for (const id of Object.keys(map)) {
+      const info = map[id] || {};
+      const lane = laneByAgent(id, { type: info.type, description: info.description });
+      if (info.type && !lane.meta.type) lane.meta.type = info.type;
+      if (info.description && !lane.meta.desc) lane.meta.desc = info.description;
+      if (info.started_at && !lane.meta.startAt) lane.meta.startAt = ts(info.started_at);
+      if (info.status && info.status !== 'running' && lane.meta.status === 'running') laneFinish(lane, info.status, info.ended_at ? ts(info.ended_at) : 0);
+      else if (info.last && lane.meta.status === 'running') lane.meta.last = info.last;
+      laneHeaderRefresh(lane);
+    }
+  }
   function laneFinish(lane, status, endAt) {
     lane.meta.status = status || 'completed';
     if (endAt) lane.meta.endAt = endAt;
@@ -1906,6 +1923,7 @@
     const lane = laneByAgent(d.id, d);
     if (!cold || lane.meta.status === 'running') lane.meta.last = d.last || '';
     if (d.type && !lane.meta.type) lane.meta.type = d.type;
+    if (d.description && !lane.meta.desc) lane.meta.desc = d.description;
     if (!cold) refreshMainIdle();
     laneHeaderRefresh(lane);
     return foldIntoLast(ev);
@@ -3493,6 +3511,7 @@
     loadingWin = true;
     try {
       const j = await fetchWindow('before=' + topSeq + '&turns=20');
+      applyLanes(j.lanes);
       const l = mainLane.log; const h0 = l.scrollHeight, t0 = l.scrollTop;
       renderChunk(j.events || [], 'top');
       hasEarlier = !!j.more; earlierEl.hidden = !hasEarlier;
@@ -3507,6 +3526,7 @@
     loadingWin = true;
     try {
       const j = await fetchWindow('after=' + tailSeq + '&turns=20');
+      applyLanes(j.lanes);
       renderChunk(j.events || [], 'bottom');
       if (j.events && j.events.length) tailSeq = j.events[j.events.length - 1].seq;
       if (!j.more) reattachTail();
@@ -3534,6 +3554,7 @@
     loadingWin = true;
     try {
       const j = await fetchWindow('tail=1');
+      applyLanes(j.lanes);
       renderChunk(j.events || [], 'replace');
       discard.textContent = '';
       tailDetached = false; tailSeq = 0; laterEl.hidden = true;
@@ -3601,6 +3622,8 @@
     const script = document.querySelector('[data-chat-events]');
     let evs = [];
     try { evs = JSON.parse(script ? script.textContent : '[]') || []; } catch (_) { evs = []; }
+    const lanesScript = document.querySelector('[data-chat-lanes]');
+    try { applyLanes(JSON.parse(lanesScript ? lanesScript.textContent : 'null')); } catch (_) {}
     hydrating = true;
     for (const ev of evs) addEvent(ev);
     hydrating = false;

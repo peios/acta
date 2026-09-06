@@ -465,7 +465,7 @@ func (h *handlers) agentSessionEvents(w http.ResponseWriter, r *http.Request) {
 		evs[i] = evs[i].Wire()
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"events": evs, "more": win.More, "last_seq": last})
+	_ = json.NewEncoder(w).Encode(map[string]any{"events": evs, "more": win.More, "last_seq": last, "lanes": agentsession.Lanes(all, win.Events)})
 }
 
 // agentSessionFrames returns stored frames by seq (?seq=1,2,3), verbatim,
@@ -707,6 +707,7 @@ type agentSessionData struct {
 	// model, as a JSON array the page hydrates from — the same shape the
 	// websocket then streams, so one client renderer serves both.
 	EventsJSON template.JS
+	LanesJSON  template.JS // the lanes those events belong to (see agentsession.Lanes)
 	LastSeq    int64
 	Earlier    bool // turns before the ones in the page exist
 	Live       bool // held by a connected harness
@@ -779,6 +780,9 @@ func (h *handlers) agentSessionPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	// the lanes the window's events belong to, for the tabs of subagents
+	// that started before it
+	lj, _ := json.Marshal(agentsession.Lanes(all, win.Events))
 	live, running := false, false
 	var frames int
 	var bytes int64
@@ -794,6 +798,7 @@ func (h *handlers) agentSessionPage(w http.ResponseWriter, r *http.Request) {
 		Principal:  p,
 		Session:    as,
 		EventsJSON: template.JS(ej),
+		LanesJSON:  template.JS(lj),
 		LastSeq:    last,
 		Earlier:    win.More,
 		Live:       live,

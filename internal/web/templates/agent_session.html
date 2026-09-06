@@ -131,6 +131,7 @@
 
   <div class="chat-log" data-chat-log data-empty="Nothing here yet. Send a message below and {{if eq .Session.Backend "codex"}}Codex{{else}}Claude Code{{end}} picks it up on the harness."></div>
   <script type="application/json" data-chat-events>{{.EventsJSON}}</script>
+  <script type="application/json" data-chat-lanes>{{.LanesJSON}}</script>
 
   <div class="lightbox" data-lightbox hidden><img alt=""></div>
 

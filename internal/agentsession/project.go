@@ -310,3 +310,72 @@ func countOf(turns [][]model.Event) int {
 	}
 	return n
 }
+
+// LaneInfo is what a window's reader needs about a subagent lane whose
+// events the window holds but whose opening it does not: the lane's
+// identity and its state as of the window's end.
+type LaneInfo struct {
+	Type        string `json:"type,omitempty"`
+	Description string `json:"description,omitempty"`
+	Status      string `json:"status"` // running until an agent.end
+	Last        string `json:"last,omitempty"`
+	StartedAt   string `json:"started_at,omitempty"`
+	EndedAt     string `json:"ended_at,omitempty"`
+}
+
+// Lanes summarises, from the whole projection, every lane the window's
+// events belong to, up to the window's last event.
+func Lanes(all []model.Event, win []model.Event) map[string]LaneInfo {
+	ids := map[string]bool{}
+	for _, e := range win {
+		if e.Lane != "" {
+			ids[e.Lane] = true
+		}
+	}
+	if len(ids) == 0 || len(win) == 0 {
+		return nil
+	}
+	end := win[len(win)-1].Seq
+	out := map[string]LaneInfo{}
+	str := func(d map[string]any, k string) string { s, _ := d[k].(string); return s }
+	for _, e := range all {
+		if end > 0 && e.Seq > end {
+			break
+		}
+		if e.T != model.AgentStart && e.T != model.AgentProgress && e.T != model.AgentEnd {
+			continue
+		}
+		id := str(e.Data, "id")
+		if !ids[id] {
+			continue
+		}
+		li := out[id]
+		if li.Status == "" {
+			li.Status = "running"
+		}
+		if t := str(e.Data, "type"); t != "" && li.Type == "" {
+			li.Type = t
+		}
+		if d := str(e.Data, "description"); d != "" && li.Description == "" {
+			li.Description = d
+		}
+		switch e.T {
+		case model.AgentStart:
+			if li.StartedAt == "" {
+				li.StartedAt = e.At
+			}
+		case model.AgentProgress:
+			li.Last = str(e.Data, "last")
+		case model.AgentEnd:
+			if s := str(e.Data, "status"); s != "" {
+				li.Status = s
+			} else {
+				li.Status = "completed"
+			}
+			li.EndedAt = e.At
+			li.Last = ""
+		}
+		out[id] = li
+	}
+	return out
+}
