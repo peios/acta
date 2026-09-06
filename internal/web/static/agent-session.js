@@ -86,6 +86,43 @@
   }
   function scroll(l) { l.scrollTop = l.scrollHeight; }
 
+  // A "Latest" pill floats over the composer whenever the visible lane is
+  // scrolled away from its end; it turns accent when something new landed
+  // below the fold. Each lane's log repaints it on scroll.
+  const jump = stage.querySelector('[data-chat-jump]');
+  let unread = false;
+  function paintJump() {
+    if (!jump || !visible) return;
+    const l = visible.log;
+    const away = !atBottom(l) && l.scrollHeight > l.clientHeight + 60;
+    if (!away) unread = false;
+    jump.hidden = !away;
+    jump.classList.toggle('has-new', unread);
+    jump.querySelector('span').textContent = unread ? 'New below' : 'Latest';
+  }
+  function noteUnread(lane) { if (lane === visible) { unread = true; paintJump(); } }
+  if (jump) jump.addEventListener('click', () => { if (visible) scroll(visible.log); unread = false; paintJump(); });
+
+  // dayMark: a dated rule the first time a day shows up in a lane, so a
+  // transcript that spans days reads in order. Today at the top is implied.
+  function dayMark(lane, at) {
+    const t = Date.parse(at || '');
+    if (!Number.isFinite(t)) return null;
+    const d = new Date(t), now = new Date();
+    const key = d.toDateString();
+    if (lane.day === key) return null;
+    const first = !lane.day;
+    lane.day = key;
+    if (first && key === now.toDateString()) return null;
+    const y = new Date(now); y.setDate(now.getDate() - 1);
+    const label = key === now.toDateString() ? 'Today' : key === y.toDateString() ? 'Yesterday'
+      : d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' });
+    const m = el('div', 'day-mark');
+    m.appendChild(el('span', 'day-mark-text', label));
+    m.title = d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    return m;
+  }
+
   // --- header gauges ---
   //
   // Three rings: the usage windows (weekly, 5h) come from usage.limits
@@ -189,8 +226,9 @@
     const act = makeActivity();
     const lane = { id, log: logEl, activity: act.node, actText: act.text, think: null, actBeforeHook: null,
       ctxUsed: 0, model: '', meta: { type: '', desc: '', status: 'running', last: '', taskId: null, startAt: 0, endAt: 0, summary: '', waiting: false },
-      card: null, tab: null, steps: 0 };
+      card: null, tab: null, steps: 0, day: '' };
     lanes.set(id, lane);
+    logEl.addEventListener('scroll', () => { if (lane === visible) paintJump(); }, { passive: true });
     return lane;
   }
   const mainLane = makeLane('main', log);
@@ -402,10 +440,11 @@
     if (!pickBtn) return;
     const hit = catalogEntry(curModel) || (!curModel ? modelCatalog.find(m => m.value === 'default') : null);
     const name = hit ? (hit.value === 'default' && hit.resolvedModel ? modelName(hit.resolvedModel) : (hit.displayName || hit.value)) : curModel ? modelName(curModel) : 'model…';
-    const bits = [name];
+    const bits = [];
     if (effortNow()) bits.push(effortNow());
     if (fastOn) bits.push('fast');
-    pickLabel.textContent = bits.join(' · ');
+    pickLabel.textContent = name;
+    if (bits.length) pickLabel.appendChild(el('span', 'pick-extra', ' · ' + bits.join(' · ')));
     const list = pickPop.querySelector('[data-pick-models]');
     list.textContent = '';
     if (!modelCatalog.length) list.appendChild(el('div', 'pick-note', curModel ? modelName(curModel) + ' · catalogue loads when the session is running' : 'catalogue loads when the session is running'));
@@ -1701,6 +1740,8 @@
     for (const l of lanes.values()) l.log.hidden = l !== lane;
     for (const l of lanes.values()) if (l.tab) l.tab.classList.toggle('is-active', l === lane);
     visible = lane;
+    unread = false;
+    paintJump();
     refreshTabs();
     form.hidden = lane !== mainLane;
     laneNote.hidden = lane === mainLane;
@@ -3179,9 +3220,11 @@
       if (cur !== mainLane) { cur.steps++; laneHeaderRefresh(cur); }
       const stick = atBottom(cur.log);
       const live = cur.log.querySelector(':scope > .is-streaming, :scope > .is-live');
-      if (live) cur.log.insertBefore(node, live); else cur.log.appendChild(node);
+      const mark = dayMark(cur, ev.at);
+      if (mark) cur.log.insertBefore(mark, live);
+      cur.log.insertBefore(node, live);
       placeActivity();
-      if (stick) scroll(cur.log);
+      if (stick) scroll(cur.log); else if (hydrated) noteUnread(cur);
     } else {
       // an event that drew nothing still names a node: whatever its raws
       // landed on, so later events addressed to it find the same host

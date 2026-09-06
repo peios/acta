@@ -9,10 +9,12 @@
         <input class="chat-name-edit" data-rename-input maxlength="120" hidden aria-label="Session title">
         <span class="live-dot{{if .Running}} is-running{{else if .Live}} is-held{{end}}" data-session-dot="{{.Session.ID}}" title="{{if .Running}}running{{else if .Live}}idle (harness connected){{else}}offline{{end}}"></span>
         <span class="chat-conn" data-chat-conn>&hellip;</span>
+        <span class="chat-pills">
         <button type="button" class="plan-pill" data-plan-pill hidden title="Show the plan"><svg class="ico" viewBox="0 0 16 16"><path d="M3 4h10M3 8h6M3 12h4"/><path d="m10.5 11 1.5 1.5L15 9.5"/></svg><span data-plan-pill-text>Plan</span></button>
         <button type="button" class="plan-pill diff-pill" data-diff-pill hidden title="Show what this turn changed"><svg class="ico" viewBox="0 0 16 16"><path d="M4 2.5h5.5L12.5 5.5v8H4z"/><path d="M6 8h4M8 6v4"/></svg><span data-diff-pill-text>Diff</span></button>
         <button type="button" class="plan-pill task-pill" data-task-pill hidden title="Jump to the task list"><svg class="ico" viewBox="0 0 16 16"><path d="M3 4h10M3 8h6M3 12h4"/><path d="m10.5 11 1.5 1.5L15 9.5"/></svg><span data-task-pill-text>Tasks</span></button>
         <button type="button" class="plan-pill goal-pill" data-goal-pill hidden title="Show the goal" aria-haspopup="dialog" aria-expanded="false"><svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2.5"/><path d="M8 2.5V1M8 15v-1.5M2.5 8H1M15 8h-1.5"/></svg><span data-goal-pill-text>Goal</span></button>
+        </span>
       </div>
       <div class="goal-pop" data-goal-pop hidden role="dialog" aria-label="Goal">
         <div class="goal-pop-cond" data-goal-cond></div>
@@ -96,12 +98,13 @@
 
   {{if .Err}}<p class="alert" role="alert" style="margin: .8rem 1rem;">{{.Err}}</p>{{end}}
 
-  <div class="chat-log" data-chat-log></div>
+  <div class="chat-log" data-chat-log data-empty="Nothing here yet. Send a message below and {{if eq .Session.Backend "codex"}}Codex{{else}}Claude Code{{end}} picks it up on the harness."></div>
   <script type="application/json" data-chat-events>{{.EventsJSON}}</script>
 
   <div class="lightbox" data-lightbox hidden><img alt=""></div>
 
   <form class="chat-input" data-chat-form>
+    <button type="button" class="chat-jump" data-chat-jump hidden title="Scroll to the latest message"><svg class="ico" viewBox="0 0 16 16"><path d="M8 3v10M4 9l4 4 4-4"/></svg><span>Latest</span></button>
     <div class="slash-menu" data-slash-menu hidden role="listbox" aria-label="Commands"></div>
     <div class="chat-attach" data-chat-attach hidden></div>
     <textarea class="chat-box" data-chat-box rows="1" placeholder="Message the session&hellip;"></textarea>
@@ -136,7 +139,7 @@
             <option value="auto">auto</option>
           </select>
         </label>
-        <button type="button" class="btn-secondary chat-stop" data-chat-stop title="End the current turn"><svg class="ico" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="1.5" fill="currentColor" stroke="none"/></svg>Stop</button>
+        <button type="button" class="btn-secondary chat-stop" data-chat-stop title="End the current turn"><svg class="ico" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="1.5" fill="currentColor" stroke="none"/></svg><span class="chat-stop-text">Stop</span></button>
         <button type="submit" class="btn-primary chat-send">Send<svg class="ico" viewBox="0 0 16 16"><path d="M2.5 8h11M9 3.5 13.5 8 9 12.5"/></svg></button>
       </div>
     </div>
