@@ -59,3 +59,25 @@ func TestWriteTitle(t *testing.T) {
 		t.Errorf("scan after write: %+v", ts)
 	}
 }
+
+// TestReady checks the frames after which a turn may be written: the thread
+// open result or the started notice, and nothing before them.
+func TestReady(t *testing.T) {
+	cases := []struct {
+		kind, payload string
+		want          bool
+	}{
+		{"response", `{"id":"acta-init","result":{"codexHome":"/x"}}`, false},
+		{"response", `{"id":"acta-thread-resume","result":{"thread":{"id":"t1"}}}`, true},
+		{"response", `{"id":"acta-thread-start","result":{"thread":{"id":"t1"}}}`, true},
+		{"response", `{"id":"acta-thread-resume","error":{"code":-32600,"message":"Not initialized"}}`, false},
+		{"response", `{"id":"acta-turn-x","error":{"code":-32600,"message":"Not initialized"}}`, false},
+		{"thread/started", `{"method":"thread/started","params":{}}`, true},
+		{"turn/started", `{"method":"turn/started","params":{}}`, false},
+	}
+	for _, c := range cases {
+		if got := Ready(c.kind, []byte(c.payload)); got != c.want {
+			t.Errorf("Ready(%s, %s) = %v", c.kind, c.payload, got)
+		}
+	}
+}

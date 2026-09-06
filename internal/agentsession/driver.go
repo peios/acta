@@ -58,6 +58,11 @@ type Driver interface {
 	// ResumeFailed reports whether an exit means the resume found no
 	// conversation to continue, so the session should start fresh instead.
 	ResumeFailed(code int, stderr string) bool
+	// Ready recognises the frame after which a freshly started process
+	// takes input, for a backend whose StartLines are a handshake it must
+	// finish first; a backend with no StartLines is ready at once and is
+	// never asked.
+	Ready(kind string, payload json.RawMessage) bool
 	// Rename composes the lines that give the backend's own session Acta's
 	// title, plus the input text to record in the transcript for them ("" to
 	// record nothing).
@@ -148,6 +153,7 @@ func (claudeDriver) BackgroundTask(kind string, p json.RawMessage) (string, stri
 func (claudeDriver) TaskEnded(kind string, p json.RawMessage) (string, bool) {
 	return claude.TaskEnded(kind, p)
 }
+func (claudeDriver) Ready(string, json.RawMessage) bool { return false } // no handshake: input goes in at once
 func (claudeDriver) ResumeFailed(code int, stderr string) bool {
 	return claude.ResumeFailed(code, stderr)
 }
@@ -214,6 +220,7 @@ func (codexDriver) BackgroundTask(string, json.RawMessage) (string, string, bool
 }
 func (codexDriver) TaskEnded(string, json.RawMessage) (string, bool) { return "", false }
 func (codexDriver) ResumeFailed(int, string) bool                    { return false }
+func (codexDriver) Ready(kind string, p json.RawMessage) bool        { return codex.Ready(kind, p) }
 func (codexDriver) Rename(as store.AgentSession, title string) ([][]byte, string) {
 	return [][]byte{codex.RenameLine(as.Options, title)}, ""
 }

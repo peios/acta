@@ -256,8 +256,10 @@ func (h *Hub) deliver(ctx context.Context, c *harnessConn, sessionID, text strin
 		h.recordState(ctx, sessionID, map[string]any{"state": "undelivered", "reason": "no driver for backend " + as.Backend})
 		return
 	}
+	starting := false
 	if !c.isRunning(sessionID) {
 		h.spawn(c, as, true)
+		starting = true
 	}
 	line := d.InputLine(as, text, images)
 	// Remember it until the process has clearly taken it: if this spawn turns
@@ -265,8 +267,35 @@ func (h *Hub) deliver(ctx context.Context, c *harnessConn, sessionID, text strin
 	// process dies at once and the message must go to its replacement.
 	c.mu.Lock()
 	c.pending[sessionID] = line
+	// A backend with a handshake (Codex's initialize and thread/resume, which
+	// go in once the harness reports the process up) refuses a turn written
+	// before it: the line waits for Driver.Ready instead of racing it.
+	if starting && len(d.StartLines(as, true)) > 0 {
+		c.waiting[sessionID] = true
+		c.mu.Unlock()
+		return
+	}
 	c.mu.Unlock()
 	c.write(sessionID, line)
+}
+
+// respawnWith starts a session's process again with a message that is
+// still owed to it, written the way deliver writes: at once for a backend
+// that takes input from the start, after the handshake for one that must
+// finish it first (see Driver.Ready).
+func (h *Hub) respawnWith(c *harnessConn, as store.AgentSession, resume bool, held []byte) {
+	h.spawn(c, as, resume)
+	if len(held) == 0 {
+		return
+	}
+	if d := DriverFor(as.Backend); d != nil && len(d.StartLines(as, resume)) > 0 {
+		c.mu.Lock()
+		c.pending[as.ID] = held
+		c.waiting[as.ID] = true
+		c.mu.Unlock()
+		return
+	}
+	c.write(as.ID, held)
 }
 
 // spawn asks a harness to run a session's process, composed by its driver.
@@ -685,6 +714,7 @@ type harnessConn struct {
 	resuming map[string]bool   // sessions whose current process is a resume (an early exit may mean "nothing to resume")
 	pending  map[string][]byte // the last input line per session until the backend has clearly taken it
 	retried  map[string]bool   // sessions whose pending line was already re-sent once after an exit
+	waiting  map[string]bool   // sessions whose pending line waits for the process to finish its handshake (Driver.Ready)
 }
 
 // write sends one composed stdin line to the harness for a session.
@@ -723,6 +753,7 @@ func (c *harnessConn) drop(session string) {
 	delete(c.resuming, session)
 	delete(c.pending, session)
 	delete(c.retried, session)
+	delete(c.waiting, session)
 	c.mu.Unlock()
 }
 
@@ -821,6 +852,7 @@ func (h *Hub) AttachHarness(ownerID string, in Inbound) *harnessConn {
 		running:  map[string]bool{},
 		resuming: map[string]bool{},
 		pending:  map[string][]byte{},
+		waiting:  map[string]bool{},
 		retried:  map[string]bool{},
 	}
 	for _, s := range in.Sessions {
@@ -1066,10 +1098,7 @@ func (h *Hub) HarnessFrame(ctx context.Context, c *harnessConn, in Inbound) {
 			if d := h.driverOf(ctx, in.Session); d != nil && d.ResumeFailed(code, in.Stderr) {
 				h.recordState(ctx, in.Session, map[string]any{"state": "resume_failed", "reason": "no stored conversation; starting fresh under the same id"})
 				if as, err := h.svc.store.AgentSessionByID(ctx, in.Session); err == nil {
-					h.spawn(c, as, false)
-					if len(held) > 0 {
-						c.write(in.Session, held)
-					}
+					h.respawnWith(c, as, false, held)
 				}
 				return
 			}
@@ -1084,8 +1113,7 @@ func (h *Hub) HarnessFrame(ctx context.Context, c *harnessConn, in Inbound) {
 				c.mu.Lock()
 				c.retried[in.Session] = true
 				c.mu.Unlock()
-				h.spawn(c, as, true)
-				c.write(in.Session, held)
+				h.respawnWith(c, as, true, held)
 			}
 		}
 	default:
@@ -1239,6 +1267,17 @@ func (h *Hub) afterFrame(ctx context.Context, c *harnessConn, d Driver, session,
 		delete(c.resuming, session)
 		delete(c.retried, session)
 		c.mu.Unlock()
+	}
+	if d.Ready(kind, payload) {
+		// the handshake is done: the message that waited for it goes in now
+		c.mu.Lock()
+		line, held := c.pending[session]
+		wait := c.waiting[session]
+		delete(c.waiting, session)
+		c.mu.Unlock()
+		if wait && held {
+			c.write(session, line)
+		}
 	}
 	if id, path, ok := d.BackgroundTask(kind, payload); ok {
 		c.send(Outbound{T: FrameTail, Session: session, ID: id, Path: path})

@@ -300,6 +300,27 @@ func Acknowledged(kind string, _ json.RawMessage) bool {
 	return kind == "turn/started"
 }
 
+// Ready recognises the frame after which the app-server takes a turn: the
+// thread/start or thread/resume result, or the thread/started notice,
+// whichever comes first. The app-server handles requests concurrently, so
+// a turn written before this is refused as "Not initialized".
+func Ready(kind string, payload json.RawMessage) bool {
+	if kind == "thread/started" {
+		return true
+	}
+	if kind != "response" {
+		return false
+	}
+	var m struct {
+		ID     string          `json:"id"`
+		Result json.RawMessage `json:"result"`
+	}
+	if json.Unmarshal(payload, &m) != nil || len(m.Result) == 0 {
+		return false
+	}
+	return m.ID == "acta-thread-resume" || m.ID == "acta-thread-start"
+}
+
 // Notes: the thread id (for resume) and the active turn (for steering and
 // interrupting), from the frames that name them.
 func Notes(kind string, payload json.RawMessage) map[string]string {
