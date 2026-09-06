@@ -1,7 +1,7 @@
 {{define "title"}}{{if .Session.Title}}{{.Session.Title}}{{else}}Session{{end}} · Acta{{end}}
 {{define "content"}}
 <div class="chat-split" data-chat-split>
-<main class="chat-stage" data-csrf="{{.CSRFToken}}" data-session="{{.Session.ID}}" data-last-seq="{{.LastSeq}}" data-live="{{if .Live}}1{{else}}0{{end}}" data-running="{{if .Running}}1{{else}}0{{end}}" data-mode="{{with .Session.Options}}{{index . "permission_mode"}}{{end}}" data-effort="{{with .Session.Options}}{{index . "effort"}}{{end}}" data-backend="{{.Session.Backend}}">
+<main class="chat-stage" data-csrf="{{.CSRFToken}}" data-session="{{.Session.ID}}" data-last-seq="{{.LastSeq}}" data-earlier="{{if .Earlier}}1{{else}}0{{end}}" data-live="{{if .Live}}1{{else}}0{{end}}" data-running="{{if .Running}}1{{else}}0{{end}}" data-mode="{{with .Session.Options}}{{index . "permission_mode"}}{{end}}" data-effort="{{with .Session.Options}}{{index . "effort"}}{{end}}" data-backend="{{.Session.Backend}}">
   <header class="chat-head">
     <div class="chat-head-main">
       <div class="chat-title">

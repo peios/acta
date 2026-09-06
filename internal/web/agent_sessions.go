@@ -362,6 +362,62 @@ func (h *handlers) agentSessionImport(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/account/sessions", http.StatusSeeOther)
 }
 
+// pageTurns is how many turns the session page opens with; chunkTurns how
+// many each scroll fetch adds. Turns, not frames: a turn with a hundred tool
+// calls is still one unit of reading.
+const (
+	pageTurns  = 40
+	chunkTurns = 20
+)
+
+// agentSessionEvents returns a window of a session's projected events:
+// ?before=<seq> for the turns ending before that event, ?after=<seq> for
+// the turns starting after it, ?tail=1 for the last ones. The projection
+// runs from the start regardless (an event's shape depends on what came
+// before), only the window crosses the wire.
+func (h *handlers) agentSessionEvents(w http.ResponseWriter, r *http.Request) {
+	p := principalFrom(r.Context())
+	as, err := h.agentSessions.Get(r.Context(), r.PathValue("id"), p.ID)
+	if errors.Is(err, agentsession.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	all, last, err := h.agentHub.History(r.Context(), as, 0)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	q := r.URL.Query()
+	turns := chunkTurns
+	if n, err := strconv.Atoi(q.Get("turns")); err == nil && n > 0 && n <= 200 {
+		turns = n
+	}
+	var win agentsession.Window
+	switch {
+	case q.Get("before") != "":
+		seq, _ := strconv.ParseInt(q.Get("before"), 10, 64)
+		win = agentsession.Before(all, seq, turns)
+	case q.Get("after") != "":
+		seq, _ := strconv.ParseInt(q.Get("after"), 10, 64)
+		win = agentsession.After(all, seq, turns)
+	default:
+		win = agentsession.Tail(all, pageTurns)
+	}
+	evs := win.Events
+	if evs == nil {
+		evs = []model.Event{}
+	}
+	for i := range evs {
+		evs[i] = evs[i].Wire()
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"events": evs, "more": win.More, "last_seq": last})
+}
+
 // agentSessionFrames returns stored frames by seq (?seq=1,2,3), verbatim,
 // for the raw panels: the page carries events without their payloads.
 func (h *handlers) agentSessionFrames(w http.ResponseWriter, r *http.Request) {
@@ -509,6 +565,7 @@ type agentSessionData struct {
 	// websocket then streams, so one client renderer serves both.
 	EventsJSON template.JS
 	LastSeq    int64
+	Earlier    bool // turns before the ones in the page exist
 	Live       bool // held by a connected harness
 	Running    bool // process running right now
 	Err        string
@@ -534,11 +591,15 @@ func (h *handlers) agentSessionPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	evs, last, err := h.agentHub.History(r.Context(), as, 0)
+	all, last, err := h.agentHub.History(r.Context(), as, 0)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	// the page opens on the last turns; earlier ones arrive as the reader
+	// scrolls up (agentSessionEvents)
+	win := agentsession.Tail(all, pageTurns)
+	evs := win.Events
 	if evs == nil {
 		evs = []model.Event{}
 	}
@@ -564,6 +625,7 @@ func (h *handlers) agentSessionPage(w http.ResponseWriter, r *http.Request) {
 		Session:    as,
 		EventsJSON: template.JS(ej),
 		LastSeq:    last,
+		Earlier:    win.More,
 		Live:       live,
 		Running:    running,
 		Err:        agentSessionErr(r.URL.Query().Get("err")),

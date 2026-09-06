@@ -94,14 +94,14 @@
   function paintJump() {
     if (!jump || !visible) return;
     const l = visible.log;
-    const away = !atBottom(l) && l.scrollHeight > l.clientHeight + 60;
+    const away = (visible === mainLane && tailDetached) || (!atBottom(l) && l.scrollHeight > l.clientHeight + 60);
     if (!away) unread = false;
     jump.hidden = !away;
     jump.classList.toggle('has-new', unread);
     jump.querySelector('span').textContent = unread ? 'New below' : 'Latest';
   }
   function noteUnread(lane) { if (lane === visible) { unread = true; paintJump(); } }
-  if (jump) jump.addEventListener('click', () => { if (visible) scroll(visible.log); unread = false; paintJump(); });
+  if (jump) jump.addEventListener('click', () => { if (visible === mainLane && tailDetached) { reopenTail(); return; } if (visible) scroll(visible.log); unread = false; paintJump(); });
 
   // dayMark: a dated rule the first time a day shows up in a lane, so a
   // transcript that spans days reads in order. Today at the top is implied.
@@ -118,6 +118,7 @@
     const label = key === now.toDateString() ? 'Today' : key === y.toDateString() ? 'Yesterday'
       : d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' });
     const m = el('div', 'day-mark');
+    m.dataset.day = key;
     m.appendChild(el('span', 'day-mark-text', label));
     m.title = d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     return m;
@@ -251,7 +252,7 @@
     l.actText.textContent = text;
     l.activity.hidden = false;
   }
-  function placeActivity(lane) { const l = lane || cur; l.log.appendChild(l.activity); }
+  function placeActivity(lane) { const l = lane || cur; if (l === mainLane && typeof laterEl !== 'undefined') l.log.appendChild(laterEl); l.log.appendChild(l.activity); }
 
   // When the main turn has ended but subagents are still running, the main
   // activity line says so rather than going quiet.
@@ -584,7 +585,7 @@
       if (permLane) { permLane.meta.waiting = true; laneHeaderRefresh(permLane); permLane.pendingPerms = (permLane.pendingPerms || 0) + 1; }
       attachRaws(frame, ev, 'permission');
       permByID.set(d.id, { req: d, node: frame, pill: pillEl, status, review, state: 'pending' });
-      permQueue.push(d.id);
+      if (!cold) permQueue.push(d.id);
       return null;
     }
     const wrap = el('div', 'frame frame--perm');
@@ -604,7 +605,7 @@
     line.appendChild(review);
     wrap.appendChild(line);
     permByID.set(d.id, { req: d, node: wrap, status, review, state: 'pending' });
-    permQueue.push(d.id);
+    if (!cold) permQueue.push(d.id);
     return wrap;
   }
 
@@ -850,6 +851,14 @@
   }
 
   let hydrated = false;
+  // cold: rendering a chunk of older (or already-seen) events into the
+  // log without letting them touch the live state — the current model and
+  // mode, gauges, pills, lanes' status, the rewind order. renderChunk sets
+  // it; the renderers that mutate state check it.
+  let cold = false;
+  let coldEchoed = [];   // echoed entries a cold chunk produced, merged in afterwards
+  let coldPending = [];  // inputs awaiting their echo within the chunk
+  let coldSwap = null;   // registers a lane made during a cold render
   // whether a backend process is alive for this session: the context panel
   // only asks for reports of a live process, so a click never resumes a dead one
   let procAlive = stage.dataset.running === '1';
@@ -1243,7 +1252,7 @@
     card.querySelector('.ask-head').appendChild(boxEl);
     const wrap = bubble('input request', 'elicit', card, null);
     permByID.set(d.id, { req: d, node: wrap, status, review, state: 'pending', elicit: true });
-    permQueue.push(d.id);
+    if (!cold) permQueue.push(d.id);
     return wrap;
   }
   // showElicitAnswer paints the outcome into the card: the values sent, or
@@ -1405,8 +1414,7 @@
   }
   function renderTasks(ev) {
     const d = ev.d || {};
-    taskState = { list: d.list || [], done: d.done || 0, total: d.total || 0 };
-    paintTasks();
+    if (!cold) { taskState = { list: d.list || [], done: d.done || 0, total: d.total || 0 }; paintTasks(); }
     const f = taskCard && taskCard.frame();
     if (f) attachRaws(f, ev); else foldIntoLast(ev, 'tasks');
     if (d.all_done) {
@@ -1541,6 +1549,7 @@
   }
   function repaintPlan(plan) {
     paintPlanCard(plan);
+    if (cold) return;
     if (planPanel && !planPanel.hidden && curPlan === plan) paintPlanPanel(); else paintPlanPill();
   }
 
@@ -1616,7 +1625,7 @@
     repaintPlan(plan);
     curPlan = plan;
     permByID.set(d.id, { req: d, node, status: el('span'), review: el('span'), state: 'pending', plan });
-    permQueue.push(d.id);
+    if (!cold) permQueue.push(d.id);
     return out;
   }
   function planResolved(plan, outcome) {
@@ -1676,6 +1685,7 @@
     logEl.dataset.lane = id;
     log.parentNode.insertBefore(logEl, log.nextSibling);
     lane = makeLane(id, logEl);
+    if (coldSwap) coldSwap(lane);
     if (hint) { lane.meta.type = hint.type || ''; lane.meta.desc = hint.description || ''; }
     const tab = el('button', 'lane-tab');
     tab.type = 'button';
@@ -1862,6 +1872,7 @@
     const d = ev.d || {};
     const lane = laneByAgent(d.id, d);
     lane.meta.startAt = ts(curAt);
+    if (cold && lane.meta.endAt) { laneHeaderRefresh(lane); return foldIntoLast(ev); }
     if (d.description && !lane.meta.desc) lane.meta.desc = d.description;
     if (d.type && !lane.meta.type) lane.meta.type = d.type;
     laneHeaderRefresh(lane);
@@ -1870,9 +1881,9 @@
   function renderAgentProgress(ev) {
     const d = ev.d || {};
     const lane = laneByAgent(d.id, d);
-    lane.meta.last = d.last || '';
+    if (!cold || lane.meta.status === 'running') lane.meta.last = d.last || '';
     if (d.type && !lane.meta.type) lane.meta.type = d.type;
-    refreshMainIdle();
+    if (!cold) refreshMainIdle();
     laneHeaderRefresh(lane);
     return foldIntoLast(ev);
   }
@@ -1980,7 +1991,7 @@
   function renderAssistant(ev) {
     const d = ev.d || {};
     const blocks = d.blocks || [];
-    if (d.model && !curModel && !d.synthetic) { curModel = d.model; paintModelSelect(); }
+    if (d.model && !curModel && !d.synthetic && !cold) { curModel = d.model; paintModelSelect(); }
     if (d.model && !cur.model && cur !== mainLane) { cur.model = d.model; if (cur.card) laneHeaderRefresh(cur); }
     const body = el('div', 'frame-body');
     for (const b of blocks) {
@@ -2152,7 +2163,7 @@
       weeklyAtTurnStart = weeklyNow;
     }
     if (d.denials) bits.push(d.denials + ' denied');
-    if (d.context_window) { contextWindow = d.context_window; drawContext(); }
+    if (d.context_window && !cold) { contextWindow = d.context_window; drawContext(); }
     if (d.interrupted) return divider('turn interrupted', bits, 'is-interrupted');
     const node = divider('turn ended', bits, d.ok === false ? 'is-error' : '');
     if (d.ok === false && Array.isArray(d.errors) && d.errors.length) {
@@ -2370,19 +2381,22 @@
   // that follows (model name, raw payload) via its `to`.
   function renderSpawned(ev) {
     const d = ev.d || {};
+    if (cold) return divider(d.resumed ? 'session resumed' : 'session started', [], 'frame--session');
     if (d.styles) noteStyles(d.styles);
     procAlive = true;
     return divider(d.resumed ? 'session resumed' : 'session started', [], 'frame--session');
   }
   function renderInit(ev) {
     const d = ev.d || {};
-    if (d.permission_mode) setMode(d.permission_mode);
-    if (d.model) { curModel = d.model; paintModelSelect(); }
-    if (d.effort) { defaultEffort = d.effort; paintModelSelect(); }
-    if (d.output_style) noteStyle(d.output_style);
-    if (typeof d.fast_mode === 'string') { fastOn = d.fast_mode === 'on'; fastReason = fastOn ? '' : (d.fast_reason || ''); paintModelSelect(); }
-    procAlive = true;
-    if (hydrated && !modelsAsked) requestModels();
+    if (!cold) {
+      if (d.permission_mode) setMode(d.permission_mode);
+      if (d.model) { curModel = d.model; paintModelSelect(); }
+      if (d.effort) { defaultEffort = d.effort; paintModelSelect(); }
+      if (d.output_style) noteStyle(d.output_style);
+      if (typeof d.fast_mode === 'string') { fastOn = d.fast_mode === 'on'; fastReason = fastOn ? '' : (d.fast_reason || ''); paintModelSelect(); }
+      procAlive = true;
+      if (hydrated && !modelsAsked) requestModels();
+    }
     const host = ev.to ? nodes.get(ev.to) : null;
     if (host && host.isConnected) {
       if (host.classList.contains('frame--session') || host.classList.contains('frame--reset')) {
@@ -2396,7 +2410,7 @@
   }
   function renderExit(ev) {
     const d = ev.d || {};
-    procAlive = false; cmdQueue.length = 0;
+    if (!cold) { procAlive = false; cmdQueue.length = 0; }
     if (d.expected && ev.to && nodes.get(ev.to)) return foldIntoLast(ev);
     const node = bubble('status', 'state', el('div', 'frame-note', 'process exited (code ' + (d.code != null ? d.code : '?') + ')'), null);
     if (d.code) node.classList.add('is-error');
@@ -2404,9 +2418,9 @@
   }
   function renderFailure(ev) {
     const d = ev.d || {};
-    procAlive = false; cmdQueue.length = 0;
+    if (!cold) { procAlive = false; cmdQueue.length = 0; }
     const reason = ev.t === 'session.undelivered' ? (d.reason || 'no harness connected') : ('spawn failed: ' + (d.error || 'unknown error'));
-    if (failInput(reason, ev)) return null;
+    if (!cold && failInput(reason, ev)) return null;
     const node = bubble('status', 'state', el('div', 'frame-note', ev.t === 'session.undelivered' ? 'not delivered: ' + reason : reason), null);
     node.classList.add('is-error');
     return node;
@@ -2563,7 +2577,7 @@
   }
   function renderEffort(ev) {
     const d = ev.d || {};
-    if (d.value) { curEffort = d.value; paintModelSelect(); }
+    if (d.value && !cold) { curEffort = d.value; paintModelSelect(); }
     const lc = cmdMarkers.get(ev.to);
     if (lc && lc.node.isConnected) { if (lc.text) lc.text.textContent = 'effort set to ' + d.value; attachRaws(lc.node, ev, 'reply'); return null; }
     if (!ev.raw || !ev.raw.length) return null;
@@ -2574,7 +2588,7 @@
   }
   function renderFast(ev) {
     const d = ev.d || {};
-    if (!d.unavailable) { fastOn = !!d.on; fastReason = ''; paintModelSelect(); }
+    if (!d.unavailable && !cold) { fastOn = !!d.on; fastReason = ''; paintModelSelect(); }
     const text = d.unavailable ? 'fast mode unavailable · ' + (d.reason || '') : d.on ? 'fast mode on' : 'fast mode off';
     const lc = cmdMarkers.get(ev.to);
     if (lc && lc.node.isConnected) { if (lc.text) lc.text.textContent = text; lc.node.classList.toggle('is-error', !!d.unavailable); attachRaws(lc.node, ev, 'reply'); return null; }
@@ -2605,8 +2619,10 @@
   let goal = null; // { cond, state, turns, last }
   function renderGoal(ev) {
     const d = ev.d || {};
-    goal = d.state && d.state !== 'cleared' ? { cond: d.cond || '', state: d.state, turns: d.turns || 0, last: d.last || '' } : null;
-    paintGoal();
+    if (!cold) {
+      goal = d.state && d.state !== 'cleared' ? { cond: d.cond || '', state: d.state, turns: d.turns || 0, last: d.last || '' } : null;
+      paintGoal();
+    }
     if (!ev.raw || !ev.raw.length) return null;
     const host = ev.to ? nodes.get(ev.to) : null;
     if (host && host.isConnected) { attachRaws(host, ev, 'goal'); return null; }
@@ -2619,9 +2635,16 @@
 
   function renderInput(ev) {
     const d = ev.d || {};
-    while (retryButtons.length) retryButtons.pop().remove();
     const text = d.text || '';
     const images = Array.isArray(d.images) ? d.images : [];
+    if (cold) {
+      // history: settled, never pending, never the input a failure lands on
+      if (d.cmd && !images.length) return cmdMarker(d.cmd, ev);
+      const node = youBubble(text, images, false);
+      coldPending.push({ key: inputKey(text, images), node });
+      return node;
+    }
+    while (retryButtons.length) retryButtons.pop().remove();
     if (d.cmd && !images.length) {
       const n = cmdMarker(d.cmd, ev);
       lastInput = { node: n, text, images: [], failed: false };
@@ -2662,23 +2685,24 @@
     const text = d.text || '';
     const images = Array.isArray(d.images) ? d.images : [];
     const key = inputKey(text, images);
-    const i = pendingInputs.findIndex(e => e.key === key);
+    const pendList = cold ? coldPending : pendingInputs;
+    const i = pendList.findIndex(e => e.key === key);
     const node = youBubble(text, images, false);
     if (d.id && !d.steer) {
-      const entry = { id: d.id, node, text };
-      echoed.push(entry);
+      const entry = { id: d.id, node, text, seq: ev.seq || 0 };
+      (cold ? coldEchoed : echoed).push(entry);
       node.appendChild(rewindMenu(entry));
     } else if (d.id) {
       node.classList.add('is-steer');
       node.title = 'Steered into the turn already running';
     }
-    turnHasEcho = true;
+    if (!cold) turnHasEcho = true;
     if (i >= 0) {
-      const pend = pendingInputs.splice(i, 1)[0];
+      const pend = pendList.splice(i, 1)[0];
       mergeRaw(pend.node, node);
       pend.node.remove();
       if (lastInput && lastInput.node === pend.node) lastInput.node = node;
-    } else if (lastInput && !lastInput.failed && lastInput.node.isConnected && lastInput.node.classList.contains('is-pending') && lastInput.text === text) {
+    } else if (!cold && lastInput && !lastInput.failed && lastInput.node.isConnected && lastInput.node.classList.contains('is-pending') && lastInput.text === text) {
       mergeRaw(lastInput.node, node);
       lastInput.node.remove();
       lastInput.node = node;
@@ -3168,7 +3192,8 @@
     if (p.files && p.files.changed && p.files.changed.length) bits.push(p.files.changed.length + (p.files.changed.length === 1 ? ' file' : ' files') + ' · +' + (p.files.insertions || 0) + '/-' + (p.files.deletions || 0));
     if (bits.length) line.appendChild(el('span', 'result-stats', bits.join(' · ')));
     wrap.appendChild(line);
-    const t = echoed.find(x => x.id === p.target_uuid);
+    const echoList = cold ? coldEchoed : echoed;
+    const t = echoList.find(x => x.id === p.target_uuid);
     const tnode = t ? t.node : null;
     const logEl = cur.log;
     const kids = [...logEl.children];
@@ -3187,8 +3212,8 @@
       boxEl.appendChild(body);
       sum.textContent = 'show what was discarded · ' + moved + (moved === 1 ? ' frame' : ' frames');
       wrap.appendChild(boxEl);
-      const i = echoed.findIndex(e => e.id === p.target_uuid);
-      if (i >= 0) echoed.splice(i);
+      const i = echoList.findIndex(e => e.id === p.target_uuid);
+      if (i >= 0) echoList.splice(i);
     }
     if (p.summary) {
       const s = el('div', 'rewind-summary');
@@ -3221,7 +3246,7 @@
       case 'session.spawn_error': case 'session.undelivered': return renderFailure(ev);
       case 'session.resume_failed': return bubble('status', 'state', el('div', 'frame-note', d.reason || 'resume failed; starting fresh'), null);
       case 'session.reset': return renderReset(ev);
-      case 'session.catalog': noteCatalog(d); return foldIntoLast(ev);
+      case 'session.catalog': if (!cold) noteCatalog(d); return foldIntoLast(ev);
       case 'session.state': return renderStateNote(ev);
       case 'session.catchup': return renderCatchup(ev);
       case 'input': return renderInput(ev);
@@ -3236,8 +3261,8 @@
       case 'fast': return renderFast(ev);
       case 'goal': return renderGoal(ev);
       case 'report': return renderReport(ev);
-      case 'autocompact': ac.enabled = d.enabled; paintGaugePop(); return null;
-      case 'notice': if (d.model) { curModel = d.model; paintModelSelect(); } return notice(d.level || 'info', d.text || '');
+      case 'autocompact': if (!cold) { ac.enabled = d.enabled; paintGaugePop(); } return null;
+      case 'notice': if (d.model && !cold) { curModel = d.model; paintModelSelect(); } return notice(d.level || 'info', d.text || '');
       case 'api.retry': return renderApiRetry(ev);
       case 'api.error': return renderApiError(ev);
       case 'tool.call': return renderToolCall(ev);
@@ -3250,18 +3275,20 @@
       case 'peer.delivery': return renderPeerDelivery(ev);
       case 'approval.request': return renderApproval(ev);
       case 'approval.answer': return renderAnswer(ev);
-      case 'turn.idle': stalePendingPerms(); return null;
+      case 'turn.idle': if (!cold) stalePendingPerms(); return null;
       case 'turn.end': return renderTurnEnd(ev);
       case 'setting': {
-        if (d.key === 'permission_mode' && d.value && !d.requested) setMode(d.value);
-        if ((d.key === 'output_style' || d.key === 'personality') && d.value) noteStyle(d.value);
-        if (d.key === 'model' && d.value) { curModel = d.value === 'default' ? '' : d.value; paintModelSelect(); }
+        if (!cold) {
+          if (d.key === 'permission_mode' && d.value && !d.requested) setMode(d.value);
+          if ((d.key === 'output_style' || d.key === 'personality') && d.value) noteStyle(d.value);
+          if (d.key === 'model' && d.value) { curModel = d.value === 'default' ? '' : d.value; paintModelSelect(); }
+        }
         const host = ev.to ? nodes.get(ev.to) : null;
         if (host && host.isConnected) { attachRaws(host, ev, 'response'); if (d.error) { host.classList.add('is-error'); host.querySelector('.frame-note').appendChild(el('span', 'local-text', ' · ' + d.error)); } return null; }
         return settingMarker(d);
       }
-      case 'usage.limits': noteLimits(d); return foldIntoLast(ev, 'rate limits');
-      case 'usage.context': noteContext(d, cur); return null;
+      case 'usage.limits': if (!cold) noteLimits(d); return foldIntoLast(ev, 'rate limits');
+      case 'usage.context': if (!cold) noteContext(d, cur); return null;
       case 'hook.start': return renderHookStart(ev);
       case 'hook.end': return renderHookEnd(ev);
       case 'agent.start': return renderAgentStart(ev);
@@ -3290,39 +3317,255 @@
   function addEvent(ev) {
     if (!ev || typeof ev !== 'object') return;
     const key = ev.seq + ':' + (ev.sub || 0);
-    if (ev.seq && !ev.live) {
+    if (ev.seq && !ev.live && !cold) {
       if (seen.has(key)) return;
       seen.add(key);
       if (ev.seq > lastSeq) lastSeq = ev.seq;
     }
     curAt = ev.at || '';
     cur = ev.lane ? laneByAgent(ev.lane, null) : mainLane;
-    tabAlert(ev);
-    noteActivity(ev);
-    if ((ev.t === 'assistant' || ev.t === 'turn.end' || ev.t === 'session.exit' || ev.t === 'thought') && cur.live) dropLive(cur);
-    if (ev.t === 'assistant' || ev.t === 'thought') dropLiveThought(cur);
+    // a live event for the main lane while its tail is pruned away renders
+    // into the discard bucket: the state moves, the screen does not
+    const detached = !cold && tailDetached && cur === mainLane;
+    let savedLog = null, savedDay = '';
+    if (detached) { savedLog = mainLane.log; savedDay = mainLane.day; mainLane.log = discard; }
+    if (!cold) {
+      tabAlert(ev);
+      noteActivity(ev);
+      if ((ev.t === 'assistant' || ev.t === 'turn.end' || ev.t === 'session.exit' || ev.t === 'thought') && cur.live) dropLive(cur);
+      if (ev.t === 'assistant' || ev.t === 'thought') dropLiveThought(cur);
+    }
     let node = null;
     try { node = renderEvent(ev); } catch (err) { console.error('render', ev.t, err); node = bubble(ev.t, 'unknown', el('div', 'frame-note', 'could not render: ' + (err && err.message)), null); }
     if (node) {
       if (ev.ref) nodes.set(ev.ref, node);
       attachRaws(node, ev);
+      if (ev.seq) { node.dataset.seq = String(ev.seq); node.dataset.at = ev.at || ''; }
       if (cur !== mainLane) { cur.steps++; laneHeaderRefresh(cur); }
-      const stick = atBottom(cur.log);
+      const stick = !cold && !detached && atBottom(cur.log);
       const live = cur.log.querySelector(':scope > .is-streaming, :scope > .is-live');
       const mark = dayMark(cur, ev.at);
       if (mark) cur.log.insertBefore(mark, live);
       cur.log.insertBefore(node, live);
-      placeActivity();
-      if (stick) scroll(cur.log); else if (hydrated) noteUnread(cur);
+      if (!cold && !detached) placeActivity();
+      if (stick) scroll(cur.log); else if (hydrated && !cold) noteUnread(cur);
     } else {
       // an event that drew nothing still names a node: whatever its raws
       // landed on, so later events addressed to it find the same host
       if (ev.ref) { const host = target(ev); if (host) nodes.set(ev.ref, host); }
-      placeActivity();
+      if (!cold && !detached) placeActivity();
     }
+    if (detached) { mainLane.log = savedLog; mainLane.day = savedDay; }
     cur = mainLane;
-    showNextPerm();
+    if (!cold) showNextPerm();
   }
+
+  // --- the window ---
+  //
+  // The page opens on the last turns. A sentinel above the log fetches the
+  // turns before them as it scrolls into view; past a cap of rendered
+  // frames the far end is pruned, and a sentinel below fetches the pruned
+  // tail back when the reader returns. While the tail is pruned, live
+  // events still drive the state (activity, approvals, gauges) but render
+  // into a discard bucket; "Latest" reopens the log at its end.
+
+  let WIN_CAP_OVERRIDE = 0;
+  const WIN_CAP_DEFAULT = 800; // frames kept in the main log
+  const WIN_CAP = { valueOf() { return WIN_CAP_OVERRIDE || WIN_CAP_DEFAULT; } };
+  const WIN_KEEP = 2.5;     // screens beyond the viewport kept when pruning
+  let topSeq = 0;           // first event seq rendered in the main log
+  let hasEarlier = stage.dataset.earlier === '1';
+  let tailSeq = 0;          // last event seq rendered while the tail is pruned
+  let tailDetached = false;
+  let loadingWin = false;
+  const discard = el('div', 'chat-log');
+  discard.hidden = true;
+  log.parentNode.appendChild(discard);
+  const earlierEl = el('div', 'chat-more chat-earlier', 'Loading earlier turns…');
+  const laterEl = el('div', 'chat-more chat-later', 'Loading later turns…');
+  earlierEl.hidden = true; laterEl.hidden = true;
+  log.prepend(earlierEl);
+
+  async function fetchWindow(params) {
+    const r = await fetch('/account/sessions/' + encodeURIComponent(sessionID) + '/events?' + params, { credentials: 'same-origin' });
+    if (!r.ok) throw new Error('events ' + r.status);
+    return r.json();
+  }
+  function frameNodes(l) { return [...l.children].filter(k => k !== mainLane.activity && k !== laterEl && k !== earlierEl && k !== discard); }
+  function frameCount(l) { return l.querySelectorAll(':scope > .frame, :scope > .frame-group, :scope > .msg-agent').length; }
+  function seqOf(node) { return Number(node.dataset.seq || 0); }
+  function edgeSeq(kids, fromEnd) {
+    for (let i = 0; i < kids.length; i++) { const k = kids[fromEnd ? kids.length - 1 - i : i]; if (seqOf(k)) return seqOf(k); }
+    return 0;
+  }
+
+  // renderChunk renders events cold and places what they drew: at the top
+  // of each lane's log (older turns), at the bottom (the pruned tail coming
+  // back), or in place of the whole log (reopening at the tail).
+  function renderChunk(evs, where) {
+    const swapped = new Map();
+    const swap = (lane) => {
+      if (swapped.has(lane)) return;
+      swapped.set(lane, { log: lane.log, day: lane.day });
+      // in the document (hidden), so hosts found in it count as connected
+      const c = el('div', 'chat-log'); c.hidden = true;
+      log.parentNode.appendChild(c);
+      lane.log = c;
+      if (where !== 'bottom') lane.day = '';
+    };
+    for (const lane of lanes.values()) swap(lane);
+    cold = true; coldEchoed = []; coldPending = []; coldSwap = swap;
+    const savedPlan = curPlan;
+    try { for (const ev of evs) addEvent(ev); }
+    finally { cold = false; coldSwap = null; }
+    curPlan = savedPlan;
+    for (const [lane, saved] of swapped) {
+      const c = lane.log; lane.log = saved.log;
+      const kids = [...c.children];
+      c.remove();
+      const chunkLastDay = lane.day;
+      if (where === 'replace' && lane === mainLane) {
+        for (const k of frameNodes(lane.log)) k.remove();
+        lane.day = chunkLastDay;
+        lane.log.insertBefore(earlierEl, lane.log.firstChild);
+        earlierEl.after(...kids);
+        continue;
+      }
+      if (where === 'bottom' || !kids.length) {
+        if (kids.length) { const anchor = lane === mainLane ? laterEl : lane.activity; if (anchor.parentNode === lane.log) anchor.before(...kids); else lane.log.append(...kids); }
+        if (where !== 'bottom') lane.day = saved.day;
+        continue;
+      }
+      // top: the existing content's first day mark is redundant when the
+      // chunk ends on that day, and missing when the day was implied
+      const first = frameNodes(lane.log).find(k => !k.classList.contains('chat-more'));
+      if (first) {
+        if (first.classList.contains('day-mark')) { if (first.dataset.day === chunkLastDay) first.remove(); }
+        else if (first.dataset.at) { const m = dayMark(lane, first.dataset.at); if (m) first.before(m); }
+      }
+      lane.day = saved.day;
+      const at = lane === mainLane ? earlierEl : null;
+      if (at && at.parentNode === lane.log) at.after(...kids); else lane.log.prepend(...kids);
+    }
+    // rewind order: bubbles are walked newest-first, by seq
+    if (coldEchoed.length) {
+      const ids = new Set(coldEchoed.map(e => e.id));
+      const kept = echoed.filter(e => !ids.has(e.id));
+      echoed.length = 0;
+      echoed.push(...kept, ...coldEchoed);
+      echoed.sort((a, b) => (a.seq || 0) - (b.seq || 0));
+    }
+    coldEchoed = []; coldPending = [];
+    paintPlanPill(); paintTasks();
+  }
+
+  async function loadEarlier() {
+    if (!hasEarlier || loadingWin || !topSeq) return;
+    loadingWin = true;
+    try {
+      const j = await fetchWindow('before=' + topSeq + '&turns=20');
+      const l = mainLane.log; const h0 = l.scrollHeight, t0 = l.scrollTop;
+      renderChunk(j.events || [], 'top');
+      hasEarlier = !!j.more; earlierEl.hidden = !hasEarlier;
+      if (j.events && j.events.length) topSeq = j.events[0].seq;
+      l.scrollTop = t0 + (l.scrollHeight - h0);
+      pruneBottom();
+    } catch (err) { console.error('earlier', err); }
+    finally { loadingWin = false; }
+  }
+  async function loadLater() {
+    if (!tailDetached || loadingWin) return;
+    loadingWin = true;
+    try {
+      const j = await fetchWindow('after=' + tailSeq + '&turns=20');
+      renderChunk(j.events || [], 'bottom');
+      if (j.events && j.events.length) tailSeq = j.events[j.events.length - 1].seq;
+      if (!j.more) reattachTail();
+      pruneTop();
+    } catch (err) { console.error('later', err); }
+    finally { loadingWin = false; }
+  }
+  // reattachTail ends a detachment: what arrived live meanwhile (rendered
+  // into the discard bucket) moves into the log after the refetched turns.
+  function dayKeyOf(at) { const t = Date.parse(at || ''); return Number.isFinite(t) ? new Date(t).toDateString() : ''; }
+  function reattachTail() {
+    const l = mainLane.log;
+    let lastDay = '';
+    for (const k of [...frameNodes(l)].reverse()) { if (k.dataset.at) { lastDay = dayKeyOf(k.dataset.at); break; } }
+    for (const k of [...discard.children]) {
+      if (k.classList.contains('day-mark')) { if (k.dataset.day === lastDay) { k.remove(); continue; } lastDay = k.dataset.day; laterEl.before(k); continue; }
+      if (seqOf(k) > tailSeq || !seqOf(k)) { if (k.dataset.at) lastDay = dayKeyOf(k.dataset.at); laterEl.before(k); } else k.remove();
+    }
+    tailDetached = false; tailSeq = 0; laterEl.hidden = true;
+    placeActivity(mainLane);
+    paintJump();
+  }
+  async function reopenTail() {
+    if (loadingWin) return;
+    loadingWin = true;
+    try {
+      const j = await fetchWindow('tail=1');
+      renderChunk(j.events || [], 'replace');
+      discard.textContent = '';
+      tailDetached = false; tailSeq = 0; laterEl.hidden = true;
+      hasEarlier = !!j.more; earlierEl.hidden = !hasEarlier;
+      topSeq = j.events && j.events.length ? j.events[0].seq : 0;
+      placeActivity(mainLane);
+      scroll(mainLane.log);
+      unread = false; paintJump();
+    } catch (err) { console.error('tail', err); }
+    finally { loadingWin = false; }
+  }
+  // pruneBottom drops the tail once the log is over the cap and the reader
+  // is well above it; never while a turn is running.
+  function pruneBottom() {
+    const l = mainLane.log;
+    if (mainTurnActive) return;
+    if (frameCount(l) <= WIN_CAP) return;
+    const limit = l.scrollTop + l.clientHeight * (1 + WIN_KEEP);
+    const kids = frameNodes(l);
+    let removed = 0;
+    for (let i = kids.length - 1; i >= 0 && frameCount(l) > WIN_CAP - 100; i--) {
+      const k = kids[i];
+      if (k.offsetTop < limit) break;
+      k.remove(); removed++;
+    }
+    if (!removed) return;
+    const rest = frameNodes(l);
+    tailSeq = edgeSeq(rest, true);
+    // the day state follows what is left, so the tail coming back gets its
+    // marks where the days actually change
+    const lastAt = [...rest].reverse().find(k => k.dataset.at);
+    if (lastAt) { const t = Date.parse(lastAt.dataset.at); if (Number.isFinite(t)) mainLane.day = new Date(t).toDateString(); }
+    tailDetached = true; laterEl.hidden = false;
+    placeActivity(mainLane);
+    paintJump();
+  }
+  function pruneTop() {
+    const l = mainLane.log;
+    if (frameCount(l) <= WIN_CAP) return;
+    const limit = l.scrollTop - l.clientHeight * WIN_KEEP;
+    const kids = frameNodes(l);
+    let removedH = 0, removed = 0;
+    for (let i = 0; i < kids.length && frameCount(l) > WIN_CAP - 100; i++) {
+      const k = kids[i];
+      if (k.offsetTop + k.offsetHeight > limit) break;
+      removedH += k.offsetHeight; k.remove(); removed++;
+    }
+    if (!removed) return;
+    l.scrollTop -= removedH;
+    topSeq = edgeSeq(frameNodes(l), false);
+    hasEarlier = true; earlierEl.hidden = false;
+  }
+  const winIO = new IntersectionObserver((entries) => {
+    for (const en of entries) {
+      if (!en.isIntersecting) continue;
+      if (en.target === earlierEl) loadEarlier(); else if (en.target === laterEl) loadLater();
+    }
+  }, { root: log, rootMargin: '300px 0px' });
+  winIO.observe(earlierEl); winIO.observe(laterEl);
+  // for tests: drive the window by hand
+  stage._win = { addEvent, loadEarlier, loadLater, reopenTail, pruneBottom, pruneTop, state: () => ({ topSeq, hasEarlier, tailSeq, tailDetached, cap: +WIN_CAP, frames: frameCount(mainLane.log) }), setCap: (n) => { WIN_CAP_OVERRIDE = n; } };
 
   // hydrate renders the events the server put in the page.
   function hydrate() {
@@ -3331,6 +3574,8 @@
     try { evs = JSON.parse(script ? script.textContent : '[]') || []; } catch (_) { evs = []; }
     for (const ev of evs) addEvent(ev);
     for (const l of lanes.values()) { placeActivity(l); scroll(l.log); }
+    topSeq = evs.length ? evs[0].seq : 0;
+    earlierEl.hidden = !hasEarlier;
     hydrated = true;
     paintModelSelect();
     paintGoal();

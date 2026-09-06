@@ -133,3 +133,82 @@ func (unknownProjector) Project(f model.Frame) []model.Event {
 	e.Live = !f.Stored
 	return []model.Event{e}
 }
+
+// --- windows ---
+//
+// A long transcript is not shipped whole: the page opens on its last turns
+// and fetches earlier (or, once it has pruned its tail, later) turns as the
+// reader scrolls. Cuts fall on turn boundaries — after a turn.idle event —
+// so that the pairs a renderer joins (a call and its result, a request and
+// its answer, a compaction block) stay together.
+
+// Window is a run of events cut at turn boundaries, and whether more lie
+// beyond it in the direction it was asked for.
+type Window struct {
+	Events []model.Event `json:"events"`
+	More   bool          `json:"more"`
+}
+
+// turnsOf splits events into turns: each ends with a turn.idle event; a
+// trailing run without one is the turn under way.
+func turnsOf(evs []model.Event) [][]model.Event {
+	var out [][]model.Event
+	start := 0
+	for i, e := range evs {
+		if e.T == model.TurnIdle {
+			out = append(out, evs[start:i+1])
+			start = i + 1
+		}
+	}
+	if start < len(evs) {
+		out = append(out, evs[start:])
+	}
+	return out
+}
+
+// Tail is the last n turns.
+func Tail(evs []model.Event, n int) Window {
+	turns := turnsOf(evs)
+	if n <= 0 || len(turns) <= n {
+		return Window{Events: evs}
+	}
+	keep := turns[len(turns)-n:]
+	return Window{Events: evs[len(evs)-countOf(keep):], More: true}
+}
+
+// Before is the n turns that end before the event with seq (exclusive).
+func Before(evs []model.Event, seq int64, n int) Window {
+	cut := len(evs)
+	for i, e := range evs {
+		if e.Seq >= seq {
+			cut = i
+			break
+		}
+	}
+	return Tail(evs[:cut], n)
+}
+
+// After is the n turns that begin after the event with seq (exclusive).
+func After(evs []model.Event, seq int64, n int) Window {
+	start := len(evs)
+	for i, e := range evs {
+		if e.Seq > seq {
+			start = i
+			break
+		}
+	}
+	rest := evs[start:]
+	turns := turnsOf(rest)
+	if n <= 0 || len(turns) <= n {
+		return Window{Events: rest}
+	}
+	return Window{Events: rest[:countOf(turns[:n])], More: true}
+}
+
+func countOf(turns [][]model.Event) int {
+	n := 0
+	for _, t := range turns {
+		n += len(t)
+	}
+	return n
+}
