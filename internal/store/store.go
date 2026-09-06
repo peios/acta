@@ -578,6 +578,13 @@ type AgentSessionEvent struct {
 	CreatedAt time.Time
 }
 
+// AgentSessionSize is how much transcript a session holds: its frames and
+// the bytes they take as stored (compressed, where the store compresses).
+type AgentSessionSize struct {
+	Frames int
+	Bytes  int64
+}
+
 // Store is the persistence interface for Acta.
 type Store interface {
 	CreateUser(ctx context.Context, u NewUser) (User, error)
@@ -857,6 +864,9 @@ type Store interface {
 	// when set, and moves the session's updated_at forward to the latest.
 	AppendAgentSessionEvents(ctx context.Context, events []AgentSessionEvent) ([]AgentSessionEvent, error)
 	AgentSessionEvents(ctx context.Context, sessionID string, afterSeq int64, limit int) ([]AgentSessionEvent, error)
+	// AgentSessionSizes is how much transcript each of an owner's sessions
+	// holds, by session id; a session with no frames is absent.
+	AgentSessionSizes(ctx context.Context, ownerID string) (map[string]AgentSessionSize, error)
 
 	// Activity log. RecordEvent appends an entry (assigning its id). The two
 	// readers return newest-first, capped at limit (a non-positive limit is

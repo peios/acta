@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"net/http"
 	"regexp"
@@ -42,6 +43,24 @@ type agentSessionRow struct {
 	store.AgentSession
 	Live    bool // held by a connected harness (resumable)
 	Running bool // a process is running right now
+	Frames  int  // stored frames
+	Bytes   int64
+}
+
+// Size words the stored size of a session's transcript.
+func (r agentSessionRow) Size() string { return fmtBytes(r.Bytes) }
+
+// fmtBytes words a byte count the way a file manager would.
+func fmtBytes(n int64) string {
+	switch {
+	case n >= 1<<30:
+		return fmt.Sprintf("%.1f GB", float64(n)/(1<<30))
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%d KB", n>>10)
+	}
+	return fmt.Sprintf("%d B", n)
 }
 
 // agentChrome builds the page chrome in agent mode: the sidebar lists the
@@ -69,10 +88,15 @@ func (h *handlers) agentChrome(r *http.Request, activeID string) (chrome, []agen
 			runIDs[s] = true
 		}
 	}
+	sizes, err := h.agentSessions.Sizes(r.Context(), p.ID)
+	if err != nil {
+		return chrome{}, nil, nil, err
+	}
 	rows := make([]agentSessionRow, 0, len(list))
 	nav := make([]agentSessionNav, 0, len(list))
 	for _, as := range list {
-		rows = append(rows, agentSessionRow{AgentSession: as, Live: liveIDs[as.ID], Running: runIDs[as.ID]})
+		sz := sizes[as.ID]
+		rows = append(rows, agentSessionRow{AgentSession: as, Live: liveIDs[as.ID], Running: runIDs[as.ID], Frames: sz.Frames, Bytes: sz.Bytes})
 		nav = append(nav, agentSessionNav{ID: as.ID, Title: sessionLabel(as), Backend: as.Backend, Live: liveIDs[as.ID], Running: runIDs[as.ID]})
 	}
 	ch.AgentMode = true
@@ -571,8 +595,13 @@ type agentSessionData struct {
 	Earlier    bool // turns before the ones in the page exist
 	Live       bool // held by a connected harness
 	Running    bool // process running right now
+	Frames     int  // stored frames
+	Bytes      int64
 	Err        string
 }
+
+// Size words the stored size of the session's transcript.
+func (d agentSessionData) Size() string { return fmtBytes(d.Bytes) }
 
 func (h *handlers) agentSessionPage(w http.ResponseWriter, r *http.Request) {
 	if p := principalFrom(r.Context()); p != nil {
@@ -617,9 +646,12 @@ func (h *handlers) agentSessionPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	live, running := false, false
+	var frames int
+	var bytes int64
 	for _, row := range rows {
 		if row.ID == as.ID {
 			live, running = row.Live, row.Running
+			frames, bytes = row.Frames, row.Bytes
 		}
 	}
 	render(w, http.StatusOK, "agent_session.html", agentSessionData{
@@ -631,6 +663,8 @@ func (h *handlers) agentSessionPage(w http.ResponseWriter, r *http.Request) {
 		Earlier:    win.More,
 		Live:       live,
 		Running:    running,
+		Frames:     frames,
+		Bytes:      bytes,
 		Err:        agentSessionErr(r.URL.Query().Get("err")),
 	})
 }

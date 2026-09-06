@@ -52,6 +52,23 @@ func (s *Store) AgentSessionsByOwner(_ context.Context, ownerID string) ([]store
 	return out, nil
 }
 
+func (s *Store) AgentSessionSizes(_ context.Context, ownerID string) (map[string]store.AgentSessionSize, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := map[string]store.AgentSessionSize{}
+	for _, e := range s.agentEvents {
+		as, ok := s.agentSessions[e.SessionID]
+		if !ok || as.OwnerID != ownerID {
+			continue
+		}
+		sz := out[e.SessionID]
+		sz.Frames++
+		sz.Bytes += int64(len(e.Payload))
+		out[e.SessionID] = sz
+	}
+	return out, nil
+}
+
 func (s *Store) UpdateAgentSessionTitle(_ context.Context, id, title string, updatedAt time.Time) (store.AgentSession, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

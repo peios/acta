@@ -29,6 +29,7 @@
       <div class="chat-meta">
         <code>{{.Session.Backend}}</code>
         {{if .Session.Cwd}}<span class="chat-cwd" title="{{.Session.Cwd}}">{{.Session.Cwd}}</span>{{end}}
+        {{if .Frames}}<span class="chat-size" title="{{.Frames}} stored frames">{{.Size}}</span>{{end}}
       </div>
     </div>
     <div class="chat-gauges" data-gauges>

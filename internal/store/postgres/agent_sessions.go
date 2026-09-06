@@ -217,6 +217,29 @@ func (p *Postgres) AppendAgentSessionEvents(ctx context.Context, events []store.
 	return out, nil
 }
 
+func (p *Postgres) AgentSessionSizes(ctx context.Context, ownerID string) (map[string]store.AgentSessionSize, error) {
+	// pg_column_size is the stored (compressed) size, which is what the disk
+	// pays for; a transcript of tool output compresses several times over
+	const q = `SELECT e.session_id, COUNT(*), COALESCE(SUM(pg_column_size(e.payload)), 0)
+	           FROM agent_session_events e JOIN agent_sessions s ON s.id = e.session_id
+	           WHERE s.owner_id = $1 GROUP BY e.session_id`
+	rows, err := p.pool.Query(ctx, q, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]store.AgentSessionSize{}
+	for rows.Next() {
+		var id string
+		var sz store.AgentSessionSize
+		if err := rows.Scan(&id, &sz.Frames, &sz.Bytes); err != nil {
+			return nil, err
+		}
+		out[id] = sz
+	}
+	return out, rows.Err()
+}
+
 func (p *Postgres) AgentSessionEvents(ctx context.Context, sessionID string, afterSeq int64, limit int) ([]store.AgentSessionEvent, error) {
 	if _, err := p.AgentSessionByID(ctx, sessionID); err != nil {
 		return nil, err

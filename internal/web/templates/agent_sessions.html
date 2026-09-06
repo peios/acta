@@ -131,6 +131,7 @@
                 <span class="chip">{{.Backend}}</span>
                 {{if .Cwd}}<span class="sess-cwd" title="{{.Cwd}}">{{.Cwd}}</span>{{end}}
                 <span title="{{.UpdatedAt.Format "2 Jan 2006, 15:04"}}">{{ago .UpdatedAt}}</span>
+                {{if .Frames}}<span class="sess-size" title="{{.Frames}} stored frames">{{.Size}}</span>{{end}}
               </div>
             </div>
             <div class="sess-actions">

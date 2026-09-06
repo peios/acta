@@ -63,6 +63,11 @@ func (s *Service) List(ctx context.Context, ownerID string) ([]store.AgentSessio
 	return s.store.AgentSessionsByOwner(ctx, ownerID)
 }
 
+// Sizes is how much transcript each of an owner's sessions holds.
+func (s *Service) Sizes(ctx context.Context, ownerID string) (map[string]store.AgentSessionSize, error) {
+	return s.store.AgentSessionSizes(ctx, ownerID)
+}
+
 // Delete removes a session (and its transcript) after an ownership check.
 func (s *Service) Delete(ctx context.Context, id, ownerID string) error {
 	if _, err := s.Get(ctx, id, ownerID); err != nil {
