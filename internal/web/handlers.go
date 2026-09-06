@@ -92,7 +92,8 @@ type chrome struct {
 // whether a harness currently holds it.
 type agentSessionNav struct {
 	ID      string
-	Title   string
+	Title   string // the bare title, its status marker read off
+	Status  string // todo, in_progress, done, or ""
 	Backend string // whose mark the sidebar shows (claude-code, codex)
 	Live    bool   // held by a connected harness (resumable)
 	Running bool   // a process is running right now

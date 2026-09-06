@@ -168,14 +168,41 @@ func (h *Hub) pushRename(ownerID, sessionID, title string) {
 	}
 }
 
-// sendRename asks the backend to adopt the title (best effort: a session with
-// no live process simply has nothing to rename).
+// sendRename asks the backend to adopt the title: a running process takes
+// it as a command; otherwise the harness holding the session (or any of
+// the owner's) writes it into the backend's own record on the host, so the
+// title, and the status marker in it, show in the backend's own picker
+// after the machine has been off. Best effort either way.
 func (h *Hub) sendRename(ownerID, sessionID, title string) {
+	ctx := context.Background()
 	c := h.harnessFor(ownerID, sessionID)
-	if c == nil || !c.isRunning(sessionID) {
+	if c != nil && c.isRunning(sessionID) {
+		h.sendNameCommand(ctx, c, sessionID, title)
 		return
 	}
-	h.sendNameCommand(context.Background(), c, sessionID, title)
+	if c == nil {
+		c = h.harnessByLabel(ownerID, "")
+	}
+	if c == nil || c.v < 3 || strings.TrimSpace(title) == "" {
+		return
+	}
+	as, err := h.svc.store.AgentSessionByID(ctx, sessionID)
+	if err != nil {
+		return
+	}
+	d := DriverFor(as.Backend)
+	if d == nil {
+		return
+	}
+	cu, ok := d.Transcript(as, nil)
+	if !ok {
+		return
+	}
+	conv := as.ID
+	if c, _ := as.Options["conversation"].(string); strings.TrimSpace(c) != "" {
+		conv = strings.TrimSpace(c)
+	}
+	c.send(Outbound{T: FrameRetitle, Session: sessionID, Backend: as.Backend, Path: cu.Path, ID: conv, Title: strings.TrimSpace(title)})
 }
 
 // driverOf returns the driver for a session's backend, or nil.

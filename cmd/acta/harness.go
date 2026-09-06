@@ -240,6 +240,7 @@ func (h *harness) connectAndServe(ctx context.Context) error {
 			After   string            `json:"after"`
 			Hold    bool              `json:"hold"`
 			Full    bool              `json:"full"`
+			Title   string            `json:"title"`
 			Catchup *readReq          `json:"catchup"`
 		}
 		if json.Unmarshal(data, &f) != nil {
@@ -264,6 +265,12 @@ func (h *harness) connectAndServe(ctx context.Context) error {
 			h.tail(f.Session, f.ID, f.Path)
 		case "untail":
 			h.untail(f.Session, f.ID)
+		case "retitle":
+			go func() {
+				if err := retitle(f.Backend, f.Path, f.ID, f.Title); err != nil {
+					fmt.Fprintf(os.Stderr, "acta harness: retitle %s: %v\n", f.Session, err)
+				}
+			}()
 		}
 	}
 	close(readDone)
@@ -517,6 +524,32 @@ func (h *harness) read(session, id string, req readReq, hold bool) {
 		return
 	}
 	done["count"] = count
+}
+
+// retitle writes a session's title into the backend's own record on this
+// host, for a session with no process running to take a rename command:
+// Claude Code reads a custom-title.json beside its transcript, Codex the
+// last name for a thread in its session index. The transcript is found by
+// the same glob a read uses.
+func retitle(backend, path, conv, title string) error {
+	if strings.TrimSpace(title) == "" {
+		return nil
+	}
+	switch backend {
+	case "claude-code":
+		matches, _ := filepath.Glob(expandHome(path))
+		if len(matches) == 0 {
+			return fmt.Errorf("no transcript at %s", path)
+		}
+		return claude.WriteTitle(matches[0], title)
+	case "codex":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		return codex.WriteTitle(home, conv, title)
+	}
+	return fmt.Errorf("no title record for backend %s", backend)
 }
 
 // lineRules picks a backend's notion of which transcript lines can be

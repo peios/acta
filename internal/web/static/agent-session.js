@@ -3619,16 +3619,31 @@
   const nameBtn = stage.querySelector('[data-chat-rename]');
   const nameInput = stage.querySelector('[data-rename-input]');
   let openRename = null;
-  async function renameTo(title) {
-    if (!nameBtn || title === nameBtn.textContent.trim()) return;
+  // The name shown is the title without its status marker; the marker is
+  // the picker beside it. Both write the full title, marker first, and the
+  // rename reaches the backend's own record too (see Hub.Rename).
+  const SS = window.sessionStatus;
+  async function renameTo(bare, status) {
+    if (!nameBtn) return;
+    if (status === undefined) status = stage.dataset.status || '';
+    const title = SS ? SS.compose(status, bare) : bare;
+    const current = SS ? SS.compose(stage.dataset.status || '', nameBtn.textContent.trim()) : nameBtn.textContent.trim();
+    if (title === current) return;
     const body = new URLSearchParams({ title, csrf_token: stage.dataset.csrf || '' });
     try {
       const res = await fetch('/account/sessions/' + encodeURIComponent(sessionID) + '/title', {
         method: 'POST', body, headers: { 'X-Requested-With': 'fetch', 'X-CSRF-Token': stage.dataset.csrf || '' },
       });
-      if (res.ok && title) { nameBtn.textContent = title; document.title = title + ' · Acta'; }
+      if (res.ok && title) {
+        const parts = SS ? SS.apply(sessionID, title) : { status: '', bare: title };
+        stage.dataset.status = parts.status;
+        nameBtn.textContent = parts.bare || nameBtn.textContent;
+        document.title = (parts.bare || title) + ' · Acta';
+      }
     } catch (_) {}
   }
+  const statusPick = stage.querySelector('[data-status-pick]');
+  if (statusPick) statusPick.addEventListener('change', () => renameTo(nameBtn ? nameBtn.textContent.trim() : '', statusPick.value));
   if (nameBtn && nameInput) {
     const open = () => {
       nameInput.value = nameBtn.textContent.trim();

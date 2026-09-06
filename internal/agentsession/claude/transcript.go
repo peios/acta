@@ -546,6 +546,22 @@ func (p *Projector) transcriptState(f model.Frame, m map[string]any) []model.Eve
 	return []model.Event{e}
 }
 
+// WriteTitle gives a transcript the title Claude Code's own picker shows,
+// the way Claude Code itself records a rename: a custom-title.json sidecar
+// in the directory named after the transcript, beside it. The transcript
+// file is left alone.
+func WriteTitle(transcriptPath, title string) error {
+	dir := strings.TrimSuffix(transcriptPath, ".jsonl")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	b, err := json.Marshal(map[string]string{"customTitle": title})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "custom-title.json"), b, 0o600)
+}
+
 // KeepLine says whether a transcript line can matter to the conversation:
 // the records ChainRecords keeps (user, assistant, system) and any record
 // with a uuid, since the chain is walked through parent links and an

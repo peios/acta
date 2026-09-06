@@ -481,6 +481,27 @@ func (p *Projector) transcriptState(f model.Frame, m map[string]any) []model.Eve
 	return []model.Event{e}
 }
 
+// WriteTitle gives a thread the name Codex's own picker shows, the way
+// Codex records one: a line appended to ~/.codex/session_index.jsonl, the
+// last line for a thread id winning.
+func WriteTitle(home, threadID, title string) error {
+	b, err := json.Marshal(map[string]string{"id": threadID, "thread_name": title, "updated_at": time.Now().UTC().Format(time.RFC3339Nano)})
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join(dir, "session_index.jsonl"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(append(b, '\n'))
+	return err
+}
+
 // KeepLine says whether a rollout line can be part of the conversation at
 // all (ChainRecords keeps event_msg and turn_context records), so a reader
 // can drop the rest, response items, compaction snapshots and token

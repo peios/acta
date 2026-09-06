@@ -1,12 +1,14 @@
-{{define "title"}}{{if .Session.Title}}{{.Session.Title}}{{else}}Session{{end}} · Acta{{end}}
+{{define "title"}}{{if .Bare}}{{.Bare}}{{else}}Session{{end}} · Acta{{end}}
 {{define "content"}}
 <div class="chat-split" data-chat-split>
-<main class="chat-stage" data-csrf="{{.CSRFToken}}" data-session="{{.Session.ID}}" data-last-seq="{{.LastSeq}}" data-earlier="{{if .Earlier}}1{{else}}0{{end}}" data-live="{{if .Live}}1{{else}}0{{end}}" data-running="{{if .Running}}1{{else}}0{{end}}" data-mode="{{with .Session.Options}}{{index . "permission_mode"}}{{end}}" data-effort="{{with .Session.Options}}{{index . "effort"}}{{end}}" data-backend="{{.Session.Backend}}">
+<main class="chat-stage" data-csrf="{{.CSRFToken}}" data-session="{{.Session.ID}}" data-last-seq="{{.LastSeq}}" data-earlier="{{if .Earlier}}1{{else}}0{{end}}" data-live="{{if .Live}}1{{else}}0{{end}}" data-running="{{if .Running}}1{{else}}0{{end}}" data-status="{{.Status}}" data-mode="{{with .Session.Options}}{{index . "permission_mode"}}{{end}}" data-effort="{{with .Session.Options}}{{index . "effort"}}{{end}}" data-backend="{{.Session.Backend}}">
   <header class="chat-head">
     <div class="chat-head-main">
       <div class="chat-title">
-        <button type="button" class="chat-name" data-session-name="{{.Session.ID}}" data-chat-rename title="Rename this session">{{if .Session.Title}}{{.Session.Title}}{{else}}{{.Session.Backend}} session{{end}}</button>
+        <span class="status-slot" data-session-status="{{.Session.ID}}">{{template "statusmark" .Status}}</span>
+        <button type="button" class="chat-name" data-session-name="{{.Session.ID}}" data-chat-rename title="Rename this session">{{if .Bare}}{{.Bare}}{{else}}{{.Session.Backend}} session{{end}}</button>
         <input class="chat-name-edit" data-rename-input maxlength="120" hidden aria-label="Session title">
+        <select class="status-pick" data-status-pick="{{.Session.ID}}" title="Status" aria-label="Status">{{range .StatusOptions}}<option value="{{.Value}}"{{if eq .Value $.Status}} selected{{end}}>{{.Label}}</option>{{end}}</select>
         <span class="live-dot has-mark{{if .Running}} is-running{{else if .Live}} is-held{{end}}" data-session-dot="{{.Session.ID}}" title="{{if .Running}}running{{else if .Live}}idle (harness connected){{else}}offline{{end}}">{{template "backendmark" .Session.Backend}}</span>
         <span class="chat-conn" data-chat-conn>&hellip;</span>
         <span class="chat-pills">

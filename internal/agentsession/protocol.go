@@ -75,6 +75,11 @@ const (
 	// FrameScan asks the harness to list the transcripts a backend keeps on
 	// its host, for the import picker.
 	FrameScan = "scan"
+	// FrameRetitle asks the harness to give a session's title to the
+	// backend's own record on the host when no process is running to take
+	// it (Claude Code's custom-title sidecar, Codex's thread name index), so
+	// the backend's own picker shows what Acta shows.
+	FrameRetitle = "retitle"
 )
 
 // Catchup is a transcript read a harness performs before it resumes a
@@ -148,6 +153,9 @@ type Outbound struct {
 	Full  bool   `json:"full,omitempty"` // read: the whole transcript, not the newest turns that fit the cap
 	// write: one stdin line, without its newline.
 	Line string `json:"line,omitempty"`
+	// retitle: the title to write; Path is the transcript (a glob, ~
+	// allowed) and ID the backend's own conversation id.
+	Title string `json:"title,omitempty"`
 }
 
 // BrowserOp is a browser-authored operation on the session, in neutral terms

@@ -277,3 +277,29 @@
   });
   form.addEventListener('submit', () => { submit.disabled = true; submit.textContent = 'Importing…'; });
 })();
+
+// Status pickers on the session rows: choosing one rewrites the title with
+// the marker first (see status.js) through the same rename the page uses,
+// so the backend's own picker shows it too.
+(() => {
+  'use strict';
+  const SS = window.sessionStatus;
+  if (!SS) return;
+  for (const pick of document.querySelectorAll('.sess-title [data-status-pick]')) {
+    pick.addEventListener('change', async () => {
+      const id = pick.dataset.statusPick;
+      const name = document.querySelector('.sess-title [data-session-name="' + id + '"]');
+      const row = pick.closest('.sess');
+      const csrf = row ? (row.querySelector('input[name="csrf_token"]') || {}).value || '' : '';
+      const title = SS.compose(pick.value, name ? name.textContent.trim() : '');
+      pick.disabled = true;
+      try {
+        const res = await fetch('/account/sessions/' + encodeURIComponent(id) + '/title', {
+          method: 'POST', body: new URLSearchParams({ title, csrf_token: csrf }), headers: { 'X-Requested-With': 'fetch', 'X-CSRF-Token': csrf },
+        });
+        if (res.ok) SS.apply(id, title);
+      } catch (_) {}
+      pick.disabled = false;
+    });
+  }
+})();

@@ -130,12 +130,15 @@
       return;
     }
     if (msg.kind === 'session.renamed') {
+      // the status marker in the title paints as a mark; the text shows the rest
+      const parts = window.sessionStatus ? window.sessionStatus.apply(msg.id, msg.title) : { status: '', bare: msg.title };
       document.querySelectorAll('[data-session-name="' + msg.id + '"]').forEach((el) => {
         if (el.matches('[data-rename-input]')) return;
-        el.textContent = msg.title;
-        if (el.title) el.title = msg.title;
+        el.textContent = parts.bare;
+        if (el.title) el.title = parts.bare;
       });
-      if (document.querySelector('.chat-stage[data-session="' + msg.id + '"]')) document.title = msg.title + ' · Acta';
+      const stage = document.querySelector('.chat-stage[data-session="' + msg.id + '"]');
+      if (stage) { stage.dataset.status = parts.status; document.title = parts.bare + ' · Acta'; }
       return;
     }
     // Board + modal events are applied by board.js when it's present.

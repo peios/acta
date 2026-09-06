@@ -45,6 +45,8 @@ type agentSessionRow struct {
 	Running bool // a process is running right now
 	Frames  int  // stored frames
 	Bytes   int64
+	Status  string // from the title's marker (see agentsession.SplitStatus)
+	Bare    string // the title without it
 }
 
 // Size words the stored size of a session's transcript.
@@ -96,8 +98,9 @@ func (h *handlers) agentChrome(r *http.Request, activeID string) (chrome, []agen
 	nav := make([]agentSessionNav, 0, len(list))
 	for _, as := range list {
 		sz := sizes[as.ID]
-		rows = append(rows, agentSessionRow{AgentSession: as, Live: liveIDs[as.ID], Running: runIDs[as.ID], Frames: sz.Frames, Bytes: sz.Bytes})
-		nav = append(nav, agentSessionNav{ID: as.ID, Title: sessionLabel(as), Backend: as.Backend, Live: liveIDs[as.ID], Running: runIDs[as.ID]})
+		status, bare := agentsession.SplitStatus(as.Title)
+		rows = append(rows, agentSessionRow{AgentSession: as, Live: liveIDs[as.ID], Running: runIDs[as.ID], Frames: sz.Frames, Bytes: sz.Bytes, Status: status, Bare: bare})
+		nav = append(nav, agentSessionNav{ID: as.ID, Title: sessionLabel(as), Status: status, Backend: as.Backend, Live: liveIDs[as.ID], Running: runIDs[as.ID]})
 	}
 	ch.AgentMode = true
 	ch.AgentSessions = nav
@@ -108,8 +111,8 @@ func (h *handlers) agentChrome(r *http.Request, activeID string) (chrome, []agen
 // sessionLabel is what a session is called in lists: its title, or a
 // backend-plus-directory fallback for untitled ones.
 func sessionLabel(as store.AgentSession) string {
-	if as.Title != "" {
-		return as.Title
+	if _, bare := agentsession.SplitStatus(as.Title); bare != "" {
+		return bare
 	}
 	if as.Cwd != "" {
 		parts := strings.Split(strings.TrimRight(as.Cwd, "/"), "/")
@@ -689,11 +692,29 @@ type agentSessionData struct {
 	Running    bool // process running right now
 	Frames     int  // stored frames
 	Bytes      int64
+	Status     string // from the title's marker
+	Bare       string // the title without it
 	Err        string
 }
 
 // Size words the stored size of the session's transcript.
 func (d agentSessionData) Size() string { return fmtBytes(d.Bytes) }
+
+// StatusOptions lists the statuses the header's picker offers.
+func (agentSessionData) StatusOptions() []statusOption { return statusOptions() }
+
+type statusOption struct{ Value, Label string }
+
+func statusOptions() []statusOption {
+	out := []statusOption{{"", agentsession.StatusLabel("")}}
+	for _, s := range agentsession.Statuses {
+		out = append(out, statusOption{s, agentsession.StatusLabel(s)})
+	}
+	return out
+}
+
+// StatusOptions lists the statuses a row's picker offers.
+func (agentSessionRow) StatusOptions() []statusOption { return statusOptions() }
 
 func (h *handlers) agentSessionPage(w http.ResponseWriter, r *http.Request) {
 	if p := principalFrom(r.Context()); p != nil {
@@ -746,6 +767,7 @@ func (h *handlers) agentSessionPage(w http.ResponseWriter, r *http.Request) {
 			frames, bytes = row.Frames, row.Bytes
 		}
 	}
+	status, bare := agentsession.SplitStatus(as.Title)
 	render(w, http.StatusOK, "agent_session.html", agentSessionData{
 		chrome:     ch,
 		Principal:  p,
@@ -757,6 +779,8 @@ func (h *handlers) agentSessionPage(w http.ResponseWriter, r *http.Request) {
 		Running:    running,
 		Frames:     frames,
 		Bytes:      bytes,
+		Status:     status,
+		Bare:       bare,
 		Err:        agentSessionErr(r.URL.Query().Get("err")),
 	})
 }
