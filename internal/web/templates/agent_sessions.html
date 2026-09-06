@@ -121,10 +121,9 @@
         <div class="sess-list">
           {{range .Sessions}}
           <div class="sess">
-            <span class="live-dot has-mark{{if .Running}} is-running{{else if .Live}} is-held{{end}}" data-session-dot="{{.ID}}" title="{{if .Running}}running{{else if .Live}}idle (harness connected){{else}}offline{{end}}">{{template "backendmark" .Backend}}</span>
+            <span class="live-dot has-mark{{if .Running}} is-running{{else if .Live}} is-held{{end}}{{if .Status}} status--{{.Status}}{{end}}" data-session-dot="{{.ID}}" title="{{if .Running}}running{{else if .Live}}idle (harness connected){{else}}offline{{end}}">{{template "backendmark" .Backend}}</span>
             <div class="sess-main">
               <div class="sess-title">
-                <span class="status-slot" data-session-status="{{.ID}}">{{template "statusmark" .Status}}</span>
                 <a href="/account/sessions/{{.ID}}" data-session-name="{{.ID}}">{{if .Bare}}{{.Bare}}{{else}}{{.Backend}} session{{end}}</a>
                 <span class="{{if .Running}}badge-live{{else if .Live}}badge-held{{else}}badge-off{{end}}" data-session-badge="{{.ID}}">{{if .Running}}running{{else if .Live}}idle{{else}}offline{{end}}</span>
                 {{template "statuspick" .}}

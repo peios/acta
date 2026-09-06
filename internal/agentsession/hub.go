@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/peios/acta/internal/agentsession/claude"
 	"github.com/peios/acta/internal/agentsession/model"
 	"github.com/peios/acta/internal/id"
 	"github.com/peios/acta/internal/store"
@@ -574,12 +575,44 @@ func (h *Hub) applyTitleAnswer(ctx context.Context, d Driver, ownerID, sessionID
 		delete(h.titling, sessionID)
 		h.mu.Unlock()
 		if title != "" {
-			if _, err := h.svc.SetTitle(ctx, sessionID, ownerID, title); err == nil {
-				h.pushRename(ownerID, sessionID, title)
+			// a session Acta just started is in progress; the backend named
+			// it without the marker, so it is told the full title, quietly
+			// (its own record, not a /rename the transcript would show)
+			full := WithDefaultStatus(title)
+			if _, err := h.svc.SetTitle(ctx, sessionID, ownerID, full); err == nil {
+				h.pushRename(ownerID, sessionID, full)
+				if full != title {
+					h.sendQuietRename(ctx, ownerID, sessionID, full)
+				}
 			}
 		}
 	}
 	return true
+}
+
+// sendQuietRename gives a running backend process a title without the
+// command a person would type: Claude Code's rename control alone (the
+// name peers see is left as it was), Codex's name request.
+func (h *Hub) sendQuietRename(ctx context.Context, ownerID, sessionID, title string) {
+	c := h.harnessFor(ownerID, sessionID)
+	if c == nil || !c.isRunning(sessionID) {
+		return
+	}
+	as, err := h.svc.store.AgentSessionByID(ctx, sessionID)
+	if err != nil {
+		return
+	}
+	switch as.Backend {
+	case "claude-code":
+		c.write(sessionID, claude.RenameLine(title))
+	default:
+		if d := DriverFor(as.Backend); d != nil {
+			lines, _ := d.Rename(as, title)
+			for _, l := range lines {
+				c.write(sessionID, l)
+			}
+		}
+	}
 }
 
 // Delete removes a session and tells every harness holding it to stop its

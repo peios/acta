@@ -94,6 +94,13 @@ func (h *handlers) agentChrome(r *http.Request, activeID string) (chrome, []agen
 	if err != nil {
 		return chrome{}, nil, nil, err
 	}
+	// what is under way first, then what is waiting, then the rest, then
+	// what is finished; most recently touched first within each
+	sort.SliceStable(list, func(i, j int) bool {
+		si, _ := agentsession.SplitStatus(list[i].Title)
+		sj, _ := agentsession.SplitStatus(list[j].Title)
+		return statusRank(si) < statusRank(sj)
+	})
 	rows := make([]agentSessionRow, 0, len(list))
 	nav := make([]agentSessionNav, 0, len(list))
 	for _, as := range list {
@@ -106,6 +113,19 @@ func (h *handlers) agentChrome(r *http.Request, activeID string) (chrome, []agen
 	ch.AgentSessions = nav
 	ch.ActiveSession = activeID
 	return ch, rows, presences, nil
+}
+
+// statusRank orders sessions by status: in progress, to do, none, done.
+func statusRank(status string) int {
+	switch status {
+	case agentsession.StatusInProgress:
+		return 0
+	case agentsession.StatusTodo:
+		return 1
+	case agentsession.StatusDone:
+		return 3
+	}
+	return 2
 }
 
 // sessionLabel is what a session is called in lists: its title, or a
@@ -555,7 +575,8 @@ func (h *handlers) agentSessionCreate(w http.ResponseWriter, r *http.Request) {
 		options["effort"] = e
 	}
 
-	as, err := h.agentSessions.Create(r.Context(), p.ID, backend, cwd, title, options)
+	// a session started here is in progress until its owner says otherwise
+	as, err := h.agentSessions.Create(r.Context(), p.ID, backend, cwd, agentsession.WithDefaultStatus(title), options)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

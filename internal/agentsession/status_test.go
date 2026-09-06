@@ -32,6 +32,11 @@ func TestSplitStatus(t *testing.T) {
 	if got := TitleWithStatus(StatusDone, ""); got != "[DONE]" {
 		t.Errorf("compose bare-less = %q", got)
 	}
+	for in, want := range map[string]string{"Fix the build": "[IN PROGRESS] Fix the build", "[DONE] shipped": "[DONE] shipped", "Old [TODO]": "Old [TODO]", "  ": ""} {
+		if got := WithDefaultStatus(in); got != want {
+			t.Errorf("WithDefaultStatus(%q) = %q, want %q", in, got, want)
+		}
+	}
 	// a round trip moves an end marker to the start
 	s, b := SplitStatus("Testing [IN PROGRESS]")
 	if got := TitleWithStatus(s, b); got != "[IN PROGRESS] Testing" {

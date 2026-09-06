@@ -77,6 +77,16 @@ func TitleWithStatus(status, bare string) string {
 	return m + " " + bare
 }
 
+// WithDefaultStatus gives a title with no marker the status a session
+// starts in: in progress. A session created in Acta is being worked on by
+// definition; a title that already carries a marker keeps it.
+func WithDefaultStatus(title string) string {
+	if s, _ := SplitStatus(title); s != "" || strings.TrimSpace(title) == "" {
+		return strings.TrimSpace(title)
+	}
+	return TitleWithStatus(StatusInProgress, title)
+}
+
 // StatusLabel words a status for a reader.
 func StatusLabel(status string) string {
 	switch status {
