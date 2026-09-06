@@ -282,3 +282,24 @@ func TestModelSwitchFollowsThreadSettings(t *testing.T) {
 		}
 	}
 }
+
+// TestTerminalInteractionFoldsIntoTheCommand checks the notice that the
+// model wrote to a running command's stdin lands on that command's call
+// rather than as an unknown frame.
+func TestTerminalInteractionFoldsIntoTheCommand(t *testing.T) {
+	fs := frames(
+		"", `{"method":"item/started","params":{"item":{"type":"commandExecution","id":"c9","command":"python","cwd":"/w","status":"inProgress","aggregatedOutput":null},"turnId":"T1"}}`,
+		"", `{"method":"item/commandExecution/terminalInteraction","params":{"stdin":"print(1)\n","itemId":"c9","turnId":"T1","threadId":"th","processId":"85117"}}`,
+		"", `{"method":"item/completed","params":{"item":{"type":"commandExecution","id":"c9","command":"python","cwd":"/w","status":"completed","aggregatedOutput":"1\n","exitCode":0},"turnId":"T1"}}`,
+	)
+	evs := run(t, fs)
+	for _, e := range evs {
+		if e.T == model.Unknown {
+			t.Fatalf("terminalInteraction rendered as unknown: %s", kinds(evs))
+		}
+	}
+	if !strings.Contains(kinds(evs), "fold→tool:c9") {
+		t.Errorf("expected a fold into the command: %s", kinds(evs))
+	}
+	nothingLost(t, fs, evs)
+}

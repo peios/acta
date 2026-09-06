@@ -691,7 +691,8 @@ func (p *Projector) notification(f model.Frame, m map[string]any) []model.Event 
 		e := model.Event{T: model.ToolOutput, Seq: f.Seq, At: at(f), Live: true, Data: map[string]any{"task_id": str(params, "itemId"), "text": str(params, "delta")}}
 		e.To = "tool:" + str(params, "itemId")
 		return []model.Event{e}
-	case "item/plan/delta", "item/fileChange/outputDelta", "item/fileChange/patchUpdated", "item/mcpToolCall/progress":
+	case "item/plan/delta", "item/fileChange/outputDelta", "item/fileChange/patchUpdated", "item/mcpToolCall/progress",
+		"item/commandExecution/terminalInteraction": // stdin the model wrote to a running command; the command's output shows what came of it
 		if it := p.items[str(params, "itemId")]; it != nil {
 			return []model.Event{model.FoldTo(f, it.ref, strings.TrimPrefix(method, "item/"))}
 		}
