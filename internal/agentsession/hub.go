@@ -49,6 +49,8 @@ type Hub struct {
 	pendingLs  map[string]chan Inbound            // ListDirs / ScanTranscripts requests awaiting a harness answer
 	reads      map[string]*transcriptRead         // transcript reads in flight, by session/id
 	projectors map[string]*sessionProjector       // live projectors by session
+	histMu     sync.Mutex
+	hist       map[string]histEntry // recent sessions' projected transcripts (see History)
 }
 
 // transcriptRead gathers the lines a harness sends for one read of a

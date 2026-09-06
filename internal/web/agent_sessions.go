@@ -363,11 +363,14 @@ func (h *handlers) agentSessionImport(w http.ResponseWriter, r *http.Request) {
 }
 
 // pageTurns is how many turns the session page opens with; chunkTurns how
-// many each scroll fetch adds. Turns, not frames: a turn with a hundred tool
-// calls is still one unit of reading.
+// many each scroll fetch adds. Turns are the unit of reading, but an
+// autonomous session runs a hundred frames a turn, so a frame budget bounds
+// what the browser has to build at once (see agentsession.Tail).
 const (
-	pageTurns  = 40
-	chunkTurns = 20
+	pageTurns   = 40
+	chunkTurns  = 20
+	pageFrames  = 300
+	chunkFrames = 150
 )
 
 // agentSessionEvents returns a window of a session's projected events:
@@ -400,12 +403,12 @@ func (h *handlers) agentSessionEvents(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case q.Get("before") != "":
 		seq, _ := strconv.ParseInt(q.Get("before"), 10, 64)
-		win = agentsession.Before(all, seq, turns)
+		win = agentsession.Before(all, seq, turns, chunkFrames)
 	case q.Get("after") != "":
 		seq, _ := strconv.ParseInt(q.Get("after"), 10, 64)
-		win = agentsession.After(all, seq, turns)
+		win = agentsession.After(all, seq, turns, chunkFrames)
 	default:
-		win = agentsession.Tail(all, pageTurns)
+		win = agentsession.Tail(all, pageTurns, pageFrames)
 	}
 	evs := win.Events
 	if evs == nil {
@@ -598,7 +601,7 @@ func (h *handlers) agentSessionPage(w http.ResponseWriter, r *http.Request) {
 	}
 	// the page opens on the last turns; earlier ones arrive as the reader
 	// scrolls up (agentSessionEvents)
-	win := agentsession.Tail(all, pageTurns)
+	win := agentsession.Tail(all, pageTurns, pageFrames)
 	evs := win.Events
 	if evs == nil {
 		evs = []model.Event{}

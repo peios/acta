@@ -873,6 +873,7 @@
   }
 
   let hydrated = false;
+  let hydrating = false;
   // cold: rendering a chunk of older (or already-seen) events into the
   // log without letting them touch the live state — the current model and
   // mode, gauges, pills, lanes' status, the rewind order. renderChunk sets
@@ -3373,7 +3374,9 @@
       if (mark) cur.log.insertBefore(mark, live);
       cur.log.insertBefore(node, live);
       if (!cold && !detached) placeActivity();
-      if (stick) scroll(cur.log); else if (hydrated && !cold) noteUnread(cur);
+      // hydrate scrolls once at the end: a scroll per frame forces a layout
+      // per frame, and the page is built from hundreds of them
+      if (stick && !hydrating) scroll(cur.log); else if (hydrated && !cold) noteUnread(cur);
     } else {
       // an event that drew nothing still names a node: whatever its raws
       // landed on, so later events addressed to it find the same host
@@ -3597,7 +3600,9 @@
     const script = document.querySelector('[data-chat-events]');
     let evs = [];
     try { evs = JSON.parse(script ? script.textContent : '[]') || []; } catch (_) { evs = []; }
+    hydrating = true;
     for (const ev of evs) addEvent(ev);
+    hydrating = false;
     for (const l of lanes.values()) { placeActivity(l); scroll(l.log); }
     topSeq = evs.length ? evs[0].seq : 0;
     earlierEl.hidden = !hasEarlier;

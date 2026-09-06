@@ -103,6 +103,19 @@ func (h *Hub) emit(ctx context.Context, sessionID string, ev store.AgentSessionE
 // the events with a source frame after afterSeq. The projector always starts
 // from the beginning: its state at frame N depends on frames 1..N-1.
 func (h *Hub) History(ctx context.Context, as store.AgentSession, afterSeq int64) ([]model.Event, int64, error) {
+	// A page open is followed by scroll fetches and a socket replay, each
+	// wanting the same projection of the same transcript; a long one costs a
+	// second to load and project, so the last few are kept, in wire form
+	// (payloads dropped: the frames endpoint fetches those by seq), and
+	// reused while the transcript has not grown.
+	h.histMu.Lock()
+	ent, ok := h.hist[as.ID]
+	h.histMu.Unlock()
+	if ok {
+		if more, err := h.svc.Events(ctx, as.ID, ent.last, 1); err == nil && len(more) == 0 {
+			return afterOf(ent.events, afterSeq), ent.last, nil
+		}
+	}
 	evs, err := h.svc.Events(ctx, as.ID, 0, 0)
 	if err != nil {
 		return nil, 0, err
@@ -116,12 +129,48 @@ func (h *Hub) History(ctx context.Context, as store.AgentSession, afterSeq int64
 	for _, ev := range evs {
 		last = ev.Seq
 		for _, e := range p.Project(frameOf(ev, true)) {
-			if ev.Seq > afterSeq {
-				out = append(out, e)
+			out = append(out, e.Wire())
+		}
+	}
+	h.histMu.Lock()
+	if h.hist == nil {
+		h.hist = map[string]histEntry{}
+	}
+	if len(h.hist) >= histKeep {
+		for id := range h.hist { // any one: the set is tiny
+			if id != as.ID {
+				delete(h.hist, id)
+				break
 			}
 		}
 	}
-	return out, last, nil
+	h.hist[as.ID] = histEntry{last: last, events: out}
+	h.histMu.Unlock()
+	return afterOf(out, afterSeq), last, nil
+}
+
+// histEntry is a session's projected transcript, in wire form, as of the
+// stored frame last.
+type histEntry struct {
+	last   int64
+	events []model.Event
+}
+
+// histKeep is how many sessions' projections are kept; a reader has one or
+// two open at a time, and each is a few megabytes at most.
+const histKeep = 4
+
+// afterOf is the events past a stored frame's seq.
+func afterOf(evs []model.Event, afterSeq int64) []model.Event {
+	if afterSeq <= 0 {
+		return evs
+	}
+	for i, e := range evs {
+		if e.Seq > afterSeq {
+			return evs[i:]
+		}
+	}
+	return nil
 }
 
 // unknownProjector shows every frame verbatim as an unknown event, for a
@@ -166,18 +215,46 @@ func turnsOf(evs []model.Event) [][]model.Event {
 	return out
 }
 
-// Tail is the last n turns.
-func Tail(evs []model.Event, n int) Window {
-	turns := turnsOf(evs)
-	if n <= 0 || len(turns) <= n {
-		return Window{Events: evs}
+// A window is bounded two ways: by turns, so a page opens on a readable run
+// of conversation, and by frames, because an autonomous session can spend a
+// hundred tool calls on one turn and forty such turns are thousands of
+// frames the browser takes half a minute to build. Whole turns are taken
+// until either budget is spent (always at least one). A turn that would not
+// fit is then cut inside itself when the window is still under half full,
+// so a page never opens on two frames because the turn before them was
+// long; and a single turn beyond twice the frame budget is cut regardless.
+// Zero means no bound.
+
+// Tail is the last turns that fit the budgets.
+func Tail(evs []model.Event, turns, frames int) Window {
+	ts := turnsOf(evs)
+	n, count := 0, 0
+	for n < len(ts) {
+		t := ts[len(ts)-1-n]
+		if n > 0 && ((turns > 0 && n >= turns) || (frames > 0 && count+len(t) > frames)) {
+			break
+		}
+		n++
+		count += len(t)
 	}
-	keep := turns[len(turns)-n:]
-	return Window{Events: evs[len(evs)-countOf(keep):], More: true}
+	more := n < len(ts)
+	if more && frames > 0 && count < frames/2 && (turns <= 0 || n < turns) {
+		count = frames // the rest comes from inside the turn before
+	}
+	if count > len(evs) {
+		count = len(evs)
+	}
+	out := evs[len(evs)-count:]
+	if frames > 0 && len(out) > 2*frames {
+		out = out[len(out)-frames:]
+		more = true
+	}
+	return Window{Events: out, More: more}
 }
 
-// Before is the n turns that end before the event with seq (exclusive).
-func Before(evs []model.Event, seq int64, n int) Window {
+// Before is the turns that end before the event with seq (exclusive) and
+// fit the budgets.
+func Before(evs []model.Event, seq int64, turns, frames int) Window {
 	cut := len(evs)
 	for i, e := range evs {
 		if e.Seq >= seq {
@@ -185,11 +262,12 @@ func Before(evs []model.Event, seq int64, n int) Window {
 			break
 		}
 	}
-	return Tail(evs[:cut], n)
+	return Tail(evs[:cut], turns, frames)
 }
 
-// After is the n turns that begin after the event with seq (exclusive).
-func After(evs []model.Event, seq int64, n int) Window {
+// After is the turns that begin after the event with seq (exclusive) and
+// fit the budgets.
+func After(evs []model.Event, seq int64, turns, frames int) Window {
 	start := len(evs)
 	for i, e := range evs {
 		if e.Seq > seq {
@@ -198,11 +276,29 @@ func After(evs []model.Event, seq int64, n int) Window {
 		}
 	}
 	rest := evs[start:]
-	turns := turnsOf(rest)
-	if n <= 0 || len(turns) <= n {
-		return Window{Events: rest}
+	ts := turnsOf(rest)
+	n, count := 0, 0
+	for n < len(ts) {
+		t := ts[n]
+		if n > 0 && ((turns > 0 && n >= turns) || (frames > 0 && count+len(t) > frames)) {
+			break
+		}
+		n++
+		count += len(t)
 	}
-	return Window{Events: rest[:countOf(turns[:n])], More: true}
+	more := n < len(ts)
+	if more && frames > 0 && count < frames/2 && (turns <= 0 || n < turns) {
+		count = frames // the rest comes from inside the turn after
+	}
+	if count > len(rest) {
+		count = len(rest)
+	}
+	out := rest[:count]
+	if frames > 0 && len(out) > 2*frames {
+		out = out[:frames]
+		more = true
+	}
+	return Window{Events: out, More: more}
 }
 
 func countOf(turns [][]model.Event) int {
