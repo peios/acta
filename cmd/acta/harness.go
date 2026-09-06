@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -29,6 +30,11 @@ import (
 // Acta never runs an agent itself — the harness holds the credentials and
 // this machine's shell. See ACT-36 and ACT-37.
 func cmdHarness(args []string) error {
+	fs := flag.NewFlagSet("harness", flag.ContinueOnError)
+	verbose := fs.Bool("verbose", os.Getenv("ACTA_HARNESS_VERBOSE") != "", "log every frame, process line and lifecycle step to stderr")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
 	cfg := loadConfig()
 	token := os.Getenv("ACTA_TOKEN")
 	if token == "" {
@@ -52,10 +58,11 @@ func cmdHarness(args []string) error {
 		// Outbound frames outlive a connection: what a running process says
 		// while the server is away queues here (up to the buffer) and is
 		// flushed on reconnect instead of being lost with the socket.
-		out:    make(chan []byte, 256),
-		procs:  map[string]*proc{},
-		tails:  map[string]chan struct{}{},
-		stateP: harnessStatePath(),
+		out:     make(chan []byte, 256),
+		procs:   map[string]*proc{},
+		tails:   map[string]chan struct{}{},
+		stateP:  harnessStatePath(),
+		verbose: *verbose,
 	}
 	h.sessions = loadHarnessState(h.stateP)
 
@@ -94,6 +101,36 @@ type harness struct {
 	out  chan []byte
 
 	forgotten map[string]bool // sessions Acta deleted: nothing more is sent about them
+
+	verbose bool // --verbose: narrate frames, process lines and lifecycle to stderr
+}
+
+// logf narrates what the harness is doing, when asked to (--verbose): one
+// line per frame either way, per line to or from a process, and per
+// lifecycle step, each stamped, so a stuck session can be followed from
+// the terminal the harness runs in.
+func (h *harness) logf(format string, args ...any) {
+	if !h.verbose {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "acta harness %s: "+format+"\n", append([]any{time.Now().Format("15:04:05.000")}, args...)...)
+}
+
+// short clips a line for a log message.
+func short(b []byte) string {
+	s := strings.TrimSpace(string(b))
+	if len(s) > 160 {
+		return s[:160] + "…"
+	}
+	return s
+}
+
+// sid clips a session id for a log message.
+func sid(s string) string {
+	if len(s) > 8 {
+		return s[:8]
+	}
+	return s
 }
 
 type proc struct {
@@ -244,7 +281,18 @@ func (h *harness) connectAndServe(ctx context.Context) error {
 			Catchup *readReq          `json:"catchup"`
 		}
 		if json.Unmarshal(data, &f) != nil {
+			h.logf("← unreadable frame: %s", short(data))
 			continue
+		}
+		switch f.T {
+		case "write":
+			h.logf("← write %s: %s", sid(f.Session), short([]byte(f.Line)))
+		case "spawn":
+			h.logf("← spawn %s: %s %v (resume=%v, catchup=%v) in %s", sid(f.Session), f.Cmd, f.Args, f.Resume, f.Catchup != nil, f.Cwd)
+		case "read":
+			h.logf("← read %s/%s: %s after %q (full=%v, hold=%v)", sid(f.Session), f.ID, f.Path, f.After, f.Full, f.Hold)
+		default:
+			h.logf("← %s %s %s", f.T, sid(f.Session), f.ID)
 		}
 		switch f.T {
 		case "ls":
@@ -355,9 +403,53 @@ func (h *harness) send(v any) {
 	if err != nil {
 		return
 	}
+	if h.verbose {
+		h.logSend(v, len(b))
+	}
 	select {
 	case h.out <- b:
 	default:
+		h.logf("→ dropped (queue full): %s", short(b))
+	}
+}
+
+// logSend narrates an outbound frame: its kind, session and, for an
+// event, what the process said.
+func (h *harness) logSend(v any, n int) {
+	m, ok := v.(map[string]any)
+	if !ok {
+		h.logf("→ frame (%d bytes)", n)
+		return
+	}
+	t, _ := m["t"].(string)
+	session, _ := m["session"].(string)
+	switch t {
+	case "event":
+		if raw, ok := m["payload"].(json.RawMessage); ok {
+			var head struct {
+				Type   string `json:"type"`
+				Method string `json:"method"`
+				ID     any    `json:"id"`
+			}
+			_ = json.Unmarshal(raw, &head)
+			what := head.Method
+			if what == "" {
+				what = head.Type
+			}
+			if what == "" && head.ID != nil {
+				what = fmt.Sprintf("response %v", head.ID)
+			}
+			h.logf("→ event %s: %s (%d bytes)", sid(session), what, len(raw))
+			return
+		}
+		h.logf("→ event %s (%d bytes)", sid(session), n)
+	case "records":
+		lines, _ := m["lines"].([]json.RawMessage)
+		h.logf("→ records %s/%v: %d lines (%d bytes)", sid(session), m["id"], len(lines), n)
+	case "exit":
+		h.logf("→ exit %s: code %v", sid(session), m["code"])
+	default:
+		h.logf("→ %s %s (%d bytes)", t, sid(session), n)
 	}
 }
 
@@ -704,6 +796,7 @@ func (h *harness) spawn(session, cwd, command string, args []string, env map[str
 	h.mu.Lock()
 	if _, running := h.procs[session]; running {
 		h.mu.Unlock()
+		h.logf("spawn %s: a process is already running here; nothing started", sid(session))
 		return
 	}
 	h.sessions[session] = true
@@ -751,6 +844,7 @@ func (h *harness) spawn(session, cwd, command string, args []string, env map[str
 	h.mu.Lock()
 	h.procs[session] = p
 	h.mu.Unlock()
+	h.logf("spawned %s: pid %d", sid(session), cmd.Process.Pid)
 	spawned := map[string]any{"t": "spawned", "session": session, "resumed": resume}
 	if styles {
 		spawned["styles"] = outputStyles(cwd)
@@ -784,6 +878,7 @@ func (h *harness) spawn(session, cwd, command string, args []string, env map[str
 		h.mu.Lock()
 		delete(h.procs, session)
 		h.mu.Unlock()
+		h.logf("process %s ended: code %d (%v)", sid(session), code, err)
 		if h.isForgotten(session) {
 			return // Acta deleted it; the exit is expected and unreported
 		}
@@ -791,13 +886,23 @@ func (h *harness) spawn(session, cwd, command string, args []string, env map[str
 	}()
 }
 
-// write sends one composed line to a session's process. A line for a session
-// with no process is dropped: Acta spawns before it writes.
+// write sends one composed line to a session's process. A line for a
+// session with no process means Acta believes one is running that is not
+// (an exit it never heard of): the harness reports an exit so Acta starts
+// the session again and hands the line over, instead of dropping it and
+// leaving the page waiting.
 func (h *harness) write(session, line string) {
+	if line == "" {
+		return
+	}
 	h.mu.Lock()
 	p := h.procs[session]
 	h.mu.Unlock()
-	if p == nil || line == "" {
+	if p == nil {
+		h.logf("write %s: no process here; reporting an exit so Acta starts one", sid(session))
+		if !h.isForgotten(session) {
+			h.send(map[string]any{"t": "exit", "session": session, "code": -1, "stderr": "no process was running for this session on the harness"})
+		}
 		return
 	}
 	p.stdinMu.Lock()
