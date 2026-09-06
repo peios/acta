@@ -260,6 +260,8 @@ func (p *Projector) Project(f model.Frame) []model.Event {
 		out = p.reset(f)
 	case "command_lifecycle":
 		out = p.lifecycle(f)
+	case "tool_progress":
+		out = p.toolProgress(f)
 	case "stream_event":
 		out = p.stream(f)
 	case TranscriptKind:
@@ -2276,6 +2278,30 @@ func (p *Projector) reset(f model.Frame) []model.Event {
 	p.turnHasEcho = false
 	p.sessionRef = e.Ref
 	return []model.Event{e}
+}
+
+// toolProgress: a heartbeat Claude Code sends while a tool runs long (every
+// 30 s for a Bash command), naming the call in parent_tool_use_id — the
+// call, not a subagent lane. It folds into the call's card with how long
+// the tool has been at it.
+func (p *Projector) toolProgress(f model.Frame) []model.Event {
+	m := obj(f.Payload)
+	call := str(m, "parent_tool_use_id")
+	if call == "" || p.toolNames[call] == "" {
+		// the heartbeat's own id is the call's with "-heartbeat-N" appended
+		call = str(m, "tool_use_id")
+		if i := strings.Index(call, "-heartbeat-"); i >= 0 {
+			call = call[:i]
+		}
+	}
+	label := "progress"
+	if s := num(m, "elapsed_time_seconds"); s > 0 {
+		label = "running · " + strconv.Itoa(int(s)) + "s"
+	}
+	if call != "" && p.toolNames[call] != "" {
+		return []model.Event{model.FoldTo(f, "tool:"+call, label)}
+	}
+	return []model.Event{model.FoldTo(f, "", label)}
 }
 
 func (p *Projector) lifecycle(f model.Frame) []model.Event {

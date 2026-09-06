@@ -336,3 +336,24 @@ func ExampleProjector() {
 	fmt.Println(evs[0].T, evs[0].Ref, evs[0].Data["cmd"].(map[string]any)["args"])
 	// Output: input cmd:1 tidy up
 }
+
+func TestToolProgressFoldsIntoTheCall(t *testing.T) {
+	fs := frames(
+		"input", `{"text":"build it"}`,
+		"assistant", `{"type":"assistant","message":{"model":"m","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"make"}}]}}`,
+		"tool_progress", `{"type":"tool_progress","uuid":"h1","heartbeat":true,"tool_name":"Bash","tool_use_id":"t1-heartbeat-0","parent_tool_use_id":"t1","elapsed_time_seconds":30}`,
+		"tool_progress", `{"type":"tool_progress","uuid":"h2","heartbeat":true,"tool_name":"Bash","tool_use_id":"t1-heartbeat-1","parent_tool_use_id":"t1","elapsed_time_seconds":60}`,
+		"user", `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}`,
+	)
+	evs := run(t, fs)
+	nothingLost(t, fs, evs)
+	want := "input assistant fold→tool:t1 fold→tool:t1 tool.result→tool:t1"
+	if got := kinds(evs); got != want {
+		t.Errorf("kinds:\n got %s\nwant %s", got, want)
+	}
+	for _, e := range evs {
+		if e.T == model.Unknown {
+			t.Errorf("tool_progress left unknown")
+		}
+	}
+}
