@@ -246,8 +246,18 @@ func TestWire(t *testing.T) {
 	if k, v, ok := Option("control", json.RawMessage(`{"op":"setting","key":"fast","value":"on"}`)); !ok || k != "service_tier" || v != "priority" {
 		t.Errorf("fast option: %s %s %v", k, v, ok)
 	}
-	if n := Notes("turn/started", json.RawMessage(`{"method":"turn/started","params":{"turn":{"id":"T5"}}}`)); n["turn"] != "T5" {
+	if n := Notes("", "turn/started", json.RawMessage(`{"method":"turn/started","params":{"turn":{"id":"T5"}}}`)); n["turn"] != "T5" {
 		t.Errorf("notes: %v", n)
+	}
+	// a subagent thread's turns never name the session's active turn
+	if n := Notes("main", "turn/started", json.RawMessage(`{"method":"turn/started","params":{"turn":{"id":"C1"},"threadId":"child"}}`)); n != nil {
+		t.Errorf("child turn noted: %v", n)
+	}
+	if n := Notes("main", "turn/completed", json.RawMessage(`{"method":"turn/completed","params":{"turn":{"id":"C1"},"threadId":"child"}}`)); n != nil {
+		t.Errorf("child turn end noted: %v", n)
+	}
+	if n := Notes("main", "turn/started", json.RawMessage(`{"method":"turn/started","params":{"turn":{"id":"T6"},"threadId":"main"}}`)); n["turn"] != "T6" {
+		t.Errorf("own turn not noted: %v", n)
 	}
 	if Kind(json.RawMessage(`{"id":"x","result":{}}`)) != "response" || Kind(json.RawMessage(`{"method":"turn/started"}`)) != "turn/started" {
 		t.Errorf("kind")

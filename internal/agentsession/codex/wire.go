@@ -328,7 +328,7 @@ func Ready(kind string, payload json.RawMessage) bool {
 
 // Notes: the thread id (for resume) and the active turn (for steering and
 // interrupting), from the frames that name them.
-func Notes(kind string, payload json.RawMessage) map[string]string {
+func Notes(conversation, kind string, payload json.RawMessage) map[string]string {
 	var m struct {
 		ID     any `json:"id"`
 		Result struct {
@@ -337,7 +337,8 @@ func Notes(kind string, payload json.RawMessage) map[string]string {
 			} `json:"thread"`
 		} `json:"result"`
 		Params struct {
-			Thread struct {
+			ThreadID string `json:"threadId"`
+			Thread   struct {
 				ID string `json:"id"`
 			} `json:"thread"`
 			Turn struct {
@@ -348,9 +349,12 @@ func Notes(kind string, payload json.RawMessage) map[string]string {
 	if json.Unmarshal(payload, &m) != nil {
 		return nil
 	}
+	// a subagent's thread reports its turns on the same connection: only
+	// the session's own thread names the turn a steer or interrupt targets
+	ownThread := conversation == "" || m.Params.ThreadID == "" || m.Params.ThreadID == conversation
 	switch kind {
 	case "thread/started":
-		if m.Params.Thread.ID != "" {
+		if m.Params.Thread.ID != "" && conversation == "" {
 			return map[string]string{"conversation": m.Params.Thread.ID}
 		}
 	case "response":
@@ -358,11 +362,13 @@ func Notes(kind string, payload json.RawMessage) map[string]string {
 			return map[string]string{"conversation": m.Result.Thread.ID}
 		}
 	case "turn/started":
-		if m.Params.Turn.ID != "" {
+		if m.Params.Turn.ID != "" && ownThread {
 			return map[string]string{"turn": m.Params.Turn.ID}
 		}
 	case "turn/completed":
-		return map[string]string{"turn": ""}
+		if ownThread {
+			return map[string]string{"turn": ""}
+		}
 	}
 	return nil
 }

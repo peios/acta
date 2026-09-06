@@ -44,9 +44,10 @@ type Driver interface {
 	ControlLines(as store.AgentSession, op BrowserOp) [][]byte
 	// Notes extracts, from a stored frame, what the session must remember
 	// for later lines: the backend's own conversation id (for a resume), the
-	// active turn (for an interrupt). Keys go into the session's options; an
-	// empty value removes the key.
-	Notes(sessionID, kind string, payload json.RawMessage) map[string]string
+	// active turn (for an interrupt or a steer). Keys go into the session's
+	// options; an empty value removes the key. The session is given for
+	// what it already remembers, such as its own conversation id.
+	Notes(as store.AgentSession, kind string, payload json.RawMessage) map[string]string
 	// Option extracts a setting change from an outgoing line (a mode or
 	// model control, an /effort message) to remember for the next resume.
 	Option(kind string, payload json.RawMessage) (key, value string, ok bool)
@@ -138,8 +139,8 @@ func (claudeDriver) InterruptLine(store.AgentSession) []byte { return claude.Int
 func (claudeDriver) ControlLines(_ store.AgentSession, op BrowserOp) [][]byte {
 	return claude.ControlLines(claude.Op{Op: op.Op, ID: op.ID, Outcome: op.Outcome, Message: op.Message, Input: op.Input, Permissions: op.Permissions, Answers: op.Answers, Content: op.Content, Key: op.Key, Value: op.Value, Target: op.Target, DryRun: op.DryRun, Question: op.Question})
 }
-func (claudeDriver) Notes(id, kind string, p json.RawMessage) map[string]string {
-	if c := claude.Conversation(id, kind, p); c != "" {
+func (claudeDriver) Notes(as store.AgentSession, kind string, p json.RawMessage) map[string]string {
+	if c := claude.Conversation(as.ID, kind, p); c != "" {
 		return map[string]string{"conversation": c}
 	}
 	return nil
@@ -209,8 +210,9 @@ func (codexDriver) InterruptLine(as store.AgentSession) []byte {
 func (codexDriver) ControlLines(as store.AgentSession, op BrowserOp) [][]byte {
 	return codex.ControlLines(as.Options, codex.Op{Op: op.Op, ID: op.ID, Kind: op.Kind, Outcome: op.Outcome, Message: op.Message, Input: op.Input, Permissions: op.Permissions, Answers: op.Answers, Content: op.Content, Key: op.Key, Value: op.Value, Target: op.Target, DryRun: op.DryRun, Question: op.Question})
 }
-func (codexDriver) Notes(_, kind string, p json.RawMessage) map[string]string {
-	return codex.Notes(kind, p)
+func (codexDriver) Notes(as store.AgentSession, kind string, p json.RawMessage) map[string]string {
+	conv, _ := as.Options["conversation"].(string)
+	return codex.Notes(conv, kind, p)
 }
 func (codexDriver) Option(kind string, p json.RawMessage) (string, string, bool) {
 	return codex.Option(kind, p)

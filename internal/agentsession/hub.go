@@ -999,7 +999,11 @@ func (h *Hub) HarnessFrame(ctx context.Context, c *harnessConn, in Inbound) {
 		if c.setRunning(in.Session, true) { // an event means the process is alive
 			h.notify(c.ownerID, in.Session)
 		}
-		d := h.driverOf(ctx, in.Session)
+		as, asErr := h.svc.store.AgentSessionByID(ctx, in.Session)
+		var d Driver
+		if asErr == nil {
+			d = DriverFor(as.Backend)
+		}
 		kind := in.Kind // a harness-authored notice names its own kind (task_output)
 		if kind == "" && d != nil {
 			kind = d.Kind(in.Payload)
@@ -1028,7 +1032,7 @@ func (h *Hub) HarnessFrame(ctx context.Context, c *harnessConn, in Inbound) {
 		}
 		h.record(ctx, in.Session, kind, in.Payload)
 		if d != nil {
-			h.afterFrame(ctx, c, d, in.Session, kind, in.Payload)
+			h.afterFrame(ctx, c, d, as, kind, in.Payload)
 		}
 	case FrameSpawned:
 		if c.setRunning(in.Session, true) {
@@ -1257,8 +1261,9 @@ func (h *Hub) Spawn(as store.AgentSession, target string) bool {
 // afterFrame applies the driver's rules to a stored frame: remember the
 // backend's conversation id for resume, drop the held message once taken,
 // and have the harness tail (or stop tailing) a background task's output.
-func (h *Hub) afterFrame(ctx context.Context, c *harnessConn, d Driver, session, kind string, payload json.RawMessage) {
-	for k, v := range d.Notes(session, kind, payload) {
+func (h *Hub) afterFrame(ctx context.Context, c *harnessConn, d Driver, as store.AgentSession, kind string, payload json.RawMessage) {
+	session := as.ID
+	for k, v := range d.Notes(as, kind, payload) {
 		_ = h.svc.SetOption(ctx, session, k, v)
 	}
 	if d.Acknowledged(kind, payload) {
