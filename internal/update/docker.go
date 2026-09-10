@@ -290,7 +290,7 @@ func (d Docker) Apply(ctx context.Context, j Job) error {
 	return err
 }
 func (d Docker) Validate(ctx context.Context, j Job) error {
-	_, err := d.compose(ctx, "exec", "-T", "app", "/usr/local/bin/acta-entrypoint", "/usr/local/bin/acta2-server", "-verify-recovery")
+	_, err := d.compose(ctx, "exec", "-T", "-u", "10001:10001", "app", "/bin/sh", "-ec", `export ACTA_DATABASE_URL="$(cat /run/acta/database-url)" ACTA_SECURITY_KEY_FILE=/run/acta/security-key; exec /usr/local/bin/acta2-server -verify-recovery`)
 	return err
 }
 func (d Docker) Restore(ctx context.Context, j Job) error {

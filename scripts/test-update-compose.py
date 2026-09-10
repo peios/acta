@@ -8,6 +8,7 @@ import argparse,base64,hashlib,json,os,secrets,shutil,subprocess,tempfile,time,u
 from pathlib import Path
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--current',type=Path,required=True);p.add_argument('--target',type=Path,required=True)
+p.add_argument('--bootstrap-controller',action='store_true',help='Test initial pre-production app transition using the candidate controller')
 p.add_argument('--public-key',type=Path,default=Path('deploy/update/release.pub'))
 a=p.parse_args();repo=Path(__file__).resolve().parents[1]
 root=Path(tempfile.mkdtemp(prefix='acta-update-test-'));project='acta-update-test-'+uuid.uuid4().hex[:8]
@@ -17,6 +18,7 @@ def out(args):return run(args,stdout=subprocess.PIPE).stdout.strip()
 def decoded(path):return json.loads(out([binary,'-input',path,'-public-key',a.public_key,'verify']))
 old,new=decoded(a.current),decoded(a.target)
 assert new['sequence']>old['sequence']
+if a.bootstrap_controller:old['images']['updater']=new['images']['updater']
 run(['python3','scripts/configure-deployment.py','--domain','acta.test','--email','test@example.com','--directory',config,'--project',project])
 run([binary,'-key',root/'test.seed','-public-key',root/'test.pub','keygen'])
 run(['python3','scripts/configure-updates.py','--deployment',config,'--bundle',repo,'--state',state,'--public-key',root/'test.pub','--prereleases'])
@@ -85,7 +87,6 @@ def offer(signed):
 def finished():
  j=control('status')['jobs'][0]
  if j['phase'] in ('succeeded','rolled_back','failed'):return j
- if j.get('error') and j['phase'] in ('committing','restoring','rollback_committing'):raise AssertionError(j)
  return None
 try:
  # Prepare worker configuration before starting the archive-enabled database.

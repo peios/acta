@@ -10,7 +10,7 @@
 	}
 	handle @maintenance {
 		header Retry-After 10
-        header Refresh 10
+		header Refresh 10
 		header Cache-Control no-store
 		respond "Acta is updating. Please retry in a moment." 503
 	}

@@ -69,7 +69,9 @@ jobs:
           mkdir -p /tmp/previous-release bin
           gh release download "$PREVIOUS" --repo "$GITHUB_REPOSITORY" --pattern acta-release.json --dir /tmp/previous-release
           cp /tmp/acta2-update bin/acta2-update
-          python3 scripts/test-update-compose.py --current /tmp/previous-release/acta-release.json --target /tmp/acta-release.json
+          extra=()
+          if [ "$PREVIOUS" = "v0.1.0-preview.1" ]; then extra+=(--bootstrap-controller); fi
+          python3 scripts/test-update-compose.py "${extra[@]}" --current /tmp/previous-release/acta-release.json --target /tmp/acta-release.json
       - name: Publish prerelease after every image and signature is ready
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -14,6 +14,7 @@ build: frontend
 	go build -trimpath -o bin/acta2-server ./cmd/acta2
 	go build -trimpath -o bin/acta2 ./cmd/acta2-cli
 	go build -trimpath -o bin/acta2-backup ./cmd/acta2-backup
+	go build -trimpath -o bin/acta2-update ./cmd/acta2-update
 
 db:
 	docker compose up -d --wait db
