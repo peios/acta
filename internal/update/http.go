@@ -86,11 +86,7 @@ func (s *Service) Serve(ctx context.Context) error {
 		respond(w, 200, map[string]any{"configured": true, "repository": s.c.Repository, "current": current, "available": available, "checked_at": st.Checked, "check_error": st.CheckError, "jobs": jobs})
 	})
 	mux.HandleFunc("POST /v1/check", func(w http.ResponseWriter, r *http.Request) {
-		go func() {
-			checkCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-			defer cancel()
-			_ = s.Check(checkCtx)
-		}()
+		s.RequestCheck()
 		respond(w, 202, map[string]bool{"checking": true})
 	})
 	mux.HandleFunc("POST /v1/install", func(w http.ResponseWriter, r *http.Request) {

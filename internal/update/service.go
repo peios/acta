@@ -54,6 +54,7 @@ type Service struct {
 	state    State
 	lock     *flock.Flock
 	wake     chan struct{}
+	check    chan struct{}
 	checking bool
 }
 
@@ -73,7 +74,7 @@ func Open(c Config, e Engine) (*Service, error) {
 	if !ok {
 		return nil, ErrBusy
 	}
-	s := &Service{c: c, key: key, engine: e, lock: l, wake: make(chan struct{}, 1)}
+	s := &Service{c: c, key: key, engine: e, lock: l, wake: make(chan struct{}, 1), check: make(chan struct{}, 1)}
 	if err = localstate.Read(filepath.Join(c.StateDir, "state.json"), &s.state); err != nil {
 		l.Unlock()
 		return nil, fmt.Errorf("load updater journal (bootstrap first): %w", err)
@@ -197,7 +198,11 @@ func (s *Service) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			_ = s.Check(ctx)
+			s.RequestCheck()
+		case <-s.check:
+			checkCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+			_ = s.Check(checkCtx)
+			cancel()
 		case <-s.wake:
 			if err := s.advance(ctx); err != nil {
 				fmt.Fprintln(os.Stderr, "Update paused:", err)
@@ -289,3 +294,10 @@ func (s *Service) advance(parent context.Context) error {
 func stringTrim(b []byte) string { return strings.TrimSpace(string(b)) }
 
 func (s *Service) busyView() bool { s.mu.Lock(); defer s.mu.Unlock(); return s.busy() }
+
+func (s *Service) RequestCheck() {
+	select {
+	case s.check <- struct{}{}:
+	default:
+	}
+}

@@ -55,7 +55,7 @@ for path in operator.iterdir():path.chmod(0o600)
       - {config}/Caddyfile:/etc/caddy/Caddyfile:ro
 ''')
 c=json.loads((config/'update/config.json').read_text());c['compose_files'].append(str(config/'review.yaml'));(config/'update/config.json').write_text(json.dumps(c))
-compose=['docker','compose','--project-name',project,'--env-file',config/'.env']
+compose=(['sudo','-n'] if os.environ.get('GITHUB_ACTIONS')=='true' else [])+['docker','compose','--project-name',project,'--env-file',config/'.env']
 for file in c['compose_files']:compose+=['-f',file]
 compose+=['-f',state/'active.json','--profile','backups','--profile','updates']
 def dc(*args):return out([*compose,*args])
@@ -140,6 +140,11 @@ func main(){c,e:=pgx.Connect(context.Background(),os.Getenv("ACTA_DATABASE_URL")
   print('PASS: failed migration recovery'+(' after whole-stack interruption' if crash else ''),flush=True)
   broken['sequence']+=1
  print('PASS: real release update and both recovery paths',flush=True)
+except BaseException:
+ for service in ('updater','app','db','backup'):
+  ids=out(['docker','ps','-aq','--filter','label=com.docker.compose.project='+project,'--filter','label=com.docker.compose.service='+service]).splitlines()
+  for cid in ids:subprocess.run(['docker','logs','--tail','180',cid],check=False)
+ raise
 finally:
  if os.environ.get('KEEP_UPDATE_TEST')=='1':print('Retained',root,project,flush=True)
  else:
