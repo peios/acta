@@ -97,6 +97,9 @@ func (d Docker) Prepare(ctx context.Context, j Job) error {
 	}
 	// A fresh independently configured full backup and restore drill establish
 	// recoverability before maintenance. The later cold copy closes the write gap.
+	if err = d.Prune(ctx); err != nil {
+		return err
+	}
 	for _, kind := range []string{"full", "drill"} {
 		if err = d.backup(ctx, j, kind); err != nil {
 			return err
@@ -264,7 +267,7 @@ func (d Docker) copy(ctx context.Context, j Job, image, source, target string) e
 			return e
 		}
 	}
-	_, e = command(ctx, "run", "--name", name, "--label", "acta.update.job="+j.ID, "--network", "none", "--read-only", "--mount", "type=volume,src="+source+",dst=/source,readonly", "--mount", "type=volume,src="+target+",dst=/target", "--entrypoint", "/bin/sh", image, "-ec", `test "$(cat /source/PG_VERSION)" = 17; test -z "$(find /source/pg_tblspc -mindepth 1 -print -quit)"; find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; cp -a /source/. /target/; sync`)
+	_, e = command(ctx, "run", "--name", name, "--label", "acta.update.job="+j.ID, "--label", "acta.update.installation="+d.Config.Installation, "--network", "none", "--read-only", "--mount", "type=volume,src="+source+",dst=/source,readonly", "--mount", "type=volume,src="+target+",dst=/target", "--entrypoint", "/bin/sh", image, "-ec", `test "$(cat /source/PG_VERSION)" = 17; test -z "$(find /source/pg_tblspc -mindepth 1 -print -quit)"; need=$(du -sb /source | cut -f1); available=$(df -PB1 /target | awk 'NR==2 {print $4}'); existing=$(du -sb /target | cut -f1); test "$((available + existing))" -ge "$((need + need / 10 + 536870912))"; find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; cp -a /source/. /target/; sync`)
 	if e != nil {
 		return e
 	}

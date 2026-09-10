@@ -26,7 +26,7 @@ config=dict(repository=a.repository,public_key_file=str(root/'update/release.pub
  project=values['ACTA_PROJECT'],installation=values['ACTA_INSTALLATION_ID'],
  compose_files=[str(bundle/f) for f in ('compose.production.yaml','compose.backups.yaml','compose.updates.yaml')],
  env_file=str(root/'.env'),backup_socket='/run/acta-backup/worker.sock',
- backup_token_file=str(root/'backup-token'),prereleases=a.prereleases,timeout_minutes=60)
+ backup_token_file=str(root/'backup-token'),prereleases=a.prereleases,timeout_minutes=60,retain_recovery_copies=2)
 (root/'update/config.json').write_text(json.dumps(config,indent=2)+'\n')
 with (root/'.env').open('a') as f:f.write(f'ACTA_CHECKOUT_DIR={bundle}\nACTA_UPDATE_DIR={state}\n')
 print('Updater configuration created. Bootstrap with a verified signed release before starting it.')

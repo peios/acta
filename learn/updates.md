@@ -116,11 +116,12 @@ work. The same forward-only boundary applies when reopening a rolled-back releas
 
 The cold recovery volume closes the write gap after the independently verified
 backup. It contains sensitive database data, protected like the installation's
-normal database volume; it is not off-machine disaster recovery. Recovery volumes
-are deliberately retained for operator inspection. Monitor disk space and remove
-old job-labelled volumes only after successful verification and according to your
-retention policy. Do not delete the active job's volume or run broad Docker prune
-commands during an update. Automated recovery-volume retention is not yet provided.
+normal database volume; it is not off-machine disaster recovery. The updater retains the two most recent completed recovery copies by default;
+configure `retain_recovery_copies` from 2 to 100. Before another update, it prunes
+only older copies recorded in its terminal jobs and carrying matching ownership
+labels. Copying requires the source size plus 10% and 512 MiB free headroom.
+Monitor disk space: these copies are separate from normal backup retention.
+Never delete the active job's volume or run broad Docker prune commands during an update.
 
 The journal records errors and resumable phases even when the app cannot respond.
 Inspect `docker compose logs updater` for private command diagnostics. The local

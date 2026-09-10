@@ -1,13 +1,13 @@
 package update
 
 import (
+	"acta2/internal/backup"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 )
@@ -25,7 +25,7 @@ func (s *Service) github(ctx context.Context, path string, binary bool) ([]byte,
 	}
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	if s.c.GitHubTokenFile != "" {
-		raw, err := os.ReadFile(s.c.GitHubTokenFile)
+		raw, err := backup.Secret(s.c.GitHubTokenFile)
 		if err != nil {
 			return nil, errors.New("release credential unavailable")
 		}

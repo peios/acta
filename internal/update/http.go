@@ -1,6 +1,7 @@
 package update
 
 import (
+	"acta2/internal/backup"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
@@ -13,7 +14,7 @@ import (
 )
 
 func (s *Service) Serve(ctx context.Context) error {
-	raw, err := os.ReadFile(s.c.TokenFile)
+	raw, err := backup.Secret(s.c.TokenFile)
 	if err != nil {
 		return err
 	}

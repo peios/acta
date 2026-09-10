@@ -42,13 +42,18 @@
       ? view.jobs[0]
       : null,
   );
+  let refreshing = false;
   async function refresh() {
+    if (refreshing) return;
+    refreshing = true;
     try {
       view = await api<View>("updates");
       disconnected = false;
     } catch (e) {
       if (view) disconnected = true;
       else error = (e as Error).message;
+    } finally {
+      refreshing = false;
     }
   }
   async function action(name: string, body: unknown = {}) {
@@ -133,12 +138,14 @@
               <button class="secondary" onclick={() => (confirming = false)}
                 >Cancel</button
               ><button
+                class="primary"
                 disabled={pending}
                 onclick={() => action("install", { id: view?.available?.id })}
                 >Install update</button
               >
             </div>
           </div>{:else}<button
+            class="primary"
             disabled={pending}
             onclick={() => (confirming = true)}>Update Acta</button
           >{/if}
@@ -169,6 +176,9 @@
 </section>
 
 <style>
+  .primary {
+    width: auto;
+  }
   .updates {
     width: min(100%, 800px);
     margin-inline: auto;
@@ -201,7 +211,7 @@
     color: var(--muted);
   }
   .panel {
-    border: 1px solid var(--border);
+    border: 1px solid var(--panel-border);
     border-radius: 16px;
     padding: 1.4rem;
     margin-block: 1rem;
@@ -236,7 +246,7 @@
   .spinner {
     width: 18px;
     height: 18px;
-    border: 2px solid var(--border);
+    border: 2px solid var(--panel-border);
     border-top-color: currentColor;
     border-radius: 50%;
     animation: spin 1s linear infinite;
@@ -247,7 +257,7 @@
     justify-content: flex-end;
   }
   .confirm {
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--panel-border);
     padding-top: 1rem;
   }
   .history {
@@ -255,7 +265,7 @@
   }
   .history-row {
     padding: 1rem 0;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--panel-border);
     align-items: flex-start;
   }
   .history-row span {

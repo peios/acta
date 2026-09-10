@@ -11,20 +11,21 @@ import (
 )
 
 type Config struct {
-	Repository      string   `json:"repository"`
-	PublicKeyFile   string   `json:"public_key_file"`
-	GitHubTokenFile string   `json:"github_token_file,omitempty"`
-	StateDir        string   `json:"state_dir"`
-	Socket          string   `json:"socket"`
-	TokenFile       string   `json:"token_file"`
-	Project         string   `json:"project"`
-	Installation    string   `json:"installation"`
-	ComposeFiles    []string `json:"compose_files"`
-	EnvFile         string   `json:"env_file"`
-	BackupSocket    string   `json:"backup_socket"`
-	BackupTokenFile string   `json:"backup_token_file"`
-	Prereleases     bool     `json:"prereleases"`
-	TimeoutMinutes  int      `json:"timeout_minutes"`
+	RetainRecoveryCopies int      `json:"retain_recovery_copies"`
+	Repository           string   `json:"repository"`
+	PublicKeyFile        string   `json:"public_key_file"`
+	GitHubTokenFile      string   `json:"github_token_file,omitempty"`
+	StateDir             string   `json:"state_dir"`
+	Socket               string   `json:"socket"`
+	TokenFile            string   `json:"token_file"`
+	Project              string   `json:"project"`
+	Installation         string   `json:"installation"`
+	ComposeFiles         []string `json:"compose_files"`
+	EnvFile              string   `json:"env_file"`
+	BackupSocket         string   `json:"backup_socket"`
+	BackupTokenFile      string   `json:"backup_token_file"`
+	Prereleases          bool     `json:"prereleases"`
+	TimeoutMinutes       int      `json:"timeout_minutes"`
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -42,6 +43,12 @@ func LoadConfig(path string) (Config, error) {
 		if !filepath.IsAbs(p) {
 			return c, errors.New("updater paths must be absolute")
 		}
+	}
+	if c.RetainRecoveryCopies == 0 {
+		c.RetainRecoveryCopies = 2
+	}
+	if c.RetainRecoveryCopies < 2 || c.RetainRecoveryCopies > 100 {
+		return c, errors.New("retain 2–100 local recovery copies")
 	}
 	return c, nil
 }

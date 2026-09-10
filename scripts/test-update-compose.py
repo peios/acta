@@ -119,6 +119,7 @@ func main(){c,e:=pgx.Connect(context.Background(),os.Getenv("ACTA_DATABASE_URL")
  broken=json.loads(json.dumps(new));broken['images']['app']=tag.split(':')[0]+'@'+digest
  broken['version']='v0.0.0-qa-failure';broken['sequence']=new['sequence']+1
  for crash in (False,True):
+  sql("INSERT INTO accounts(id,username) VALUES('11111111-1111-4111-8111-111111111111','recovery-test') ON CONFLICT DO NOTHING; INSERT INTO browser_sessions(token_hash,account_id,authorized_by,created_at,last_seen_at,expires_at) VALUES(decode(repeat('ab',32),'hex'),'11111111-1111-4111-8111-111111111111','11111111-1111-4111-8111-111111111111',now(),now(),now()+interval '1 day')")
   broken_signed,_=sign(broken,'failure-'+str(crash));selected=offer(broken_signed)
   control('-release-id',selected,'install')
   if crash:
@@ -126,8 +127,10 @@ func main(){c,e:=pgx.Connect(context.Background(),os.Getenv("ACTA_DATABASE_URL")
    wait(lambda:sql("SELECT to_regclass('update_failure') IS NOT NULL")=='t','candidate migration write')
    # Simulate loss of all application containers in this disposable project.
    ids=dc('ps','-q').splitlines()
+   run(['docker','update','--restart=no',*ids])
    run(['docker','kill',*ids])
-   dc('up','-d','--no-build','--no-deps','db','app','backup','caddy','updater')
+   for service in ('db','app','backup','caddy','updater'):
+    run(['docker','start',dc('ps','-a','-q',service)])
   result=wait(finished,'failed migration recovery',1200)
   assert result['phase']=='rolled_back',result
   assert sql('SELECT value FROM update_probe WHERE id=1')=='preserve this'
@@ -140,6 +143,8 @@ func main(){c,e:=pgx.Connect(context.Background(),os.Getenv("ACTA_DATABASE_URL")
 finally:
  if os.environ.get('KEEP_UPDATE_TEST')=='1':print('Retained',root,project,flush=True)
  else:
+  helpers=out(['docker','container','ls','-aq','--filter','label=acta.update.installation='+c['installation']]).splitlines()
+  if helpers:run(['docker','rm','-f',*helpers])
   subprocess.run(list(map(str,[*compose,'down','--volumes','--remove-orphans'])),cwd=repo,check=False)
   snapshots=out(['docker','volume','ls','-q','--filter','label=acta.update.installation='+c['installation']]).splitlines()
   for volume in snapshots:run(['docker','volume','rm',volume])
