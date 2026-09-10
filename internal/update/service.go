@@ -229,6 +229,11 @@ func (s *Service) advance(parent context.Context) error {
 		return nil
 	}
 	initial := s.View().Jobs[0]
+	if initial.Paused {
+		if err := s.transition(initial.Phase, nil); err != nil {
+			return err
+		}
+	}
 	if initial.Phase == "applying" || initial.Phase == "validating" {
 		if err := s.transition("restoring", errors.New("update interrupted before cutover; recovering previous release")); err != nil {
 			return err

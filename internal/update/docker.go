@@ -250,7 +250,7 @@ func (d Docker) ownedSnapshot(ctx context.Context, j Job) error {
 	}
 	return nil
 }
-func (d Docker) copy(ctx context.Context, j Job, image, source, target string) error {
+func (d Docker) stopCopy(ctx context.Context, j Job) error {
 	name := d.Config.Project + "-copy-" + j.ID
 	// Reconcile a helper left alive when only the updater was killed. Its fixed
 	// name is installation-local, and its ownership is checked before removal.
@@ -267,7 +267,14 @@ func (d Docker) copy(ctx context.Context, j Job, image, source, target string) e
 			return e
 		}
 	}
-	_, e = command(ctx, "run", "--name", name, "--label", "acta.update.job="+j.ID, "--label", "acta.update.installation="+d.Config.Installation, "--network", "none", "--read-only", "--mount", "type=volume,src="+source+",dst=/source,readonly", "--mount", "type=volume,src="+target+",dst=/target", "--entrypoint", "/bin/sh", image, "-ec", `test "$(cat /source/PG_VERSION)" = 17; test -z "$(find /source/pg_tblspc -mindepth 1 -print -quit)"; need=$(du -sb /source | cut -f1); available=$(df -PB1 /target | awk 'NR==2 {print $4}'); existing=$(du -sb /target | cut -f1); test "$((available + existing))" -ge "$((need + need / 10 + 536870912))"; find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; cp -a /source/. /target/; sync`)
+	return nil
+}
+func (d Docker) copy(ctx context.Context, j Job, image, source, target string) error {
+	if err := d.stopCopy(ctx, j); err != nil {
+		return err
+	}
+	name := d.Config.Project + "-copy-" + j.ID
+	_, e := command(ctx, "run", "--name", name, "--label", "acta.update.job="+j.ID, "--label", "acta.update.installation="+d.Config.Installation, "--network", "none", "--read-only", "--mount", "type=volume,src="+source+",dst=/source,readonly", "--mount", "type=volume,src="+target+",dst=/target", "--entrypoint", "/bin/sh", image, "-ec", `test "$(cat /source/PG_VERSION)" = 17; test "$(LC_ALL=C pg_controldata /source | sed -n 's/^Database cluster state: *//p')" = "shut down"; test -z "$(find /source/pg_tblspc -mindepth 1 -print -quit)"; need=$(du -sb /source | cut -f1); available=$(df -PB1 /target | awk 'NR==2 {print $4}'); existing=$(du -sb /target | cut -f1); test "$((available + existing))" -ge "$((need + need / 10 + 536870912))"; find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; cp -a /source/. /target/; sync`)
 	if e != nil {
 		return e
 	}
@@ -312,12 +319,20 @@ func (d Docker) Restore(ctx context.Context, j Job) error {
 		if err = d.copy(ctx, j, a.Images["db"], d.snapshotName(j), volume); err != nil {
 			return err
 		}
+		if err = d.prepareRecovery(ctx, j, a.Images["db"]); err != nil {
+			return err
+		}
 	}
 	if err = d.override(a, true); err != nil {
 		return err
 	}
 	if _, err = d.compose(ctx, "up", "-d", "--no-build", "--pull", "never", "--no-deps", "--wait", "--wait-timeout", "180", "db"); err != nil {
 		return err
+	}
+	if j.RestoreData {
+		if err = d.finishRecovery(ctx); err != nil {
+			return err
+		}
 	}
 	if _, err = d.compose(ctx, "up", "-d", "--no-build", "--pull", "never", "--no-deps", "--wait", "--wait-timeout", "300", "app"); err != nil {
 		return err
@@ -327,6 +342,10 @@ func (d Docker) Restore(ctx context.Context, j Job) error {
 	}
 	if j.RestoreData {
 		_, err = d.compose(ctx, "exec", "-T", "-u", "postgres", "db", "psql", "-U", "postgres", "-d", "acta2", "-v", "ON_ERROR_STOP=1", "-c", recovery.RevokeSQL)
+		if err != nil {
+			return err
+		}
+		_, err = d.compose(ctx, "exec", "-T", "-u", "postgres", "db", "pgbackrest", "--config=/var/lib/acta-backup/config/pgbackrest.conf", "--stanza=acta2", "check")
 	}
 	return err
 }

@@ -20,10 +20,13 @@ func (d Docker) Prune(ctx context.Context) error {
 		keep = 2
 	}
 	for _, j := range state.Jobs {
-		if !terminal(j.Phase) || !j.RestoreData {
+		if !terminal(j.Phase) {
 			continue
 		}
-		if keep > 0 {
+		if err := d.stopCopy(ctx, j); err != nil {
+			return err
+		}
+		if j.RestoreData && keep > 0 {
 			keep--
 			continue
 		}

@@ -110,7 +110,11 @@ remains usable for installations managed entirely by their operator.
    A separate helper then reconciles the updater's own image, preserving its state.
 
 Before committing, a failure or ambiguous candidate execution restores the cold
-copy and previous images. Restored sessions are revoked and pending notifications
+copy and previous images. The snapshot must come from a cleanly stopped database.
+Recovery forks a new PostgreSQL timeline using only the snapshot's local WAL; it
+fetches archive history files solely to avoid reusing a timeline identifier.
+Candidate WAL is never replayed. The temporary recovery settings are removed
+before new backups, and an archive check must pass before reopening. Restored sessions are revoked and pending notifications
 are discarded before enabling the old application. A failed rollback leaves the
 installation in maintenance and records its error. After committing, recovery only
 finishes the chosen release: it must never restore a snapshot over newly accepted
@@ -121,7 +125,8 @@ backup. It contains sensitive database data, protected like the installation's
 normal database volume; it is not off-machine disaster recovery. The updater retains the two most recent completed recovery copies by default;
 configure `retain_recovery_copies` from 2 to 100. Before another update, it prunes
 only older copies recorded in its terminal jobs and carrying matching ownership
-labels. Copying requires the source size plus 10% and 512 MiB free headroom.
+labels. Incomplete copies from terminal failed jobs are also removed, after
+stopping their owned copy helper. Copying requires the source size plus 10% and 512 MiB free headroom.
 Monitor disk space: these copies are separate from normal backup retention.
 Never delete the active job's volume or run broad Docker prune commands during an update.
 
@@ -132,6 +137,10 @@ the command), and `retry`. Retry reconciles the saved phase; it never creates a 
 job or assumes that a timed-out command did not run.
 
 ## Verification
+
+`scripts/test-update-timeline.py` repeatedly restores the same cold PostgreSQL
+snapshot while later candidate WAL exists in the archive. It checks exact data
+restoration and distinct timelines using the updater's recovery settings.
 
 Unit tests inject failures and process interruption at every durable boundary,
 cover concurrent service ownership, stale requests, signed payload tampering,

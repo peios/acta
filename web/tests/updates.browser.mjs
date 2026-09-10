@@ -40,6 +40,7 @@ for (const engine of [chromium, firefox]) {
     let unavailable = false;
     let view = {
       configured: true,
+      checked_at: new Date().toISOString(),
       repository: "peios/acta2",
       current: { version: "v0.1.0-preview.1" },
       available: {
@@ -53,6 +54,7 @@ for (const engine of [chromium, firefox]) {
       jobs: [],
     };
     let installs = 0;
+    let retries = 0;
     await page.route("http://localhost:8081/**", async (route) => {
       const url = new URL(route.request().url());
       if (url.pathname === "/api/updates")
@@ -72,6 +74,11 @@ for (const engine of [chromium, firefox]) {
         ];
         return route.fulfill({ status: 202, json: { id: "job" } });
       }
+      if (url.pathname === "/api/updates/retry") {
+        retries++;
+        view.jobs[0].paused = false;
+        return route.fulfill({ status: 202, json: { queued: true } });
+      }
       if (url.pathname === "/fixture.js")
         return route.fulfill({
           contentType: "text/javascript",
@@ -84,7 +91,7 @@ for (const engine of [chromium, firefox]) {
         });
       return route.fulfill({
         contentType: "text/html",
-        body: '<html data-theme="dark"><link rel="stylesheet" href="/fixture.css"><div id="app" style="max-width:900px;margin:auto;padding:24px"></div><script src="/fixture.js"></script></html>',
+        body: '<html data-theme="dark"><meta charset="utf-8"><link rel="stylesheet" href="/fixture.css"><div id="app" style="max-width:900px;margin:auto;padding:24px"></div><script src="/fixture.js"></script></html>',
       });
     });
     await page.goto("http://localhost:8081/_review/updates");
@@ -107,10 +114,31 @@ for (const engine of [chromium, firefox]) {
     unavailable = true;
     await page.getByText(/temporarily unavailable/).waitFor({ timeout: 10000 });
     unavailable = false;
+    view.jobs[0].phase = "restoring";
+    view.jobs[0].error = "Candidate failed validation";
+    await page
+      .getByRole("heading", { name: "Recovering the previous release" })
+      .waitFor({ timeout: 10000 });
+    assert.equal(
+      await page.getByRole("button", { name: "Continue recovery" }).count(),
+      0,
+    );
+    view.jobs[0].paused = true;
+    await page
+      .getByRole("button", { name: "Continue recovery" })
+      .click({ timeout: 10000 });
+    assert.equal(retries, 1);
     view.jobs[0].phase = "succeeded";
     view.current = view.available.release;
     view.available = null;
-    await page.getByText("You’re up to date on this release channel.").count();
+    await page
+      .getByText("You’re up to date on this release channel.")
+      .waitFor({ timeout: 10000 })
+      .catch(async (error) => {
+        console.error(await page.locator("body").innerText());
+        console.error(view);
+        throw error;
+      });
     await page.getByText("Update completed").waitFor({ timeout: 10000 });
     assert.equal(installs, 1);
     await page.setViewportSize({ width: 390, height: 844 });

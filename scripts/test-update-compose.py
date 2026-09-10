@@ -129,6 +129,7 @@ try:
  assert http_status()=='200'
  assert sql('SELECT value FROM update_probe WHERE id=1')=='preserve this'
  assert control('status')['current']['sequence']==new['sequence']
+ wait(lambda:out(['docker','inspect','--format','{{.Config.Image}}',dc('ps','-q','updater')])==new['images']['updater'],'updater image replacement',60)
  print('PASS: signed update, encrypted full backup + restore drill, updater restart, data preservation',flush=True)
  # Build a deliberately broken migration fixture using a test signing key.
  # It commits a schema change and then fails; recovery must restore the data,
