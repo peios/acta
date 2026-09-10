@@ -89,6 +89,7 @@ def offer(signed):
 maintenance_seen=False
 https_port=None
 def http_status():
+ https_port=dc('port','caddy','443').rsplit(':',1)[1]
  return out(['curl','--noproxy','*','--silent','--show-error','--insecure','--max-time','5','--resolve',f'acta.test:{https_port}:127.0.0.1','-H','Host: acta.test','-o','/dev/null','-w','%{http_code}',f'https://acta.test:{https_port}/api/setup'])
 last_phase=None
 def job_status():
