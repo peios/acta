@@ -1,0 +1,78 @@
+name: Publish isolated Acta 2 prerelease
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Unique prerelease version, e.g. v0.1.0-preview.1'
+        required: true
+      previous_version:
+        description: Previous isolated prerelease to use for the real update/recovery test
+        required: false
+      notes:
+        description: Release notes
+        required: true
+permissions:
+  contents: write
+  packages: write
+concurrency:
+  group: acta2-release
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.repository == 'peios/acta2' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Validate release inputs and signing configuration
+        env:
+          VERSION: ${{ inputs.version }}
+          RELEASE_NOTES: ${{ inputs.notes }}
+          SIGNING_SEED: ${{ secrets.ACTA_RELEASE_SIGNING_SEED }}
+        run: |
+          python3 - <<'PY'
+          import os,re
+          from pathlib import Path
+          if not re.fullmatch(r'v\d+\.\d+\.\d+-[a-zA-Z0-9.-]+',os.environ['VERSION']):
+              raise SystemExit('Only isolated prereleases are enabled')
+          if not os.environ['SIGNING_SEED']: raise SystemExit('Configure ACTA_RELEASE_SIGNING_SEED first')
+          Path('/tmp/release-notes').write_text(os.environ['RELEASE_NOTES'])
+          PY
+      - name: Log in to the isolated container registry
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Package release
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          python3 scripts/package-release.py --repository "$GITHUB_REPOSITORY" --version "$VERSION" --sequence "$GITHUB_RUN_NUMBER" --notes /tmp/release-notes --output /tmp/manifest.json
+          docker build --target build -t acta2-release-tools .
+          id=$(docker create acta2-release-tools)
+          docker cp "$id:/out/acta2-update" /tmp/acta2-update
+          docker rm "$id"
+      - name: Sign the manifest
+        env:
+          SIGNING_SEED: ${{ secrets.ACTA_RELEASE_SIGNING_SEED }}
+        run: |
+          umask 077
+          printf '%s' "$SIGNING_SEED" > /tmp/release-key
+          trap 'rm -f /tmp/release-key' EXIT
+          /tmp/acta2-update -key /tmp/release-key -input /tmp/manifest.json -output /tmp/acta-release.json sign
+          /tmp/acta2-update -public-key deploy/update/release.pub -input /tmp/acta-release.json verify
+      - name: Exercise the real update and failed migration recovery
+        if: inputs.previous_version != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PREVIOUS: ${{ inputs.previous_version }}
+        run: |
+          mkdir -p /tmp/previous-release bin
+          gh release download "$PREVIOUS" --repo "$GITHUB_REPOSITORY" --pattern acta-release.json --dir /tmp/previous-release
+          cp /tmp/acta2-update bin/acta2-update
+          python3 scripts/test-update-compose.py --current /tmp/previous-release/acta-release.json --target /tmp/acta-release.json
+      - name: Publish prerelease after every image and signature is ready
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "$VERSION" --notes-file /tmp/release-notes /tmp/acta-release.json /tmp/acta2-update

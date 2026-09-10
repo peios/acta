@@ -15,7 +15,8 @@ COPY . .
 COPY --from=frontend /src/web/build ./web/build
 ENV CGO_ENABLED=0 GOMAXPROCS=4
 RUN go build -p 2 -trimpath -o /out/acta2-server ./cmd/acta2 && \
-    go build -p 2 -trimpath -o /out/acta2-backup ./cmd/acta2-backup
+    go build -p 2 -trimpath -o /out/acta2-backup ./cmd/acta2-backup && \
+    go build -p 2 -trimpath -o /out/acta2-update ./cmd/acta2-update
 
 FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS app
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gosu && rm -rf /var/lib/apt/lists/* && \
@@ -36,4 +37,9 @@ FROM database AS backup
 COPY --from=build /out/acta2-backup /out/acta2-server /usr/local/bin/
 COPY deploy/production/backup-entrypoint.py /usr/local/bin/acta-backup-entrypoint
 ENTRYPOINT ["/usr/local/bin/acta-backup-entrypoint"]
+CMD ["serve"]
+
+FROM docker:27-cli@sha256:851f91d241214e7c6db86513b270d58776379aacc5eb9c4a87e5b47115e3065c AS updater
+COPY --from=build /out/acta2-update /usr/local/bin/acta2-update
+ENTRYPOINT ["/usr/local/bin/acta2-update"]
 CMD ["serve"]

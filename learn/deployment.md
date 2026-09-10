@@ -3,7 +3,7 @@
 `compose.production.yaml` packages Caddy, the compiled Acta server/web UI and a
 private PostgreSQL 17 cluster. `compose.yaml` remains development-only. The
 production project has separate networks, volumes and local image names; it does
-not publish anything or alter old Acta's release channel. No updater is included.
+not publish anything or alter old Acta's release channel. The optional [deployment updater](updates.md) adds signed releases and in-app updates.
 Base images are pinned by digest. Review and refresh those pins for security
 updates; OS packages are resolved during the build, so retain the resulting exact
 release images rather than assuming a later rebuild is byte-identical.
@@ -126,8 +126,8 @@ repository data. A local named volume alone is not disaster recovery.
 ## Remaining production gates
 
 This package supplies HTTPS termination, persistence, private networking, service
-limits and restart/log policies. It does not implement the release updater,
-automatic schema rollback or old-Acta migration.
+limits and restart/log policies. The optional [updater](updates.md) handles signed
+release installation and recovery; old-Acta migration remains a separate cutover.
 
 Compose assigns Caddy `172.30.50.2` on the private `172.30.50.0/29` edge
 network, assigns Acta `172.30.50.3`, and sets `ACTA_TRUSTED_PROXIES` to Caddy's exact IP. Both are fixed so startup order cannot allocate Caddy's address to Acta. Other container addresses,

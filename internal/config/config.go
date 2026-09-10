@@ -8,6 +8,8 @@ import (
 )
 
 type Config struct {
+	UpdateSocket      string
+	UpdateTokenFile   string
 	TrustedProxies    []netip.Prefix
 	BackupSocket      string
 	BackupTokenFile   string

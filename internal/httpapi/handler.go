@@ -39,6 +39,7 @@ func New(service *auth.Service, security *auth.Security, profiles *accounts.Prof
 	}
 	mux := http.NewServeMux()
 	h.backupRoutes(mux)
+	h.updateRoutes(mux)
 	h.pushRoutes(mux)
 	h.harnessRoutes(mux)
 	mux.HandleFunc("GET /api/notifications", h.threadNotifications)

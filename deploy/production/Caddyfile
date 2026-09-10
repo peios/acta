@@ -4,6 +4,15 @@
 }
 
 {$ACTA_DOMAIN} {
+	@maintenance file {
+		root /run/acta-update-state
+		try_files /maintenance.json
+	}
+	handle @maintenance {
+		header Retry-After 10
+		header Cache-Control no-store
+		respond "Acta is updating. Please retry in a moment." 503
+	}
 	encode zstd gzip
 	reverse_proxy app:8081 {
 		# Preserve streaming responses and WebSocket upgrades. Do not retry writes.

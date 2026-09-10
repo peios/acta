@@ -143,6 +143,7 @@ func replyOperationError(w http.ResponseWriter, err error) {
 }
 
 type Client struct {
+	Timeout   time.Duration
 	Socket    string
 	TokenFile string
 }
@@ -172,7 +173,11 @@ func (c Client) Do(ctx context.Context, method, path string, in any) (int, json.
 		return (&net.Dialer{}).DialContext(ctx, "unix", c.Socket)
 	}}
 	defer transport.CloseIdleConnections()
-	resp, err := (&http.Client{Transport: transport, Timeout: 10 * time.Second}).Do(req)
+	timeout := c.Timeout
+	if timeout == 0 {
+		timeout = 10 * time.Second
+	}
+	resp, err := (&http.Client{Transport: transport, Timeout: timeout}).Do(req)
 	if err != nil {
 		return 503, nil, errors.New("backup service is unavailable")
 	}

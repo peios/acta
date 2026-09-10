@@ -1,0 +1,48 @@
+# Include with production + backups + the updater's active.json overlay.
+# The updater controls this installation and is a host administrator boundary.
+services:
+  app:
+    environment:
+      ACTA_UPDATE_SOCKET: /run/acta-update/api.sock
+      ACTA_UPDATE_STATE_DIR: /run/acta-update-state
+    secrets: [update-token]
+    volumes:
+      - update-socket:/run/acta-update:ro
+      - ${ACTA_UPDATE_DIR:?Set updater state directory}:/run/acta-update-state:ro
+  caddy:
+    volumes:
+      - ${ACTA_UPDATE_DIR}:/run/acta-update-state:ro
+  updater:
+    profiles: [updates]
+    image: acta2-updater-local:${ACTA_VERSION:-development}
+    build: {context: ., target: updater}
+    restart: unless-stopped
+    entrypoint: [/usr/local/bin/acta2-update]
+    command: [-config, /etc/acta-update/config.json, serve]
+    environment:
+      DOCKER_CONFIG: /run/registry
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Compose bind sources are resolved by the host daemon. Use identical
+      # absolute paths inside the updater and host for configuration and state.
+      - ${ACTA_CHECKOUT_DIR:?Set absolute deployment bundle directory}:${ACTA_CHECKOUT_DIR}:ro
+      - ${ACTA_DEPLOY_DIR}:${ACTA_DEPLOY_DIR}:ro
+      - ${ACTA_UPDATE_DIR}:${ACTA_UPDATE_DIR}
+      - ${ACTA_DEPLOY_DIR}/update:/etc/acta-update:ro
+      - ${ACTA_DEPLOY_DIR}/registry:/run/registry:ro
+      - update-socket:/run/acta-update
+      - backup-socket:/run/acta-backup:ro
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 1.0
+    pids_limit: 128
+    stop_grace_period: 45s
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: '3'}
+volumes:
+  update-socket: {}
+secrets:
+  update-token: {file: '${ACTA_DEPLOY_DIR}/update-token'}

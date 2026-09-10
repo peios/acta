@@ -8,6 +8,11 @@ for name in database-url security-key backup-token; do
   cp "/run/secrets/$name" "/run/acta/$name"
   chmod 600 "/run/acta/$name"
 done
+if [ -f /run/secrets/update-token ]; then
+  cp /run/secrets/update-token /run/acta/update-token
+  chmod 600 /run/acta/update-token
+  export ACTA_UPDATE_TOKEN_FILE=/run/acta/update-token
+fi
 chown -R 10001:10001 /run/acta
 export ACTA_DATABASE_URL="$(cat /run/acta/database-url)"
 export ACTA_SECURITY_KEY_FILE=/run/acta/security-key

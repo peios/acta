@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -45,6 +46,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	cfg.UpdateSocket = os.Getenv("ACTA_UPDATE_SOCKET")
+	cfg.UpdateTokenFile = os.Getenv("ACTA_UPDATE_TOKEN_FILE")
 	cfg.BackupSocket = os.Getenv("ACTA_BACKUP_SOCKET")
 	cfg.BackupTokenFile = os.Getenv("ACTA_BACKUP_TOKEN_FILE")
 	cfg.RecoveryMode = os.Getenv("ACTA_RECOVERY_MODE") == "true"
@@ -54,6 +57,24 @@ func run() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	// A reboot during an update must not start the old app against a candidate
+	// database. Only the isolated candidate may pass the maintenance gate.
+	if dir := os.Getenv("ACTA_UPDATE_STATE_DIR"); dir != "" && !*verifyRecovery && os.Getenv("ACTA_UPDATE_CANDIDATE") != "true" {
+		for {
+			_, err := os.Stat(filepath.Join(dir, "maintenance.json"))
+			if errors.Is(err, os.ErrNotExist) {
+				break
+			}
+			if err != nil {
+				return err
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Second):
+			}
+		}
+	}
 	if *verifyRecovery {
 		keyPath := os.Getenv("ACTA_SECURITY_KEY_FILE")
 		if keyPath == "" {

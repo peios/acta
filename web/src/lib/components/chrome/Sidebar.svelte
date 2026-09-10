@@ -474,6 +474,30 @@
           {/each}{/if}
       {/if}
     {:else}
+      {#if checkPermission(account, "site.superuser")}
+        <a
+          href="/site-settings/updates"
+          class="scope-button"
+          class:active={page.url.pathname === "/site-settings/updates"}
+          aria-current={page.url.pathname === "/site-settings/updates"
+            ? "page"
+            : undefined}
+          aria-label="Updates"
+          ><svg
+            width="19"
+            height="19"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            aria-hidden="true"
+            ><path d="M12 16V4m-4 4 4-4 4 4M4 15v5h16v-5" /></svg
+          ><span class="scope-name">Updates</span><span
+            class="rail-tooltip"
+            aria-hidden="true">Updates</span
+          ></a
+        >
+      {/if}
       {#if checkPermission(account, "site.backups.manage")}
         <a
           href="/site-settings/backups"
