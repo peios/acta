@@ -1,0 +1,394 @@
+[
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 1,
+    "output_index": 1,
+    "provider": "codex",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "thread/configuration",
+    "data": {
+      "model": "example-model",
+      "effort": "high",
+      "fast_mode": false,
+      "cwd": "/example/project",
+      "work_mode": "execute",
+      "permissions": {
+        "mode": "ask",
+        "filesystem": "workspace_write",
+        "network": "blocked"
+      }
+    }
+  },
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 2,
+    "output_index": 1,
+    "provider": "codex",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "thread/status",
+    "data": {
+      "status": "active",
+      "waiting_for": []
+    }
+  },
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 3,
+    "output_index": 1,
+    "provider": "codex",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "turn/started",
+    "data": {
+      "turn_id": "example-turn",
+      "started_at": null
+    }
+  },
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 4,
+    "output_index": 1,
+    "provider": "codex",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "turn/completed",
+    "data": {
+      "turn_id": "example-turn",
+      "outcome": "completed",
+      "error": null,
+      "started_at": "2026-09-07T17:00:31.670Z",
+      "completed_at": "2026-09-07T17:00:31.670Z",
+      "duration_ms": 4364
+    }
+  },
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 5,
+    "output_index": 1,
+    "provider": "codex",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "message/user",
+    "data": {
+      "message_id": "example-message",
+      "turn_id": "example-turn",
+      "state": "completed",
+      "started_at": "2026-09-07T17:00:31.670Z",
+      "completed_at": "2026-09-07T17:00:31.670Z",
+      "content": [
+        {
+          "type": "text",
+          "text": "Test Message"
+        }
+      ]
+    }
+  },
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 6,
+    "output_index": 1,
+    "provider": "codex",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "message/assistant",
+    "data": {
+      "message_id": "example-message",
+      "turn_id": "example-turn",
+      "state": "completed",
+      "started_at": "2026-09-07T17:00:31.670Z",
+      "completed_at": "2026-09-07T17:00:31.670Z",
+      "text": "Message received.",
+      "phase": "final_answer"
+    }
+  },
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 7,
+    "output_index": 1,
+    "provider": "codex",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "message/assistant/delta",
+    "data": {
+      "message_id": "example-message",
+      "turn_id": "example-turn",
+      "text": "Message"
+    }
+  },
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 8,
+    "output_index": 1,
+    "provider": "codex",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "usage/context",
+    "data": {
+      "turn_id": "example-turn",
+      "context": {
+        "used_tokens": null,
+        "capacity_tokens": 258400
+      },
+      "cumulative": null,
+      "last_request": null
+    }
+  },
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 9,
+    "output_index": 1,
+    "provider": "codex",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "usage/account",
+    "data": {
+      "bucket_id": "example-bucket",
+      "bucket_name": null,
+      "windows": [
+        {
+          "name": "Weekly",
+          "used_percent": 80,
+          "duration_minutes": 10080,
+          "resets_at": "2026-09-13T21:00:00Z"
+        }
+      ],
+      "credits": {
+        "has_credits": false,
+        "unlimited": false,
+        "balance": "0"
+      },
+      "plan_name": "Example plan"
+    }
+  },
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 10,
+    "output_index": 1,
+    "provider": "codex",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "mcp/server/status",
+    "data": {
+      "server_name": "acta2",
+      "status": "starting",
+      "error": null,
+      "failure_reason": null
+    }
+  },
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 11,
+    "output_index": 0,
+    "provider": "codex",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "debug/unknown",
+    "data": {
+      "stream": "stdout",
+      "raw": "{\"method\":\"example/new-event\"}",
+      "reason": "No mapping for this method."
+    }
+  },
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 12,
+    "output_index": 0,
+    "provider": "codex",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "debug/dropped",
+    "data": {
+      "stream": "stdout",
+      "raw": "{\"method\":\"remoteControl/status/changed\",\"params\":{\"status\":\"disabled\"}}",
+      "reason": "Provider remote control is not used by Acta."
+    }
+  },
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 13,
+    "output_index": 0,
+    "provider": "codex",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "debug/local",
+    "data": {
+      "stream": "stdout",
+      "raw": "{\"id\":\"example/initialize\",\"result\":{}}",
+      "reason": "Handshake metadata handled locally.",
+      "processing_error": null
+    }
+  },
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 14,
+    "output_index": 0,
+    "provider": "codex",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "debug/resolved",
+    "data": {
+      "stream": "stdout",
+      "raw": "{\"method\":\"thread/status/changed\",\"params\":{\"status\":{\"type\":\"idle\"}}}",
+      "reason": "Updated thread execution state.",
+      "outputs": [
+        {
+          "output_index": 1,
+          "kind": "thread/status"
+        }
+      ]
+    }
+  },
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 15,
+    "output_index": 0,
+    "provider": "codex",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "debug/provider-diagnostic",
+    "data": {
+      "stream": "stderr",
+      "raw": "Example provider warning",
+      "reason": "Captured provider stderr."
+    }
+  },
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 100,
+    "output_index": 1,
+    "provider": "claude",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "tool/notification",
+    "data": {
+      "task_id": "background-1",
+      "tool_id": "tool-1",
+      "turn_id": "turn-1",
+      "label": "Run checks",
+      "status": "completed",
+      "summary": "Background command completed (exit code 0)",
+      "context_entry": false
+    }
+  },
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 17,
+    "output_index": 1,
+    "provider": "codex",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "question/request",
+    "data": {
+      "question_id": "33333333-3333-4333-8333-333333333333",
+      "turn_id": "turn-1",
+      "tool_id": "tool-1",
+      "blocking": true,
+      "questions": [
+        {
+          "id": "colour",
+          "header": "Colour",
+          "text": "Which sample colour?",
+          "multiple": false,
+          "options": [
+            {
+              "label": "Blue",
+              "description": "A blue sample"
+            },
+            {
+              "label": "Green",
+              "description": "A green sample"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 18,
+    "output_index": 1,
+    "provider": "codex",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "question/resolved",
+    "data": {
+      "question_id": "33333333-3333-4333-8333-333333333333"
+    }
+  },
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 18,
+    "output_index": 1,
+    "provider": "codex",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "context/compaction",
+    "data": {
+      "compaction_id": "compact-1",
+      "turn_id": "turn-1",
+      "state": "completed",
+      "started_at": null,
+      "completed_at": null,
+      "duration_ms": 21680,
+      "before_tokens": 42638,
+      "after_tokens": 6648,
+      "summary": "## Session summary\n\nContinue the isolated QA session."
+    }
+  },
+  {
+    "schema_version": 1,
+    "thread_id": "11111111-1111-4111-8111-111111111111",
+    "run_id": "22222222-2222-4222-8222-222222222222",
+    "sequence": 1,
+    "output_index": 1,
+    "provider": "claude",
+    "received_at": "2026-09-07T17:00:31.670Z",
+    "occurred_at": "2026-09-07T17:00:31.670Z",
+    "kind": "vcs/push",
+    "data": {
+      "branch": "main",
+      "cwd": "/example/project",
+      "turn_id": null
+    }
+  }
+]

@@ -1,0 +1,30 @@
+{
+  "type": "control_request",
+  "request_id": "8690e4c3-df0f-4857-a6cc-b292ac87c27c",
+  "request": {
+    "subtype": "can_use_tool",
+    "tool_name": "AskUserQuestion",
+    "display_name": "AskUserQuestion",
+    "input": {
+      "questions": [
+        {
+          "question": "Which sample colour?",
+          "header": "Colour",
+          "options": [
+            {
+              "label": "Blue",
+              "description": "Blue sample"
+            },
+            {
+              "label": "Green",
+              "description": "Green sample"
+            }
+          ],
+          "multiSelect": false
+        }
+      ]
+    },
+    "tool_use_id": "toolu_015c3yD9oGgwVWwzbqCrZp1G",
+    "requires_user_interaction": true
+  }
+}

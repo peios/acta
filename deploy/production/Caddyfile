@@ -1,0 +1,12 @@
+{
+	email {$ACME_EMAIL}
+	admin off
+}
+
+{$ACTA_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:8081 {
+		# Preserve streaming responses and WebSocket upgrades. Do not retry writes.
+		flush_interval -1
+	}
+}

@@ -1,0 +1,3336 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Acta thread frames \u2014 v1 contract",
+  "description": "Provider-independent thread frame contracts. See ../thread-frame-schema.md for normalization, presentation and provider-specific boundaries.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/ConfigurationFrame"
+    },
+    {
+      "$ref": "#/$defs/ThreadStatusFrame"
+    },
+    {
+      "$ref": "#/$defs/TurnStartedFrame"
+    },
+    {
+      "$ref": "#/$defs/TurnCompletedFrame"
+    },
+    {
+      "$ref": "#/$defs/UserMessageFrame"
+    },
+    {
+      "$ref": "#/$defs/AssistantMessageFrame"
+    },
+    {
+      "$ref": "#/$defs/AssistantMessageDeltaFrame"
+    },
+    {
+      "$ref": "#/$defs/ContextUsageFrame"
+    },
+    {
+      "$ref": "#/$defs/AccountUsageFrame"
+    },
+    {
+      "$ref": "#/$defs/MCPServerStatusFrame"
+    },
+    {
+      "$ref": "#/$defs/DebugUnknownFrame"
+    },
+    {
+      "$ref": "#/$defs/DebugDroppedFrame"
+    },
+    {
+      "$ref": "#/$defs/DebugLocalFrame"
+    },
+    {
+      "$ref": "#/$defs/DebugResolvedFrame"
+    },
+    {
+      "$ref": "#/$defs/ProviderDiagnosticFrame"
+    },
+    {
+      "$ref": "#/$defs/HookStartedFrame"
+    },
+    {
+      "$ref": "#/$defs/HookCompletedFrame"
+    },
+    {
+      "$ref": "#/$defs/ThinkingStartedFrame"
+    },
+    {
+      "$ref": "#/$defs/ThinkingDeltaFrame"
+    },
+    {
+      "$ref": "#/$defs/ThinkingCompletedFrame"
+    },
+    {
+      "$ref": "#/$defs/ToolCallFrame"
+    },
+    {
+      "$ref": "#/$defs/ToolArgumentsDeltaFrame"
+    },
+    {
+      "$ref": "#/$defs/ToolOutputDeltaFrame"
+    },
+    {
+      "$ref": "#/$defs/TurnDiffFrame"
+    },
+    {
+      "$ref": "#/$defs/ApprovalRequestFrame"
+    },
+    {
+      "$ref": "#/$defs/ApprovalResolvedFrame"
+    },
+    {
+      "$ref": "#/$defs/ApprovalReviewFrame"
+    },
+    {
+      "$ref": "#/$defs/ToolNotificationFrame"
+    },
+    {
+      "$ref": "#/$defs/QuestionRequestFrame"
+    },
+    {
+      "$ref": "#/$defs/QuestionResolvedFrame"
+    },
+    {
+      "$ref": "#/$defs/CompactionFrame"
+    },
+    {
+      "$ref": "#/$defs/SubagentFrame"
+    },
+    {
+      "$ref": "#/$defs/SubagentNotificationFrame"
+    },
+    {
+      "$ref": "#/$defs/VCSPushFrame"
+    }
+  ],
+  "$defs": {
+    "Error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "details": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "details"
+      ],
+      "additionalProperties": false,
+      "description": "Displayable error information; raw provider details remain in the debug frame."
+    },
+    "Envelope": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "thread_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Acta thread UUID, not the provider thread ID."
+        },
+        "run_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Acta identity of the provider process run."
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "Durable provider capture sequence, increasing across runs within this Acta thread."
+        },
+        "output_index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "0 for the debug frame; 1..N for derived frames from the same captured input."
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Provider adapter identifier, for example codex."
+        },
+        "received_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Original local capture time; preserved on replay."
+        },
+        "occurred_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Provider event time if reported; null if unavailable. Never used for ordering."
+        },
+        "lane_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "schema_version",
+        "thread_id",
+        "run_id",
+        "sequence",
+        "output_index",
+        "provider",
+        "received_at",
+        "occurred_at"
+      ]
+    },
+    "Configuration": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "effort": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fast_mode": {
+          "type": "boolean"
+        },
+        "cwd": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "work_mode": {
+          "enum": [
+            "execute",
+            "plan",
+            "unknown"
+          ]
+        },
+        "permissions": {
+          "$ref": "#/$defs/Permissions"
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "Acta configuration snapshot. Partial observations are merged by the adapter before emission. Omitted fields are unknown. fast_mode is strictly boolean when known; omit it otherwise. Provider-native settings stay in debug capture. Model IDs and effort choices are advertised by provider capabilities; unsupported efforts are not silently approximated."
+    },
+    "ThreadStatus": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "idle",
+            "active",
+            "error",
+            "unknown"
+          ]
+        },
+        "waiting_for": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "approval",
+              "user_input"
+            ]
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "status",
+        "waiting_for"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "not": {
+                  "const": "active"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "waiting_for": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "TurnStarted": {
+      "type": "object",
+      "properties": {
+        "turn_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "turn_id",
+        "started_at"
+      ],
+      "additionalProperties": false,
+      "description": "Establishes a turn. turn_id is opaque and scoped to the Acta thread; the adapter may retain the native turn ID."
+    },
+    "TurnCompleted": {
+      "type": "object",
+      "properties": {
+        "turn_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outcome": {
+          "enum": [
+            "completed",
+            "interrupted",
+            "failed"
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Error"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "turn_id",
+        "outcome",
+        "error",
+        "started_at",
+        "completed_at",
+        "duration_ms"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "completed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "error": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "TextPart": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "text"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "text"
+      ],
+      "additionalProperties": false,
+      "description": "Only plain text is in the reviewed first slice. Non-empty structured text elements or other content parts must not be silently flattened; preserve in debug and extend the mapping when designed."
+    },
+    "UserMessage": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable normalized identity within this Acta thread. Live native item IDs may be used; reconstructed resume item IDs must not be assumed equivalent."
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "enum": [
+            "in_progress",
+            "completed"
+          ]
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "content": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/TextPart"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "const": "image"
+                  },
+                  "media_type": {
+                    "enum": [
+                      "image/png",
+                      "image/jpeg",
+                      "image/gif",
+                      "image/webp"
+                    ]
+                  },
+                  "base64": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "type",
+                  "media_type",
+                  "base64"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "submission_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Acta submission identity correlated by the adapter; absent for provider-originated messages."
+        }
+      },
+      "required": [
+        "message_id",
+        "turn_id",
+        "state",
+        "started_at",
+        "completed_at",
+        "content"
+      ],
+      "additionalProperties": false,
+      "description": "Full user message snapshot. Correlation with provider-native client IDs belongs in the adapter. Optional submission_id correlates a known Acta send command. User role does not identify a specific human.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "in_progress"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "completed_at": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "AssistantMessage": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable normalized identity within this Acta thread. Live native item IDs may be used; reconstructed resume item IDs must not be assumed equivalent."
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "enum": [
+            "in_progress",
+            "completed"
+          ]
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
+        "phase": {
+          "anyOf": [
+            {
+              "enum": [
+                "commentary",
+                "final_answer"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "message_id",
+        "turn_id",
+        "state",
+        "started_at",
+        "completed_at",
+        "text",
+        "phase"
+      ],
+      "additionalProperties": false,
+      "description": "Full message snapshot/upsert. Completed text replaces accumulated deltas; phase does not establish completion. Non-null unreviewed citation/delivery/question fields need a mapping extension.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "in_progress"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "completed_at": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "AssistantMessageDelta": {
+      "type": "object",
+      "properties": {
+        "message_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "message_id",
+        "turn_id",
+        "text"
+      ],
+      "additionalProperties": false,
+      "description": "Append this exact text once in source order. Repeated text is legal; deduplicate by envelope identity, not content. Never append after the message is finalized."
+    },
+    "TokenBreakdown": {
+      "type": "object",
+      "properties": {
+        "total_tokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "input_tokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cached_input_tokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cache_write_input_tokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "output_tokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reasoning_output_tokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "total_tokens",
+        "input_tokens",
+        "cached_input_tokens",
+        "cache_write_input_tokens",
+        "output_tokens",
+        "reasoning_output_tokens"
+      ],
+      "additionalProperties": false,
+      "description": "Null means unavailable, never zero. Breakdown fields overlap; do not sum all counters."
+    },
+    "ContextUsage": {
+      "type": "object",
+      "properties": {
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "context": {
+          "$ref": "#/$defs/ContextOccupancy"
+        },
+        "cumulative": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TokenBreakdown"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_request": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TokenBreakdown"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "turn_id",
+        "context",
+        "cumulative",
+        "last_request"
+      ],
+      "additionalProperties": false,
+      "description": "Acta semantics: context is current occupancy, cumulative is provider-thread lifetime model-call consumption, last_request is the latest model-call consumption (not necessarily a whole turn). Populate only when the adapter can establish that meaning; never infer occupancy from cumulative usage. Codex counter/reset semantics remain to be verified. Null means unavailable."
+    },
+    "RateLimitWindow": {
+      "type": "object",
+      "properties": {
+        "used_percent": {
+          "type": "number",
+          "minimum": 0
+        },
+        "resets_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "duration_minutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "used_percent",
+        "duration_minutes",
+        "resets_at",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "Credits": {
+      "type": "object",
+      "properties": {
+        "has_credits": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unlimited": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "balance": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "has_credits",
+        "unlimited",
+        "balance"
+      ],
+      "additionalProperties": false,
+      "description": "Provider-reported credits. Balance is a decimal string; do not infer currency or exhaustion of included allowance."
+    },
+    "AccountUsage": {
+      "type": "object",
+      "properties": {
+        "bucket_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bucket_name": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "windows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RateLimitWindow"
+          }
+        },
+        "credits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Credits"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plan_name": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "bucket_id",
+        "bucket_name",
+        "windows",
+        "credits",
+        "plan_name"
+      ],
+      "additionalProperties": false,
+      "description": "Provider-account allowance bucket observed by this run. An empty windows array means no windows supplied. Windows have no primary/secondary special case. Bucket identity is not account identity; do not merge separate runs without verified account association."
+    },
+    "MCPServerStatus": {
+      "type": "object",
+      "properties": {
+        "server_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "starting",
+            "ready",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Error"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failure_reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "server_name",
+        "status",
+        "error",
+        "failure_reason"
+      ],
+      "additionalProperties": false,
+      "description": "Latest startup state of this named MCP server in this provider run; not a permanent health guarantee."
+    },
+    "DebugUnknown": {
+      "type": "object",
+      "properties": {
+        "raw": {
+          "type": "string",
+          "description": "Original captured UTF-8 payload as text, before provider JSON parsing/string normalization, excluding line transport delimiter. Preserves numeric lexemes, whitespace and unknown fields. Stderr is plain text, not JSON-encoded a second time. Local configuration responses may be explicitly minimized and marked redacted to avoid transmitting credentials."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stream": {
+          "const": "stdout"
+        },
+        "redacted": {
+          "type": "boolean",
+          "description": "True when a local configuration response has been minimized before server delivery. Original capture remains local."
+        }
+      },
+      "required": [
+        "raw",
+        "reason",
+        "stream"
+      ],
+      "additionalProperties": false,
+      "description": "Unrecognized method/type/shape. No derived frames."
+    },
+    "DebugDropped": {
+      "type": "object",
+      "properties": {
+        "raw": {
+          "type": "string",
+          "description": "Original captured UTF-8 payload as text, before provider JSON parsing/string normalization, excluding line transport delimiter. Preserves numeric lexemes, whitespace and unknown fields. Stderr is plain text, not JSON-encoded a second time. Local configuration responses may be explicitly minimized and marked redacted to avoid transmitting credentials."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stream": {
+          "const": "stdout"
+        },
+        "redacted": {
+          "type": "boolean",
+          "description": "True when a local configuration response has been minimized before server delivery. Original capture remains local."
+        }
+      },
+      "required": [
+        "raw",
+        "reason",
+        "stream"
+      ],
+      "additionalProperties": false,
+      "description": "Recognized but deliberately irrelevant. No derived frames. Never used to hide a processing failure."
+    },
+    "DebugLocal": {
+      "type": "object",
+      "properties": {
+        "raw": {
+          "type": "string",
+          "description": "Original captured UTF-8 payload as text, before provider JSON parsing/string normalization, excluding line transport delimiter. Preserves numeric lexemes, whitespace and unknown fields. Stderr is plain text, not JSON-encoded a second time. Local configuration responses may be explicitly minimized and marked redacted to avoid transmitting credentials."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stream": {
+          "const": "stdout"
+        },
+        "processing_error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Error"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "redacted": {
+          "type": "boolean",
+          "description": "True when a local configuration response has been minimized before server delivery. Original capture remains local."
+        }
+      },
+      "required": [
+        "raw",
+        "reason",
+        "stream",
+        "processing_error"
+      ],
+      "additionalProperties": false,
+      "description": "Recognized local/control handling with no non-debug Thread Frame. A non-null processing_error explicitly records failed local processing; its recovery policy remains a design decision."
+    },
+    "DebugResolved": {
+      "type": "object",
+      "properties": {
+        "raw": {
+          "type": "string",
+          "description": "Original captured UTF-8 payload as text, before provider JSON parsing/string normalization, excluding line transport delimiter. Preserves numeric lexemes, whitespace and unknown fields. Stderr is plain text, not JSON-encoded a second time. Local configuration responses may be explicitly minimized and marked redacted to avoid transmitting credentials."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stream": {
+          "const": "stdout"
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "output_index": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "kind": {
+                "enum": [
+                  "thread/configuration",
+                  "thread/status",
+                  "turn/started",
+                  "turn/completed",
+                  "message/user",
+                  "message/assistant",
+                  "message/assistant/delta",
+                  "usage/context",
+                  "usage/account",
+                  "mcp/server/status",
+                  "hook/started",
+                  "hook/completed",
+                  "thinking/started",
+                  "thinking/delta",
+                  "thinking/completed",
+                  "tool/call",
+                  "tool/arguments/delta",
+                  "tool/output/delta",
+                  "turn/diff",
+                  "approval/request",
+                  "approval/resolved",
+                  "approval/review",
+                  "tool/notification",
+                  "question/request",
+                  "question/resolved",
+                  "context/compaction",
+                  "subagent/status",
+                  "subagent/notification",
+                  "vcs/push"
+                ]
+              }
+            },
+            "required": [
+              "output_index",
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "redacted": {
+          "type": "boolean",
+          "description": "True when a local configuration response has been minimized before server delivery. Original capture remains local."
+        }
+      },
+      "required": [
+        "raw",
+        "reason",
+        "stream",
+        "outputs"
+      ],
+      "additionalProperties": false,
+      "description": "Produced non-debug outputs. References share this frame's thread/run/sequence. Must reference every actual non-debug output exactly once, verified beyond JSON Schema."
+    },
+    "ProviderDiagnostic": {
+      "type": "object",
+      "properties": {
+        "raw": {
+          "type": "string",
+          "description": "Original captured UTF-8 payload as text, before provider JSON parsing/string normalization, excluding line transport delimiter. Preserves numeric lexemes, whitespace and unknown fields. Stderr is plain text, not JSON-encoded a second time."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stream": {
+          "const": "stderr"
+        }
+      },
+      "required": [
+        "raw",
+        "reason",
+        "stream"
+      ],
+      "additionalProperties": false,
+      "description": "Provider stderr, retained verbatim. Structured log parsing is deferred."
+    },
+    "ConfigurationFrame": {
+      "title": "thread/configuration",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "thread/configuration"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/Configuration"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ThreadStatusFrame": {
+      "title": "thread/status",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "thread/status"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/ThreadStatus"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "TurnStartedFrame": {
+      "title": "turn/started",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "turn/started"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/TurnStarted"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "TurnCompletedFrame": {
+      "title": "turn/completed",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "turn/completed"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/TurnCompleted"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "UserMessageFrame": {
+      "title": "message/user",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "message/user"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/UserMessage"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "AssistantMessageFrame": {
+      "title": "message/assistant",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "message/assistant"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/AssistantMessage"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "AssistantMessageDeltaFrame": {
+      "title": "message/assistant/delta",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "message/assistant/delta"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/AssistantMessageDelta"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ContextUsageFrame": {
+      "title": "usage/context",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "usage/context"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/ContextUsage"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "AccountUsageFrame": {
+      "title": "usage/account",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "usage/account"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/AccountUsage"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "MCPServerStatusFrame": {
+      "title": "mcp/server/status",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "mcp/server/status"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/MCPServerStatus"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "DebugUnknownFrame": {
+      "title": "debug/unknown",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "debug/unknown"
+            },
+            "output_index": {
+              "const": 0
+            },
+            "data": {
+              "$ref": "#/$defs/DebugUnknown"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "DebugDroppedFrame": {
+      "title": "debug/dropped",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "debug/dropped"
+            },
+            "output_index": {
+              "const": 0
+            },
+            "data": {
+              "$ref": "#/$defs/DebugDropped"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "DebugLocalFrame": {
+      "title": "debug/local",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "debug/local"
+            },
+            "output_index": {
+              "const": 0
+            },
+            "data": {
+              "$ref": "#/$defs/DebugLocal"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "DebugResolvedFrame": {
+      "title": "debug/resolved",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "debug/resolved"
+            },
+            "output_index": {
+              "const": 0
+            },
+            "data": {
+              "$ref": "#/$defs/DebugResolved"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ProviderDiagnosticFrame": {
+      "title": "debug/provider-diagnostic",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "debug/provider-diagnostic"
+            },
+            "output_index": {
+              "const": 0
+            },
+            "data": {
+              "$ref": "#/$defs/ProviderDiagnostic"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Permissions": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "enum": [
+            "ask",
+            "accept_edits",
+            "automatic",
+            "dont_ask",
+            "bypass",
+            "custom",
+            "unknown"
+          ]
+        },
+        "filesystem": {
+          "enum": [
+            "read_only",
+            "workspace_write",
+            "unrestricted",
+            "custom",
+            "unknown"
+          ]
+        },
+        "network": {
+          "enum": [
+            "allowed",
+            "blocked",
+            "restricted",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "mode",
+        "filesystem",
+        "network"
+      ],
+      "additionalProperties": false,
+      "description": "Accepted practical provider-independent approval categories and separate access summaries. Native differences in the agreed mappings are acceptable. Report custom for genuinely different configurations and unknown when evidence is missing. Reporting never changes provider permissions."
+    },
+    "ContextOccupancy": {
+      "type": "object",
+      "properties": {
+        "used_tokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "capacity_tokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "estimated": {
+          "type": "boolean",
+          "description": "True when the provider reports an estimate rather than measured occupancy."
+        }
+      },
+      "required": [
+        "used_tokens",
+        "capacity_tokens"
+      ],
+      "additionalProperties": false
+    },
+    "HookStarted": {
+      "type": "object",
+      "properties": {
+        "hook_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "event": {
+          "type": "string",
+          "minLength": 1
+        },
+        "turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "hook_id",
+        "name",
+        "event",
+        "turn_id"
+      ],
+      "additionalProperties": false
+    },
+    "HookStartedFrame": {
+      "title": "hook/started",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "hook/started"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/HookStarted"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "HookCompleted": {
+      "type": "object",
+      "properties": {
+        "hook_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "event": {
+          "type": "string",
+          "minLength": 1
+        },
+        "turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "failed",
+            "blocked",
+            "cancelled"
+          ]
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "text"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "duration_ms": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "output": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stdout": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stderr": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status_message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "hook_id",
+        "name",
+        "event",
+        "turn_id",
+        "status",
+        "entries",
+        "exit_code",
+        "duration_ms",
+        "output",
+        "stdout",
+        "stderr",
+        "status_message"
+      ],
+      "additionalProperties": false
+    },
+    "HookCompletedFrame": {
+      "title": "hook/completed",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "hook/completed"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/HookCompleted"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Thinking": {
+      "type": "object",
+      "properties": {
+        "thinking_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string"
+        },
+        "estimated_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "completed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "thinking_id",
+        "turn_id",
+        "text",
+        "estimated_tokens",
+        "started_at",
+        "completed_at"
+      ],
+      "additionalProperties": false
+    },
+    "ThinkingStartedFrame": {
+      "title": "thinking/started",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "thinking/started"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/Thinking"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ThinkingDeltaFrame": {
+      "title": "thinking/delta",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "thinking/delta"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/ThinkingDelta"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ThinkingCompletedFrame": {
+      "title": "thinking/completed",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "thinking/completed"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/Thinking"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ThinkingDelta": {
+      "type": "object",
+      "properties": {
+        "thinking_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string"
+        },
+        "estimated_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "completed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "channel": {
+          "enum": [
+            "summary",
+            "content"
+          ]
+        },
+        "section_index": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "thinking_id",
+        "turn_id",
+        "text",
+        "estimated_tokens",
+        "started_at",
+        "completed_at",
+        "channel",
+        "section_index"
+      ],
+      "additionalProperties": false
+    },
+    "ToolCall": {
+      "type": "object",
+      "properties": {
+        "tool_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "enum": [
+            "command",
+            "read",
+            "write",
+            "edit",
+            "generic"
+          ]
+        },
+        "status": {
+          "enum": [
+            "preparing",
+            "pending",
+            "running",
+            "completed",
+            "failed",
+            "interrupted",
+            "declined",
+            "permission_denied",
+            "background"
+          ]
+        },
+        "arguments": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "output": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stdout": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stderr": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cwd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "completed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "duration_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "permission_denial": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "message": {
+              "type": "string"
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reason_type": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "message",
+            "reason",
+            "reason_type"
+          ],
+          "additionalProperties": false
+        },
+        "changes": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/FileChange"
+          }
+        },
+        "background_task_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "images": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "media_type": {
+                "enum": [
+                  "image/png",
+                  "image/jpeg",
+                  "image/gif",
+                  "image/webp"
+                ]
+              },
+              "base64": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "media_type",
+              "base64"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "attachments": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "media_type": {
+                "const": "application/pdf"
+              },
+              "base64": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "media_type",
+              "base64",
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "tool_id",
+        "turn_id",
+        "name",
+        "label",
+        "category",
+        "status",
+        "arguments",
+        "output",
+        "stdout",
+        "stderr",
+        "cwd",
+        "started_at",
+        "completed_at",
+        "exit_code",
+        "duration_ms",
+        "permission_denial",
+        "changes"
+      ],
+      "additionalProperties": false
+    },
+    "ToolDelta": {
+      "type": "object",
+      "properties": {
+        "tool_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool_id",
+        "turn_id",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "ToolCallFrame": {
+      "title": "tool/call",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "tool/call"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/ToolCall"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ToolArgumentsDeltaFrame": {
+      "title": "tool/arguments/delta",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "tool/arguments/delta"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/ToolDelta"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ToolOutputDeltaFrame": {
+      "title": "tool/output/delta",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "tool/output/delta"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/ToolDelta"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "FileChange": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "add",
+            "update",
+            "delete"
+          ]
+        },
+        "move_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "diff": {
+          "type": "string"
+        },
+        "format": {
+          "enum": [
+            "unified",
+            "added_content",
+            "removed_content"
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "kind",
+        "move_path",
+        "diff",
+        "format"
+      ],
+      "additionalProperties": false
+    },
+    "TurnDiff": {
+      "type": "object",
+      "properties": {
+        "turn_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "diff": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "combined",
+            "sequential"
+          ]
+        },
+        "incomplete": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "turn_id",
+        "diff"
+      ],
+      "additionalProperties": false
+    },
+    "TurnDiffFrame": {
+      "title": "turn/diff",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "turn/diff"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/TurnDiff"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ApprovalRequest": {
+      "type": "object",
+      "properties": {
+        "approval_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "title": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "details": {
+          "type": "object"
+        },
+        "turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tool_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "approval_id",
+        "title",
+        "reason",
+        "details",
+        "turn_id",
+        "tool_id"
+      ],
+      "additionalProperties": false
+    },
+    "ApprovalRequestFrame": {
+      "title": "approval/request",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "approval/request"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/ApprovalRequest"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ApprovalResolved": {
+      "type": "object",
+      "properties": {
+        "approval_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "approval_id"
+      ],
+      "additionalProperties": false
+    },
+    "ApprovalResolvedFrame": {
+      "title": "approval/resolved",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "approval/resolved"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/ApprovalResolved"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ApprovalReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "review_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tool_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "risk_level": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "user_authorization": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rationale": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "completed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "status": {
+          "enum": [
+            "in_progress",
+            "approved",
+            "denied",
+            "timed_out",
+            "aborted"
+          ]
+        },
+        "details": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "review_id",
+        "turn_id",
+        "title",
+        "tool_id",
+        "risk_level",
+        "user_authorization",
+        "rationale",
+        "started_at",
+        "completed_at",
+        "status",
+        "details"
+      ]
+    },
+    "ApprovalReviewFrame": {
+      "title": "approval/review",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "approval/review"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/ApprovalReview"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ToolNotification": {
+      "type": "object",
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tool_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "failed",
+            "interrupted"
+          ]
+        },
+        "context_entry": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "task_id",
+        "tool_id",
+        "turn_id",
+        "label",
+        "summary",
+        "status",
+        "context_entry"
+      ]
+    },
+    "ToolNotificationFrame": {
+      "title": "tool/notification",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "tool/notification"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/ToolNotification"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "QuestionRequest": {
+      "type": "object",
+      "properties": {
+        "question_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tool_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "questions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "header": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1
+              },
+              "multiple": {
+                "type": "boolean"
+              },
+              "options": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "label",
+                    "description"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "header",
+              "text",
+              "multiple",
+              "options"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "blocking": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "question_id",
+        "turn_id",
+        "tool_id",
+        "questions",
+        "blocking"
+      ],
+      "additionalProperties": false
+    },
+    "QuestionResolved": {
+      "type": "object",
+      "properties": {
+        "question_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "question_id"
+      ],
+      "additionalProperties": false
+    },
+    "QuestionRequestFrame": {
+      "title": "question/request",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "question/request"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/QuestionRequest"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "QuestionResolvedFrame": {
+      "title": "question/resolved",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "question/resolved"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/QuestionResolved"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Compaction": {
+      "type": "object",
+      "properties": {
+        "compaction_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "enum": [
+            "in_progress",
+            "completed"
+          ]
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "completed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "duration_ms": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "before_tokens": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "after_tokens": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
+      },
+      "required": [
+        "compaction_id",
+        "turn_id",
+        "state",
+        "started_at",
+        "completed_at",
+        "summary",
+        "duration_ms",
+        "before_tokens",
+        "after_tokens"
+      ],
+      "additionalProperties": false
+    },
+    "CompactionFrame": {
+      "title": "context/compaction",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "context/compaction"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/Compaction"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "SubagentFrame": {
+      "title": "subagent/status",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "subagent/status"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "lane_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "parent_lane_id": {
+                  "type": "string"
+                },
+                "tool_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "turn_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    "running",
+                    "waiting",
+                    "completed",
+                    "failed",
+                    "interrupted",
+                    "unavailable"
+                  ]
+                },
+                "prompt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "result": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "started_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "completed_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "can_send": {
+                  "type": "boolean"
+                },
+                "can_interrupt": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "lane_id",
+                "parent_lane_id",
+                "tool_id",
+                "turn_id",
+                "name",
+                "status",
+                "prompt",
+                "result",
+                "started_at",
+                "completed_at",
+                "can_send",
+                "can_interrupt"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "SubagentNotificationFrame": {
+      "title": "subagent/notification",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "subagent/notification"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "lane_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "parent_lane_id": {
+                  "type": "string"
+                },
+                "tool_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "turn_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    "running",
+                    "waiting",
+                    "completed",
+                    "failed",
+                    "interrupted",
+                    "unavailable"
+                  ]
+                },
+                "prompt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "result": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "started_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "completed_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "can_send": {
+                  "type": "boolean"
+                },
+                "can_interrupt": {
+                  "type": "boolean"
+                },
+                "context_entry": {
+                  "type": "boolean"
+                },
+                "completion_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "lane_id",
+                "parent_lane_id",
+                "tool_id",
+                "turn_id",
+                "name",
+                "status",
+                "prompt",
+                "result",
+                "started_at",
+                "completed_at",
+                "can_send",
+                "can_interrupt",
+                "context_entry"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "VCSPushFrame": {
+      "title": "vcs/push",
+      "allOf": [
+        {
+          "$ref": "#/$defs/Envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "vcs/push"
+            },
+            "output_index": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "data": {
+              "$ref": "#/$defs/VCSPush"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "VCSPush": {
+      "type": "object",
+      "properties": {
+        "branch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cwd": {
+          "type": "string",
+          "minLength": 1
+        },
+        "turn_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "branch",
+        "cwd",
+        "turn_id"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,147 @@
+# Independent from the development stack and old Acta. No image is pushed.
+name: ${ACTA_PROJECT:-acta2-production}
+x-runtime: &runtime
+  restart: unless-stopped
+  logging:
+    driver: local
+    options:
+      max-size: "10m"
+      max-file: "3"
+  security_opt: ["no-new-privileges:true"]
+services:
+  caddy:
+    <<: *runtime
+    image: caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+    ports:
+      - "${ACTA_BIND_ADDRESS:-0.0.0.0}:80:80"
+      - "${ACTA_BIND_ADDRESS:-0.0.0.0}:443:443"
+      - "${ACTA_BIND_ADDRESS:-0.0.0.0}:443:443/udp"
+    environment:
+      ACTA_DOMAIN: ${ACTA_DOMAIN:?Set the public hostname}
+      ACME_EMAIL: ${ACME_EMAIL:?Set the certificate contact email}
+    volumes:
+      - ./deploy/production/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      edge:
+        ipv4_address: ${ACTA_PROXY_IP:-172.30.50.2}
+    depends_on:
+      app: {condition: service_healthy}
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 256m
+    cpus: 1.0
+    pids_limit: 128
+  app:
+    <<: *runtime
+    image: acta2-local:${ACTA_VERSION:-development}
+    build: {context: ., target: app}
+    environment:
+      ACTA_PUBLIC_URL: https://${ACTA_DOMAIN}
+      ACTA_TRUSTED_PROXIES: ${ACTA_PROXY_IP:-172.30.50.2}
+      ACTA_BACKUP_SOCKET: ${ACTA_BACKUP_SOCKET:-}
+      GOMEMLIMIT: 768MiB
+    secrets: [database-url, security-key, backup-token]
+    volumes:
+      - backup-socket:/run/acta-backup:ro
+    networks:
+      edge:
+        ipv4_address: ${ACTA_APP_PROXY_IP:-172.30.50.3}
+      data: {}
+    depends_on:
+      db: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", 'curl --fail --silent --max-time 4 -H "Host: $${ACTA_PUBLIC_URL#https://}" http://127.0.0.1:8081/api/setup >/dev/null']
+      interval: 15s
+      timeout: 5s
+      start_period: 120s
+      retries: 4
+    read_only: true
+    tmpfs: [/tmp, /run/acta]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, SETUID, SETGID]
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 128
+    stop_grace_period: 40s
+  db:
+    <<: *runtime
+    image: acta2-postgres-local:${ACTA_VERSION:-development}
+    build: {context: ., target: database}
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    secrets: [postgres-password, app-password]
+    volumes:
+      - database:/var/lib/postgresql/data
+      - postgres-socket:/var/run/postgresql
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d acta2"]
+      interval: 5s
+      timeout: 4s
+      start_period: 60s
+      retries: 12
+    tmpfs: [/tmp, /run/acta-db]
+    mem_limit: 2g
+    cpus: 2.0
+    shm_size: 256m
+    pids_limit: 256
+    stop_grace_period: 60s
+  backup:
+    <<: *runtime
+    profiles: [backups]
+    image: acta2-backup-local:${ACTA_VERSION:-development}
+    build: {context: ., target: backup}
+    environment:
+      ACTA_PUBLIC_URL: https://${ACTA_DOMAIN}
+      ACTA_RELEASE: ${ACTA_VERSION:-development}
+      ACTA_INSTALLATION_ID: ${ACTA_INSTALLATION_ID:?Set the installation ID}
+    secrets: [security-key, backup-token]
+    volumes:
+      - type: bind
+        source: ${ACTA_DEPLOY_DIR:?Set an absolute deployment config directory}/backup
+        target: /run/operator
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${ACTA_BACKUP_REPOSITORY:-./.local/unconfigured-repository}
+        target: /repository
+        bind: {create_host_path: false}
+      - database:/var/lib/postgresql/data:ro
+      - postgres-socket:/var/run/postgresql
+      - backup-state:/var/lib/acta-backup
+      - backup-socket:/run/acta-backup
+      - backup-restores:/restore
+      - backup-releases:/releases
+    networks: [data]
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 256
+    stop_grace_period: 45s
+    # Deliberately no depends_on: keep status/alerts available during DB outages.
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: ${ACTA_PROXY_SUBNET:-172.30.50.0/29}
+  data: {internal: true}
+volumes:
+  database: {}
+  postgres-socket: {}
+  caddy-data: {}
+  caddy-config: {}
+  backup-state: {}
+  backup-socket: {}
+  backup-restores: {}
+  backup-releases: {}
+secrets:
+  postgres-password: {file: "${ACTA_DEPLOY_DIR}/postgres-password"}
+  app-password: {file: "${ACTA_DEPLOY_DIR}/app-password"}
+  database-url: {file: "${ACTA_DEPLOY_DIR}/database-url"}
+  security-key: {file: "${ACTA_DEPLOY_DIR}/security-key"}
+  backup-token: {file: "${ACTA_DEPLOY_DIR}/backup-token"}

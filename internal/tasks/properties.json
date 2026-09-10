@@ -1,0 +1,68 @@
+{
+  "priority": [
+    {
+      "value": "none",
+      "label": "None"
+    },
+    {
+      "value": "low",
+      "label": "Low"
+    },
+    {
+      "value": "medium",
+      "label": "Medium"
+    },
+    {
+      "value": "high",
+      "label": "High"
+    },
+    {
+      "value": "urgent",
+      "label": "Urgent"
+    }
+  ],
+  "type": [
+    {
+      "value": "none",
+      "label": "None"
+    },
+    {
+      "value": "bug",
+      "label": "Bug"
+    },
+    {
+      "value": "chore",
+      "label": "Chore"
+    },
+    {
+      "value": "feature",
+      "label": "Feature"
+    }
+  ],
+  "size": [
+    {
+      "value": "none",
+      "label": "None"
+    },
+    {
+      "value": "xs",
+      "label": "XS"
+    },
+    {
+      "value": "s",
+      "label": "S"
+    },
+    {
+      "value": "m",
+      "label": "M"
+    },
+    {
+      "value": "l",
+      "label": "L"
+    },
+    {
+      "value": "xl",
+      "label": "XL"
+    }
+  ]
+}

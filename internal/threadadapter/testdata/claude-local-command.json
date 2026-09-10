@@ -1,0 +1,151 @@
+[
+  {
+    "type": "command_lifecycle",
+    "command_uuid": "0e33f0fc-455b-4cba-bcb7-14dff21e3f1b",
+    "state": "queued",
+    "uuid": "1e92e85b-5814-4f86-a2d4-652a2ede06a1",
+    "session_id": "db799357-e3f3-4f43-9960-df8e8e3bd330"
+  },
+  {
+    "type": "command_lifecycle",
+    "command_uuid": "0e33f0fc-455b-4cba-bcb7-14dff21e3f1b",
+    "state": "started",
+    "uuid": "29f365c3-2716-4851-97a8-bfc34dac2652",
+    "session_id": "db799357-e3f3-4f43-9960-df8e8e3bd330"
+  },
+  {
+    "type": "assistant",
+    "message": {
+      "diagnostics": null,
+      "id": "a521ce97-44cb-4cbc-bc14-17730535afb9",
+      "container": null,
+      "model": "<synthetic>",
+      "role": "assistant",
+      "stop_details": null,
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "type": "message",
+      "usage": {
+        "output_tokens_details": null,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": null,
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 0,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": null,
+        "iterations": null,
+        "speed": null
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "/status isn't available in this environment."
+        }
+      ],
+      "context_management": null
+    },
+    "parent_tool_use_id": null,
+    "is_meta": true,
+    "local_command_source": "<local-command-stdout>/status isn't available in this environment.</local-command-stdout>",
+    "session_id": "db799357-e3f3-4f43-9960-df8e8e3bd330",
+    "uuid": "000f77aa-1248-4cb3-9602-7f4c5a602b24",
+    "timestamp": "2026-09-08T22:23:05.322Z"
+  },
+  {
+    "is_error": false,
+    "duration_api_ms": 0,
+    "num_turns": 0,
+    "stop_reason": null,
+    "session_id": "db799357-e3f3-4f43-9960-df8e8e3bd330",
+    "total_cost_usd": 0.0525843,
+    "usage": {
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "output_tokens": 0,
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard"
+    },
+    "modelUsage": {
+      "claude-haiku-4-5-20251001": {
+        "inputTokens": 110,
+        "outputTokens": 1202,
+        "cacheReadInputTokens": 344763,
+        "cacheCreationInputTokens": 5994,
+        "webSearchRequests": 0,
+        "costUSD": 0.0525843,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 759,
+        "canonicalModel": "claude-haiku-4-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "permission_denials": [],
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "subtype": "success",
+    "result": "/status isn't available in this environment.",
+    "user_message_uuid": "0e33f0fc-455b-4cba-bcb7-14dff21e3f1b",
+    "user_message_uuids": [
+      "0e33f0fc-455b-4cba-bcb7-14dff21e3f1b"
+    ],
+    "type": "result",
+    "duration_ms": 5,
+    "uuid": "fcd38ece-29d8-479c-9203-a494ae6510f9",
+    "queued_turn_count": 0
+  },
+  {
+    "type": "command_lifecycle",
+    "command_uuid": "0e33f0fc-455b-4cba-bcb7-14dff21e3f1b",
+    "state": "completed",
+    "uuid": "1077bda5-b8c1-48d1-9d86-7a1095acec8d",
+    "session_id": "db799357-e3f3-4f43-9960-df8e8e3bd330"
+  }
+]

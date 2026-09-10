@@ -1,0 +1,21 @@
+.horizontal-scroll {
+  scrollbar-width: none;
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black var(--scroll-fade-start, 0px),
+    black calc(100% - var(--scroll-fade-end, 0px)),
+    transparent
+  );
+}
+.horizontal-scroll::-webkit-scrollbar {
+  display: none;
+}
+.horizontal-scroll[data-scrollable="true"] {
+  cursor: grab;
+}
+.horizontal-scroll[data-dragging="true"],
+.horizontal-scroll[data-dragging="true"] * {
+  cursor: grabbing !important;
+  user-select: none;
+}

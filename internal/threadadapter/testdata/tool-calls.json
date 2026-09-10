@@ -1,0 +1,858 @@
+[
+  {
+    "provider": "codex",
+    "raw": {
+      "method": "item/started",
+      "params": {
+        "item": {
+          "type": "commandExecution",
+          "id": "exec-90c33bc6-d673-447d-a259-14bfadccdaa9",
+          "pluginId": null,
+          "scriptPath": null,
+          "command": "/usr/bin/bash -lc \"rg --files -g 'detail_check.py' -g '\"'!proc'\"' -g '\"'!sys'\"' -g '\"'!dev'\"' /tmp/review 2>/dev/null\"",
+          "cwd": "/tmp/review",
+          "processId": "98209",
+          "source": "unifiedExecStartup",
+          "status": "inProgress",
+          "commandActions": [
+            {
+              "type": "unknown",
+              "command": "rg --files -g 'detail_check.py' -g '!proc' -g '!sys' -g '!dev' /tmp/review 2>/dev/null"
+            }
+          ],
+          "aggregatedOutput": null,
+          "exitCode": null,
+          "durationMs": null
+        },
+        "threadId": "01a080f2-af2f-7602-bcc4-44cceb67ce9d",
+        "turnId": "01a080f3-dd62-7df3-8b6c-6fd617284390",
+        "startedAtMs": 1788869864876
+      },
+      "emittedAtMs": 1788869864889
+    }
+  },
+  {
+    "provider": "codex",
+    "raw": {
+      "method": "item/commandExecution/outputDelta",
+      "params": {
+        "threadId": "01a080f2-af2f-7602-bcc4-44cceb67ce9d",
+        "turnId": "01a080f3-dd62-7df3-8b6c-6fd617284390",
+        "itemId": "exec-90c33bc6-d673-447d-a259-14bfadccdaa9",
+        "delta": "/tmp/review/detail_check.py\n"
+      },
+      "emittedAtMs": 1788869865242
+    }
+  },
+  {
+    "provider": "codex",
+    "raw": {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "commandExecution",
+          "id": "exec-90c33bc6-d673-447d-a259-14bfadccdaa9",
+          "pluginId": null,
+          "scriptPath": null,
+          "command": "/usr/bin/bash -lc \"rg --files -g 'detail_check.py' -g '\"'!proc'\"' -g '\"'!sys'\"' -g '\"'!dev'\"' /tmp/review 2>/dev/null\"",
+          "cwd": "/tmp/review",
+          "processId": "98209",
+          "source": "unifiedExecStartup",
+          "status": "completed",
+          "commandActions": [
+            {
+              "type": "unknown",
+              "command": "rg --files -g 'detail_check.py' -g '!proc' -g '!sys' -g '!dev' /tmp/review 2>/dev/null"
+            }
+          ],
+          "aggregatedOutput": "/tmp/review/detail_check.py\n",
+          "exitCode": 0,
+          "durationMs": 378
+        },
+        "threadId": "01a080f2-af2f-7602-bcc4-44cceb67ce9d",
+        "turnId": "01a080f3-dd62-7df3-8b6c-6fd617284390",
+        "completedAtMs": 1788869865255
+      },
+      "emittedAtMs": 1788869865255
+    }
+  },
+  {
+    "provider": "codex",
+    "raw": {
+      "method": "item/started",
+      "params": {
+        "item": {
+          "type": "commandExecution",
+          "id": "exec-9e0e389a-32ba-45df-b877-4a65473d52df",
+          "pluginId": null,
+          "scriptPath": null,
+          "command": "/usr/bin/bash -lc \"sed -n '1,240p' /tmp/review/detail_check.py\"",
+          "cwd": "/tmp/review",
+          "processId": "84926",
+          "source": "unifiedExecStartup",
+          "status": "inProgress",
+          "commandActions": [
+            {
+              "type": "read",
+              "command": "sed -n '1,240p' /tmp/review/detail_check.py",
+              "name": "detail_check.py",
+              "path": "/tmp/review/detail_check.py"
+            }
+          ],
+          "aggregatedOutput": null,
+          "exitCode": null,
+          "durationMs": null
+        },
+        "threadId": "01a080f2-af2f-7602-bcc4-44cceb67ce9d",
+        "turnId": "01a080f3-dd62-7df3-8b6c-6fd617284390",
+        "startedAtMs": 1788869868982
+      },
+      "emittedAtMs": 1788869868982
+    }
+  },
+  {
+    "provider": "codex",
+    "raw": {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "commandExecution",
+          "id": "exec-9e0e389a-32ba-45df-b877-4a65473d52df",
+          "pluginId": null,
+          "scriptPath": null,
+          "command": "/usr/bin/bash -lc \"sed -n '1,240p' /tmp/review/detail_check.py\"",
+          "cwd": "/tmp/review",
+          "processId": "84926",
+          "source": "unifiedExecStartup",
+          "status": "completed",
+          "commandActions": [
+            {
+              "type": "read",
+              "command": "sed -n '1,240p' /tmp/review/detail_check.py",
+              "name": "detail_check.py",
+              "path": "/tmp/review/detail_check.py"
+            }
+          ],
+          "aggregatedOutput": "print(\"fixture\")\n",
+          "exitCode": 0,
+          "durationMs": 0
+        },
+        "threadId": "01a080f2-af2f-7602-bcc4-44cceb67ce9d",
+        "turnId": "01a080f3-dd62-7df3-8b6c-6fd617284390",
+        "completedAtMs": 1788869868983
+      },
+      "emittedAtMs": 1788869868983
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start",
+        "message": {
+          "id": "msg_011Ceqwuykgfa7uiFUfGyFw2"
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "ee89debd-78c5-4e1d-9794-2aa8c069ce3d",
+      "ttft_ms": 1423,
+      "user_message_uuid": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "user_message_uuids": [
+        "fda75324-f207-4bfc-959c-8434e8b63f52"
+      ]
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start",
+        "message": {
+          "id": "msg_011CeqwvgsTfrKwcyc92TqzA"
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "b40d362f-458d-47c0-a2db-3cc553404306",
+      "ttft_ms": 1655,
+      "user_message_uuid": "4c3ac0af-0ecd-4e44-81c1-6033e82a0cf8",
+      "user_message_uuids": [
+        "4c3ac0af-0ecd-4e44-81c1-6033e82a0cf8"
+      ]
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start",
+        "message": {
+          "id": "msg_011CeqwzjEx2e77Bia79qzBB"
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "27d4af61-747a-4b0b-86f8-1eb08d2d8e78",
+      "ttft_ms": 1520,
+      "user_message_uuid": "d0167308-d00d-4a3b-b313-8bb87df4568b",
+      "user_message_uuids": [
+        "d0167308-d00d-4a3b-b313-8bb87df4568b"
+      ]
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start",
+        "message": {
+          "id": "msg_011CeqxN8Eta63xaL7NPdVvA"
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "d0950d6b-b6d2-42fe-baca-0386a3dfd6e7",
+      "ttft_ms": 1558,
+      "user_message_uuid": "0d28f489-411d-4055-849a-f5704d5bc04f",
+      "user_message_uuids": [
+        "0d28f489-411d-4055-849a-f5704d5bc04f"
+      ]
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_start",
+        "index": 1,
+        "content_block": {
+          "type": "tool_use",
+          "id": "toolu_01R8Q48pqDhrrPghQhHtw79t",
+          "name": "Read",
+          "input": {},
+          "caller": {
+            "type": "direct"
+          }
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "ba98eed8-e2c4-43ca-8a5a-bf6c4767509a"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": ""
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "54f77ebe-e64e-4239-b5b8-4ef79afb838c"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "{\"file_path\": \"/tmp/review/.claude/projects/-home-jack/memory/MEMORY.md"
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "55d0d7e9-26dc-4952-b1c8-29b267df9bd7"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "\"}"
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "e71f57d5-f3ff-4b99-a743-9efbce4b0493"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "assistant",
+      "message": {
+        "model": "claude-fable-5-1",
+        "id": "msg_011CeqxN8Eta63xaL7NPdVvA",
+        "type": "message",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "toolu_01R8Q48pqDhrrPghQhHtw79t",
+            "name": "Read",
+            "input": {
+              "file_path": "/tmp/review/.claude/projects/-home-jack/memory/MEMORY.md"
+            },
+            "caller": {
+              "type": "direct"
+            }
+          }
+        ],
+        "stop_reason": null,
+        "stop_sequence": null,
+        "stop_details": null,
+        "usage": {
+          "input_tokens": 2,
+          "cache_creation_input_tokens": 55,
+          "cache_read_input_tokens": 19382,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 55
+          },
+          "output_tokens": 1,
+          "service_tier": "standard",
+          "inference_geo": "not_available"
+        },
+        "diagnostics": null,
+        "context_management": null
+      },
+      "parent_tool_use_id": null,
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "uuid": "5e8152e2-793d-4655-82aa-71093c6e90cc",
+      "timestamp": "2026-09-08T12:15:32.948Z",
+      "request_id": "req_011CeqxN59rTDv93wkJq6gtD"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_stop",
+        "index": 1
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "ccb6d963-895e-4fa8-9a95-4090328bba16"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "content": "File does not exist. Note: your current working directory is /tmp/review.",
+            "is_error": true,
+            "tool_use_id": "toolu_01R8Q48pqDhrrPghQhHtw79t"
+          }
+        ]
+      },
+      "parent_tool_use_id": null,
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "uuid": "74fbad50-b8e4-47e5-9091-ea7a834a854d",
+      "timestamp": "2026-09-08T12:15:33.007Z",
+      "tool_use_result": "Error: File does not exist. Note: your current working directory is /tmp/review."
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start",
+        "message": {
+          "id": "msg_011CeqxNLjyV3tY6He9AGZmj"
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "ceea0d05-32b4-4af7-9a6b-f41de3a028ab",
+      "ttft_ms": 1694
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_start",
+        "index": 1,
+        "content_block": {
+          "type": "tool_use",
+          "id": "toolu_019xTRssYHMXM6RdeoCxKhHE",
+          "name": "Bash",
+          "input": {},
+          "caller": {
+            "type": "direct"
+          }
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "a7f798dd-9a29-4707-824b-bd1b2e42dd31"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": ""
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "1b2dc48a-f7ad-4e17-9932-eaa59a23b162"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "{\"command\": \"ls"
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "9e01266d-e8da-45a8-bb76-d3c526a1f2a3"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": " -a"
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "c9279eb6-ee4b-4705-aa07-4c2d49a69818"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": " /tmp/review |"
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "df3f15f5-703a-492c-9598-38b8dacf9da2"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": " head -40"
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "ed3c182b-97e1-41a6-91d3-c7cca8c22a53"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "\", \"description\": \"List files"
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "9bb90242-ae3a-4912-b265-0e2207621750"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": " in home directory"
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "f03d82cb-39e3-48fe-98ea-59918c7a758e"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta",
+        "index": 1,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "\"}"
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "11de6583-710f-4c6d-be55-846c583db663"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "assistant",
+      "message": {
+        "model": "claude-fable-5-1",
+        "id": "msg_011CeqxNLjyV3tY6He9AGZmj",
+        "type": "message",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "toolu_019xTRssYHMXM6RdeoCxKhHE",
+            "name": "Bash",
+            "input": {
+              "command": "ls -a /tmp/review | head -40",
+              "description": "List files in home directory"
+            },
+            "caller": {
+              "type": "direct"
+            }
+          }
+        ],
+        "stop_reason": null,
+        "stop_sequence": null,
+        "stop_details": null,
+        "usage": {
+          "input_tokens": 32,
+          "cache_creation_input_tokens": 154,
+          "cache_read_input_tokens": 19437,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 154
+          },
+          "output_tokens": 42,
+          "service_tier": "standard",
+          "inference_geo": "not_available"
+        },
+        "diagnostics": null,
+        "context_management": null
+      },
+      "parent_tool_use_id": null,
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "uuid": "0b900427-5f21-456b-b12c-df86ebd89904",
+      "timestamp": "2026-09-08T12:15:35.350Z",
+      "request_id": "req_011CeqxNJwL18huXBkB2zqYM"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_stop",
+        "index": 1
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "55b1ba4f-8394-4389-adab-24d0273991d0"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "tool_use_id": "toolu_019xTRssYHMXM6RdeoCxKhHE",
+            "type": "tool_result",
+            "content": "fixture output\n",
+            "is_error": false
+          }
+        ]
+      },
+      "parent_tool_use_id": null,
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "uuid": "90783678-62a1-4cfc-bf8b-81a65d9d6ce1",
+      "timestamp": "2026-09-08T12:15:35.817Z",
+      "tool_use_result": {
+        "stdout": "fixture output\n",
+        "stderr": "",
+        "interrupted": false,
+        "isImage": false,
+        "noOutputExpected": false
+      }
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start",
+        "message": {
+          "id": "msg_011CeqxNZKGTe9Pdpur9Mooc"
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "a5b15699-3228-4554-8bca-2b80b263542a",
+      "ttft_ms": 1277
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_start",
+        "index": 0,
+        "content_block": {
+          "type": "tool_use",
+          "id": "toolu_01DxjjW8LwBfnB9B17FjnvH6",
+          "name": "Read",
+          "input": {},
+          "caller": {
+            "type": "direct"
+          }
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "ebcfeb9f-8ee2-4bd0-8a80-cb1b5fe176a5"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": ""
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "5393c94e-8120-4376-8bad-820bf540c114"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "{\"file_path\": \"/tmp/review/.bashrc"
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "ea398c6c-1105-4a63-8ef3-73330b2974b3"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "\", \"limit\": 20"
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "38d3b155-5231-4c51-bc02-e7cf9e9fe9c1"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "input_json_delta",
+          "partial_json": "}"
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "7b3a9e24-9278-4d0b-bc31-1bcf362cd848"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "assistant",
+      "message": {
+        "model": "claude-fable-5-1",
+        "id": "msg_011CeqxNZKGTe9Pdpur9Mooc",
+        "type": "message",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "toolu_01DxjjW8LwBfnB9B17FjnvH6",
+            "name": "Read",
+            "input": {
+              "file_path": "/tmp/review/.bashrc",
+              "limit": 20
+            },
+            "caller": {
+              "type": "direct"
+            }
+          }
+        ],
+        "stop_reason": null,
+        "stop_sequence": null,
+        "stop_details": null,
+        "usage": {
+          "input_tokens": 32,
+          "cache_creation_input_tokens": 349,
+          "cache_read_input_tokens": 19591,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 349
+          },
+          "output_tokens": 16,
+          "service_tier": "standard",
+          "inference_geo": "not_available"
+        },
+        "diagnostics": null,
+        "context_management": null
+      },
+      "parent_tool_use_id": null,
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "uuid": "71fb621b-9f4a-451f-9555-95649b4acb41",
+      "timestamp": "2026-09-08T12:15:37.722Z",
+      "request_id": "req_011CeqxNWuuQVYSubf6APGzX"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_stop",
+        "index": 0
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "1f5f2399-0381-411a-aa6c-459cea03d250"
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "tool_use_id": "toolu_01DxjjW8LwBfnB9B17FjnvH6",
+            "type": "tool_result",
+            "content": "fixture output\n"
+          }
+        ]
+      },
+      "parent_tool_use_id": null,
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "uuid": "876f6d2e-c773-40d6-8e0b-e4c9fef38e85",
+      "timestamp": "2026-09-08T12:15:37.747Z",
+      "tool_use_result": {
+        "type": "text",
+        "file": {
+          "filePath": "/tmp/review/.bashrc",
+          "content": "fixture output\n",
+          "numLines": 20,
+          "startLine": 1,
+          "totalLines": 119
+        }
+      }
+    }
+  },
+  {
+    "provider": "claude",
+    "raw": {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start",
+        "message": {
+          "id": "msg_011CeqxNgxQHQ3XyNEaRBSDv"
+        }
+      },
+      "session_id": "fda75324-f207-4bfc-959c-8434e8b63f52",
+      "parent_tool_use_id": null,
+      "uuid": "36c72add-525a-461e-ac33-aebdef893cf4",
+      "ttft_ms": 2338
+    }
+  }
+]

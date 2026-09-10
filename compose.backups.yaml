@@ -1,0 +1,21 @@
+# Opt-in only after provisioning the worker configuration and repository.
+# Always combine with compose.production.yaml; see learn/deployment.md.
+services:
+  db:
+    command:
+      - postgres
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_timeout=60
+      - -c
+      - archive_command=pgbackrest --config=/var/lib/acta-backup/config/pgbackrest.conf --stanza=acta2 archive-push %p
+    volumes:
+      - backup-state:/var/lib/acta-backup
+      - type: bind
+        source: ${ACTA_BACKUP_REPOSITORY:?Set a provisioned backup repository path}
+        target: /repository
+        bind: {create_host_path: false}
+  app:
+    environment:
+      ACTA_BACKUP_SOCKET: /run/acta-backup/worker.sock

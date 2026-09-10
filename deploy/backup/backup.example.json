@@ -1,0 +1,23 @@
+{
+  "state_dir": "/var/lib/acta-backup",
+  "socket": "/run/acta-backup/control.sock",
+  "token_file": "/etc/acta-backup/api-token",
+  "database_url_file": "/etc/acta-backup/database-url",
+  "database_name": "acta2",
+  "database_user": "postgres",
+  "stanza": "acta2",
+  "pgbackrest": "/usr/bin/pgbackrest",
+  "age": "/usr/bin/age",
+  "postgres_bin": "/usr/lib/postgresql/17/bin",
+  "security_key_file": "/etc/acta-backup/security.key",
+  "release_file": "/etc/acta-backup/release.json",
+  "release_dir": "/var/lib/acta-releases",
+  "recovery_recipient": "REPLACE_WITH_AGE_PUBLIC_RECIPIENT",
+  "recovery_identity_file": "/etc/acta-backup/recovery.age",
+  "restore_root": "/var/lib/acta-restores",
+  "alert_command": "",
+  "job_timeout_minutes": 360,
+  "min_retain_full": 2,
+  "max_retain_full": 90,
+  "destinations": [{"id": "offsite", "name": "Offsite repository", "config_file": "/etc/acta-backup/pgbackrest.conf", "repo": 1}]
+}

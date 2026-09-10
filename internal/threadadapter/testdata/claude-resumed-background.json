@@ -1,0 +1,11 @@
+{
+  "type": "system",
+  "subtype": "task_notification",
+  "task_id": "btn099ydt",
+  "tool_use_id": "toolu_01CaYrbpdCGxA2etWgBR4Qw8",
+  "status": "stopped",
+  "output_file": "",
+  "summary": "Background shell command didn't finish before the previous session ended",
+  "uuid": "3c584653-d359-4056-83c7-fa5f0270cc9d",
+  "session_id": "db799357-e3f3-4f43-9960-df8e8e3bd330"
+}

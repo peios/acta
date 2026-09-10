@@ -1,0 +1,159 @@
+.management-page {
+  max-width: 800px;
+  width: 100%;
+  padding: 8px 0 40px;
+}
+.management-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+.management-heading p {
+  font-size: 14px;
+  margin: 0;
+}
+.management-heading h2 {
+  font-size: 23px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.management-page .primary,
+.management-dialog .primary {
+  width: auto;
+  flex-shrink: 0;
+}
+.management-search {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  margin: 24px 0;
+}
+.management-search .field {
+  flex: 1;
+}
+.management-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.management-list li {
+  border-bottom: 1px solid var(--panel-border);
+}
+.management-list li > a,
+.management-list .member-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 8px;
+  text-decoration: none;
+  color: var(--text);
+  border-radius: 8px;
+}
+.management-list li > a:hover {
+  background: var(--hover-surface);
+}
+.management-list .identity {
+  display: grid;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.management-list strong {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.management-list .identity > span {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+.badge {
+  font-size: 10px;
+  line-height: 1.5;
+  font-weight: 500;
+  padding: 3px 6px;
+  background: var(--scope-active);
+  color: var(--accent);
+  border-radius: 4px;
+  margin-left: 10px;
+  white-space: nowrap;
+}
+.management-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+.management-section {
+  padding: 28px 0;
+  border-top: 1px solid var(--panel-border);
+  margin-top: 28px;
+}
+.management-section h3 {
+  font-size: 16px;
+  margin: 0 0 12px;
+}
+.management-section p {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.management-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100svh - 32px);
+  overflow: auto;
+  padding: 28px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+}
+.management-dialog::backdrop {
+  background: #00000060;
+}
+.management-dialog h2 {
+  font-size: 21px;
+  margin: 0 0 12px;
+}
+.management-back {
+  display: inline-block;
+  margin-bottom: 24px;
+  font-size: 13px;
+  text-decoration: none;
+  color: var(--muted);
+}
+.management-note {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.management-list .text-button {
+  background: none;
+  border: 0;
+  color: var(--accent);
+  padding: 10px;
+  font-size: 12px;
+}
+.management-list .text-button:disabled {
+  color: var(--muted);
+}
+@media (max-width: 560px) {
+  .management-heading {
+    align-items: start;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .management-dialog {
+    padding: 20px;
+  }
+  .management-list li > a {
+    gap: 10px;
+  }
+  .management-list .member-row {
+    flex-wrap: wrap;
+  }
+}

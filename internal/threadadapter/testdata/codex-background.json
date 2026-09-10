@@ -1,0 +1,87 @@
+[
+  {
+    "method": "item/started",
+    "params": {
+      "item": {
+        "type": "commandExecution",
+        "id": "call_kdwaR1oo2qR7kJVnSZWbftCS",
+        "pluginId": null,
+        "scriptPath": null,
+        "command": "/usr/bin/bash -lc \"sleep 25; printf 'CODEX-BACKGROUND-DONE'\"",
+        "cwd": "/tmp/acta-qa-20260908/codex",
+        "processId": "68601",
+        "source": "unifiedExecStartup",
+        "status": "inProgress",
+        "commandActions": [
+          {
+            "type": "unknown",
+            "command": "sleep 25; printf 'CODEX-BACKGROUND-DONE'"
+          }
+        ],
+        "aggregatedOutput": null,
+        "exitCode": null,
+        "durationMs": null
+      },
+      "threadId": "01a0823d-29fc-79c1-9b0c-d3c577ec57f3",
+      "turnId": "01a082c5-2603-7833-97a0-5f56a841c62f",
+      "startedAtMs": 1788900356637
+    },
+    "emittedAtMs": 1788900356637
+  },
+  {
+    "method": "turn/completed",
+    "params": {
+      "threadId": "01a0823d-29fc-79c1-9b0c-d3c577ec57f3",
+      "turn": {
+        "id": "01a082c5-2603-7833-97a0-5f56a841c62f",
+        "items": [
+          {
+            "type": "agentMessage",
+            "id": "msg_019858803b09b030016aa0740a8bd887d2b159a982ac4c2db6",
+            "text": "LAUNCHED",
+            "phase": "final_answer",
+            "memoryCitation": null,
+            "delivery": null,
+            "questions": null
+          }
+        ],
+        "itemsView": "summary",
+        "status": "completed",
+        "error": null,
+        "startedAt": 1788900353,
+        "completedAt": 1788900363,
+        "durationMs": 9747
+      }
+    },
+    "emittedAtMs": 1788900363288
+  },
+  {
+    "method": "item/completed",
+    "params": {
+      "item": {
+        "type": "commandExecution",
+        "id": "call_kdwaR1oo2qR7kJVnSZWbftCS",
+        "pluginId": null,
+        "scriptPath": null,
+        "command": "/usr/bin/bash -lc \"sleep 25; printf 'CODEX-BACKGROUND-DONE'\"",
+        "cwd": "/tmp/acta-qa-20260908/codex",
+        "processId": "68601",
+        "source": "unifiedExecStartup",
+        "status": "completed",
+        "commandActions": [
+          {
+            "type": "unknown",
+            "command": "sleep 25; printf 'CODEX-BACKGROUND-DONE'"
+          }
+        ],
+        "aggregatedOutput": "CODEX-BACKGROUND-DONE",
+        "exitCode": 0,
+        "durationMs": 24887
+      },
+      "threadId": "01a0823d-29fc-79c1-9b0c-d3c577ec57f3",
+      "turnId": "01a082c5-2603-7833-97a0-5f56a841c62f",
+      "completedAtMs": 1788900381525
+    },
+    "emittedAtMs": 1788900381536
+  }
+]

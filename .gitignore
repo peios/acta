@@ -1,0 +1,9 @@
+/bin/
+/web/node_modules/
+/web/.svelte-kit/
+/web/build/
+*.log
+.local/
+.qa-harness/
+.env
+.env.*

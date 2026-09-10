@@ -1,0 +1,40 @@
+{
+  "type": "user",
+  "message": {
+    "role": "user",
+    "content": [
+      {
+        "tool_use_id": "toolu_01VCe1D5f96NfXC94ymFm8qm",
+        "type": "tool_result",
+        "content": [
+          {
+            "type": "image",
+            "source": {
+              "type": "base64",
+              "data": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGP4z/CfJMQwqmFUw/DVAAAg0/4QF5nKuAAAAABJRU5ErkJggg==",
+              "media_type": "image/png"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "parent_tool_use_id": null,
+  "session_id": "db799357-e3f3-4f43-9960-df8e8e3bd330",
+  "uuid": "5b403b04-b0d5-4f74-96cd-628820d12a0d",
+  "timestamp": "2026-09-08T22:04:00.847Z",
+  "tool_use_result": {
+    "type": "image",
+    "file": {
+      "base64": "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGP4z/CfJMQwqmFUw/DVAAAg0/4QF5nKuAAAAABJRU5ErkJggg==",
+      "type": "image/png",
+      "originalSize": 79,
+      "dimensions": {
+        "originalWidth": 16,
+        "originalHeight": 16,
+        "displayWidth": 16,
+        "displayHeight": 16
+      }
+    }
+  }
+}

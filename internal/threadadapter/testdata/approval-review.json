@@ -1,0 +1,52 @@
+[
+  {
+    "method": "item/autoApprovalReview/started",
+    "params": {
+      "threadId": "native",
+      "turnId": "turn",
+      "startedAtMs": 1788879333510,
+      "reviewId": "review",
+      "targetItemId": "tool",
+      "review": {
+        "status": "inProgress",
+        "riskLevel": null,
+        "userAuthorization": null,
+        "rationale": null
+      },
+      "action": {
+        "type": "applyPatch",
+        "cwd": "/tmp/review",
+        "files": [
+          "/tmp/review/example.txt"
+        ]
+      }
+    },
+    "emittedAtMs": 1788879333510
+  },
+  {
+    "method": "item/autoApprovalReview/completed",
+    "params": {
+      "threadId": "native",
+      "turnId": "turn",
+      "startedAtMs": 1788879333510,
+      "completedAtMs": 1788879338335,
+      "reviewId": "review",
+      "targetItemId": "tool",
+      "decisionSource": "agent",
+      "review": {
+        "status": "approved",
+        "riskLevel": "low",
+        "userAuthorization": "high",
+        "rationale": "The user approved this narrowly scoped edit."
+      },
+      "action": {
+        "type": "applyPatch",
+        "cwd": "/tmp/review",
+        "files": [
+          "/tmp/review/example.txt"
+        ]
+      }
+    },
+    "emittedAtMs": 1788879338335
+  }
+]

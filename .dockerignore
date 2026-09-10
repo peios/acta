@@ -1,0 +1,10 @@
+.git
+.local
+.qa-harness
+bin
+web/node_modules
+web/.svelte-kit
+web/build
+*.log
+.env
+.env.*

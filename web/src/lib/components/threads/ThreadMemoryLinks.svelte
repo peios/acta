@@ -1,0 +1,110 @@
+<script lang="ts">
+  import {
+    memoryReferences,
+    type MemoryReference,
+  } from "$lib/thread-memory-references.js";
+  import { useThreadMemories } from "$lib/thread-memory-context";
+  import type { ToolCallItem } from "$lib/thread-tool-calls.js";
+  let { call }: { call: ToolCallItem } = $props();
+  const memories = useThreadMemories();
+  const references = $derived(memoryReferences(call));
+  let verified = $state<MemoryReference[]>([]);
+  $effect(() => {
+    let cancelled = false;
+    verified = [];
+    if (memories)
+      void Promise.all(references.map((r) => memories.resolve(r.id))).then(
+        (rows) => {
+          if (!cancelled)
+            verified = rows.filter((r): r is MemoryReference => r !== null);
+        },
+      );
+    return () => {
+      cancelled = true;
+    };
+  });
+</script>
+
+{#if references.length && memories}
+  <div class="task-references" aria-label="Referenced memories">
+    {#each references as reference (reference.id)}
+      {@const task = verified.find((t) => t.id === reference.id)}
+      {#if task}
+        <button
+          type="button"
+          onclick={() => memories.open(task.id)}
+          title={`Open ${task.scope}: ${task.key}`}
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true"
+            ><path d="M5 3h10v14l-5-3-5 3Z" /></svg
+          >
+          <span class="reference">{task.scope}</span><span class="title"
+            >{task.key}</span
+          >
+          <svg class="arrow" viewBox="0 0 20 20" aria-hidden="true"
+            ><path d="m8 5 5 5-5 5" /></svg
+          >
+        </button>
+      {:else}
+        <span class="unresolved"
+          >{reference.key || reference.id}{reference.summary
+            ? ` · ${reference.summary}`
+            : ""}</span
+        >
+      {/if}
+    {/each}
+  </div>
+{/if}
+
+<style>
+  .task-references {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 4px 0 6px 26px;
+    min-width: 0;
+  }
+  button {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    max-width: 100%;
+    padding: 6px 9px;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 12px;
+    text-align: left;
+  }
+  button:hover {
+    background: var(--hover-surface);
+    border-color: var(--accent);
+  }
+  svg {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 auto;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.4;
+  }
+  .reference {
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .arrow {
+    color: var(--muted);
+  }
+  .unresolved {
+    color: var(--muted);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+</style>

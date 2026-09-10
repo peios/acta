@@ -1,0 +1,28 @@
+[Unit]
+Description=Acta independent backup and recovery service
+After=network-online.target
+Wants=network-online.target
+# Deliberately no dependency on the Acta web process or PostgreSQL availability.
+
+[Service]
+Type=simple
+User=postgres
+Group=acta-backup
+UMask=0077
+RuntimeDirectory=acta-backup
+RuntimeDirectoryMode=0750
+ExecStart=/usr/local/bin/acta2-backup --config /etc/acta-backup/backup.json serve
+Restart=on-failure
+RestartSec=10
+KillMode=control-group
+TimeoutStopSec=45
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/acta-backup /var/lib/acta-restores /var/log/pgbackrest /mnt/acta-repository
+# Adapt paths to the deployment. Run isolated restores in a network namespace
+# restricted to the repository; this unit alone is not an egress firewall.
+
+[Install]
+WantedBy=multi-user.target
