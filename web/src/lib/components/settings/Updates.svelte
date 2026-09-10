@@ -6,6 +6,7 @@
     id: string;
     version: string;
     phase: string;
+    paused?: boolean;
     error?: string;
     updated_at: string;
   };
@@ -114,7 +115,8 @@
         <div>
           <h2>{phases[active.phase] ?? active.phase}</h2>
           <p>{active.version} · You can close this page and return later.</p>
-          {#if active.error}<p class="notice error">{active.error}</p>
+          {#if active.error}<p class="notice error">{active.error}</p>{/if}
+          {#if active.paused}
             <button
               class="secondary"
               disabled={pending}

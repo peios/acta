@@ -316,7 +316,10 @@ func (d Docker) Restore(ctx context.Context, j Job) error {
 	if err = d.override(a, true); err != nil {
 		return err
 	}
-	if _, err = d.compose(ctx, "up", "-d", "--no-build", "--pull", "never", "--no-deps", "--wait", "--wait-timeout", "180", "db", "app"); err != nil {
+	if _, err = d.compose(ctx, "up", "-d", "--no-build", "--pull", "never", "--no-deps", "--wait", "--wait-timeout", "180", "db"); err != nil {
+		return err
+	}
+	if _, err = d.compose(ctx, "up", "-d", "--no-build", "--pull", "never", "--no-deps", "--wait", "--wait-timeout", "300", "app"); err != nil {
 		return err
 	}
 	if err = d.Validate(ctx, j); err != nil {

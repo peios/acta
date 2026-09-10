@@ -38,6 +38,19 @@ jobs:
           if not os.environ['SIGNING_SEED']: raise SystemExit('Configure ACTA_RELEASE_SIGNING_SEED first')
           Path('/tmp/release-notes').write_text(os.environ['RELEASE_NOTES'])
           PY
+      - name: Require recovery validation after the bootstrap release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PREVIOUS: ${{ inputs.previous_version }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Release version already exists'; exit 1
+          fi
+          count=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=1" --jq length)
+          if [ "$count" != 0 ] && [ -z "$PREVIOUS" ]; then
+            echo 'Select a previous release for the mandatory recovery test'; exit 1
+          fi
       - name: Log in to the isolated container registry
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -47,7 +60,7 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           python3 scripts/package-release.py --repository "$GITHUB_REPOSITORY" --version "$VERSION" --sequence "$GITHUB_RUN_NUMBER" --notes /tmp/release-notes --output /tmp/manifest.json
-          docker build --target build -t acta2-release-tools .
+          docker build --target build --build-arg "ACTA_VERSION=$VERSION" -t acta2-release-tools .
           id=$(docker create acta2-release-tools)
           docker cp "$id:/out/acta2-update" /tmp/acta2-update
           docker rm "$id"

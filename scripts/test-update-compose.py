@@ -4,7 +4,9 @@ Requires two signed release files, the matching public key, docker registry logi
 and bin/acta2-update. Never targets an existing deployment. Retains failed stacks
 only with KEEP_UPDATE_TEST=1. Signing fixtures use a new test-only key.
 """
-import argparse,base64,hashlib,json,os,secrets,shutil,subprocess,tempfile,time,uuid
+import argparse,base64,hashlib,json,os,secrets,shutil,signal,subprocess,tempfile,time,uuid
+def interrupted(*_):raise KeyboardInterrupt()
+signal.signal(signal.SIGTERM,interrupted)
 from pathlib import Path
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--current',type=Path,required=True);p.add_argument('--target',type=Path,required=True)
@@ -84,8 +86,28 @@ def offer(signed):
  dc('up','-d','--no-build','--no-deps','updater')
  wait(lambda:control('status'),'updater socket')
  return hashlib.sha256(signed['payload'].encode()).hexdigest()
-def finished():
+maintenance_seen=False
+https_port=None
+def http_status():
+ return out(['curl','--noproxy','*','--silent','--show-error','--insecure','--max-time','5','--resolve',f'acta.test:{https_port}:127.0.0.1','-H','Host: acta.test','-o','/dev/null','-w','%{http_code}',f'https://acta.test:{https_port}/api/setup'])
+last_phase=None
+def job_status():
+ global last_phase
  j=control('status')['jobs'][0]
+ phase=(j['id'],j['phase'],j.get('paused'),j.get('error'))
+ if phase!=last_phase:
+  print('Update state:',phase,flush=True);last_phase=phase
+ if j.get('paused'):raise AssertionError(j)
+ return j
+def candidate_started():
+ j=job_status()
+ if j['phase'] in ('failed','rolled_back','succeeded'):raise AssertionError(j)
+ return j['phase']=='applying'
+def finished():
+ global maintenance_seen
+ j=job_status()
+ if j['phase'] in ('snapshotting','applying','validating','restoring') and http_status()=='503':maintenance_seen=True
+ if j.get('paused'):raise AssertionError(j)
  if j['phase'] in ('succeeded','rolled_back','failed'):return j
  return None
 try:
@@ -94,13 +116,17 @@ try:
  dc('exec','-T','backup','chown','999:10001','/repository')
  dc('up','-d','--no-build','--wait','--wait-timeout','300','db','app','caddy','backup','updater')
  dc('exec','-T','-u','999:10001','backup','pgbackrest','--config=/var/lib/acta-backup/config/pgbackrest.conf','--stanza=acta2','stanza-create')
+ https_port=dc('port','caddy','443').rsplit(':',1)[1]
+ assert http_status()=='200'
  sql("CREATE TABLE update_probe(id int PRIMARY KEY, value text NOT NULL); INSERT INTO update_probe VALUES(1,'preserve this')")
  selected=offer(new_signed)
  control('-release-id',selected,'install')
  # Restart the independent controller while the backup phase is underway.
  dc('restart','updater')
- result=wait(finished,'successful release update',1200)
+ result=wait(finished,'successful release update',300)
  assert result['phase']=='succeeded',result
+ assert maintenance_seen,'public maintenance gate was not observed'
+ assert http_status()=='200'
  assert sql('SELECT value FROM update_probe WHERE id=1')=='preserve this'
  assert control('status')['current']['sequence']==new['sequence']
  print('PASS: signed update, encrypted full backup + restore drill, updater restart, data preservation',flush=True)
@@ -124,7 +150,7 @@ func main(){c,e:=pgx.Connect(context.Background(),os.Getenv("ACTA_DATABASE_URL")
   broken_signed,_=sign(broken,'failure-'+str(crash));selected=offer(broken_signed)
   control('-release-id',selected,'install')
   if crash:
-   wait(lambda: control('status')['jobs'][0]['phase']=='applying','candidate phase',1200)
+   wait(candidate_started,'candidate phase',300)
    wait(lambda:sql("SELECT to_regclass('update_failure') IS NOT NULL")=='t','candidate migration write')
    # Simulate loss of all application containers in this disposable project.
    ids=dc('ps','-q').splitlines()
@@ -132,8 +158,9 @@ func main(){c,e:=pgx.Connect(context.Background(),os.Getenv("ACTA_DATABASE_URL")
    run(['docker','kill',*ids])
    for service in ('db','app','backup','caddy','updater'):
     run(['docker','start',dc('ps','-a','-q',service)])
-  result=wait(finished,'failed migration recovery',1200)
+  result=wait(finished,'failed migration recovery',300)
   assert result['phase']=='rolled_back',result
+  assert http_status()=='200'
   assert sql('SELECT value FROM update_probe WHERE id=1')=='preserve this'
   assert sql("SELECT to_regclass('update_failure') IS NULL")=='t'
   assert control('status')['current']['sequence']==new['sequence']

@@ -107,6 +107,9 @@ func TestUpdateFailureBoundaries(t *testing.T) {
 			case "publish-old":
 				want = "rollback_committing"
 			}
+			if j.Paused != (want == "committing" || want == "restoring" || want == "rollback_committing") {
+				t.Fatalf("unexpected paused state: %+v", j)
+			}
 			if j.Phase != want {
 				t.Fatalf("phase %s, want %s; calls %v", j.Phase, want, f.calls)
 			}
@@ -170,6 +173,7 @@ func TestCrashAtEveryBoundary(t *testing.T) {
 }
 func TestInstallOwnershipAndStaleSelection(t *testing.T) {
 	s := openTest(t, &fakeEngine{})
+	selection := s.View().Available.ID()
 	if _, e := Open(s.c, &fakeEngine{}); !errors.Is(e, ErrBusy) {
 		t.Fatalf("second service acquired journal: %v", e)
 	}
@@ -177,13 +181,13 @@ func TestInstallOwnershipAndStaleSelection(t *testing.T) {
 		t.Fatal("stale selection accepted")
 	}
 	installTest(t, s)
-	if _, e := s.Install(s.View().Available.ID(), "actor"); !errors.Is(e, ErrBusy) {
+	if _, e := s.Install(selection, "actor"); !errors.Is(e, ErrBusy) {
 		t.Fatal("concurrent update accepted")
 	}
 	if e := s.advance(context.Background()); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := s.Install(s.View().Available.ID(), "actor"); e == nil {
+	if _, e := s.Install(selection, "actor"); e == nil {
 		t.Fatal("replayed installed release")
 	}
 }
@@ -219,5 +223,23 @@ func TestSignatureAndCompatibility(t *testing.T) {
 	r.Images["app"] = "ghcr.io/peios/acta-app@sha256:" + strings.Repeat("a", 64)
 	if r.Validate() == nil {
 		t.Fatal("old Acta namespace accepted")
+	}
+}
+
+func TestSuccessfulUpdateClearsOfferedRelease(t *testing.T) {
+	s := openTest(t, &fakeEngine{})
+	installTest(t, s)
+	if err := s.advance(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if s.View().Available != nil {
+		t.Fatal("installed release is still offered")
+	}
+	var saved State
+	if err := localstate.Read(filepath.Join(s.c.StateDir, "state.json"), &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved.Available != nil {
+		t.Fatal("installed release persisted as available")
 	}
 }

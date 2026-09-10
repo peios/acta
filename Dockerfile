@@ -5,7 +5,8 @@ COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
 COPY internal/tasks/properties.json /src/internal/tasks/properties.json
-RUN npm run build
+ARG ACTA_VERSION=0.0.0
+RUN npm pkg set version="${ACTA_VERSION#v}" && npm run build
 
 FROM golang:1.26-bookworm@sha256:9fdc884aacc3bec89b20ffc69f4bb369c78210e3e4f600387b5128b12c199f81 AS build
 WORKDIR /src
@@ -14,9 +15,10 @@ RUN go mod download
 COPY . .
 COPY --from=frontend /src/web/build ./web/build
 ENV CGO_ENABLED=0 GOMAXPROCS=4
-RUN go build -p 2 -trimpath -o /out/acta2-server ./cmd/acta2 && \
-    go build -p 2 -trimpath -o /out/acta2-backup ./cmd/acta2-backup && \
-    go build -p 2 -trimpath -o /out/acta2-update ./cmd/acta2-update
+ARG ACTA_VERSION=0.0.0
+RUN go build -p 2 -trimpath -ldflags "-X acta2/internal/version.Current=${ACTA_VERSION#v}" -o /out/acta2-server ./cmd/acta2 && \
+    go build -p 2 -trimpath -ldflags "-X acta2/internal/version.Current=${ACTA_VERSION#v}" -o /out/acta2-backup ./cmd/acta2-backup && \
+    go build -p 2 -trimpath -ldflags "-X acta2/internal/version.Current=${ACTA_VERSION#v}" -o /out/acta2-update ./cmd/acta2-update
 
 FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS app
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gosu && rm -rf /var/lib/apt/lists/* && \

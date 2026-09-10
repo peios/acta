@@ -12,7 +12,7 @@ if not re.fullmatch(r'v\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?',a.version):p.error('in
 images={}
 for service,target in [('app','app'),('db','database'),('backup','backup'),('updater','updater')]:
  tag=f'ghcr.io/{a.repository}-{service}:{a.version}'
- subprocess.run(['docker','buildx','build','--platform','linux/amd64','--target',target,
+ subprocess.run(['docker','buildx','build','--platform','linux/amd64','--target',target,'--build-arg',f'ACTA_VERSION={a.version}',
   '--label',f'org.opencontainers.image.source=https://github.com/{a.repository}',
   '--label',f'org.opencontainers.image.version={a.version}',
   '--tag',tag,'--push','.'],check=True)

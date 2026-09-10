@@ -9,6 +9,7 @@ import (
 
 	"acta2/internal/accounts"
 	"acta2/internal/auth"
+	"acta2/internal/version"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -22,7 +23,7 @@ type mcpIdentity struct {
 // Account state and grants are reloaded before dispatch, including tools/call.
 // Protocol sessions are stateless; durable authorization belongs to Acta.
 func identityServer(account accounts.Account, grants []string) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "Acta", Version: "0.0.0"}, &mcp.ServerOptions{Instructions: agentInstructions, Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}}})
+	s := mcp.NewServer(&mcp.Implementation{Name: "Acta", Version: version.Current}, &mcp.ServerOptions{Instructions: agentInstructions, Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}}})
 	if slices.Contains(grants, auth.MCPIdentityGrant) {
 		no := false
 		mcp.AddTool(s, &mcp.Tool{Name: "whoami", Description: "Return the current Acta account's ID, username and display name.",

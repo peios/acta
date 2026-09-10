@@ -74,7 +74,9 @@ docker compose --env-file /srv/acta2-config/.env \
   --profile backups --profile updates up -d --no-build
 ```
 
-Use all these files for subsequent operator commands. `active.json` is maintained
+Use all these files for subsequent operator commands. Run operator Compose
+commands with root privileges (for example, `sudo docker compose`): the updater
+keeps its journal and generated overlay private to root. `active.json` is maintained
 by the updater and selects the exact installed image set. Do not override images
 by hand. Bootstrap refuses an existing journal and does not start containers or
 change data. Existing locally built installations need an operator-controlled
@@ -144,9 +146,15 @@ Failure images and fixture signatures use a separate disposable signing key and
 are never GitHub releases. `KEEP_UPDATE_TEST=1` retains the test installation for
 inspection; otherwise only its own containers and volumes are removed.
 
+The initial preview.1 bootstrap exposed a verifier bootstrap-permissions defect
+and is not a supported installation baseline. Its transition fixture uses the
+new controller against the old application images; subsequent release pairs also
+exercise replacement of the controller itself.
+
 The release workflow accepts a `previous_version` to run this real recovery test
 before publishing the target release. A first bootstrap prerelease has no previous
-release; every subsequent release should specify its predecessor.
+release; every subsequent release must specify its predecessor. The workflow rejects a
+missing predecessor once a bootstrap release exists.
 
 References: [Docker volumes](https://docs.docker.com/engine/storage/volumes/),
 [Compose up](https://docs.docker.com/reference/cli/docker/compose/up/),

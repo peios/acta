@@ -78,7 +78,7 @@ func (s *Service) Serve(ctx context.Context) error {
 		jobs := []map[string]any{}
 		for _, j := range st.Jobs {
 			release, _ := Verify(j.Target, s.key, s.c.Repository)
-			jobs = append(jobs, map[string]any{"id": j.ID, "version": release.Version, "phase": j.Phase, "error": j.Error, "started_at": j.Started, "updated_at": j.Updated})
+			jobs = append(jobs, map[string]any{"id": j.ID, "version": release.Version, "phase": j.Phase, "error": j.Error, "paused": j.Paused, "started_at": j.Started, "updated_at": j.Updated})
 			if len(jobs) >= 20 {
 				break
 			}

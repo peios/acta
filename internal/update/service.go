@@ -27,6 +27,7 @@ type Job struct {
 	Started     time.Time `json:"started_at"`
 	Updated     time.Time `json:"updated_at"`
 	Error       string    `json:"error,omitempty"`
+	Paused      bool      `json:"paused,omitempty"`
 	RestoreData bool      `json:"restore_data"`
 }
 type State struct {
@@ -163,6 +164,7 @@ func (s *Service) transition(phase string, cause error) error {
 	defer s.mu.Unlock()
 	old := s.state.Jobs[0]
 	j := old
+	j.Paused = cause != nil && old.Phase == phase
 	j.Phase = phase
 	j.Updated = time.Now().UTC()
 	if cause != nil {
@@ -173,8 +175,10 @@ func (s *Service) transition(phase string, cause error) error {
 	}
 	s.state.Jobs[0] = j
 	current := s.state.Current
+	available := s.state.Available
 	if phase == "succeeded" {
 		s.state.Current = j.Target
+		s.state.Available = nil
 	}
 	if phase == "rolled_back" {
 		s.state.Current = j.Previous
@@ -182,6 +186,7 @@ func (s *Service) transition(phase string, cause error) error {
 	if err := s.save(); err != nil {
 		s.state.Jobs[0] = old
 		s.state.Current = current
+		s.state.Available = available
 		return err
 	}
 	return nil
