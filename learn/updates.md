@@ -113,7 +113,8 @@ Before committing, a failure or ambiguous candidate execution restores the cold
 copy and previous images. The snapshot must come from a cleanly stopped database.
 Recovery forks a new PostgreSQL timeline using only the snapshot's local WAL; it
 fetches archive history files solely to avoid reusing a timeline identifier.
-Candidate WAL is never replayed. The temporary recovery settings are removed
+Candidate WAL is never replayed. This uses PostgreSQL's [archive recovery and
+timeline selection](https://www.postgresql.org/docs/17/runtime-config-wal.html#RUNTIME-CONFIG-WAL-RECOVERY-TARGET) behavior. The temporary recovery settings are removed
 before new backups, and an archive check must pass before reopening. Restored sessions are revoked and pending notifications
 are discarded before enabling the old application. A failed rollback leaves the
 installation in maintenance and records its error. After committing, recovery only
