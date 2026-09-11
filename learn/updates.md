@@ -22,8 +22,9 @@ operator deployment upgrade; normal compatible updater image changes are handled
 by a detached replacement helper after application cutover is durably complete.
 
 The release channel is **peios/acta**, with separate
-`ghcr.io/peios/acta-{app,db,backup,updater}` packages. The legacy
-`ghcr.io/peios/acta-server` package is never published by this workflow.
+`ghcr.io/peios/acta-{server,db,backup,updater}` packages. The `app` manifest
+entry uses the `acta-server` image package. Reusing that package was explicitly
+approved after disabling the only old installation's auto-updater.
 Publishing remains disabled until the GitHub repository variable
 `ACTA_RELEASE_ENABLED=true` is explicitly set after the repository handover.
 The packaging script requires the same environment gate. Workflow dispatch still

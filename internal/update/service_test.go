@@ -20,6 +20,7 @@ func testRelease(seq int64) Release {
 	for _, k := range []string{"app", "db", "backup", "updater"} {
 		images[k] = "ghcr.io/peios/acta-" + k + "@sha256:" + strings.Repeat("a", 64)
 	}
+	images["app"] = "ghcr.io/peios/acta-server@sha256:" + strings.Repeat("a", 64)
 	images["caddy"] = "caddy@sha256:" + strings.Repeat("b", 64)
 	return Release{Version: "v0.1.0-test", Sequence: seq, Repository: "peios/acta", Protocol: Protocol, Layout: Layout, Postgres: 17, Schema: 40, MinimumSchema: 40, Images: images}
 }
@@ -220,9 +221,9 @@ func TestSignatureAndCompatibility(t *testing.T) {
 	if Compatible(r, next) == nil {
 		t.Fatal("unsupported schema jump accepted")
 	}
-	r.Images["app"] = "ghcr.io/peios/acta-server@sha256:" + strings.Repeat("a", 64)
+	r.Images["app"] = "ghcr.io/peios/acta-unrelated@sha256:" + strings.Repeat("a", 64)
 	if r.Validate() == nil {
-		t.Fatal("old Acta namespace accepted")
+		t.Fatal("unrelated image package accepted")
 	}
 }
 

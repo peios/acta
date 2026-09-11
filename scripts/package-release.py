@@ -12,7 +12,8 @@ if os.environ.get('ACTA_RELEASE_ENABLED')!='true':p.error('publishing is disable
 if not re.fullmatch(r'v\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?',a.version):p.error('invalid version')
 images={}
 for service,target in [('app','app'),('db','database'),('backup','backup'),('updater','updater')]:
- tag=f'ghcr.io/{a.repository}-{service}:{a.version}'
+ package='server' if service=='app' else service
+ tag=f'ghcr.io/{a.repository}-{package}:{a.version}'
  subprocess.run(['docker','buildx','build','--platform','linux/amd64','--target',target,'--build-arg',f'ACTA_VERSION={a.version}',
   '--label',f'org.opencontainers.image.source=https://github.com/{a.repository}',
   '--label',f'org.opencontainers.image.version={a.version}',

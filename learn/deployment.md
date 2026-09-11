@@ -7,8 +7,9 @@ not publish anything or alter old Acta's release channel. The optional [deployme
 Base images are pinned by digest. Review and refresh those pins for security
 updates; OS packages are resolved during the build, so retain the resulting exact
 release images rather than assuming a later rebuild is byte-identical.
-The new release uses `acta-app`, `acta-db`, `acta-backup` and `acta-updater`
-container packages. Never publish the legacy `acta-server:latest` package.
+The new release uses `acta-server`, `acta-db`, `acta-backup` and `acta-updater`
+container packages. Reuse of `acta-server` is approved; the old installation's
+auto-updater is disabled.
 Repository handover and release publication require separate approval.
 
 ## First installation
