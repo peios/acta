@@ -151,7 +151,7 @@ try {
   // Synthetic events verify cancellation and lifecycle also in Firefox. Chromium
   // additionally uses real browser touch input for pan arbitration and edge drag.
   async function dispatch(type, x, y, selector = ".shell", cancelled = false) {
-    await page.evaluate(
+    return page.evaluate(
       ({ type, x, y, selector, cancelled }) => {
         const el = window.touchTestTarget || document.querySelector(selector);
         if (type === "touchstart") window.touchTestTarget = el;
@@ -174,22 +174,66 @@ try {
         el.dispatchEvent(event);
         if (type === "touchend" || type === "touchcancel")
           delete window.touchTestTarget;
+        return event.defaultPrevented;
       },
       { type, x, y, selector, cancelled },
     );
   }
-  await dispatch("touchstart", 8, 220);
+  assert.equal(
+    await page.evaluate(
+      () => getComputedStyle(document.documentElement).overscrollBehaviorX,
+    ),
+    "none",
+  );
+  // The event itself must be cancelled before movement, even with no pageX.
+  assert.equal(await dispatch("touchstart", 8, 220), true);
   await dispatch("touchmove", 110, 220);
   await dispatch("touchend", 110, 220);
   await page
     .getByRole("dialog", { name: "Navigation" })
     .waitFor({ state: "visible" });
-  await dispatch("touchstart", 180, 260, "dialog");
+  assert.equal(await dispatch("touchstart", 180, 260, "dialog"), false);
   await dispatch("touchmove", 70, 262);
   await dispatch("touchend", 70, 262);
   await page
     .getByRole("dialog", { name: "Navigation" })
     .waitFor({ state: "hidden" });
+  assert.equal(await dispatch("touchstart", 29, 220), false);
+  await dispatch("touchcancel", 29, 220);
+  assert.equal(await dispatch("touchstart", 8, 220, ".shell", true), false);
+  await dispatch("touchcancel", 8, 220);
+  // Edge taps on interactive content and multi-touch are not swallowed.
+  for (const tag of ["button", "a", "input", "label"]) {
+    await page.evaluate((tag) => {
+      const element = document.createElement(tag);
+      element.id = "edge-control";
+      document.querySelector(".shell").append(element);
+    }, tag);
+    assert.equal(
+      await dispatch("touchstart", 8, 220, "#edge-control"),
+      false,
+      tag,
+    );
+    await dispatch("touchcancel", 8, 220);
+    await page.locator("#edge-control").evaluate((el) => el.remove());
+  }
+  assert.equal(
+    await page.evaluate(() => {
+      const event = new Event("touchstart", {
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(event, "touches", {
+        value: [
+          { identifier: 1, clientX: 8, clientY: 220 },
+          { identifier: 2, clientX: 40, clientY: 220 },
+        ],
+      });
+      document.querySelector(".shell").dispatchEvent(event);
+      return event.defaultPrevented;
+    }),
+    false,
+  );
   await dispatch("touchstart", 8, 220);
   await dispatch("touchmove", 12, 310);
   await dispatch("touchend", 12, 310);

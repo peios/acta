@@ -16,7 +16,12 @@ export function swipeNavigation(
     | undefined;
   function start(event: TouchEvent) {
     gesture = undefined;
-    if (window.innerWidth > 720 || event.touches.length !== 1) return;
+    if (
+      event.defaultPrevented ||
+      window.innerWidth > 720 ||
+      event.touches.length !== 1
+    )
+      return;
     const panel = drawer();
     const target = event.target instanceof Element ? event.target : null;
     if (
@@ -37,6 +42,15 @@ export function swipeNavigation(
     const t = event.touches[0];
     if (!panel.open && t.clientX > 28) return;
     if (panel.open && !panel.contains(target)) return;
+    // iOS can claim history navigation before touchmove. Reserve only the
+    // opening edge at touchstart; leave controls tappable and drawer scrolling
+    // native. Cancelling here also suppresses native vertical pan at this edge.
+    if (
+      !panel.open &&
+      event.cancelable &&
+      !target.closest("a, button, [role='button'], label")
+    )
+      event.preventDefault();
     gesture = {
       id: t.identifier,
       x: t.clientX,
@@ -97,7 +111,7 @@ export function swipeNavigation(
   const cancel = () => {
     gesture = undefined;
   };
-  node.addEventListener("touchstart", start, { passive: true });
+  node.addEventListener("touchstart", start, { passive: false });
   node.addEventListener("touchmove", move, { passive: false });
   node.addEventListener("touchend", end, { passive: false });
   node.addEventListener("touchcancel", end);
