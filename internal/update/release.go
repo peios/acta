@@ -57,7 +57,11 @@ func (r Release) Validate() error {
 		if !digestPattern.MatchString(image) {
 			return fmt.Errorf("%s image must use an immutable digest", name)
 		}
-		prefix := "ghcr.io/" + strings.ToLower(r.Repository) + "-" + name + "@"
+		packageName := name
+		if name == "app" {
+			packageName = "server"
+		}
+		prefix := "ghcr.io/" + strings.ToLower(r.Repository) + "-" + packageName + "@"
 		if name == "caddy" {
 			prefix = "caddy@"
 		}

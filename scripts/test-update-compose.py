@@ -140,7 +140,7 @@ func main(){c,e:=pgx.Connect(context.Background(),os.Getenv("ACTA_DATABASE_URL")
 ''')
  run(['docker','run','--rm','-v',f'{fixture}:/fixture','acta-release-tools','go','build','-o','/fixture/fail','/fixture/main.go'])
  (fixture/'Dockerfile').write_text('FROM '+new['images']['app']+'\nCOPY fail /usr/local/bin/acta-server\n')
- tag='ghcr.io/peios/acta-app:qa-failure-'+uuid.uuid4().hex[:10]
+ tag='ghcr.io/peios/acta-server:qa-failure-'+uuid.uuid4().hex[:10]
  run(['docker','buildx','build','--platform','linux/amd64','--push','-t',tag,fixture])
  digest=json.loads(out(['docker','buildx','imagetools','inspect',tag,'--format','{{json .Manifest.Digest}}']))
  broken=json.loads(json.dumps(new));broken['images']['app']=tag.split(':')[0]+'@'+digest

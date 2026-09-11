@@ -13,10 +13,12 @@ performed by changing the source tree.
 - Fresh deployment database and pgBackRest stanza: `acta`.
 - Default Compose projects: `acta` (development), `acta-production` (deployment).
 - Release repository: `peios/acta`.
-- Container packages: `ghcr.io/peios/acta-{app,db,backup,updater}`.
+- Container packages: `ghcr.io/peios/acta-{server,db,backup,updater}`.
 
-The legacy `ghcr.io/peios/acta-server` package is excluded from the release image
-contract. Signed manifests using the earlier development layout are rejected:
+The server image reuses `ghcr.io/peios/acta-server` by explicit user decision:
+the only installation watching it was this VPS, whose updater is now disabled.
+The Compose service and manifest key remain `app`. Signed manifests using the
+earlier development layout are rejected:
 layout 2 names different executables, database and backup stanza. Fresh deployment
 is intentional; no conversion of preview data, browser storage, credential stores
 or encryption domains is attempted. Existing legacy CLI installations must not be
@@ -44,5 +46,5 @@ database. All four renamed executables and production Docker targets build.
 The production Compose rehearsal passed HTTPS, OAuth origin, service isolation,
 persistence across container recreation, encrypted backup and a real restore drill
 using the new database and pgBackRest stanza names. The publishing gate rejects
-unapproved execution, and release validation rejects the legacy image namespace
+unapproved execution, and release validation rejects unrelated image packages
 and development layout. No image was published for this local validation.
