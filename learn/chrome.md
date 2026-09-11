@@ -67,6 +67,17 @@ the main header. Its account menu remains a nested popup; Escape dismisses that
 menu before the drawer. Selecting a scope closes the drawer. Native dialog
 behavior manages focus containment and restoration.
 
+On mobile, a rightward swipe starting in the leftmost 28 CSS pixels opens the
+drawer. A leftward swipe inside it closes it. When the drawer is closed, a
+non-passive `touchstart` listener cancels the native gesture in that opening strip
+before iOS can claim swipe-back. Links, buttons, labels, editable fields, drag
+handles, other open dialogs/popovers, and multi-touch starts are excluded from
+this early cancellation. Native vertical scrolling that starts in the reserved
+strip is also suppressed; scrolling elsewhere remains native. The root document
+also requests `overscroll-behavior-x: none` as a supplementary browser defence.
+Browser history is retained. Actual swipe-back suppression in iOS home-screen
+apps requires device validation; this is a best-effort browser workaround.
+
 The current bottom scope selector and contextual upper sidebar follow the
 interaction Jack liked in old Acta. Their styling follows the newly agreed Acta
 visual direction; the old implementation has not been inspected or reused.

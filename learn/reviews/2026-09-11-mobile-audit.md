@@ -98,3 +98,22 @@ iPhone and Android phone, where available, for sidebar and board gestures,
 dragging between columns, keyboard-open editing/approvals, browser back navigation,
 rotation, app switching and reconnection. Browser-emulated passes are evidence for
 the covered workflows, not a claim of complete mobile compatibility.
+
+## v0.2.1 follow-up: iOS edge navigation
+
+Jack reported native swipe-back competing with the sidebar in the installed iOS
+home-screen app. The patch reserves the existing 28px opening strip using a
+non-passive `touchstart` listener and applies root horizontal overscroll suppression.
+Controls remain tappable, and browser history is retained. Native vertical pan
+starting in the reserved strip is suppressed as an unavoidable consequence of
+cancelling touchstart before gesture direction is known.
+
+The updated board suite passed in Chromium, Firefox and Linux WebKit. Assertions
+cover cancellation at touchstart without a `pageX` property, outside-edge input,
+non-cancelable input, links/buttons/labels/fields, multi-touch, repeated sidebar
+gestures and existing history restoration. Chromium's native touch tests also
+passed sidebar opening, vertical scrolling, snapping and cross-column dragging.
+`make check` passed, including frontend diagnostics, formatting, unit tests,
+production frontend build, Go vet and Go tests. These tests do not reproduce
+iOS's native history gesture recognizer; suppression on Jack's phone remains
+unverified until the patch is installed there.
