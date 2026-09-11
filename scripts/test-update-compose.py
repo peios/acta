@@ -9,7 +9,10 @@ def interrupted(*_):raise KeyboardInterrupt()
 signal.signal(signal.SIGTERM,interrupted)
 from pathlib import Path
 p=argparse.ArgumentParser(description=__doc__)
-p.add_argument('--current',type=Path,required=True);p.add_argument('--target',type=Path,required=True)
+baseline=p.add_mutually_exclusive_group(required=True)
+baseline.add_argument('--current',type=Path)
+baseline.add_argument('--bootstrap',action='store_true',help='Rehearse the first layout-2 candidate against an isolated same-image baseline')
+p.add_argument('--target',type=Path,required=True)
 p.add_argument('--public-key',type=Path,default=Path('deploy/update/release.pub'))
 a=p.parse_args();repo=Path(__file__).resolve().parents[1]
 root=Path(tempfile.mkdtemp(prefix='acta-update-test-'));project='acta-update-test-'+uuid.uuid4().hex[:8]
@@ -17,7 +20,12 @@ binary=repo/'bin/acta-update';config=root/'config';state=root/'state'
 def run(args,**kw):return subprocess.run(list(map(str,args)),cwd=repo,check=True,text=True,**kw)
 def out(args):return run(args,stdout=subprocess.PIPE).stdout.strip()
 def decoded(path):return json.loads(out([binary,'-input',path,'-public-key',a.public_key,'verify']))
-old,new=decoded(a.current),decoded(a.target)
+new=decoded(a.target)
+if a.bootstrap:
+ assert new['version']=='v0.1.0-rc.1' and new['sequence']>1, 'Bootstrap is restricted to the first layout-2 candidate'
+ old=json.loads(json.dumps(new));old['sequence']-=1;old['version']='v0.0.0-bootstrap-fixture'
+ print('Bootstrap rehearsal: same-image fixture; not a previous-release upgrade',flush=True)
+else:old=decoded(a.current)
 assert new['sequence']>old['sequence']
 run(['python3','scripts/configure-deployment.py','--domain','acta.test','--email','test@example.com','--directory',config,'--project',project])
 run([binary,'-key',root/'test.seed','-public-key',root/'test.pub','keygen'])

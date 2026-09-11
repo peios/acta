@@ -1,12 +1,12 @@
-name: Publish Acta prerelease
+name: Publish Acta release
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Unique prerelease version, e.g. v0.1.0-preview.1'
+        description: 'Unique release version, e.g. v0.1.0 or v0.1.0-rc.1'
         required: true
       previous_version:
-        description: Previous isolated prerelease to use for the real update/recovery test
+        description: Previous compatible release for update/recovery testing (omit only for v0.1.0-rc.1)
         required: false
       notes:
         description: Release notes
@@ -29,12 +29,16 @@ jobs:
           VERSION: ${{ inputs.version }}
           RELEASE_NOTES: ${{ inputs.notes }}
           SIGNING_SEED: ${{ secrets.ACTA_RELEASE_SIGNING_SEED }}
+          PREVIOUS: ${{ inputs.previous_version }}
         run: |
           python3 - <<'PY'
           import os,re
           from pathlib import Path
-          if not re.fullmatch(r'v\d+\.\d+\.\d+-[a-zA-Z0-9.-]+',os.environ['VERSION']):
-              raise SystemExit('Only isolated prereleases are enabled')
+          version=os.environ['VERSION']
+          if not re.fullmatch(r'v\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?',version):
+              raise SystemExit('Invalid release version')
+          if not os.environ['PREVIOUS'] and version!='v0.1.0-rc.1':
+              raise SystemExit('A previous compatible release is required; only v0.1.0-rc.1 can bootstrap layout 2')
           if not os.environ['SIGNING_SEED']: raise SystemExit('Configure ACTA_RELEASE_SIGNING_SEED first')
           Path('/tmp/release-notes').write_text(os.environ['RELEASE_NOTES'])
           PY
@@ -47,11 +51,18 @@ jobs:
           if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo 'Release version already exists'; exit 1
           fi
-          count=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=1" --jq length)
-          if [ "$count" != 0 ] && [ -z "$PREVIOUS" ]; then
-            echo 'Select a previous release for the mandatory recovery test'; exit 1
+          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null; then
+            echo 'Release tag already exists'; exit 1
           fi
-      - name: Log in to the isolated container registry
+      - name: Build and check release source
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          docker build --target frontend --build-arg "ACTA_VERSION=$VERSION" -t acta-release-frontend .
+          docker run --rm acta-release-frontend sh -c 'npm run format:check && npm run check && npm test'
+          docker build --target build --build-arg "ACTA_VERSION=$VERSION" -t acta-release-tools .
+          docker run --rm acta-release-tools sh -c 'go vet ./... && go test ./...'
+      - name: Log in to the container registry
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
@@ -61,7 +72,6 @@ jobs:
           ACTA_RELEASE_ENABLED: ${{ vars.ACTA_RELEASE_ENABLED }}
         run: |
           python3 scripts/package-release.py --repository "$GITHUB_REPOSITORY" --version "$VERSION" --sequence "$GITHUB_RUN_NUMBER" --notes /tmp/release-notes --output /tmp/manifest.json
-          docker build --target build --build-arg "ACTA_VERSION=$VERSION" -t acta-release-tools .
           id=$(docker create acta-release-tools)
           docker cp "$id:/out/acta-update" /tmp/acta-update
           docker rm "$id"
@@ -75,19 +85,24 @@ jobs:
           /tmp/acta-update -key /tmp/release-key -input /tmp/manifest.json -output /tmp/acta-release.json sign
           /tmp/acta-update -public-key deploy/update/release.pub -input /tmp/acta-release.json verify
       - name: Exercise the real update and failed migration recovery
-        if: inputs.previous_version != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PREVIOUS: ${{ inputs.previous_version }}
         run: |
           mkdir -p /tmp/previous-release bin
-          gh release download "$PREVIOUS" --repo "$GITHUB_REPOSITORY" --pattern acta-release.json --dir /tmp/previous-release
           cp /tmp/acta-update bin/acta-update
           python3 scripts/test-update-timeline.py
-          python3 scripts/test-update-compose.py --current /tmp/previous-release/acta-release.json --target /tmp/acta-release.json
-      - name: Publish prerelease after every image and signature is ready
+          if [ -n "$PREVIOUS" ]; then
+            gh release download "$PREVIOUS" --repo "$GITHUB_REPOSITORY" --pattern acta-release.json --dir /tmp/previous-release
+            python3 scripts/test-update-compose.py --current /tmp/previous-release/acta-release.json --target /tmp/acta-release.json
+          else
+            python3 scripts/test-update-compose.py --bootstrap --target /tmp/acta-release.json
+          fi
+      - name: Publish release after recovery validation
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ inputs.version }}
         run: |
-          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "$VERSION" --notes-file /tmp/release-notes /tmp/acta-release.json /tmp/acta-update
+          flags=(--latest)
+          if [[ "$VERSION" == *-* ]]; then flags=(--prerelease --latest=false); fi
+          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" "${flags[@]}" --title "$VERSION" --notes-file /tmp/release-notes /tmp/acta-release.json /tmp/acta-update
