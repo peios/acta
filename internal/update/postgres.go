@@ -12,7 +12,7 @@ import (
 // those history files when archive recovery reaches the end of the local WAL.
 const prepareRecovery = `set -eu
 cat > /data/acta-update-recovery.conf <<'CONF'
-restore_command = 'case "%f" in *.history) pgbackrest --config=/var/lib/acta-backup/config/pgbackrest.conf --stanza=acta2 archive-get "%f" "%p";; *) exit 1;; esac'
+restore_command = 'case "%f" in *.history) pgbackrest --config=/var/lib/acta-backup/config/pgbackrest.conf --stanza=acta archive-get "%f" "%p";; *) exit 1;; esac'
 recovery_target = ''
 recovery_target_name = ''
 recovery_target_time = ''
@@ -48,7 +48,7 @@ func (d Docker) prepareRecovery(ctx context.Context, j Job, image string) error 
 
 func (d Docker) finishRecovery(ctx context.Context) error {
 	for {
-		raw, err := d.compose(ctx, "exec", "-T", "-u", "postgres", "db", "psql", "-U", "postgres", "-d", "acta2", "-At", "-v", "ON_ERROR_STOP=1", "-c", "SELECT NOT pg_is_in_recovery()")
+		raw, err := d.compose(ctx, "exec", "-T", "-u", "postgres", "db", "psql", "-U", "postgres", "-d", "acta", "-At", "-v", "ON_ERROR_STOP=1", "-c", "SELECT NOT pg_is_in_recovery()")
 		if err != nil {
 			return err
 		}

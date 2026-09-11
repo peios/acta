@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"acta2/internal/auth"
-	ws "acta2/internal/workspaces"
+	"acta/internal/auth"
+	ws "acta/internal/workspaces"
 )
 
 func (h *Handler) workspaceRoutes(m *http.ServeMux) {

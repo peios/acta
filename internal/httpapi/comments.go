@@ -1,7 +1,7 @@
 package httpapi
 
 import (
-	"acta2/internal/comments"
+	"acta/internal/comments"
 	"net/http"
 )
 

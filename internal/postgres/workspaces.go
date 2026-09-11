@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"acta2/internal/accounts"
-	"acta2/internal/auth"
-	ws "acta2/internal/workspaces"
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	ws "acta/internal/workspaces"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )

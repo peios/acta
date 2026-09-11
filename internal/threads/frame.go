@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"acta2/learn/schemas"
+	"acta/learn/schemas"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/google/uuid"
 )

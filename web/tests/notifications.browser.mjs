@@ -158,7 +158,7 @@ try {
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto("http://localhost:8081/_review/notifications");
     await page.addStyleTag({
-      content: readFileSync(join(out, "acta2-web.css"), "utf8"),
+      content: readFileSync(join(out, "acta-web.css"), "utf8"),
     });
     await page.addScriptTag({
       content: readFileSync(join(out, "fixture.js"), "utf8"),

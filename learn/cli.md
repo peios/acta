@@ -1,7 +1,7 @@
 # CLI profiles and authentication
 
-ACT-52 adds the `acta2` client. `acta` is untouched. `make build` produces
-`bin/acta2` (client) and `bin/acta2-server` (server). The client uses Go, Cobra for
+`make build` produces
+`bin/acta` (client) and `bin/acta-server` (server). The client uses Go, Cobra for
 commands/help/completion and Huh for interactive forms. The server still serves
 the compiled Svelte frontend, without a separate frontend server.
 
@@ -13,17 +13,17 @@ An unknown profile is an error, never a fallback. Creating a profile does not
 change the active selection.
 
 ```sh
-acta2 login localhost:8081
-acta2 profile add work --server https://acta.peios.org
-acta2 -p work login
-acta2 profile use work
-acta2 profile list
-acta2 whoami
-acta2 -p default status --json
-acta2 logout
+acta login localhost:8081
+acta profile add work --server https://acta.peios.org
+acta -p work login
+acta profile use work
+acta profile list
+acta whoami
+acta -p default status --json
+acta logout
 ```
 
-`acta2 login [server]` uses the supplied URL first, then the selected profile's
+`acta login [server]` uses the supplied URL first, then the selected profile's
 saved URL, then an interactive prompt. URLs default to HTTPS; loopback addresses
 may use HTTP. Paths, embedded credentials, queries and fragments are rejected.
 Redirects are not followed, preventing credential forwarding or silent changes
@@ -76,7 +76,7 @@ the existing authentication maintenance job.
 CLI sessions have independent opaque `cli_` credentials and use the same session
 store and policy as browsers: seven days idle and thirty days absolute expiry.
 They appear in Security (or the selected agent’s detail page) as
-`CLI · acta2 · <machine>` and respond to ordinary
+`CLI · acta · <machine>` and respond to ordinary
 session revocation, account disabling and credential-change revocation. The
 machine label is descriptive, not device attestation. CLI bearer credentials
 cannot authorize another device request. Browser session credentials cannot be
@@ -93,7 +93,7 @@ Windows files receive a protected DACL granting only the current user access.
 Existing keyring read failures are reported, not silently replaced with file
 credentials. No saved session secret is printed by status or JSON output.
 
-Profile configuration lives in the OS user config directory under `acta2`:
+Profile configuration lives in the OS user config directory under `acta`:
 `config.json` contains the active profile, server URLs and opaque credential
 references. File credentials live separately under `credentials/`. Set
 `ACTA_CONFIG_DIR` to override the directory, useful for isolated automation/tests.
@@ -145,21 +145,21 @@ Commands include workspace discovery, task list/get/create/edit, statuses, peopl
 and assignment groups. Workspace-scoped commands accept a UUID or slug. Human
 output uses compact tables and detail text; `--json` retains typed fields, UUIDs,
 versions and cursors. API errors preserve code, field validation and current
-conflict details on stderr. Run `acta2 task --help` for the command surface.
+conflict details on stderr. Run `acta task --help` for the command surface.
 
-`acta2 task activity REFERENCE` reads grouped history without marking it read.
+`acta task activity REFERENCE` reads grouped history without marking it read.
 Use `--cursor` for older pages and `--json` for structured events. See [activity](activity.md).
 
 See [Task comments and replies](comments.md) for threaded discussions, read state and CLI/MCP comment commands.
 
 ## Connected development machines
 
-`acta2 [-p profile] harness` connects a human profile’s development machine to
+`acta [-p profile] harness` connects a human profile’s development machine to
 Acta in the foreground. It uses the same credentials and URL selection as other
 commands and discovers installed Codex and Claude Code versions and local sign-in
 states. See [Connected harnesses](harnesses.md) for discovery, presence, heartbeat,
 reconnection and authorization behaviour.
 
-`acta2 harness --separate-pipe` keeps provider process ownership in a detached
+`acta harness --separate-pipe` keeps provider process ownership in a detached
 local helper, allowing development restarts of the hyperharness. My Agents
 provides the current Codex Start/Kill/Resume controls; see [Provider threads](threads.md).

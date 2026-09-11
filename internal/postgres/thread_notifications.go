@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"acta2/internal/threads"
+	"acta/internal/threads"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )

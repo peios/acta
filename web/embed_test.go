@@ -1,7 +1,7 @@
 package web
 
 import (
-	"acta2/internal/hyperharness"
+	"acta/internal/hyperharness"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"

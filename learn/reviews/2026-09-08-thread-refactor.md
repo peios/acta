@@ -3,7 +3,7 @@
 Scope: the current provider adapters, frame contract/projections, thread UI and
 hyperharness delivery/lifecycle. Preserve the existing product behaviour and
 provider processes; no new tools, approvals, compaction UI or provider features.
-Baseline source snapshot: `/tmp/acta2-refactor-baseline.tgz` (local review aid).
+Baseline source snapshot: `/tmp/acta-refactor-baseline.tgz` (local review aid).
 
 ## Findings and work
 

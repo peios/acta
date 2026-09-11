@@ -1,7 +1,7 @@
 package threadadapter
 
 import (
-	"acta2/internal/threads"
+	"acta/internal/threads"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -21,7 +21,7 @@ func TestCodexReviewedSequence(t *testing.T) {
 		{`{"method":"guardianWarning","params":{"threadId":"native","message":"Automatic approval review approved."}}`, "debug/dropped"},
 		{`{"id":"RUN/thread/start","result":{"thread":{"id":"native"},"model":"model-x","cwd":"/tmp","serviceTier":"default","approvalPolicy":"on-request","approvalsReviewer":"auto_review","sandbox":{"type":"workspaceWrite","networkAccess":false,"writableRoots":[]},"reasoningEffort":"high"}}`, "thread/configuration"},
 		{`{"method":"thread/started","params":{"thread":{"id":"native"}}}`, "debug/local"},
-		{`{"method":"mcpServer/startupStatus/updated","params":{"threadId":"native","name":"acta2","status":"starting","error":null,"failureReason":null}}`, "mcp/server/status"},
+		{`{"method":"mcpServer/startupStatus/updated","params":{"threadId":"native","name":"acta","status":"starting","error":null,"failureReason":null}}`, "mcp/server/status"},
 		{`{"id":"RUN/turn/start","result":{"turn":{"id":"turn1","status":"inProgress"}}}`, "turn/started"},
 		{`{"method":"turn/started","params":{"threadId":"native","turn":{"id":"turn1"}}}`, "debug/dropped"},
 		{`{"id":"RUN/turn/steer/submission","result":{"turnId":"turn1"}}`, "debug/local"},

@@ -1,8 +1,8 @@
 package httpapi
 
 import (
-	"acta2/internal/auth"
-	"acta2/internal/migration"
+	"acta/internal/auth"
+	"acta/internal/migration"
 	"context"
 	"encoding/json"
 	"github.com/modelcontextprotocol/go-sdk/mcp"

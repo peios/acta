@@ -1,8 +1,8 @@
 package postgres
 
 import (
-	"acta2/internal/conversation"
-	"acta2/internal/threads"
+	"acta/internal/conversation"
+	"acta/internal/threads"
 	"bytes"
 	"context"
 	"encoding/base64"

@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 
-	"acta2/internal/conversation"
-	"acta2/internal/threads"
+	"acta/internal/conversation"
+	"acta/internal/threads"
 	"github.com/jackc/pgx/v5"
 )
 

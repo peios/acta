@@ -44,10 +44,10 @@ versions. `document_save` accepts exactly one of `content` or `base64`, with a
 128 KiB inline-payload limit. Use the CLI for local or larger files:
 
 ```sh
-acta2 --profile default document list ACT-96
-acta2 --profile default document upload ACT-96 ./design.pdf --title 'Design'
-acta2 --profile default document upload ACT-96 ./design.pdf --id UUID --revision 1
-acta2 --profile default document download UUID --revision 1 --output ./design-v1.pdf
+acta --profile default document list ACT-96
+acta --profile default document upload ACT-96 ./design.pdf --title 'Design'
+acta --profile default document upload ACT-96 ./design.pdf --id UUID --revision 1
+acta --profile default document download UUID --revision 1 --output ./design-v1.pdf
 ```
 
 Download defaults to the latest revision if `--revision` is omitted. It creates

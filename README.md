@@ -1,4 +1,4 @@
-# Acta 2
+# Acta
 
 A deliberate rebuild of Acta: a self-hosted project tool for humans and agents.
 Go serves a compiled Svelte 5 frontend, with PostgreSQL persistence.
@@ -10,10 +10,12 @@ OAuth connections and identity lookup. User-owned agents have bounded permission
 and can be selected during CLI or MCP authorization. Workspaces provide member-only
 access, scoped permissions and inherited agent access. Tasks include nested subtasks, multiple assignees, configurable statuses, live
 autosave and CLI/MCP access. A local hyperharness lists connected development machines and discovers Codex and Claude Code providers in User Settings.
-Projects and provider execution remain subsequent work.
+Provider threads support local execution, approvals, tool activity and subagents.
+Projects remain subsequent work.
 
 - [Development and running locally](learn/development.md)
 - [Production Compose deployment with Caddy](learn/deployment.md)
+- [Final naming and repository handover](learn/rename.md)
 - [Account behavior and architecture](learn/accounts.md)
 - [Application chrome](learn/chrome.md)
 - [CLI profiles and authentication](learn/cli.md)

@@ -23,7 +23,7 @@ export function validateImageFiles(files, existing = []) {
 /** @returns {Promise<IDBDatabase>} */
 function database() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open("acta2-image-drafts", 1);
+    const request = indexedDB.open("acta-image-drafts", 1);
     request.onupgradeneeded = () => request.result.createObjectStore("images");
     request.onsuccess = () => resolve(request.result);
     request.onerror = () =>

@@ -56,7 +56,7 @@
     "method": "mcpServer/startupStatus/updated",
     "params": {
       "threadId": "01a0833f-fe09-7113-825a-71cc16a497d2",
-      "name": "acta2",
+      "name": "acta",
       "status": "starting",
       "error": null,
       "failureReason": null
@@ -122,7 +122,7 @@
     "method": "mcpServer/startupStatus/updated",
     "params": {
       "threadId": "01a0833f-fe09-7113-825a-71cc16a497d2",
-      "name": "acta2",
+      "name": "acta",
       "status": "ready",
       "error": null,
       "failureReason": null

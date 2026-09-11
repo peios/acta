@@ -2,7 +2,7 @@
 package comments
 
 import (
-	"acta2/internal/accounts"
+	"acta/internal/accounts"
 	"github.com/google/uuid"
 	"strings"
 	"unicode/utf8"

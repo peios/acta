@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	"acta2/internal/backup"
-	"acta2/internal/localstate"
-	"acta2/internal/recovery"
+	"acta/internal/backup"
+	"acta/internal/localstate"
+	"acta/internal/recovery"
 )
 
 type Docker struct{ Config Config }
@@ -297,7 +297,7 @@ func (d Docker) Apply(ctx context.Context, j Job) error {
 	return err
 }
 func (d Docker) Validate(ctx context.Context, j Job) error {
-	_, err := d.compose(ctx, "exec", "-T", "-u", "10001:10001", "app", "/bin/sh", "-ec", `export ACTA_DATABASE_URL="$(cat /run/acta/database-url)" ACTA_SECURITY_KEY_FILE=/run/acta/security-key; exec /usr/local/bin/acta2-server -verify-recovery`)
+	_, err := d.compose(ctx, "exec", "-T", "-u", "10001:10001", "app", "/bin/sh", "-ec", `export ACTA_DATABASE_URL="$(cat /run/acta/database-url)" ACTA_SECURITY_KEY_FILE=/run/acta/security-key; exec /usr/local/bin/acta-server -verify-recovery`)
 	return err
 }
 func (d Docker) Restore(ctx context.Context, j Job) error {
@@ -341,11 +341,11 @@ func (d Docker) Restore(ctx context.Context, j Job) error {
 		return err
 	}
 	if j.RestoreData {
-		_, err = d.compose(ctx, "exec", "-T", "-u", "postgres", "db", "psql", "-U", "postgres", "-d", "acta2", "-v", "ON_ERROR_STOP=1", "-c", recovery.RevokeSQL)
+		_, err = d.compose(ctx, "exec", "-T", "-u", "postgres", "db", "psql", "-U", "postgres", "-d", "acta", "-v", "ON_ERROR_STOP=1", "-c", recovery.RevokeSQL)
 		if err != nil {
 			return err
 		}
-		_, err = d.compose(ctx, "exec", "-T", "-u", "postgres", "db", "pgbackrest", "--config=/var/lib/acta-backup/config/pgbackrest.conf", "--stanza=acta2", "check")
+		_, err = d.compose(ctx, "exec", "-T", "-u", "postgres", "db", "pgbackrest", "--config=/var/lib/acta-backup/config/pgbackrest.conf", "--stanza=acta", "check")
 	}
 	return err
 }

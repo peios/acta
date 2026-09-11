@@ -43,8 +43,8 @@
     const abort = new AbortController();
     const modelSession = new ThreadModelSettings({
       storage: localStorage,
-      key: `acta2:thread-settings:${account.account.id}:${thread}:${run}`,
-      catalogueKey: `acta2:thread-models:${account.account.id}:${thread}`,
+      key: `acta:thread-settings:${account.account.id}:${thread}:${run}`,
+      catalogueKey: `acta:thread-models:${account.account.id}:${thread}`,
       runId: run,
       uuid: () => crypto.randomUUID(),
       changed: (next) => {

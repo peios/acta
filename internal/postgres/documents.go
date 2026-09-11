@@ -1,10 +1,10 @@
 package postgres
 
 import (
-	"acta2/internal/activity"
-	"acta2/internal/auth"
-	"acta2/internal/documents"
-	"acta2/internal/tasks"
+	"acta/internal/activity"
+	"acta/internal/auth"
+	"acta/internal/documents"
+	"acta/internal/tasks"
 	"context"
 	"errors"
 	"fmt"

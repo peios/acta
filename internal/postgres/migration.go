@@ -1,9 +1,9 @@
 package postgres
 
 import (
-	"acta2/internal/accounts"
-	"acta2/internal/auth"
-	"acta2/internal/migration"
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/migration"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"

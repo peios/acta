@@ -1,5 +1,5 @@
 # Independent from the development stack and old Acta. No image is pushed.
-name: ${ACTA_PROJECT:-acta2-production}
+name: ${ACTA_PROJECT:-acta-production}
 x-runtime: &runtime
   restart: unless-stopped
   logging:
@@ -35,7 +35,7 @@ services:
     pids_limit: 128
   app:
     <<: *runtime
-    image: acta2-local:${ACTA_VERSION:-development}
+    image: acta-local:${ACTA_VERSION:-development}
     build: {context: ., target: app}
     environment:
       ACTA_PUBLIC_URL: https://${ACTA_DOMAIN}
@@ -67,7 +67,7 @@ services:
     stop_grace_period: 40s
   db:
     <<: *runtime
-    image: acta2-postgres-local:${ACTA_VERSION:-development}
+    image: acta-postgres-local:${ACTA_VERSION:-development}
     build: {context: ., target: database}
     environment:
       POSTGRES_USER: postgres
@@ -79,7 +79,7 @@ services:
       - postgres-socket:/var/run/postgresql
     networks: [data]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d acta2"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d acta"]
       interval: 5s
       timeout: 4s
       start_period: 60s
@@ -93,7 +93,7 @@ services:
   backup:
     <<: *runtime
     profiles: [backups]
-    image: acta2-backup-local:${ACTA_VERSION:-development}
+    image: acta-backup-local:${ACTA_VERSION:-development}
     build: {context: ., target: backup}
     environment:
       ACTA_PUBLIC_URL: https://${ACTA_DOMAIN}

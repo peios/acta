@@ -13,10 +13,10 @@ import (
 	"sync"
 	"time"
 
-	"acta2/internal/harnesspipe"
-	"acta2/internal/localstate"
-	"acta2/internal/threadadapter"
-	"acta2/internal/threads"
+	"acta/internal/harnesspipe"
+	"acta/internal/localstate"
+	"acta/internal/threadadapter"
+	"acta/internal/threads"
 	"github.com/gofrs/flock"
 	"github.com/google/uuid"
 )

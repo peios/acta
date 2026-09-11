@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"acta2/internal/accounts"
+	"acta/internal/accounts"
 )
 
 var (

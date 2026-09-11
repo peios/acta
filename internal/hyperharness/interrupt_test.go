@@ -1,8 +1,8 @@
 package hyperharness
 
 import (
-	"acta2/internal/harnesspipe"
-	"acta2/internal/threads"
+	"acta/internal/harnesspipe"
+	"acta/internal/threads"
 	"context"
 	"encoding/json"
 	"github.com/google/uuid"

@@ -63,8 +63,8 @@ The controller, provider adapters and generic process pipe have separate roles:
 - The **server** persists discovered threads, frames and established-thread
   lifecycle commands. It does not execute providers or interpret native JSON.
 
-The normal `acta2 harness` embeds the pipe. Its orderly shutdown kills its
-providers. `acta2 harness --separate-pipe` attaches to an independently running
+The normal `acta harness` embeds the pipe. Its orderly shutdown kills its
+providers. `acta harness --separate-pipe` attaches to an independently running
 helper, leaving providers alive when the hyperharness exits. Both modes use the
 same engine. Do not run both against the same local account/server state at once.
 

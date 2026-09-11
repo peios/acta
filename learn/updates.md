@@ -21,12 +21,18 @@ performed by this updater. Layout or updater-protocol changes require an explici
 operator deployment upgrade; normal compatible updater image changes are handled
 by a detached replacement helper after application cutover is durably complete.
 
-The initial release channel is **peios/acta2 only**, with separate
-`ghcr.io/peios/acta2-{app,db,backup,updater}` packages. Publishing scripts and the
-workflow explicitly refuse old Acta's repository. Workflow dispatch publishes
-prereleases only. Repository selection is operator configuration; switching to
-peios/acta requires an explicit cutover, release workflow/namespace changes, and
-trust-root review, not just renaming a browser setting.
+The release channel is **peios/acta**, with separate
+`ghcr.io/peios/acta-{app,db,backup,updater}` packages. The legacy
+`ghcr.io/peios/acta-server` package is never published by this workflow.
+Publishing remains disabled until the GitHub repository variable
+`ACTA_RELEASE_ENABLED=true` is explicitly set after the repository handover.
+The packaging script requires the same environment gate. Workflow dispatch still
+publishes prereleases only; enabling a stable release is part of release validation.
+
+Deployment layout 2 uses the final executable, database and backup-stanza names.
+The earlier development previews use layout 1 and cannot be updated in place by
+this updater. Provision a fresh installation for the handover; no automatic volume,
+credential, encryption-domain or database-name conversion is performed.
 
 The repository workflow uses `ACTA_RELEASE_SIGNING_SEED` to sign the manifest.
 The matching public key is `deploy/update/release.pub`. The private seed is never
@@ -60,17 +66,17 @@ independently obtained public key. Provision configuration, then bootstrap the
 journal with that release before starting services:
 
 ```sh
-python3 scripts/configure-updates.py --deployment /srv/acta2-config \
-  --bundle /srv/acta2 --state /srv/acta2-update \
-  --public-key deploy/update/release.pub --repository peios/acta2 --prereleases
+python3 scripts/configure-updates.py --deployment /srv/acta-config \
+  --bundle /srv/acta --state /srv/acta-update \
+  --public-key deploy/update/release.pub --repository peios/acta --prereleases
 
 # Run the trusted updater executable from your verified release/build.
-acta2-update -config /srv/acta2-config/update/config.json \
+acta-update -config /srv/acta-config/update/config.json \
   -input /srv/release/acta-release.json bootstrap
 
-docker compose --env-file /srv/acta2-config/.env \
-  -f /srv/acta2/compose.production.yaml -f /srv/acta2/compose.backups.yaml \
-  -f /srv/acta2/compose.updates.yaml -f /srv/acta2-update/active.json \
+docker compose --env-file /srv/acta-config/.env \
+  -f /srv/acta/compose.production.yaml -f /srv/acta/compose.backups.yaml \
+  -f /srv/acta/compose.updates.yaml -f /srv/acta-update/active.json \
   --profile backups --profile updates up -d --no-build
 ```
 
@@ -83,7 +89,7 @@ change data. Existing locally built installations need an operator-controlled
 first switch to a signed image set; the updater refuses image drift rather than
 pretending an unrecorded deployment is recoverable.
 
-`/srv/acta2-config/registry/config.json` holds the deployment's registry login.
+`/srv/acta-config/registry/config.json` holds the deployment's registry login.
 The public key and optional release-token file must be accessible within the
 configured directory. State files remain mode 0600. The state directory is
 traversable and only the non-sensitive maintenance marker is readable by Caddy
@@ -155,11 +161,6 @@ controller restart and a failing migration, including whole-stack interruption.
 Failure images and fixture signatures use a separate disposable signing key and
 are never GitHub releases. `KEEP_UPDATE_TEST=1` retains the test installation for
 inspection; otherwise only its own containers and volumes are removed.
-
-The initial preview.1 bootstrap exposed a verifier bootstrap-permissions defect
-and is not a supported installation baseline. Its transition fixture uses the
-new controller against the old application images; subsequent release pairs also
-exercise replacement of the controller itself.
 
 The release workflow accepts a `previous_version` to run this real recovery test
 before publishing the target release. A first bootstrap prerelease has no previous

@@ -1,9 +1,9 @@
 package auth
 
 import (
-	"acta2/internal/accounts"
-	"acta2/internal/tasks"
-	ws "acta2/internal/workspaces"
+	"acta/internal/accounts"
+	"acta/internal/tasks"
+	ws "acta/internal/workspaces"
 	"context"
 )
 

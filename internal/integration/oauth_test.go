@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"acta2/internal/accounts"
-	"acta2/internal/auth"
-	"acta2/internal/config"
-	"acta2/internal/httpapi"
-	"acta2/learn"
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/config"
+	"acta/internal/httpapi"
+	"acta/learn"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

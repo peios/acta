@@ -3,7 +3,7 @@
 package conversation
 
 import (
-	"acta2/internal/threads"
+	"acta/internal/threads"
 	"bytes"
 	"encoding/json"
 	"errors"

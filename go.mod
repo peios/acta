@@ -1,4 +1,4 @@
-module acta2
+module acta
 
 go 1.26.0
 

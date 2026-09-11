@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"acta2/internal/accounts"
-	"acta2/internal/config"
-	"acta2/internal/httpapi"
-	"acta2/internal/hyperharness"
-	"acta2/internal/providers"
+	"acta/internal/accounts"
+	"acta/internal/config"
+	"acta/internal/httpapi"
+	"acta/internal/hyperharness"
+	"acta/internal/providers"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )

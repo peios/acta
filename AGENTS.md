@@ -1,6 +1,6 @@
-# Working on Acta 2
+# Working on Acta
 
-Acta 2 is a deliberate rebuild intended to become a substantial product. Give
+Acta is a deliberate rebuild intended to become a substantial product. Give
 human experience and agent experience equal importance.
 
 ## Collaboration
@@ -24,10 +24,10 @@ human experience and agent experience equal importance.
   Prefer understandable code and cohesive components as the system grows.
 - When code becomes clumsy or a dedicated refactor pass would improve it, raise
   that with Jack before the pass. He explicitly welcomes and expects such work.
-- During this pre-production phase, backward compatibility of Acta 2 code and
+- During this pre-production phase, backward compatibility of Acta code and
   protocols is not a requirement. Replace or remove obsolete implementations
   and contracts when appropriate; do not retain compatibility layers solely to
-  preserve earlier iterations. This applies to the new Acta 2 project.
+  preserve earlier iterations. This applies to the new Acta project.
 - PostgreSQL is the chosen database. Isolate database-specific persistence from
   domain and transport logic, and define the transactional guarantees a future
   storage implementation must preserve.

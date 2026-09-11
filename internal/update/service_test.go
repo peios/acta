@@ -12,16 +12,16 @@ import (
 	"strings"
 	"testing"
 
-	"acta2/internal/localstate"
+	"acta/internal/localstate"
 )
 
 func testRelease(seq int64) Release {
 	images := map[string]string{}
 	for _, k := range []string{"app", "db", "backup", "updater"} {
-		images[k] = "ghcr.io/peios/acta2-" + k + "@sha256:" + strings.Repeat("a", 64)
+		images[k] = "ghcr.io/peios/acta-" + k + "@sha256:" + strings.Repeat("a", 64)
 	}
 	images["caddy"] = "caddy@sha256:" + strings.Repeat("b", 64)
-	return Release{Version: "v0.1.0-test", Sequence: seq, Repository: "peios/acta2", Protocol: 1, Layout: 1, Postgres: 17, Schema: 40, MinimumSchema: 40, Images: images}
+	return Release{Version: "v0.1.0-test", Sequence: seq, Repository: "peios/acta", Protocol: Protocol, Layout: Layout, Postgres: 17, Schema: 40, MinimumSchema: 40, Images: images}
 }
 
 type fakeEngine struct {
@@ -64,7 +64,7 @@ func openTest(t *testing.T, f Engine) *Service {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	key := filepath.Join(dir, "key")
 	os.WriteFile(key, []byte(base64.StdEncoding.EncodeToString(pub)), 0600)
-	c := Config{StateDir: dir, PublicKeyFile: key, Repository: "peios/acta2", TimeoutMinutes: 5}
+	c := Config{StateDir: dir, PublicKeyFile: key, Repository: "peios/acta", TimeoutMinutes: 5}
 	current, _ := Sign(testRelease(1), priv.Seed())
 	next, _ := Sign(testRelease(2), priv.Seed())
 	if err := localstate.Write(filepath.Join(dir, "state.json"), State{Version: 1, Current: current, Available: &next, Jobs: []Job{}}); err != nil {
@@ -198,20 +198,20 @@ func TestSignatureAndCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = Verify(s, pub, "peios/acta2"); err != nil {
+	if _, err = Verify(s, pub, "peios/acta"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = Verify(s, pub, "peios/acta"); err == nil {
+	if _, err = Verify(s, pub, "peios/acta-legacy"); err == nil {
 		t.Fatal("wrong repository accepted")
 	}
 	other, _, _ := ed25519.GenerateKey(rand.Reader)
-	if _, err = Verify(s, other, "peios/acta2"); err == nil {
+	if _, err = Verify(s, other, "peios/acta"); err == nil {
 		t.Fatal("wrong key accepted")
 	}
 	raw, _ := base64.StdEncoding.DecodeString(s.Payload)
 	raw[10] ^= 1
 	s.Payload = base64.StdEncoding.EncodeToString(raw)
-	if _, err = Verify(s, pub, "peios/acta2"); err == nil {
+	if _, err = Verify(s, pub, "peios/acta"); err == nil {
 		t.Fatal("tampered release accepted")
 	}
 	next := testRelease(2)
@@ -220,7 +220,7 @@ func TestSignatureAndCompatibility(t *testing.T) {
 	if Compatible(r, next) == nil {
 		t.Fatal("unsupported schema jump accepted")
 	}
-	r.Images["app"] = "ghcr.io/peios/acta-app@sha256:" + strings.Repeat("a", 64)
+	r.Images["app"] = "ghcr.io/peios/acta-server@sha256:" + strings.Repeat("a", 64)
 	if r.Validate() == nil {
 		t.Fatal("old Acta namespace accepted")
 	}
@@ -241,5 +241,13 @@ func TestSuccessfulUpdateClearsOfferedRelease(t *testing.T) {
 	}
 	if saved.Available != nil {
 		t.Fatal("installed release persisted as available")
+	}
+}
+
+func TestDevelopmentLayoutRequiresFreshInstallation(t *testing.T) {
+	r := testRelease(1)
+	r.Layout = 1
+	if err := r.Validate(); err == nil {
+		t.Fatal("development layout accepted under the renamed database and executable paths")
 	}
 }

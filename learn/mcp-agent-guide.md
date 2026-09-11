@@ -249,7 +249,7 @@ someone else changed it: read their version and resolve it deliberately; never
 blindly retry against a newer revision. `document_delete` removes every version
 and requires the current revision and authorization to delete that work.
 
-Prefer `acta2 --profile PROFILE document upload TASK FILE --title TITLE` for
+Prefer `acta --profile PROFILE document upload TASK FILE --title TITLE` for
 local files, and `document download UUID --output PATH` to download before using
 your provider's native file tools. The CLI supports files up to 20 MiB without
 putting their bytes in model context. MCP inline saves are limited to 128 KiB;

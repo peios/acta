@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"acta2/internal/harnesspipe"
-	"acta2/internal/threads"
+	"acta/internal/harnesspipe"
+	"acta/internal/threads"
 	"github.com/google/uuid"
 )
 

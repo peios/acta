@@ -7,7 +7,7 @@ import (
 	"time"
 	"unicode"
 
-	"acta2/internal/accounts"
+	"acta/internal/accounts"
 	"github.com/google/uuid"
 )
 
@@ -60,7 +60,7 @@ func (s *Security) StartDevice(ctx context.Context, address, machine string) (De
 	if err != nil {
 		return out, err
 	}
-	description := "CLI · acta2"
+	description := "CLI · acta"
 	if machine != "" {
 		description += " · " + machine
 	}

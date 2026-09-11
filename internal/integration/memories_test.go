@@ -1,10 +1,10 @@
 package integration
 
 import (
-	"acta2/internal/accounts"
-	"acta2/internal/auth"
-	"acta2/internal/memories"
-	ws "acta2/internal/workspaces"
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/memories"
+	ws "acta/internal/workspaces"
 	"errors"
 	"fmt"
 	"sync"

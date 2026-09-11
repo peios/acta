@@ -1,8 +1,8 @@
 package client
 
 import (
-	"acta2/internal/activity"
-	"acta2/internal/comments"
+	"acta/internal/activity"
+	"acta/internal/comments"
 	"context"
 	"net/url"
 )

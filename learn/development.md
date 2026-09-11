@@ -1,6 +1,6 @@
-# Developing Acta 2
+# Developing Acta
 
-Acta 2 uses Go 1.26, PostgreSQL, and Svelte 5 with SvelteKit's static adapter.
+Acta uses Go 1.26, PostgreSQL, and Svelte 5 with SvelteKit's static adapter.
 Node 22 (22.12 or newer) and npm are build/development dependencies. Deployment
 runs one Go executable with embedded static assets plus PostgreSQL; it does not
 run a Node or SvelteKit server.
@@ -39,7 +39,7 @@ a server restart. `make build` rebuilds the frontend before embedding it; using
 
 ```sh
 make check
-ACTA_TEST_DATABASE_URL='postgres://acta2:acta2-development-only@127.0.0.1:5433/acta2?sslmode=disable' make test-integration
+ACTA_TEST_DATABASE_URL='postgres://acta:acta-development-only@127.0.0.1:5433/acta?sslmode=disable' make test-integration
 ```
 
 `make check` builds the frontend, checks Prettier formatting, runs Svelte/TypeScript diagnostics, frontend
@@ -87,7 +87,7 @@ make build
 export ACTA_DATABASE_URL='postgres://...'
 export ACTA_PUBLIC_URL='https://acta.peios.org'
 unset ACTA_DEV_ORIGIN
-./bin/acta2-server -listen 127.0.0.1:8081
+./bin/acta-server -listen 127.0.0.1:8081
 ```
 
 An HTTPS reverse proxy terminates TLS and must preserve the external Host
@@ -109,7 +109,7 @@ of the key makes encrypted security state unreadable. A database fingerprint
 rejects a mismatched key at startup. Use an explicit persistent key path in a
 deployment; do not put it on ephemeral container storage. See [Security](security.md). Never use Compose's
 example password on a public deployment. `docker compose stop` preserves the
-volume; deleting the volume deletes all Acta 2 data and is not a normal reset
+volume; deleting the volume deletes all Acta data and is not a normal reset
 or upgrade procedure.
 
 Permission integration cases in `internal/integration/permissions_test.go` cover
@@ -119,7 +119,7 @@ same isolated-schema `make test-integration` command above.
 
 ## CLI
 
-`make build` produces `bin/acta2-server` and the standalone `bin/acta2` client.
+`make build` produces `bin/acta-server` and the standalone `bin/acta` client.
 See [CLI profiles and authentication](cli.md) for configuration and login.
 
 ## Thread implementation boundaries
@@ -168,7 +168,7 @@ inside the Go server and does not require a separate worker service.
 See [Installation backup and recovery](backups.md) for operator provisioning,
 Site Settings, isolated restores, production preparation and the full recovery
 test. `ACTA_BACKUP_SOCKET` and `ACTA_BACKUP_TOKEN_FILE` connect the web process to
-an independently supervised `acta2-backup` process. Neither is configured by
+an independently supervised `acta-backup` process. Neither is configured by
 default. Managed PostgreSQL integration remains deferred.
 
 For the integrated Caddy/PostgreSQL production package and its isolated smoke

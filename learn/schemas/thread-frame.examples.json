@@ -191,7 +191,7 @@
     "occurred_at": "2026-09-07T17:00:31.670Z",
     "kind": "mcp/server/status",
     "data": {
-      "server_name": "acta2",
+      "server_name": "acta",
       "status": "starting",
       "error": null,
       "failure_reason": null

@@ -134,7 +134,7 @@
   $effect(() => {
     const id = currentThreadID;
     const lane = selectedLane;
-    const key = `acta2:thread-draft:${account.account.id}:${id}${lane ? ":" + lane : ""}`;
+    const key = `acta:thread-draft:${account.account.id}:${id}${lane ? ":" + lane : ""}`;
     const abort = new AbortController();
     const session = new ThreadSender({
       storage: localStorage,
@@ -183,7 +183,7 @@
     const id = currentThreadID;
     await api(`threads/${id}/delete`, {});
     view.forget(id);
-    localStorage.removeItem(`acta2:thread-draft:${account.account.id}:${id}`);
+    localStorage.removeItem(`acta:thread-draft:${account.account.id}:${id}`);
     if (currentThreadID === id)
       await goto("/my-agents", { replaceState: true });
   }
@@ -279,7 +279,7 @@
       runId,
       uuid: () => crypto.randomUUID(),
       storage: localStorage,
-      key: `acta2:thread-permissions:${account.account.id}:${id}:${runId}`,
+      key: `acta:thread-permissions:${account.account.id}:${id}:${runId}`,
       changed: (state) => {
         permissionState = state;
       },

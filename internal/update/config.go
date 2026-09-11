@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"acta2/internal/localstate"
+	"acta/internal/localstate"
 )
 
 type Config struct {

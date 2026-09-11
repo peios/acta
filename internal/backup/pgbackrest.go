@@ -519,7 +519,7 @@ func (e PGBackRest) releaseExecutable(release Release) (string, error) {
 	if _, err := hex.DecodeString(release.SHA256); err != nil {
 		return "", errors.New("invalid release digest")
 	}
-	path := filepath.Join(e.Config.ReleaseDir, release.SHA256, "acta2-server")
+	path := filepath.Join(e.Config.ReleaseDir, release.SHA256, "acta-server")
 	f, err := os.Open(path)
 	if err != nil {
 		return "", errors.New("matching Acta executable is missing from the operator release archive")

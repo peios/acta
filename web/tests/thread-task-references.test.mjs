@@ -7,13 +7,13 @@ import {
 const a = "a05aee6f-3a39-49e7-b67b-508686beaf62",
   b = "9cd50a8f-e325-49f6-ab34-7c2098618f6f";
 const task = (id = a) => ({ id, reference: "PEI-5", title: "Review" });
-const call = (output, args = {}, name = "mcp__acta2__task_get") => ({
+const call = (output, args = {}, name = "mcp__acta__task_get") => ({
   data: { name, arguments: args },
   output: typeof output === "string" ? output : JSON.stringify(output),
 });
 test("Claude/Codex aliases, envelopes, lists and deduplication", () => {
   for (const name of [
-    "mcp__acta2__task_get",
+    "mcp__acta__task_get",
     "my-acta1/task_get",
     "mcp__AcTa__task_get",
   ])
@@ -53,7 +53,7 @@ test("comments and parent edits use UUIDs, never colliding task numbers", () => 
       call(
         { data: { entries: [{ id: b, task_id: a }] } },
         { task: "PEI-5" },
-        "mcp__acta2__comment_create",
+        "mcp__acta__comment_create",
       ),
     ).map((r) => r.id),
     [a],

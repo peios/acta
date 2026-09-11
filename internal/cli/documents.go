@@ -1,8 +1,8 @@
 package cli
 
 import (
-	"acta2/internal/client"
-	"acta2/internal/documents"
+	"acta/internal/client"
+	"acta/internal/documents"
 	"context"
 	"encoding/json"
 	"errors"

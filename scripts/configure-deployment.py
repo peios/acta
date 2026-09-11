@@ -12,7 +12,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--domain', required=True)
 parser.add_argument('--email', required=True)
 parser.add_argument('--directory', required=True, type=Path)
-parser.add_argument('--project', default='acta2-production')
+parser.add_argument('--project', default='acta-production')
 args = parser.parse_args()
 if not re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', args.domain) or '..' in args.domain:
     parser.error('domain must be a hostname without a scheme, path or port')
@@ -29,7 +29,7 @@ password = secrets.token_hex(32)
 values = {
     'postgres-password': secrets.token_hex(32),
     'app-password': password,
-    'database-url': f'postgres://acta:{password}@db:5432/acta2?sslmode=disable',
+    'database-url': f'postgres://acta:{password}@db:5432/acta?sslmode=disable',
     'security-key': base64.b64encode(secrets.token_bytes(32)).decode().rstrip('='),
     'backup-token': secrets.token_hex(32),
     '.env': '\n'.join([

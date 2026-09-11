@@ -48,7 +48,7 @@ try {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.setContent('<div id="app"></div>');
   await page.addStyleTag({
-    content: readFileSync(join(out, "acta2-web.css"), "utf8"),
+    content: readFileSync(join(out, "acta-web.css"), "utf8"),
   });
   await page.evaluate(() => {
     window.wheelListeners = [];

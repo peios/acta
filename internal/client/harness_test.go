@@ -1,7 +1,7 @@
 package client
 
 import (
-	"acta2/internal/providers"
+	"acta/internal/providers"
 	"context"
 	"errors"
 	"net/http"
@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"acta2/internal/hyperharness"
+	"acta/internal/hyperharness"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )

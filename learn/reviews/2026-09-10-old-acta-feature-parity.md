@@ -2,11 +2,11 @@
 
 Date: 2026-09-10. Tracking: ACT-104.
 
-This is a read-only source comparison of `acta/` and `acta2/`, not a runtime certification or an audit of which features contain production data. Projects and releases are explicitly deferred by the user. Their data must remain recoverable for later migration.
+This is a read-only source comparison of `acta/` and `acta/`, not a runtime certification or an audit of which features contain production data. Projects and releases are explicitly deferred by the user. Their data must remain recoverable for later migration.
 
 ## Substantive gaps
 
-| Capability | Old Acta | Acta 2 | Cutover implication |
+| Capability | Old Acta | Acta | Cutover implication |
 | --- | --- | --- | --- |
 | Status checklists | Workspace facts, recorded confirmations, required facts for status entry, pending transitions and confirm/cancel/force operations. | Configurable statuses, but no equivalent facts or transition gates. Markdown checkboxes do not enforce a transition. | A real workflow gap if checklists encode completion policy. Preserve both requirements and historical confirmations during migration. |
 | Due dates | Date-only task targets, overdue calculation and due-date grouping/filtering. | No due-date task field or filter. | Useful core metadata parity; populated dates must not silently disappear. No claim that old Acta had deadline reminders or recurring tasks. |
@@ -19,9 +19,9 @@ Source pointers:
 - Old facts/checklists: `acta/internal/store/store.go` (`Fact`, `FactTick`, `PendingStatusID`), `acta/internal/board/checklists.go` (`StatusFacts`, `SetStatusFacts`, `ConfirmStatus`), `acta/internal/web/mcp.go` (`set_item_status`). These establish capabilities, not a claim that every old transition is transactionally atomic.
 - Old dates: `acta/internal/store/store.go` (`Item.DueDate`), `acta/internal/board/attributes.go` (`ParseDue`, `DueBucket`, `SetDue`), `acta/internal/web/mcp.go` (`set_item_due`).
 - Old boards: `acta/internal/store/store.go` (`Board`, `Status.BoardID`), `acta/internal/board/board.go` (`SeedDefaults`, `DefaultBacklogStatuses`).
-- New task fields/statuses: `acta2/internal/tasks/task.go`; supported display grouping and sorting: `acta2/internal/tasks/view_display.go`; filters: `acta2/internal/tasks/views.go`.
-- Old agent coordination: `acta/internal/web/mcp.go` (`watch_comments`, `list_notifications`, `mark_notification_read`); subscriptions: `acta/internal/board/subscriptions.go`. New reads: `acta2/internal/httpapi/task_tools.go`, `acta2/internal/httpapi/comment_tools.go`; human-follow semantics: `acta2/learn/task-notifications.md`, `acta2/internal/auth/task_following.go`.
-- Old activity: `acta/internal/board/board.go` (`WorkspaceActivity`, `BoardActivity`), `acta/internal/web/server.go`, `acta/internal/web/mcp.go` (`list_activity`). New per-task activity: `acta2/internal/postgres/activity.go`.
+- New task fields/statuses: `acta/internal/tasks/task.go`; supported display grouping and sorting: `acta/internal/tasks/view_display.go`; filters: `acta/internal/tasks/views.go`.
+- Old agent coordination: `acta/internal/web/mcp.go` (`watch_comments`, `list_notifications`, `mark_notification_read`); subscriptions: `acta/internal/board/subscriptions.go`. New reads: `acta/internal/httpapi/task_tools.go`, `acta/internal/httpapi/comment_tools.go`; human-follow semantics: `acta/learn/task-notifications.md`, `acta/internal/auth/task_following.go`.
+- Old activity: `acta/internal/board/board.go` (`WorkspaceActivity`, `BoardActivity`), `acta/internal/web/server.go`, `acta/internal/web/mcp.go` (`list_activity`). New per-task activity: `acta/internal/postgres/activity.go`.
 
 ## Genuine differences that can reasonably wait
 
@@ -34,7 +34,7 @@ Source pointers:
 
 ## Covered baseline
 
-Both codebases provide task creation/editing, nesting, assignments, readable references, configurable statuses, priority/type/size, archive/restore, task comments/history, search, task views, memories, documents, CLI/MCP access and account management. Acta 2 additionally has its own permission model, threaded replies, multiple assignments, document versions and human push notifications. This statement concerns implemented capabilities, not a fresh end-to-end test of each.
+Both codebases provide task creation/editing, nesting, assignments, readable references, configurable statuses, priority/type/size, archive/restore, task comments/history, search, task views, memories, documents, CLI/MCP access and account management. Acta additionally has its own permission model, threaded replies, multiple assignments, document versions and human push notifications. This statement concerns implemented capabilities, not a fresh end-to-end test of each.
 
 ## Migration requirements separate from feature parity
 
@@ -45,6 +45,6 @@ Both codebases provide task creation/editing, nesting, assignments, readable ref
 
 ## Recommendation
 
-Status checklists and due dates are the strongest candidates for core feature parity before adopting Acta 2 as the primary tracker. Decide the board mapping and whether agent inbox/comment-wait behaviour is required for existing automation. Workspace activity and the smaller convenience gaps can follow deployment. Resolve old-link preservation as part of cutover, independently of which additional features are implemented.
+Status checklists and due dates are the strongest candidates for core feature parity before adopting Acta as the primary tracker. Decide the board mapping and whether agent inbox/comment-wait behaviour is required for existing automation. Workspace activity and the smaller convenience gaps can follow deployment. Resolve old-link preservation as part of cutover, independently of which additional features are implemented.
 
 No old Acta files, deployed services, release channels or production data were changed by this review.

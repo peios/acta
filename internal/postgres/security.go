@@ -7,7 +7,7 @@ import (
 	"slices"
 	"time"
 
-	"acta2/internal/auth"
+	"acta/internal/auth"
 	"github.com/jackc/pgx/v5"
 )
 

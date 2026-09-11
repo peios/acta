@@ -1,7 +1,7 @@
 package update
 
 import (
-	"acta2/internal/backup"
+	"acta/internal/backup"
 	"context"
 	"encoding/json"
 	"errors"

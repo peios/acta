@@ -1,6 +1,6 @@
 # Installation backup and recovery
 
-Acta's self-hosted recovery service is `acta2-backup`. It uses pgBackRest for
+Acta's self-hosted recovery service is `acta-backup`. It uses pgBackRest for
 PostgreSQL physical backups and archived transaction logs (WAL). It runs
 independently of Acta and stores policy/jobs on its own durable filesystem.
 Site Settings → Backups manages a bounded policy and shows recovery evidence.
@@ -31,10 +31,10 @@ The real recovery suite currently exercises PostgreSQL 17, pgBackRest 2.59.1 and
 age. Validate upgrades using that suite before changing deployed versions. The
 verification-report parser deliberately rejects unexpected formats.
 
-1. Build the web bundle and `make build`. Install `acta2-backup` independently of
+1. Build the web bundle and `make build`. Install `acta-backup` independently of
    the web executable. Provision pgBackRest and age on the database/recovery host.
 2. Adapt `deploy/backup/backup.example.json`, `pgbackrest.example.conf` and
-   `acta2-backup.service`. The service must have access to the PostgreSQL data
+   `acta-backup.service`. The service must have access to the PostgreSQL data
    directory for physical backups, local backup/restore directories, a database
    account able to inspect cluster settings and all Acta tables, and the repository.
    The example runs under PostgreSQL's OS account. Keep all deployment paths and
@@ -56,8 +56,8 @@ verification-report parser deliberately rejects unexpected formats.
    directories. Set up the socket parent with a dedicated shared group: the worker
    owns it; the web process can traverse it and access the 0660 socket. If running
    under different users, each process gets its own 0600 copy of the same API token.
-6. Archive the deployed `acta2-server` under
-   `release_dir/<sha256>/acta2-server`, immutable and executable. `release_file` is
+6. Archive the deployed `acta-server` under
+   `release_dir/<sha256>/acta-server`, immutable and executable. `release_file` is
    JSON with `id`, `sha256`, `public_url`, and a stable `installation` identifier.
    Replicate the release archive and recovery configuration independently, retaining
    artifacts for at least as long as any backup refers to them. Deployment must
@@ -65,7 +65,7 @@ verification-report parser deliberately rejects unexpected formats.
    key or release change fails consistency verification; take a new full backup.
 7. Configure PostgreSQL `archive_mode=on` and an `archive_command` using the
    provisioned pgBackRest stanza, e.g.
-   `pgbackrest --config=/etc/acta-backup/pgbackrest.conf --stanza=acta2 archive-push %p`.
+   `pgbackrest --config=/etc/acta-backup/pgbackrest.conf --stanza=acta archive-push %p`.
    `archive_mode` needs a PostgreSQL restart. Set `archive_timeout` within the chosen
    archive-age limit for continuous recovery. Run `stanza-create` and `check` with
    the same operator configuration before starting the service. Both snapshot and
@@ -137,8 +137,8 @@ and adapted operator configuration are required. Keep target paths short and use
 letters, digits, `/`, `.`, `_`, `-` only.
 
 ```sh
-acta2-backup --config /etc/acta-backup/backup.json --destination offsite list
-acta2-backup --config /etc/acta-backup/backup.json --destination offsite \
+acta-backup --config /etc/acta-backup/backup.json --destination offsite list
+acta-backup --config /etc/acta-backup/backup.json --destination offsite \
   --set EXACT_BACKUP_LABEL --identity /secure/recovery.age \
   --target /var/lib/acta-restores/review restore
 ```
@@ -167,7 +167,7 @@ First keep an independently verified backup of any surviving current production
 state. Cutover deliberately requires an operator action outside the browser.
 
 ```sh
-acta2-backup --config /etc/acta-backup/backup.json \
+acta-backup --config /etc/acta-backup/backup.json \
   --target /var/lib/acta-restores/review prepare-cutover
 ```
 

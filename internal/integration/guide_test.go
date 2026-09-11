@@ -1,12 +1,12 @@
 package integration
 
 import (
-	"acta2/internal/accounts"
-	"acta2/internal/auth"
-	"acta2/internal/config"
-	"acta2/internal/guide"
-	"acta2/internal/httpapi"
-	"acta2/learn"
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/config"
+	"acta/internal/guide"
+	"acta/internal/httpapi"
+	"acta/learn"
 	"encoding/json"
 	"errors"
 	"github.com/modelcontextprotocol/go-sdk/mcp"

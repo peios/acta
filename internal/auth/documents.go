@@ -1,9 +1,9 @@
 package auth
 
 import (
-	"acta2/internal/documents"
-	"acta2/internal/tasks"
-	ws "acta2/internal/workspaces"
+	"acta/internal/documents"
+	"acta/internal/tasks"
+	ws "acta/internal/workspaces"
 	"context"
 	"github.com/google/uuid"
 )

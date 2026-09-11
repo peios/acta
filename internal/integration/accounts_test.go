@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"acta2/internal/accounts"
-	"acta2/internal/auth"
-	"acta2/internal/config"
-	"acta2/internal/httpapi"
-	"acta2/internal/postgres"
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/config"
+	"acta/internal/httpapi"
+	"acta/internal/postgres"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )

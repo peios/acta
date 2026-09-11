@@ -9,11 +9,11 @@ import (
 	"sync"
 	"testing"
 
-	"acta2/internal/accounts"
-	"acta2/internal/auth"
-	"acta2/internal/config"
-	"acta2/internal/httpapi"
-	ws "acta2/internal/workspaces"
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/config"
+	"acta/internal/httpapi"
+	ws "acta/internal/workspaces"
 )
 
 func workspaceOwner(t *testing.T, root securityFixture, name string) (accounts.Account, securityFixture, ws.Workspace) {

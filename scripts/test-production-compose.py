@@ -50,7 +50,7 @@ def wait(fn, label):
         time.sleep(1)
     raise AssertionError('timed out: '+label)
 def sql(query):
-    return dc('exec', '-T', '-u', 'postgres', 'db', 'psql', '-U', 'postgres', '-d', 'acta2', '-Atc', query)
+    return dc('exec', '-T', '-u', 'postgres', 'db', 'psql', '-U', 'postgres', '-d', 'acta', '-Atc', query)
 try:
     run([*compose, 'up', '-d', '--no-build', '--wait', '--wait-timeout', '180'])
     caddy = dc('ps', '-q', 'caddy')
@@ -113,13 +113,13 @@ try:
         repository.mkdir(mode=0o700)
         with (root/'config/.env').open('a') as env:
             env.write(f'ACTA_BACKUP_REPOSITORY={repository}\n')
-        age = output(['docker','run','--rm','--entrypoint','age-keygen','acta2-backup-local:development'])
+        age = output(['docker','run','--rm','--entrypoint','age-keygen','acta-backup-local:development'])
         (operator/'recovery.age').write_text(age+'\n')
         recipient = next(line.removeprefix('# public key: ') for line in age.splitlines() if line.startswith('# public key: '))
         config = json.loads((repo/'deploy/production/backup.example.json').read_text())
         config['recovery_recipient'] = recipient
         (operator/'backup.json').write_text(json.dumps(config))
-        (operator/'database-url').write_text('postgres://postgres@/acta2?host=/var/run/postgresql')
+        (operator/'database-url').write_text('postgres://postgres@/acta?host=/var/run/postgresql')
         (operator/'pgbackrest.conf').write_text((repo/'deploy/production/pgbackrest.example.conf').read_text().replace('REPLACE_WITH_A_RANDOM_SECRET',secrets.token_hex(32)))
         for path in operator.iterdir(): path.chmod(0o600)
         run([*compose,'--profile','backups','up','-d','--no-build','backup'])
@@ -127,10 +127,10 @@ try:
         compose.extend(['-f',str(repo/'compose.backups.yaml'),'--profile','backups'])
         run([*compose,'up','-d','--no-build','--wait','--wait-timeout','180'])
         backrest = ['exec','-T','-u','999:10001','backup','pgbackrest',
-                    '--config=/var/lib/acta-backup/config/pgbackrest.conf','--stanza=acta2']
+                    '--config=/var/lib/acta-backup/config/pgbackrest.conf','--stanza=acta']
         dc(*backrest,'stanza-create')
         dc(*backrest,'check')
-        worker = ['exec','-T','-u','999:10001','backup','acta2-backup','--config','/var/lib/acta-backup/config/backup.json']
+        worker = ['exec','-T','-u','999:10001','backup','acta-backup','--config','/var/lib/acta-backup/config/backup.json']
         state = json.loads(dc(*worker,'status'))
         assert state['configured'] and not state['policy']['enabled']
         # The application UID must be able to reach the shared socket with its private token.
@@ -156,5 +156,5 @@ finally:
         subprocess.run([*compose,'down','--volumes','--remove-orphans'],cwd=repo,check=False)
         # The repository is owned by the test worker after exercising backups.
         if (root/'repository').exists():
-            subprocess.run(['docker','run','--rm','--entrypoint','sh','-v',f'{root}/repository:/repository','acta2-backup-local:development','-c',f'chown -R {os.getuid()}:{os.getgid()} /repository'],check=False)
+            subprocess.run(['docker','run','--rm','--entrypoint','sh','-v',f'{root}/repository:/repository','acta-backup-local:development','-c',f'chown -R {os.getuid()}:{os.getgid()} /repository'],check=False)
         shutil.rmtree(root)

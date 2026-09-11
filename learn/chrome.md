@@ -68,7 +68,7 @@ menu before the drawer. Selecting a scope closes the drawer. Native dialog
 behavior manages focus containment and restoration.
 
 The current bottom scope selector and contextual upper sidebar follow the
-interaction Jack liked in old Acta. Their styling follows the newly agreed Acta 2
+interaction Jack liked in old Acta. Their styling follows the newly agreed Acta
 visual direction; the old implementation has not been inspected or reused.
 
 The dark palette uses neutral charcoal surfaces and warm gray text, with a muted

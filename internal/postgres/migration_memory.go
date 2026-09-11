@@ -1,8 +1,8 @@
 package postgres
 
 import (
-	"acta2/internal/memories"
-	"acta2/internal/migration"
+	"acta/internal/memories"
+	"acta/internal/migration"
 	"context"
 	"time"
 )

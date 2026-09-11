@@ -7,8 +7,9 @@ not publish anything or alter old Acta's release channel. The optional [deployme
 Base images are pinned by digest. Review and refresh those pins for security
 updates; OS packages are resolved during the build, so retain the resulting exact
 release images rather than assuming a later rebuild is byte-identical.
-Do not publish to old Acta's repository or reuse its watched image tags until its
-auto-updater has been accounted for and the migration/cutover is explicitly approved.
+The new release uses `acta-app`, `acta-db`, `acta-backup` and `acta-updater`
+container packages. Never publish the legacy `acta-server:latest` package.
+Repository handover and release publication require separate approval.
 
 ## First installation
 
@@ -31,9 +32,9 @@ directory and never rotates an installation's keys or database passwords:
 ```sh
 python3 scripts/configure-deployment.py \
   --domain tasks.example.com --email operator@example.com \
-  --directory /srv/acta2-config
+  --directory /srv/acta-config
 
-docker compose --env-file /srv/acta2-config/.env \
+docker compose --env-file /srv/acta-config/.env \
   -f compose.production.yaml up -d --build
 ```
 
@@ -55,7 +56,7 @@ files for every lifecycle command. Do not use `down --volumes` on an installatio
 Read the initial setup code through the protected operator console:
 
 ```sh
-docker compose --env-file /srv/acta2-config/.env \
+docker compose --env-file /srv/acta-config/.env \
   -f compose.production.yaml logs app
 ```
 
@@ -79,7 +80,7 @@ repository needs an explicitly restricted egress setup before using it here.
 Follow [the recovery runbook](backups.md) for keys, retention, verification and
 cutover semantics. Before enabling the profile:
 
-1. Create `/srv/acta2-config/backup` mode 0700. Copy
+1. Create `/srv/acta-config/backup` mode 0700. Copy
    `deploy/production/backup.example.json` as `backup.json` and
    `deploy/production/pgbackrest.example.conf` as `pgbackrest.conf`, both mode 0600.
 2. Supply a random repository cipher password in `pgbackrest.conf`. Provision
@@ -87,7 +88,7 @@ cutover semantics. Before enabling the profile:
    `backup.json`; retain independent recovery copies. The worker's UID 999 needs
    read/write access to the repository mount; give only that account access.
 3. Write a private `backup/database-url` containing
-   `postgres://postgres@/acta2?host=/var/run/postgresql`. This uses the private shared
+   `postgres://postgres@/acta?host=/var/run/postgresql`. This uses the private shared
    PostgreSQL socket and local authentication, not a published administrator port.
    Only the database and recovery worker mount that socket.
 4. Set `ACTA_BACKUP_REPOSITORY` in `.env` to the absolute provisioned mount path.
@@ -99,19 +100,19 @@ cutover semantics. Before enabling the profile:
    the additional Compose file. The worker starts with automatic schedules disabled:
 
 ```sh
-docker compose --env-file /srv/acta2-config/.env -f compose.production.yaml \
+docker compose --env-file /srv/acta-config/.env -f compose.production.yaml \
   --profile backups up -d --build backup
 
-docker compose --env-file /srv/acta2-config/.env -f compose.production.yaml \
+docker compose --env-file /srv/acta-config/.env -f compose.production.yaml \
   -f compose.backups.yaml --profile backups up -d --build
 
-docker compose --env-file /srv/acta2-config/.env -f compose.production.yaml \
+docker compose --env-file /srv/acta-config/.env -f compose.production.yaml \
   -f compose.backups.yaml --profile backups exec -u 999:10001 backup \
-  pgbackrest --config=/var/lib/acta-backup/config/pgbackrest.conf --stanza=acta2 stanza-create
+  pgbackrest --config=/var/lib/acta-backup/config/pgbackrest.conf --stanza=acta stanza-create
 
-docker compose --env-file /srv/acta2-config/.env -f compose.production.yaml \
+docker compose --env-file /srv/acta-config/.env -f compose.production.yaml \
   -f compose.backups.yaml --profile backups exec -u 999:10001 backup \
-  pgbackrest --config=/var/lib/acta-backup/config/pgbackrest.conf --stanza=acta2 check
+  pgbackrest --config=/var/lib/acta-backup/config/pgbackrest.conf --stanza=acta check
 ```
 
 Retain both Compose files and the profile for subsequent starts. Monitor WAL disk

@@ -3,8 +3,8 @@ package httpapi
 import (
 	"context"
 
-	"acta2/internal/guide"
-	"acta2/learn"
+	"acta/internal/guide"
+	"acta/learn"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

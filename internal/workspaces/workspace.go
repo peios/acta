@@ -8,7 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"acta2/internal/accounts"
+	"acta/internal/accounts"
 )
 
 const (

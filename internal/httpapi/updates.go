@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"time"
 
-	"acta2/internal/accounts"
-	"acta2/internal/auth"
-	"acta2/internal/backup"
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/backup"
 )
 
 func (h *Handler) updateRoutes(m *http.ServeMux) {

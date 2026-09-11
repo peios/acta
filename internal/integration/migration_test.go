@@ -1,12 +1,12 @@
 package integration
 
 import (
-	"acta2/internal/accounts"
-	"acta2/internal/auth"
-	"acta2/internal/config"
-	"acta2/internal/httpapi"
-	"acta2/internal/migration"
-	"acta2/internal/tasks"
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/config"
+	"acta/internal/httpapi"
+	"acta/internal/migration"
+	"acta/internal/tasks"
 	"context"
 	"encoding/base64"
 	"encoding/json"

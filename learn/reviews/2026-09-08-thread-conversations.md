@@ -22,7 +22,7 @@ hook/MCP placement rules are preserved.
   Comparison ignores replacement IDs and envelope metadata, and compares JSON
   arguments semantically. No provider prompts were sent for this validation.
 - On local deployment, all eight stored threads reached conversation version 1.
-  The database backup is `/tmp/acta2-before-conversation-migration.dump`.
+  The database backup is `/tmp/acta-before-conversation-migration.dump`.
 - In-app browser on 8081: Codex opened with 50 items, scrolled to 100 then all
   124; older loading preserved the viewport position. Debug mode opened its own
   50-item page and retained Unknown Frames. Claude opened with 50 items and

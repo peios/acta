@@ -1,4 +1,4 @@
-// acta2-backup runs without the Acta web service or its database. The operator
+// acta-backup runs without the Acta web service or its database. The operator
 // provisions its database/repository access and grants the web service only a
 // narrow policy/status socket credential.
 package main
@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"acta2/internal/backup"
+	"acta/internal/backup"
 )
 
 func main() {
@@ -25,7 +25,7 @@ func main() {
 	}
 }
 func run() error {
-	f := flag.NewFlagSet("acta2-backup", flag.ContinueOnError)
+	f := flag.NewFlagSet("acta-backup", flag.ContinueOnError)
 	config := f.String("config", "/etc/acta/backup.json", "Operator-owned configuration")
 	destination := f.String("destination", "", "Configured recovery destination")
 	label := f.String("set", "", "Exact pgBackRest backup set")
@@ -33,7 +33,7 @@ func run() error {
 	target := f.String("target", "", "New isolated recovery directory; must not exist")
 	targetTime := f.String("time", "", "Optional RFC3339 point-in-time recovery target")
 	f.Usage = func() {
-		fmt.Fprintln(f.Output(), "Usage: acta2-backup [flags] serve|status|backup|full|drill|list|restore|prepare-cutover")
+		fmt.Fprintln(f.Output(), "Usage: acta-backup [flags] serve|status|backup|full|drill|list|restore|prepare-cutover")
 		f.PrintDefaults()
 	}
 	if err := f.Parse(os.Args[1:]); err != nil {
@@ -43,7 +43,7 @@ func run() error {
 		return err
 	}
 	if f.NArg() != 1 {
-		return errors.New("usage: acta2-backup [flags] serve|status|backup|full|drill|list|restore|prepare-cutover")
+		return errors.New("usage: acta-backup [flags] serve|status|backup|full|drill|list|restore|prepare-cutover")
 	}
 	c, err := backup.LoadConfig(*config)
 	if err != nil {

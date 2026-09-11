@@ -9,8 +9,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"acta2/internal/providers"
-	"acta2/internal/threads"
+	"acta/internal/providers"
+	"acta/internal/threads"
 
 	"github.com/google/uuid"
 )

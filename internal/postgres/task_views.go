@@ -1,9 +1,9 @@
 package postgres
 
 import (
-	"acta2/internal/accounts"
-	"acta2/internal/auth"
-	"acta2/internal/tasks"
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/tasks"
 	"context"
 	"encoding/json"
 	"errors"

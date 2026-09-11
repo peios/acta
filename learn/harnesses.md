@@ -8,9 +8,9 @@ thread lifecycle controls through [My Agents](threads.md).
 ## Connect a machine
 
 ```sh
-acta2 login localhost:8081
-acta2 harness
-acta2 -p work harness
+acta login localhost:8081
+acta harness
+acta -p work harness
 ```
 
 The command uses the normal selected/active profile URL and credentials,
@@ -118,11 +118,11 @@ are durable; the harness connection remains ephemeral. An established thread is
 available when a current authorized connection advertises it. Disconnect means
 unreachable, not necessarily that its provider has exited.
 
-Normally the provider pipe runs within `acta2 harness`, so exiting that command
+Normally the provider pipe runs within `acta harness`, so exiting that command
 terminates its provider processes. For development:
 
 ```sh
-acta2 harness --separate-pipe
+acta harness --separate-pipe
 ```
 
 This starts or attaches to the same generic pipe engine in a detached helper.

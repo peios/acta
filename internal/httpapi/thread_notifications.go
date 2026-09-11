@@ -1,7 +1,7 @@
 package httpapi
 
 import (
-	"acta2/internal/threads"
+	"acta/internal/threads"
 	"github.com/google/uuid"
 	"net/http"
 )

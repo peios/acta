@@ -9,9 +9,9 @@ import (
 	"os"
 	"strings"
 
-	"acta2/internal/activity"
-	"acta2/internal/client"
-	"acta2/internal/tasks"
+	"acta/internal/activity"
+	"acta/internal/client"
+	"acta/internal/tasks"
 	"github.com/spf13/cobra"
 )
 
@@ -49,10 +49,10 @@ func (a *App) taskCommand() *cobra.Command {
 	root := &cobra.Command{Use: "task", Short: "Find, inspect, create and edit workspace tasks"}
 	root.AddCommand(a.commentCommand())
 	var workspace string
-	root.PersistentFlags().StringVarP(&workspace, "workspace", "w", "", "Workspace UUID or slug (see acta2 workspace list)")
+	root.PersistentFlags().StringVarP(&workspace, "workspace", "w", "", "Workspace UUID or slug (see acta workspace list)")
 	requireWorkspace := func() error {
 		if strings.TrimSpace(workspace) == "" {
-			return errors.New("Supply --workspace <UUID-or-slug>; use acta2 workspace list")
+			return errors.New("Supply --workspace <UUID-or-slug>; use acta workspace list")
 		}
 		return nil
 	}

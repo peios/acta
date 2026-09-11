@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"acta2/internal/localstate"
+	"acta/internal/localstate"
 	"github.com/gofrs/flock"
 	"github.com/google/uuid"
 )

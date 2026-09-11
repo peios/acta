@@ -1,8 +1,8 @@
 package postgres
 
 import (
-	"acta2/internal/activity"
-	"acta2/internal/auth"
+	"acta/internal/activity"
+	"acta/internal/auth"
 	"context"
 )
 

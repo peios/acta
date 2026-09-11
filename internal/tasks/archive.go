@@ -1,6 +1,6 @@
 package tasks
 
-import "acta2/internal/accounts"
+import "acta/internal/accounts"
 
 type Archive struct {
 	Archived bool  `json:"archived"`

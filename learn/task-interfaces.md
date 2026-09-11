@@ -10,17 +10,17 @@ Start with workspace discovery, then narrow a task list. Inspect a task before
 editing so its field versions and surrounding work are available.
 
 ```sh
-acta2 workspace list
-acta2 task list -w acta --state unfinished --sort updated --direction desc
-acta2 task list -w acta --query "login"
-acta2 task get ACT-151
-acta2 task edit ACT-151 --field title --version 3 --value "Improve login feedback"
-acta2 task create -w acta --title "Check keyboard navigation" --parent ACT-151
-acta2 task create -w acta --title "Review" --description-file review.md
-cat review.md | acta2 task edit ACT-151 --field description --version 2 --value-file -
-acta2 task edit ACT-151 --field description --version 3 --clear
-acta2 task edit ACT-151 --field assignees --version 1 --assignee ACCOUNT_UUID
-acta2 task edit ACT-151 --field assignees --version 2 --clear
+acta workspace list
+acta task list -w acta --state unfinished --sort updated --direction desc
+acta task list -w acta --query "login"
+acta task get ACT-151
+acta task edit ACT-151 --field title --version 3 --value "Improve login feedback"
+acta task create -w acta --title "Check keyboard navigation" --parent ACT-151
+acta task create -w acta --title "Review" --description-file review.md
+cat review.md | acta task edit ACT-151 --field description --version 2 --value-file -
+acta task edit ACT-151 --field description --version 3 --clear
+acta task edit ACT-151 --field assignees --version 1 --assignee ACCOUNT_UUID
+acta task edit ACT-151 --field assignees --version 2 --clear
 ```
 
 Versions above are illustrative; use the actual version of the field returned by
@@ -163,7 +163,7 @@ was verified through the SDK with fixture OAuth approvals; a fresh desktop
 consent for task access remains a separate user action.
 
 Linux server/client builds and Windows amd64 client cross-compilation passed.
-The installed `acta2` command points to the rebuilt client. CLI help and JSON
+The installed `acta` command points to the rebuilt client. CLI help and JSON
 argument-error output were checked from the executable. The rebuilt server is
 running on localhost:8081; web and OAuth discovery checks returned HTTP 200.
 
@@ -181,10 +181,10 @@ category and intersect across categories. Sort accepts `priority`, `type`, `size
 CLI examples:
 
 ```sh
-acta2 task create -w acta --title "Repair reconnect" --priority high --type bug --size m
-acta2 task list -w acta --priority high,urgent --type bug --sort priority --direction desc
-acta2 task edit ACT-151 --field size --version 1 --value l
-acta2 task edit ACT-151 --field priority --version 2 --clear
+acta task create -w acta --title "Repair reconnect" --priority high --type bug --size m
+acta task list -w acta --priority high,urgent --type bug --sort priority --direction desc
+acta task edit ACT-151 --field size --version 1 --value l
+acta task edit ACT-151 --field priority --version 2 --clear
 ```
 
 MCP `task_create` accepts the same singular property names. `task_update` uses
@@ -193,7 +193,7 @@ See [Tasks](tasks.md#optional-task-properties-act-88) for the fixed values and s
 
 ## Global search
 
-`acta2 task search "permission approval"` searches all accessible workspaces.
+`acta task search "permission approval"` searches all accessible workspaces.
 Add `--workspace acta` to narrow the scope, or `--cursor <returned cursor>` to
 continue. `--json` returns the same compact contract as MCP `task_search` and
 `GET /api/tasks/search?q=permission+approval&workspace=acta`. See

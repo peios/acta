@@ -1,9 +1,9 @@
 package postgres
 
 import (
-	"acta2/internal/activity"
-	"acta2/internal/documents"
-	"acta2/internal/migration"
+	"acta/internal/activity"
+	"acta/internal/documents"
+	"acta/internal/migration"
 	"context"
 	"encoding/base64"
 	"time"

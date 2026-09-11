@@ -82,7 +82,7 @@ func (c *Client) Call(ctx context.Context, method, path string, input, output an
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "acta2-cli")
+	req.Header.Set("User-Agent", "acta-cli")
 	if input != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

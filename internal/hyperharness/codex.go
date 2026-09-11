@@ -1,8 +1,8 @@
 package hyperharness
 
 import (
-	"acta2/internal/harnesspipe"
-	"acta2/internal/threads"
+	"acta/internal/harnesspipe"
+	"acta/internal/threads"
 	"context"
 	"encoding/json"
 	"errors"
@@ -23,7 +23,7 @@ func (c *Controller) startCodex(ctx context.Context, r *localThread) error {
 	if p.State != "running" {
 		return fmt.Errorf("provider process is %s: %s", p.State, p.Error)
 	}
-	handshake, err := c.rpc(ctx, r, "initialize", map[string]any{"clientInfo": map[string]string{"name": "acta2", "version": "0.1.0", "title": "Acta"}, "capabilities": map[string]bool{"experimentalApi": true}})
+	handshake, err := c.rpc(ctx, r, "initialize", map[string]any{"clientInfo": map[string]string{"name": "acta", "version": "0.1.0", "title": "Acta"}, "capabilities": map[string]bool{"experimentalApi": true}})
 	if err != nil {
 		return err
 	}

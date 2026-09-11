@@ -1,7 +1,7 @@
 package client
 
 import (
-	"acta2/internal/documents"
+	"acta/internal/documents"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -23,7 +23,7 @@ func (c *Client) documentRequest(ctx context.Context, method, path, contentType 
 	if e != nil {
 		return nil, e
 	}
-	req.Header.Set("User-Agent", "acta2-cli")
+	req.Header.Set("User-Agent", "acta-cli")
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}

@@ -41,7 +41,7 @@ for (const engine of [chromium, firefox]) {
     let view = {
       configured: true,
       checked_at: new Date().toISOString(),
-      repository: "peios/acta2",
+      repository: "peios/acta",
       current: { version: "v0.1.0-preview.1" },
       available: {
         id: "signed-release",

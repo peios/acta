@@ -1,7 +1,7 @@
 package postgres
 
 import (
-	"acta2/internal/auth"
+	"acta/internal/auth"
 	"context"
 	"errors"
 	"github.com/jackc/pgx/v5"
