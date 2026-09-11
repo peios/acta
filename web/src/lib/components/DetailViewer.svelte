@@ -80,6 +80,7 @@
     if (!mounted || !detail) return;
     const visible = detailVisible;
     const presentation = mode;
+    const mobile = width < 760;
     let cancelled = false;
     let entrance: Animation | undefined;
     void tick().then(() => {
@@ -90,11 +91,15 @@
       const active = document.activeElement as HTMLElement | null;
       if (detail.open) detail.close();
       if (visible) {
-        if (presentation === "modal" || (embedded && presentation === "full"))
+        if (
+          presentation === "modal" ||
+          ((embedded || mobile) && presentation === "full")
+        )
           detail.showModal();
         else detail.show();
-        if (active && detail.contains(active)) active.focus();
-        else closeButton?.focus();
+        if (active && detail.contains(active))
+          active.focus({ preventScroll: true });
+        else closeButton?.focus({ preventScroll: true });
         if (
           !wasOpen &&
           presentation === "panel" &&
@@ -149,7 +154,7 @@
       <button
         bind:this={closeButton}
         class="view-control"
-        aria-label={`Close ${label}`}
+        aria-label={width < 760 ? `Back from ${label}` : `Close ${label}`}
         title={`Close ${label}`}
         onclick={close}
       >
@@ -161,8 +166,12 @@
           stroke="currentColor"
           stroke-width="1.6"
           stroke-linecap="round"
-          aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg
+          aria-hidden="true"
+          ><path
+            d={width < 760 ? "m14 5-7 7 7 7M7 12h14" : "m6 6 12 12M18 6 6 18"}
+          /></svg
         >
+        {#if width < 760}<span>Back</span>{/if}
       </button>
       <strong>{title}</strong>
     </div>
@@ -300,31 +309,6 @@
   .detail-view.full .detail-body {
     overflow: visible;
   }
-  @media (max-width: 759px) {
-    .detail-view.full {
-      min-height: calc(100dvh - 110px);
-      margin: -12px;
-      width: calc(100% + 24px);
-      max-width: none;
-    }
-    .detail-view header {
-      padding: 12px 16px;
-    }
-  }
-  @media (max-width: 600px) {
-    .detail-view.full {
-      --task-edge-space: clamp(0px, calc(10vw - 48px), 12px);
-      --task-content-inset: clamp(8px, calc(4vw - 6.4px), 16px);
-      --task-description-inset: clamp(10px, calc(3vw - 0.8px), 16px);
-      margin: calc(var(--task-edge-space) - 24px);
-      width: calc(100% + 48px - 2 * var(--task-edge-space));
-      min-height: calc(100svh - 2 * var(--task-edge-space));
-    }
-    .detail-view.full header {
-      padding: 8px max(4px, calc(var(--task-content-inset) - 4px));
-    }
-  }
-
   .detail-view.embedded.panel {
     height: 100%;
     min-height: 0;
@@ -340,5 +324,43 @@
   }
   .detail-view.embedded.full .detail-body {
     overflow: auto;
+  }
+  @media (max-width: 759px) {
+    .detail-view.full,
+    .detail-view.embedded.full {
+      --task-content-inset: 16px;
+      --task-description-inset: 16px;
+      position: fixed;
+      inset: auto 0;
+      top: var(--mobile-viewport-top, 0px);
+      margin: 0;
+      width: 100%;
+      max-width: none;
+      height: var(--mobile-viewport-height, 100dvh);
+      min-height: 0;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .detail-view.full .detail-body {
+      overflow: auto;
+      overscroll-behavior: contain;
+    }
+    .detail-view.full header {
+      position: relative;
+      top: auto;
+      padding: max(8px, env(safe-area-inset-top)) 12px 8px;
+      gap: 8px;
+    }
+    .detail-view header > div {
+      min-width: 0;
+    }
+    .detail-view header strong {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .view-control {
+      gap: 4px;
+      flex-shrink: 0;
+    }
   }
 </style>

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { mobileViewport } from "$lib/mobile-viewport";
+  import { swipeNavigation } from "$lib/swipe-navigation";
   import { ScopeHistory } from "$lib/scope-history.js";
   import { tick, type Snippet } from "svelte";
   import { goto, afterNavigate } from "$app/navigation";
@@ -142,6 +144,8 @@
   }}
 />
 <div
+  use:swipeNavigation={() => drawer}
+  use:mobileViewport
   class="app-chrome"
   class:resizing
   style:--sidebar-width={`${collapsed ? SIDEBAR_RAIL : sidebarWidth}px`}
@@ -234,7 +238,7 @@
   }
 
   .app-chrome {
-    height: 100svh;
+    height: 100dvh;
     overflow: hidden;
     display: grid;
     grid-template-rows: minmax(0, 1fr);
@@ -298,7 +302,7 @@
     margin: 0;
     width: 100%;
     max-width: none;
-    height: 100svh;
+    height: 100dvh;
     max-height: none;
     background: transparent;
     color: var(--text);
@@ -352,6 +356,10 @@
   }
   @media (max-width: 720px) {
     .app-chrome {
+      position: fixed;
+      inset-inline: 0;
+      top: var(--mobile-viewport-top, 0px);
+      height: var(--mobile-viewport-height, 100dvh);
       grid-template-columns: minmax(0, 1fr);
     }
     .desktop-sidebar {
@@ -363,7 +371,10 @@
       gap: 8px;
     }
     main {
-      padding: 24px;
+      --content-block-padding: 16px;
+      padding: 16px max(16px, env(safe-area-inset-right))
+        max(16px, env(safe-area-inset-bottom))
+        max(16px, env(safe-area-inset-left));
     }
   }
 </style>

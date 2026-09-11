@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import ThreadImagePicker from "./ThreadImagePicker.svelte";
   import type { DraftImage } from "$lib/thread-image-input.js";
   import ThreadPermissionControls from "./ThreadPermissionControls.svelte";
@@ -69,6 +70,10 @@
   let input: HTMLTextAreaElement;
   let imagesBusy = $state(false);
   let imagePicker: ThreadImagePicker;
+  onMount(() => {
+    if (!window.matchMedia("(pointer: coarse)").matches)
+      input.focus({ preventScroll: true });
+  });
   function send() {
     if (!enabled || imagesBusy || (!draft.trim() && !images.length)) return;
     onsend();
@@ -102,9 +107,7 @@
     onchange={onimages}
     onbusy={(busy) => (imagesBusy = busy)}
   />
-  <!-- svelte-ignore a11y_autofocus (Opening a conversation intentionally focuses its composer.) -->
   <textarea
-    autofocus
     bind:this={input}
     aria-label="Message"
     placeholder="Message…"
@@ -113,7 +116,7 @@
     readonly={locked}
     oninput={(event) => {
       resize(event);
-      onchange(draft);
+      onchange(event.currentTarget.value);
     }}
     onpaste={(event) => {
       const files = event.clipboardData?.files;
@@ -123,7 +126,14 @@
       }
     }}
     onkeydown={(event) => {
-      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+      if (
+        event.key === "Enter" &&
+        !event.shiftKey &&
+        !event.isComposing &&
+        (event.ctrlKey ||
+          event.metaKey ||
+          !window.matchMedia("(pointer: coarse)").matches)
+      ) {
         event.preventDefault();
         send();
       }

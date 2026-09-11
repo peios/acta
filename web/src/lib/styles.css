@@ -30,7 +30,7 @@
   --success-surface: #eff7f0;
   --success-text: #2c6137;
   --success-border: #ccdfcf;
-  --footer: #747b86;
+  --footer: #667080;
   --muted: #667080;
   --accent: #2955b5;
   --border: #8a929f;
@@ -358,5 +358,24 @@ input[role="switch"]:disabled {
   input[role="switch"],
   input[role="switch"]::before {
     transition: none;
+  }
+}
+
+/* Touch input needs a full fingertip target, including compact icon controls.
+   Keep text fields at 16px so focusing them does not zoom the page on iOS. */
+@media (pointer: coarse) {
+  button,
+  summary,
+  [role="button"] {
+    min-height: 44px !important;
+    min-width: 44px !important;
+  }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
+      [type="file"]
+    ):not([type="hidden"]),
+  textarea,
+  select,
+  [contenteditable="true"] {
+    font-size: 16px !important;
   }
 }

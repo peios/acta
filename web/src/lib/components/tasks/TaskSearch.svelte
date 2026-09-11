@@ -430,11 +430,17 @@
     font-size: 11px;
     color: var(--muted);
   }
+  @media (max-width: 759px) {
+    .task-search {
+      top: calc(var(--mobile-viewport-top, 0px) + 12px);
+      bottom: auto;
+      margin: 0 auto;
+      max-height: calc(var(--mobile-viewport-height, 100dvh) - 24px);
+    }
+  }
   @media (max-width: 600px) {
     .task-search {
-      margin: 12px auto;
       width: calc(100vw - 16px);
-      max-height: calc(100dvh - 24px);
     }
     .scope {
       gap: 8px;

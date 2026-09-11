@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { touchDrag, type TouchDragOptions } from "$lib/touch-drag";
   import { taskProperties, propertyLabel } from "$lib/task-properties";
   import { personName, type Task, type TaskConfig } from "$lib/tasks";
   import type { ViewDisplay } from "$lib/task-views.js";
@@ -12,6 +13,8 @@
     ondrag,
     ondragend,
     hover,
+    ontouchdrag,
+    onmove,
   }: {
     task: Task;
     config: TaskConfig;
@@ -22,89 +25,203 @@
     ondrag: (event: DragEvent, task: Task) => void;
     ondragend: () => void;
     hover: { id: string };
+    ontouchdrag?: TouchDragOptions;
+    onmove?: (task: Task) => void;
   } = $props();
   let dragging = $state(false);
+  let touchPointer = $state(false);
 </script>
 
-<button
-  class="board-card"
-  class:compact={display.density === "compact"}
-  class:dragging
-  class:highlighted={hover.id === task.id}
-  onpointerenter={() => {
-    hover.id = task.id;
-  }}
-  onpointerleave={() => {
-    if (hover.id === task.id) hover.id = "";
-  }}
-  draggable={canDrag && !moving}
-  disabled={moving}
-  aria-label={`Open ${task.reference}: ${task.title}`}
-  onclick={() => onopen(task)}
-  ondragstart={(event) => {
-    dragging = true;
-    ondrag(event, task);
-  }}
-  ondragend={() => {
-    dragging = false;
-    ondragend();
+<div
+  class="card-shell"
+  class:movable={canDrag && !!onmove}
+  use:touchDrag={{
+    enabled: () => canDrag && !moving && !!ontouchdrag,
+    start: (point) => ontouchdrag?.start(point) ?? false,
+    move: (point) => ontouchdrag?.move(point),
+    finish: (cancelled) => ontouchdrag?.finish(cancelled),
   }}
 >
-  <span class="card-top"
-    ><span class="reference">{task.reference}</span>
-    {#if task.children}<span
-        class="subtasks"
-        title={`${task.children} ${task.children === 1 ? "subtask" : "subtasks"}`}
-        aria-label={`${task.children} ${task.children === 1 ? "subtask" : "subtasks"}`}
-      >
-        <svg viewBox="0 0 20 20" aria-hidden="true"
-          ><path d="M5 3v10a2 2 0 0 0 2 2h3M5 7h5" /><rect
-            x="11"
-            y="4"
-            width="6"
-            height="5"
-            rx="1"
-          /><rect x="11" y="12" width="6" height="5" rx="1" /></svg
-        >{task.children}
-      </span>{/if}
-  </span>
-  <span class="card-title" title={task.title}>{task.title}</span>
-  {#if display.columns.length}
-    <span class="card-properties">
-      {#each taskProperties.filter( (p) => display.columns.includes(p.value) ) as p}<span
-          class="metadata"
-          title={p.label}>{propertyLabel(p.value, task[p.value])}</span
-        >{/each}
-      {#if display.columns.includes("status")}<span
-          class="status"
-          title={config.statuses.find((s) => s.id === task.status_id)?.name}
+  <button
+    class="board-card"
+    class:compact={display.density === "compact"}
+    class:dragging
+    class:highlighted={hover.id === task.id}
+    onpointerenter={() => {
+      hover.id = task.id;
+    }}
+    onpointerleave={() => {
+      if (hover.id === task.id) hover.id = "";
+    }}
+    onpointerdown={(event) => {
+      touchPointer = event.pointerType !== "mouse";
+    }}
+    draggable={canDrag && !moving && !touchPointer}
+    disabled={moving}
+    aria-label={`Open ${task.reference}: ${task.title}`}
+    onclick={() => onopen(task)}
+    ondragstart={(event) => {
+      dragging = true;
+      ondrag(event, task);
+    }}
+    ondragend={() => {
+      dragging = false;
+      ondragend();
+    }}
+  >
+    <span class="card-top"
+      ><span class="reference">{task.reference}</span>
+      {#if task.children}<span
+          class="subtasks"
+          title={`${task.children} ${task.children === 1 ? "subtask" : "subtasks"}`}
+          aria-label={`${task.children} ${task.children === 1 ? "subtask" : "subtasks"}`}
         >
-          <span
-            class="status-dot"
-            class:done={task.status_id === config.completed_status}
-          ></span>{config.statuses.find((s) => s.id === task.status_id)?.name}
-        </span>{/if}
-      {#if display.columns.includes("assignees")}<span
-          class="avatars"
-          aria-label="Assignees"
-        >
-          {#each task.assignees.slice(0, 3) as person}<span
-              class="avatar"
-              title={`${personName(person)}${!person.available ? " · Access removed" : ""}`}
-              >{personName(person).slice(0, 1).toUpperCase()}</span
-            >{/each}
-          {#if task.assignees.length > 3}<span
-              class="extra"
-              title={task.assignees.slice(3).map(personName).join(", ")}
-              >+{task.assignees.length - 3}</span
-            >{/if}
+          <svg viewBox="0 0 20 20" aria-hidden="true"
+            ><path d="M5 3v10a2 2 0 0 0 2 2h3M5 7h5" /><rect
+              x="11"
+              y="4"
+              width="6"
+              height="5"
+              rx="1"
+            /><rect x="11" y="12" width="6" height="5" rx="1" /></svg
+          >{task.children}
         </span>{/if}
     </span>
+    <span class="card-title" title={task.title}>{task.title}</span>
+    {#if display.columns.length}
+      <span class="card-properties">
+        {#each taskProperties.filter( (p) => display.columns.includes(p.value) ) as p}<span
+            class="metadata"
+            title={p.label}>{propertyLabel(p.value, task[p.value])}</span
+          >{/each}
+        {#if display.columns.includes("status")}<span
+            class="status"
+            title={config.statuses.find((s) => s.id === task.status_id)?.name}
+          >
+            <span
+              class="status-dot"
+              class:done={task.status_id === config.completed_status}
+            ></span>{config.statuses.find((s) => s.id === task.status_id)?.name}
+          </span>{/if}
+        {#if display.columns.includes("assignees")}<span
+            class="avatars"
+            aria-label="Assignees"
+          >
+            {#each task.assignees.slice(0, 3) as person}<span
+                class="avatar"
+                title={`${personName(person)}${!person.available ? " · Access removed" : ""}`}
+                >{personName(person).slice(0, 1).toUpperCase()}</span
+              >{/each}
+            {#if task.assignees.length > 3}<span
+                class="extra"
+                title={task.assignees.slice(3).map(personName).join(", ")}
+                >+{task.assignees.length - 3}</span
+              >{/if}
+          </span>{/if}
+      </span>
+    {/if}
+    {#if moving}<span class="moving" role="status">Moving…</span>{/if}
+  </button>
+  {#if canDrag && !moving && onmove}
+    <button
+      class="move-button"
+      data-no-drag
+      aria-label={`Move ${task.reference} to…`}
+      title="Move to…"
+      onclick={() => onmove?.(task)}
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true"
+        ><path d="M12 5h.01M12 12h.01M12 19h.01" /></svg
+      >
+    </button>
   {/if}
-  {#if moving}<span class="moving" role="status">Moving…</span>{/if}
-</button>
+  {#if canDrag && !moving && ontouchdrag}
+    <button
+      class="touch-handle"
+      data-touch-drag-handle
+      aria-label={`Drag ${task.reference} to another column`}
+      title="Drag to another column"
+      onclick={() => onopen(task)}
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true"
+        ><path
+          d="M8 5h.01M16 5h.01M8 12h.01M16 12h.01M8 19h.01M16 19h.01"
+        /></svg
+      >
+    </button>
+  {/if}
+</div>
 
 <style>
+  .card-shell {
+    position: relative;
+  }
+  .card-shell:global([data-touch-dragging="true"]) {
+    opacity: 0.4;
+  }
+  .touch-handle {
+    display: none;
+  }
+  .move-button {
+    display: grid;
+    place-items: center;
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--muted);
+  }
+  .move-button:hover {
+    background: var(--hover-surface);
+    color: var(--text);
+  }
+  .move-button svg {
+    width: 20px;
+    height: 20px;
+    stroke-width: 3;
+    stroke-linecap: round;
+  }
+  .movable .card-top {
+    padding-right: 28px;
+  }
+  @media (pointer: coarse) {
+    .board-card {
+      user-select: none;
+      -webkit-touch-callout: none;
+    }
+    .touch-handle {
+      display: grid;
+      place-items: center;
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 44px;
+      height: 44px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      color: var(--muted);
+      touch-action: none;
+    }
+    .touch-handle svg {
+      width: 20px;
+      height: 20px;
+      stroke-width: 4;
+      stroke-linecap: round;
+    }
+    .movable .touch-handle {
+      right: 44px;
+    }
+    .movable .card-top {
+      padding-right: 72px;
+    }
+  }
+
   .metadata {
     font-size: 11px;
     color: var(--muted);

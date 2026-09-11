@@ -371,4 +371,9 @@
   .full > .list {
     display: none;
   }
+  @media (max-width: 759px) {
+    .full > .list {
+      display: block;
+    }
+  }
 </style>

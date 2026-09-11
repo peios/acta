@@ -388,4 +388,9 @@
       padding: 6px;
     }
   }
+  @media (pointer: coarse) {
+    label {
+      min-height: 44px;
+    }
+  }
 </style>

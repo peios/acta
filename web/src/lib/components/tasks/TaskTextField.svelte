@@ -182,9 +182,11 @@
 </script>
 
 <svelte:window
-  onpointerdown={(event) => {
+  onclick={(event) => {
+    // Finish after the destination receives its click. Collapsing on pointerdown
+    // moves controls under a finger before pointerup and can swallow the tap.
     if (!editing) return;
-    if (region.contains(event.target as Node)) finishRequested = false;
+    if (event.composedPath().includes(region)) finishRequested = false;
     else finishEditing();
   }}
 />

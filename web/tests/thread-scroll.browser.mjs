@@ -33,6 +33,7 @@ const engine =
   process.env.ACTA_SCROLL_BROWSER === "firefox" ? firefox : chromium;
 const browser = await engine.launch({
   headless: true,
+  executablePath: process.env.ACTA_SCROLL_EXECUTABLE || undefined,
   ...(engine === firefox
     ? {
         firefoxUserPrefs: {
@@ -265,6 +266,57 @@ try {
     .getByRole("button", { name: "Load older messages", exact: true })
     .click();
   await page.waitForFunction(() => window.scrollFixture.olderCalls() === 3);
+  // Native phone touch must pause following while new messages arrive.
+  if (engine === chromium) {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.evaluate(() => {
+      const meta = document.createElement("meta");
+      meta.name = "viewport";
+      meta.content = "width=device-width, initial-scale=1";
+      document.head.append(meta);
+    });
+    await page.evaluate(async () => {
+      await window.scrollFixture.stress();
+      const n = document.querySelector(".frame-feed");
+      n.scrollTop = n.scrollHeight;
+      n.dispatchEvent(new Event("scroll"));
+    });
+    await settle();
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true });
+    const b = await page.locator(".frame-feed").boundingBox();
+    const start = (await read()).top;
+    const x = b.x + b.width / 2,
+      y = b.y + 80;
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x, y }],
+    });
+    for (let i = 1; i <= 8; i++) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x, y: y + i * 25 }],
+      });
+      await page.evaluate(() => window.scrollFixture.append());
+    }
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    await settle();
+    const paused = await read();
+    assert.ok(
+      paused.top < start - 80,
+      "touch scroll should move up while streaming",
+    );
+    await page.evaluate(() => window.scrollFixture.append());
+    await settle();
+    assert.ok(
+      (await read()).top <= paused.top + 1,
+      "new output must not pull mobile reader back down",
+    );
+    await cdp.detach();
+  }
   assert.deepEqual(errors, []);
   console.log(
     "PASS: passive wheel, idle polling, bounded anchor measurements, initial end, live following, upward pause, late-event latch, older-page anchoring, growth above viewport, resume at bottom, repeated wheel during streaming, collapsed-page pagination, no-progress guard, explicit history retries",
