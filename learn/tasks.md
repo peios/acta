@@ -22,9 +22,11 @@ a separate workspace-name header or tagline. On mobile, the navigation button
 sits inline with Tasks and Search. It is hidden while a task is open.
 On mobile, Create task floats at the bottom right with safe-area clearance, for
 both Tasks and Backlog. It is hidden while viewing a task or archived tasks.
-Mobile creation opens a full-screen dialog that follows the visible keyboard
-viewport. The focused title field, close button and Create action stay at the
-bottom; optional status, priority, type and size fields scroll above. The header
+Mobile creation opens a full-width bottom sheet above the visible keyboard,
+with a title field, close button and the two creation actions. It uses the board's
+default status and leaves priority, type and size unset for editing afterwards.
+Title focus happens synchronously in the opening tap, after flushing bindings,
+to preserve the browser's software-keyboard activation. The header
 identifies the current workspace and board. Subtasks retain their parent's board
 and default status. Enter submits, failed requests retain the entered values,
 and closing or reloading preserves the existing account/workspace/parent-scoped

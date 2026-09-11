@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { focusIndicators } from "$lib/focus-indicators";
+  onMount(focusIndicators);
   import { mobileViewport } from "$lib/mobile-viewport";
   import DetailViewer from "$lib/components/DetailViewer.svelte";
   import CreateTaskDialog from "$lib/components/tasks/CreateTaskDialog.svelte";
@@ -12,6 +14,7 @@
   });
   let selected = $state("");
   let createdOpened = $state(0);
+  let immediateFocus = $state(false);
   let create: CreateTaskDialog;
   const config = {
     prefix: "QA",
@@ -40,8 +43,11 @@
 
 <div class="shell" use:mobileViewport>
   <header>
-    <strong>Mobile review</strong><button onclick={() => create.open()}
-      >New task</button
+    <strong>Mobile review</strong><button
+      onclick={() => {
+        create.open();
+        immediateFocus = !!document.activeElement?.matches("dialog input");
+      }}>New task</button
     >
   </header>
   <main>
@@ -78,6 +84,7 @@
   oncreated={() => createdOpened++}
 />
 <span data-testid="created-opened" hidden>{createdOpened}</span>
+<span data-testid="immediate-focus" hidden>{String(immediateFocus)}</span>
 
 <style>
   .shell {

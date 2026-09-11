@@ -132,15 +132,22 @@
   aria-label="Model settings"
   aria-haspopup="dialog"
   aria-expanded={open}
-  title="Model settings"
+  title={model ? `Model settings · ${model}` : "Model settings"}
 >
+  <svg class="model-icon" viewBox="0 0 24 24" aria-hidden="true"
+    ><rect x="6" y="6" width="12" height="12" rx="3" /><path
+      d="M9 2v4m6-4v4M9 18v4m6-4v4M2 9h4m-4 6h4m12-6h4m-4 6h4"
+    /><rect x="10" y="10" width="4" height="4" rx="1" /></svg
+  >
   <span>{model || "Model settings"}</span>
   {#if configuration.fast_mode === true}<svg
       class="fast-icon"
       viewBox="0 0 20 20"
       aria-label="Fast mode"><path d="m11 2-7 9h5l-1 7 8-10h-5z" /></svg
     >{/if}
-  <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 8 4 4 4-4" /></svg>
+  <svg class="model-chevron" viewBox="0 0 20 20" aria-hidden="true"
+    ><path d="m6 8 4 4 4-4" /></svg
+  >
 </button>
 <div
   {id}
@@ -280,6 +287,10 @@
 </div>
 
 <style>
+  .model-trigger .model-icon {
+    display: none;
+  }
+
   .hint,
   .error {
     font-size: 12px;
@@ -555,6 +566,29 @@
     }
     .slider-track {
       top: 20px;
+    }
+  }
+  @media (max-width: 759px) {
+    .model-trigger {
+      width: 44px;
+      min-height: 44px;
+      padding: 0;
+      justify-content: center;
+    }
+    .model-trigger span,
+    .model-trigger .model-chevron,
+    .model-trigger .fast-icon {
+      display: none;
+    }
+    .model-trigger .model-icon {
+      display: block;
+      width: 20px;
+      height: 20px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
     }
   }
 </style>

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
+  import { focusIndicators } from "$lib/focus-indicators";
+  onMount(focusIndicators);
   import { goto } from "$app/navigation";
   import "$lib/styles.css";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";

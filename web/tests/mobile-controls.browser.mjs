@@ -271,6 +271,27 @@ try {
   await page.keyboard.press("Escape");
   await viewport(null);
   // Composer popups remain reachable above the keyboard, including their last action.
+  for (const label of ["Model settings", "Permission mode"]) {
+    const trigger = page.getByRole("button", { name: label, exact: true });
+    const box = await trigger.boundingBox();
+    assert.equal(box.width, 44);
+    assert.ok(box.height >= 44);
+    assert.equal(
+      await trigger
+        .locator("span")
+        .evaluateAll((nodes) =>
+          nodes.every((node) => getComputedStyle(node).display === "none"),
+        ),
+      true,
+    );
+  }
+  await page
+    .getByRole("button", { name: "Permission mode", exact: true })
+    .tap();
+  await page
+    .getByRole("group", { name: "Permission modes", exact: true })
+    .waitFor();
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Model settings", exact: true }).tap();
   const models = page.getByRole("dialog", {
     name: "Model settings",

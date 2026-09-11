@@ -3,6 +3,10 @@
 The signed-in root opens the most recently visited accessible workspace. The
 shared shell hosts functional User Settings, Site Settings and workspace pages.
 
+Mobile buttons suppress focus outlines after pointer/touch interaction, including
+focus restored when closing a dialog. Keyboard interaction restores focus rings;
+input focus indicators and desktop button focus remain unchanged.
+
 Thread entries in the sidebar use the Claude mark for Claude Code and the OpenAI
 mark for Codex, in the sidebar's current text colour. Unknown providers retain
 the generic conversation icon. The inline SVG marks come from Simple Icons
@@ -16,6 +20,12 @@ The bottom of the sidebar selects a scope; the upper section belongs to that
 scope. Workspaces has a permanent scope button. Site Settings appears when the
 account can access Users or Groups. The main header names the current page.
 Within Workspaces, the top scope label becomes a searchable workspace switcher.
+On desktop it opens an anchored dropdown; clicking the selector again or pressing
+Escape closes it. On mobile it opens a full-screen search view with results above
+an input and close button at the bottom, positioned above the software keyboard.
+Typing filters accessible workspaces, with paging, a current-workspace checkmark,
+and arrow-key/Enter navigation. Workspace creation remains available to accounts
+with permission. The mobile modal prevents taps from reaching the page beneath it.
 The workspace work area contains the [task list and responsive task view](tasks.md).
 Workspace settings include Details (including task prefix and statuses) and Members, with actions gated by effective
 workspace permissions. See [Workspaces](workspaces.md).
