@@ -1,13 +1,11 @@
 <script lang="ts">
   import { useAccount } from "$lib/account-context";
-  import { tick } from "svelte";
+  import { flushSync } from "svelte";
   import { errorMessage } from "$lib/api";
   import { useWorkspace } from "$lib/workspaces";
-  import { propertyOptions, taskProperties } from "$lib/task-properties";
   import {
     createTask,
     taskChanged,
-    boardStatuses,
     type Task,
     type TaskConfig,
   } from "$lib/tasks";
@@ -20,8 +18,6 @@
   const account = useAccount();
   const currentWorkspace = useWorkspace();
   const id = $props.id();
-  let status = $state("");
-  let properties = $state({ priority: "none", type: "none", size: "none" });
   let draftKey = "";
   function saveDraft() {
     if (!draftKey) return;
@@ -36,11 +32,9 @@
     error = $state(""),
     busy = $state(false);
   let input: HTMLInputElement;
-  export async function open(p = "") {
+  export function open(p = "") {
     if (busy) return;
     parent = p;
-    status = "";
-    properties = { priority: "none", type: "none", size: "none" };
     draftKey = account?.account.id
       ? `acta.task-draft:${account.account.id}:${workspace}:${config.board ?? "tasks"}:${p}`
       : "";
@@ -49,9 +43,11 @@
       if (draftKey) title = localStorage.getItem(draftKey) ?? "";
     } catch {}
     error = "";
+    // Flush bindings before opening, then focus within the original tap handler.
+    // Deferring focus can lose the iOS software-keyboard activation.
+    flushSync();
     dialog.showModal();
-    await tick();
-    input.focus();
+    input.focus({ preventScroll: true });
   }
   async function create(openAfter = false) {
     if (busy) return;
@@ -61,8 +57,6 @@
       const t = await createTask(workspace, title, {
         parent_id: parent,
         board: parent ? undefined : (config.board ?? "tasks"),
-        ...(status ? { status_id: status } : {}),
-        ...properties,
       });
       title = "";
       saveDraft();
@@ -105,45 +99,6 @@
       void create((e.submitter as HTMLButtonElement | null)?.value === "open");
     }}
   >
-    <div class="mobile-details">
-      <p class="hint">
-        Give it a title to get started. Everything else is optional.
-      </p>
-      {#if !parent}
-        <label class="detail-field" for={`${id}-status`}>
-          <span>Status</span>
-          <select
-            id={`${id}-status`}
-            aria-label="Status"
-            bind:value={status}
-            disabled={busy}
-          >
-            <option value=""
-              >{config.statuses.find((s) => s.id === config.creation_status)
-                ?.name ?? "Default"}</option
-            >
-            {#each boardStatuses(config).filter((s) => s.id !== config.creation_status) as option}
-              <option value={option.id}>{option.name}</option>
-            {/each}
-          </select>
-        </label>
-      {/if}
-      {#each taskProperties as property}
-        <label class="detail-field" for={`${id}-${property.value}`}>
-          <span>{property.label}</span>
-          <select
-            id={`${id}-${property.value}`}
-            aria-label={property.label}
-            bind:value={properties[property.value]}
-            disabled={busy}
-          >
-            {#each propertyOptions(property.value) as option}
-              <option value={option.value}>{option.label}</option>
-            {/each}
-          </select>
-        </label>
-      {/each}
-    </div>
     <div class="compose-area">
       <div class="field">
         <label for={`${id}-title`}>Title</label><input
@@ -205,7 +160,6 @@
     display: flex;
     gap: 12px;
   }
-  .mobile-details,
   .mobile-scope,
   .cancel-icon {
     display: none;
@@ -213,19 +167,22 @@
   @media (max-width: 759px) {
     .create-dialog {
       position: fixed;
-      top: var(--mobile-viewport-top, 0px);
+      top: calc(
+        var(--mobile-viewport-top, 0px) + var(--mobile-viewport-height, 100dvh)
+      );
+      transform: translateY(-100%);
       left: 0;
       right: 0;
       bottom: auto;
       width: 100%;
       max-width: none;
-      height: var(--mobile-viewport-height, 100dvh);
-      max-height: none;
+      height: auto;
+      max-height: calc(var(--mobile-viewport-height, 100dvh) - 16px);
       margin: 0;
       padding: 0;
       border: 0;
-      border-radius: 0;
-      overflow: hidden;
+      border-radius: 20px 20px 0 0;
+      overflow-y: auto;
       box-sizing: border-box;
     }
     .create-dialog[open] {
@@ -233,7 +190,7 @@
       flex-direction: column;
     }
     header {
-      padding: calc(20px + env(safe-area-inset-top, 0px)) 24px 8px;
+      padding: 20px 20px 4px;
       flex-shrink: 0;
     }
     .mobile-scope {
@@ -244,7 +201,7 @@
     }
     .create-dialog h2 {
       margin: 0;
-      font-size: 24px;
+      font-size: 20px;
     }
     .desktop-hint {
       display: none;
@@ -255,42 +212,6 @@
       flex: 1;
       min-height: 0;
     }
-    .mobile-details {
-      display: block;
-      flex: 1;
-      min-height: 0;
-      overflow-y: auto;
-      overscroll-behavior: contain;
-      padding: 0 24px 24px;
-    }
-    .hint {
-      font-size: 13px;
-      line-height: 1.6;
-      color: var(--muted);
-      margin: 4px 0 20px;
-    }
-    .detail-field {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      min-height: 56px;
-      border-bottom: 1px solid var(--panel-border);
-      font-size: 14px;
-    }
-    .detail-field > span {
-      color: var(--muted);
-    }
-    select {
-      width: 60%;
-      min-height: 44px;
-      font-size: 16px;
-      background: transparent;
-      color: var(--text);
-      border: 0;
-      padding: 8px;
-      text-align: right;
-    }
     .compose-area {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
@@ -298,7 +219,6 @@
       padding: 16px max(16px, env(safe-area-inset-right, 0px))
         max(16px, env(safe-area-inset-bottom, 0px))
         max(16px, env(safe-area-inset-left, 0px));
-      border-top: 1px solid var(--panel-border);
       flex-shrink: 0;
     }
     .field {

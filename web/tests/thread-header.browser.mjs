@@ -66,6 +66,16 @@ try {
     .getByRole("button", { name: "Open navigation" })
     .boundingBox();
   assert.ok(heading.height < 30 && Math.abs(heading.y - nav.y) < 14);
+  async function assertInlineStatus() {
+    const title = await page.locator(".title-row h2").boundingBox();
+    const status = await page.locator(".title-row [role=status]").boundingBox();
+    assert.ok(status.x >= title.x + title.width, "status follows title");
+    assert.ok(
+      status.y < title.y + title.height && status.y + status.height > title.y,
+      "status shares the title line",
+    );
+  }
+  await assertInlineStatus();
   await options.click();
   const menu = page.getByRole("dialog", {
     name: "Thread options",
@@ -103,6 +113,7 @@ try {
   await page
     .getByRole("button", { name: "Context usage: 27% used", exact: true })
     .waitFor();
+  await assertInlineStatus();
   assert.deepEqual(errors, []);
   console.log(
     `PASS ${engine}: compact mobile header, nested usage details, debug toggle/order, power action, desktop controls`,

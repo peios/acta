@@ -96,6 +96,11 @@ button:disabled {
   outline: 3px solid var(--focus);
   outline-offset: 3px;
 }
+@media (max-width: 759px) {
+  html:not([data-keyboard-focus="true"]) :is(button, [role="button"]):focus {
+    outline: none;
+  }
+}
 a {
   color: var(--accent);
   text-underline-offset: 3px;

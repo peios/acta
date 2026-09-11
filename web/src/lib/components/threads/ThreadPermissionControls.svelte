@@ -64,6 +64,7 @@
   bind:this={trigger}
   popovertarget={id + "-modes"}
   aria-label="Permission mode"
+  aria-busy={!!permissionState.modePending}
   title={label}
   ><svg
     viewBox="0 0 24 24"
@@ -247,11 +248,19 @@
     color: var(--danger);
     font-size: 11px;
   }
-  @media (max-width: 550px) {
-    .mode span:first-of-type {
-      max-width: 105px;
-      overflow: hidden;
-      text-overflow: ellipsis;
+  @media (max-width: 759px) {
+    .mode {
+      width: 44px;
+      min-height: 44px;
+      padding: 0;
+      justify-content: center;
+    }
+    .mode span {
+      display: none;
+    }
+    .mode svg {
+      width: 20px;
+      height: 20px;
     }
   }
 </style>

@@ -90,7 +90,26 @@
   <div class="thread-heading">
     <NavigationToggle />
     <div>
-      <h2 title={threadName(thread)}>{threadName(thread)}</h2>
+      <div class="title-row">
+        <h2 title={threadName(thread)}>{threadName(thread)}</h2>
+        <div
+          class="thread-state"
+          role="status"
+          title={`${thread.connection_id ? thread.state : "Harness unavailable"}${thread.committed ? "" : " · Uncommitted"}`}
+        >
+          <span
+            class="status-dot"
+            class:online={!!thread.connection_id}
+            aria-hidden="true"
+          ></span>
+          <span class="status-label"
+            >{thread.connection_id
+              ? thread.state
+              : "Harness unavailable"}{#if !thread.committed}
+              · Uncommitted{/if}</span
+          >
+        </div>
+      </div>
       <p title={thread.cwd}>
         {thread.provider === "claude" ? "Claude Code" : "Codex"}
         <span>·</span>
@@ -121,16 +140,16 @@
     >
   </div>
 </header>
-<div class="thread-state" role="status">
-  <span class:online={!!thread.connection_id}></span>{thread.connection_id
-    ? thread.state
-    : "Harness unavailable"}{#if !thread.committed}<span>Uncommitted</span
-    >{/if}{#if thread.error}<p>{thread.error}</p>{/if}
-  {#if thread.name_sync_pending}<p>
-      {thread.name_sync_error ||
-        "Name saved · native title will sync on resume"}
-    </p>{/if}
-</div>
+{#if thread.error || thread.name_sync_pending}<div
+    class="thread-notices"
+    role="status"
+  >
+    {#if thread.error}<p>{thread.error}</p>{/if}
+    {#if thread.name_sync_pending}<p>
+        {thread.name_sync_error ||
+          "Name saved · native title will sync on resume"}
+      </p>{/if}
+  </div>{/if}
 
 <div
   bind:this={optionsPanel}
@@ -328,6 +347,7 @@
     align-items: flex-start;
     justify-content: space-between;
     gap: 20px;
+    margin-bottom: 16px;
   }
   header > div {
     min-width: 0;
@@ -339,6 +359,17 @@
   }
   .thread-heading > div {
     min-width: 0;
+  }
+  .title-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+    margin-bottom: 10px;
+  }
+  .title-row h2 {
+    min-width: 0;
+    margin: 0;
   }
   h2 {
     font-size: 20px;
@@ -391,26 +422,37 @@
     stroke-linecap: round;
   }
   .thread-state {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     color: var(--muted);
     font-size: 12px;
-    margin: 18px 0 28px;
-    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 50%;
+    flex-shrink: 0;
   }
-  .thread-state > span {
+  .status-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .status-dot {
     width: 6px;
     height: 6px;
+    flex-shrink: 0;
     border-radius: 50%;
     background: var(--muted);
   }
-  .thread-state .online {
+  .status-dot.online {
     background: #6caa83;
   }
-  .thread-state p {
-    flex-basis: 100%;
-    margin: 4px 0 0;
+  .thread-notices {
+    color: var(--muted);
+    font-size: 12px;
+    margin: 0 0 16px;
+  }
+  .thread-notices p {
+    margin: 0 0 4px;
   }
   .thread-options {
     position: fixed;
@@ -484,8 +526,12 @@
     .delete-option {
       min-height: 44px;
     }
+    .title-row {
+      margin-bottom: 3px;
+      gap: 8px;
+    }
     .thread-state {
-      margin: 12px 0 16px;
+      font-size: 11px;
     }
   }
 </style>

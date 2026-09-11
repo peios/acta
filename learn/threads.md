@@ -19,6 +19,9 @@ long titles and working directories truncated. Usage gauges and Kill/Resume live
 inside the three-dot options popup; desktop retains them in the header. Gauges
 still open their detailed usage popups. Show debug frames is a muted button just
 above Delete thread, with a checkmark when enabled, rather than a switch.
+The mobile composer uses 44px icon-only model (chip) and permission (shield)
+buttons. Their popups retain the full model and permission controls; accessible
+names and tooltips remain available. Desktop keeps the text labels.
 
 The provider's existing local MCP configuration remains its source of Acta access;
 thread ownership does not assign a separate Acta agent identity automatically.
@@ -194,3 +197,8 @@ does not require retyping it.
 The effort slider has a 44px touch region on coarse-pointer devices while keeping
 its compact visual track. Approval, question and model popups remain constrained
 to the visible viewport above the software keyboard.
+
+The connection status sits beside the thread title on desktop and mobile. Long
+labels truncate to preserve the header layout; their full text is available in
+the tooltip. Errors and pending native-title synchronization details stay below
+the header.

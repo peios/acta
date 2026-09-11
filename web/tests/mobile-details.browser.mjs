@@ -137,6 +137,27 @@ try {
     );
     assert.equal(await page.locator("dialog[open]").count(), 0);
   }
+  const newTaskButton = page.getByRole("button", {
+    name: "New task",
+    exact: true,
+  });
+  await newTaskButton.tap();
+  await page.getByRole("button", { name: "Cancel", exact: true }).tap();
+  assert.equal(
+    await newTaskButton.evaluate((el) => getComputedStyle(el).outlineStyle),
+    "none",
+  );
+  await page.keyboard.press("Tab");
+  assert.equal(
+    await page.evaluate(() => document.documentElement.dataset.keyboardFocus),
+    "true",
+  );
+  assert.notEqual(
+    await page.evaluate(
+      () => getComputedStyle(document.activeElement).outlineStyle,
+    ),
+    "none",
+  );
   // New task drafts are scoped and survive reload, including an explicit close.
   await page.getByRole("button", { name: "New task", exact: true }).tap();
   await page
@@ -192,17 +213,22 @@ try {
   );
   const titleBounds = await titleInput.boundingBox();
   assert.ok(titleBounds.y > 290 && titleBounds.y + titleBounds.height < 450);
-  await page.getByLabel("Priority", { exact: true }).selectOption("high");
-  await page.getByLabel("Type", { exact: true }).selectOption("bug");
-  await page.getByLabel("Size", { exact: true }).selectOption("s");
+  assert.equal(
+    await page
+      .getByRole("dialog", { name: "Create task", exact: true })
+      .locator("select")
+      .count(),
+    0,
+  );
+  assert.ok(
+    create.height < 300 && Math.abs(create.y + create.height - 450) <= 1,
+    "compact sheet rests above keyboard",
+  );
+  assert.equal(await page.getByTestId("immediate-focus").textContent(), "true");
   await page.screenshot({ path: `/tmp/acta-create-keyboard-${engine}.png` });
   await page.getByRole("button", { name: "Create task", exact: true }).tap();
   await page.getByRole("alert").filter({ hasText: "Try again" }).waitFor();
   assert.equal(await titleInput.inputValue(), "Remember this task");
-  assert.equal(
-    await page.getByLabel("Priority", { exact: true }).inputValue(),
-    "high",
-  );
   await titleInput.press("Enter");
   await page
     .getByRole("dialog", { name: "Create task", exact: true })
@@ -211,9 +237,6 @@ try {
     title: "Remember this task",
     parent_id: "",
     board: "tasks",
-    priority: "high",
-    type: "bug",
-    size: "s",
   });
   assert.equal(await page.getByTestId("created-opened").textContent(), "0");
   await page.getByRole("button", { name: "New task", exact: true }).tap();
