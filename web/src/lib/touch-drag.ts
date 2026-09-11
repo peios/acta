@@ -6,8 +6,7 @@ export type TouchDragOptions = {
   finish: (cancelled: boolean) => void;
 };
 
-// Delay whole-card dragging so normal taps and scrolling remain native. The
-// explicit handle starts immediately and owns its touch gesture from the outset.
+// Delay whole-card dragging so normal taps and scrolling remain native.
 export function touchDrag(node: HTMLElement, options: TouchDragOptions) {
   let touchID: number | undefined;
   let origin: TouchDragPoint;
@@ -41,10 +40,7 @@ export function touchDrag(node: HTMLElement, options: TouchDragOptions) {
     const touch = event.changedTouches[0];
     touchID = touch.identifier;
     origin = { x: touch.clientX, y: touch.clientY };
-    if ((event.target as Element).closest("[data-touch-drag-handle]")) {
-      if (event.cancelable) event.preventDefault();
-      begin();
-    } else timer = setTimeout(begin, 350);
+    timer = setTimeout(begin, 350);
   }
   function move(event: TouchEvent) {
     if (touchID === undefined) return;

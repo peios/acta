@@ -11,6 +11,7 @@
     update: () => {},
   });
   let selected = $state("");
+  let createdOpened = $state(0);
   let create: CreateTaskDialog;
   const config = {
     prefix: "QA",
@@ -74,8 +75,9 @@
   bind:this={create}
   workspace="mobile"
   {config}
-  oncreated={() => {}}
+  oncreated={() => createdOpened++}
 />
+<span data-testid="created-opened" hidden>{createdOpened}</span>
 
 <style>
   .shell {

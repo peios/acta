@@ -1,5 +1,5 @@
-// Navigation owns only left-edge opening gestures and leftward drawer gestures.
-// All other touch sequences (including board swipes) stay with their content.
+// Reserve the left edge against native history navigation, including overlays.
+// Only unobstructed content opens the drawer; leftward drawer gestures close it.
 export function swipeNavigation(
   node: HTMLElement,
   drawer: () => HTMLDialogElement | undefined,
@@ -27,11 +27,19 @@ export function swipeNavigation(
     if (
       !panel ||
       !target ||
-      target.closest(
-        "input, textarea, select, [contenteditable], [data-touch-drag-handle]",
-      )
+      target.closest("input, textarea, select, [contenteditable]")
     )
       return;
+    const t = event.touches[0];
+    // iOS can claim history navigation before touchmove. This must happen even
+    // when an overlay prevents drawer gestures. Controls remain tappable and
+    // scrolling outside the narrow edge stays native.
+    if (
+      t.clientX <= 28 &&
+      event.cancelable &&
+      !target.closest("a, button, [role='button'], label")
+    )
+      event.preventDefault();
     if (
       document.querySelector(":popover-open") ||
       Array.from(document.querySelectorAll("dialog[open]")).some(
@@ -39,18 +47,8 @@ export function swipeNavigation(
       )
     )
       return;
-    const t = event.touches[0];
     if (!panel.open && t.clientX > 28) return;
     if (panel.open && !panel.contains(target)) return;
-    // iOS can claim history navigation before touchmove. Reserve only the
-    // opening edge at touchstart; leave controls tappable and drawer scrolling
-    // native. Cancelling here also suppresses native vertical pan at this edge.
-    if (
-      !panel.open &&
-      event.cancelable &&
-      !target.closest("a, button, [role='button'], label")
-    )
-      event.preventDefault();
     gesture = {
       id: t.identifier,
       x: t.clientX,

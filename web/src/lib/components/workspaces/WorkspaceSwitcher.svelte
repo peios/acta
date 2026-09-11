@@ -49,17 +49,6 @@
   aria-label="Switch workspace"
   title={current.workspace?.name ?? "Workspaces"}
   onclick={open}
-  ><svg
-    width="19"
-    height="19"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="1.6"
-    aria-hidden="true"
-    ><rect x="3" y="4" width="18" height="16" rx="3" /><path
-      d="M8 4v16m8-16v16"
-    /></svg
   ><span>{current.workspace?.name ?? "Workspaces"}</span><span
     aria-hidden="true">⌄</span
   ></button
@@ -137,9 +126,6 @@
   }
   .switcher:hover {
     background: var(--hover-surface);
-  }
-  .switcher svg {
-    flex-shrink: 0;
   }
   .switcher span:first-of-type {
     flex: 1;

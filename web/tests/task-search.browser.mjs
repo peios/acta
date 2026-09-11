@@ -75,6 +75,8 @@ try {
         workspaces: [
           { id: "acta", name: "Acta" },
           { id: "peios", name: "Peios" },
+          { id: "research", name: "Research and development" },
+          { id: "personal", name: "Personal" },
         ],
         more: false,
       });
@@ -147,6 +149,54 @@ try {
   const page = await context.newPage();
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.goto("http://localhost:8081" + (mobile ? "?mobile-audit" : ""));
+  // Model a task card behind the backdrop. It must stay inert for the entire
+  // dismissal tap, and only a subsequent independent tap may activate it.
+  await page.evaluate(() => {
+    const button = document.createElement("button");
+    button.id = "under-search";
+    button.textContent = "Underlying task";
+    button.style.cssText =
+      "position:fixed;bottom:12px;left:40px;width:200px;height:44px";
+    window.underSearchClicks = 0;
+    button.onclick = () => window.underSearchClicks++;
+    document.body.append(button);
+    document.addEventListener(
+      "pointerup",
+      () => {
+        window.searchOpenAtRelease = !!document.querySelector(
+          "dialog.task-search[open]",
+        );
+      },
+      { capture: true, once: true },
+    );
+  });
+  await page.evaluate(() => window.review.open());
+  const underneath = await page.locator("#under-search").boundingBox();
+  const tap = async () => {
+    const x = underneath.x + underneath.width / 2,
+      y = underneath.y + underneath.height / 2;
+    if (mobile) await page.touchscreen.tap(x, y);
+    else await page.mouse.click(x, y);
+  };
+  await tap();
+  assert.equal(
+    await page.evaluate(() => window.searchOpenAtRelease),
+    true,
+    "search remains modal until release, preventing touch click-through",
+  );
+  assert.equal(await page.evaluate(() => window.underSearchClicks), 0);
+  if (mobile) {
+    await page
+      .getByRole("dialog", { name: "Search tasks", exact: true })
+      .waitFor();
+    await page.getByRole("button", { name: "Close search", exact: true }).tap();
+  }
+  await page
+    .getByRole("dialog", { name: "Search tasks", exact: true })
+    .waitFor({ state: "hidden" });
+  await tap();
+  assert.equal(await page.evaluate(() => window.underSearchClicks), 1);
+  await page.locator("#under-search").evaluate((el) => el.remove());
   await page.getByRole("button", { name: "Search tasks", exact: true }).click();
   const input = page.getByRole("combobox", { name: "Search tasks" });
   await input.fill("search");
@@ -174,10 +224,36 @@ try {
   await page.getByRole("button", { name: "Load more results" }).click();
   await page.getByRole("option").nth(2).waitFor();
   assert.equal(queries.at(-1).get("cursor"), "next");
-  await page
-    .getByRole("button", { name: "Search workspace: All workspaces" })
-    .click();
-  await page.getByRole("option", { name: "Peios", exact: true }).click();
+  if (mobile) {
+    const pills = page.getByRole("group", {
+      name: "Search workspace",
+      exact: true,
+    });
+    await pills.getByRole("button", { name: "Peios", exact: true }).tap();
+    assert.equal(
+      await pills
+        .getByRole("button", { name: "Peios", exact: true })
+        .getAttribute("aria-pressed"),
+      "true",
+    );
+    assert.equal(await page.getByLabel("Include archived").isVisible(), false);
+    assert.equal(
+      await input.evaluate((el) => document.activeElement === el),
+      true,
+    );
+    const bar = await pills.boundingBox();
+    assert.ok(
+      await pills.evaluate((el) => el.scrollWidth > el.clientWidth),
+      "workspace pills scroll horizontally",
+    );
+    const results = await page.locator(".search-body").boundingBox();
+    assert.ok(bar.y < results.y && bar.y + bar.height <= results.y);
+  } else {
+    await page
+      .getByRole("button", { name: "Search workspace: All workspaces" })
+      .click();
+    await page.getByRole("option", { name: "Peios", exact: true }).click();
+  }
   await page.waitForFunction(
     () => document.querySelectorAll(".results>[role=option]").length === 2,
   );
@@ -210,10 +286,33 @@ try {
       bounds.y >= 0 && bounds.y + bounds.height <= 380,
       `dialog exceeds keyboard viewport: ${JSON.stringify(bounds)}`,
     );
+    assert.equal(bounds.height, 380);
+    assert.equal(bounds.width, 390);
+    const field = await input.boundingBox();
+    const body = await page.locator(".search-body").boundingBox();
+    const close = await page
+      .getByRole("button", { name: "Close search", exact: true })
+      .boundingBox();
+    assert.ok(
+      body.y + body.height <= field.y,
+      "results are above the search input",
+    );
+    assert.ok(
+      field.y > 280 && field.y + field.height <= 380,
+      "input stays above keyboard",
+    );
+    assert.ok(close.width >= 44 && close.height >= 44, "close touch target");
     await page.evaluate(() => {
       delete visualViewport.height;
       visualViewport.dispatchEvent(new Event("resize"));
     });
+    await page.waitForFunction(
+      () =>
+        Math.abs(
+          document.querySelector("dialog.task-search").getBoundingClientRect()
+            .height - visualViewport.height,
+        ) < 1,
+    );
   }
   await page.screenshot({ path: "/tmp/acta98-search-mobile.png" });
   assert.ok(

@@ -64,11 +64,33 @@
   } = $props();
 </script>
 
+{#snippet powerControl(menu: boolean)}
+  <button
+    class:power-option={menu}
+    class:icon-button={!menu}
+    aria-label={thread.state === "running" ? "Kill" : "Resume"}
+    title={thread.state === "running" ? "Kill" : "Resume"}
+    disabled={busy ||
+      settingsBusy ||
+      !!pending ||
+      !thread.connection_id ||
+      thread.state === "starting" ||
+      thread.state === "killing"}
+    onclick={() => {
+      if (menu) optionsPanel.hidePopover();
+      control(thread.state === "running" ? "kill" : "resume");
+    }}
+    ><svg viewBox="0 0 24 24" aria-hidden="true"
+      ><path d="M12 3v9M6.35 5.65a9 9 0 1 0 11.3 0" /></svg
+    >{#if menu}{thread.state === "running" ? "Kill" : "Resume"}{/if}</button
+  >
+{/snippet}
+
 <header>
   <div class="thread-heading">
     <NavigationToggle />
     <div>
-      <h2>{threadName(thread)}</h2>
+      <h2 title={threadName(thread)}>{threadName(thread)}</h2>
       <p title={thread.cwd}>
         {thread.provider === "claude" ? "Claude Code" : "Codex"}
         <span>·</span>
@@ -77,22 +99,10 @@
     </div>
   </div>
   <div class="thread-actions">
-    {#each usage as gauge (gauge.id)}<ThreadUsageGauge {gauge} />{/each}
-    <button
-      class="icon-button"
-      aria-label={thread.state === "running" ? "Kill" : "Resume"}
-      title={thread.state === "running" ? "Kill" : "Resume"}
-      disabled={busy ||
-        settingsBusy ||
-        !!pending ||
-        !thread.connection_id ||
-        thread.state === "starting" ||
-        thread.state === "killing"}
-      onclick={() => control(thread.state === "running" ? "kill" : "resume")}
-      ><svg viewBox="0 0 24 24" aria-hidden="true"
-        ><path d="M12 3v9M6.35 5.65a9 9 0 1 0 11.3 0" /></svg
-      ></button
-    >
+    <div class="desktop-controls">
+      {#each usage as gauge (gauge.id)}<ThreadUsageGauge {gauge} />{/each}
+      {@render powerControl(false)}
+    </div>
     <button
       class="icon-button"
       bind:this={optionsTrigger}
@@ -132,17 +142,19 @@
   use:anchoredPopover={() => ({
     anchor: optionsTrigger,
     width: 240,
-    height: 164,
+    height: 420,
     align: "end",
   })}
   onbeforetoggle={(event) => {
     optionsOpen = event.newState === "open";
   }}
 >
-  <label
-    ><input type="checkbox" role="switch" bind:checked={showDebug} />Show debug
-    frames</label
-  >
+  <div class="mobile-controls">
+    {#if usage.length}<div class="menu-gauges" aria-label="Usage">
+        {#each usage as gauge (gauge.id)}<ThreadUsageGauge {gauge} />{/each}
+      </div>{/if}
+    {@render powerControl(true)}
+  </div>
   <button
     class="rename-option"
     disabled={busy || settingsBusy || pending || !thread.connection_id}
@@ -161,6 +173,18 @@
       ><path d="m15 4 5 5M4 20l5-1L20 8a2 2 0 0 0-5-5L4 14z" /></svg
     >Rename thread</button
   >
+  <button
+    class="debug-option"
+    aria-pressed={showDebug}
+    onclick={() => (showDebug = !showDebug)}
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true"
+      >{#if showDebug}<path d="m5 12 4 4L19 6" />{:else}<path
+          d="m8 8-4 4 4 4m8-8 4 4-4 4m-3-11-2 22"
+        />{/if}</svg
+    >
+    Show debug frames
+  </button>
   <button
     class="delete-option"
     onclick={() => {
@@ -246,6 +270,8 @@
 
 <style>
   .rename-option,
+  .debug-option,
+  .power-option,
   .delete-option {
     display: flex;
     align-items: center;
@@ -259,10 +285,14 @@
     font-size: 13px;
     text-align: left;
   }
+  .debug-option:hover,
+  .power-option:hover,
   .rename-option:hover,
   .delete-option:hover {
     background: var(--hover-surface);
   }
+  .debug-option svg,
+  .power-option svg,
   .rename-option svg,
   .delete-option svg {
     width: 17px;
@@ -273,6 +303,7 @@
     stroke-linecap: round;
     stroke-linejoin: round;
   }
+  .power-option,
   .rename-option {
     color: var(--text);
   }
@@ -392,16 +423,69 @@
     color: var(--text);
     box-shadow: 0 12px 36px #0003;
   }
-  .thread-options label {
+  .debug-option {
+    color: var(--muted);
+  }
+  .desktop-controls {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 8px;
-    font-size: 13px;
-    cursor: pointer;
-    border-radius: 6px;
+    gap: 4px;
+    flex-wrap: wrap;
   }
-  .thread-options label:hover {
-    background: var(--hover-surface);
+  .mobile-controls {
+    display: none;
+  }
+  @media (max-width: 759px) {
+    header {
+      align-items: center;
+      gap: 8px;
+    }
+    .thread-heading {
+      align-items: center;
+      flex: 1;
+    }
+    h2 {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 3px;
+      font-size: 18px;
+    }
+    header p {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .thread-actions {
+      max-width: none;
+    }
+    .desktop-controls {
+      display: none;
+    }
+    .mobile-controls {
+      display: block;
+    }
+    .menu-gauges {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px 0 12px;
+      margin-bottom: 4px;
+      border-bottom: 1px solid var(--panel-border);
+    }
+    .icon-button {
+      width: 44px;
+      min-height: 44px;
+    }
+    .power-option,
+    .rename-option,
+    .debug-option,
+    .delete-option {
+      min-height: 44px;
+    }
+    .thread-state {
+      margin: 12px 0 16px;
+    }
   }
 </style>

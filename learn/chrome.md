@@ -3,6 +3,13 @@
 The signed-in root opens the most recently visited accessible workspace. The
 shared shell hosts functional User Settings, Site Settings and workspace pages.
 
+Thread entries in the sidebar use the Claude mark for Claude Code and the OpenAI
+mark for Codex, in the sidebar's current text colour. Unknown providers retain
+the generic conversation icon. The inline SVG marks come from Simple Icons
+([Claude](https://github.com/simple-icons/simple-icons/blob/develop/icons/claude.svg),
+[OpenAI v15](https://github.com/simple-icons/simple-icons/blob/15.0.0/icons/openai.svg)),
+distributed under CC0; the provider trademarks remain their owners'.
+
 ## Structure
 
 The bottom of the sidebar selects a scope; the upper section belongs to that
@@ -44,6 +51,14 @@ gesture preserves the expanded width from before that gesture, which the
 expand button restores. Width and collapsed state are saved in browser local
 storage; blocked storage does not prevent resizing.
 
+In the collapsed workspace sidebar, a horizontal separator divides Tasks and
+Backlog from the workspace settings icons. It appears only when settings are
+available; the expanded sidebar uses its Workspace settings heading instead.
+The workspace selector shows the workspace name and dropdown chevron without a
+leading workspace icon.
+Search sits close to the sidebar heading, with a larger gap before the main
+navigation items so it reads as part of the header.
+
 The expand control remains at the top, with compact branding, Site Settings, the
 account avatar at the bottom. The theme toggle and workspace picker are hidden while collapsed. Scope and account buttons retain
 accessible names and reveal visible labels on hover or keyboard focus. The
@@ -60,19 +75,26 @@ restores its starting state. Keyboard semantics follow the
 
 The account menu supports keyboard focus, arrow keys, Home/End, Escape and
 outside-click dismissal. A small entrance animation respects reduced motion.
-Selecting a scope closes the menu and focuses the new page heading.
+Selecting a scope closes the account menu. On desktop it focuses the new page
+heading; on mobile it retains the open navigation drawer and focus within it.
 
 Below 721 CSS pixels the sidebar becomes a modal navigation drawer, opened from
 the main header. Its account menu remains a nested popup; Escape dismisses that
-menu before the drawer. Selecting a scope closes the drawer. Native dialog
+menu before the drawer. Selecting a scope keeps the drawer open; selecting a
+destination link closes it. Native dialog
 behavior manages focus containment and restoration.
+Backdrop taps outside the visible sidebar panel (within its full-screen
+transparent dialog) close the mobile drawer only after the completed click, keeping
+the underlying page inert through touch release so that tap cannot open a task.
 
 On mobile, a rightward swipe starting in the leftmost 28 CSS pixels opens the
-drawer. A leftward swipe inside it closes it. When the drawer is closed, a
-non-passive `touchstart` listener cancels the native gesture in that opening strip
-before iOS can claim swipe-back. Links, buttons, labels, editable fields, drag
-handles, other open dialogs/popovers, and multi-touch starts are excluded from
-this early cancellation. Native vertical scrolling that starts in the reserved
+drawer. A leftward swipe inside it closes it; a rightward swipe with it open does
+nothing. A non-passive `touchstart` listener cancels the native gesture in that
+strip before iOS can claim swipe-back, including while the drawer or another
+dialog/popover is open. Other overlays prevent opening/closing the drawer but
+do not disable edge protection. Links, buttons, labels, editable fields
+and multi-touch starts are excluded from early cancellation to preserve
+their native interaction. Native vertical scrolling that starts in the reserved
 strip is also suppressed; scrolling elsewhere remains native. The root document
 also requests `overscroll-behavior-x: none` as a supplementary browser defence.
 Browser history is retained. Actual swipe-back suppression in iOS home-screen

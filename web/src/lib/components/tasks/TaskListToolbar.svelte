@@ -9,6 +9,7 @@
     taskOpen,
     canCreate,
     oncreate,
+    onarchive,
   }: {
     title?: string;
     archived?: boolean;
@@ -17,6 +18,7 @@
     taskOpen: boolean;
     canCreate: boolean;
     oncreate: () => void;
+    onarchive?: () => void;
   } = $props();
   let query = $state("");
   $effect(() => {
@@ -45,6 +47,24 @@
     <h1>{archived ? `Archived ${title.toLowerCase()}` : title}</h1>
   </div>
   <div class="heading-actions">
+    {#if !archived && onarchive}
+      <button
+        class="archive-button"
+        aria-label="Archived tasks"
+        title="Archived tasks"
+        onclick={onarchive}
+      >
+        <svg
+          viewBox="0 0 20 20"
+          width="20"
+          height="20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          aria-hidden="true"><path d="M3 7h14v10H3zM2 3h16v4H2zM7 10h6" /></svg
+        >
+      </button>
+    {/if}
     <form
       class="task-search"
       class:expanded={searchExpanded}
@@ -94,6 +114,7 @@
     {#if canCreate}
       <button
         class="primary create-task"
+        class:task-open={taskOpen}
         aria-label="Create task"
         title="Create task"
         onclick={oncreate}
@@ -173,7 +194,8 @@
     outline: none;
     box-shadow: none;
   }
-  .search-button {
+  .search-button,
+  .archive-button {
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
@@ -187,6 +209,7 @@
     color: var(--muted);
   }
   .search-button:hover,
+  .archive-button:hover,
   .search-button.active {
     background: var(--hover-surface);
     color: var(--text);
@@ -200,11 +223,24 @@
     }
     .task-search.expanded input {
       display: block;
-      width: min(200px, calc(100cqw - 184px));
+      width: min(200px, calc(100cqw - 240px));
     }
   }
 
   @media (max-width: 759px) {
+    .list-heading .create-task {
+      position: fixed;
+      right: calc(20px + env(safe-area-inset-right, 0px));
+      bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      z-index: 20;
+      box-shadow: 0 4px 16px #0004;
+    }
+    .list-heading .create-task.task-open {
+      display: none;
+    }
     .list-heading {
       align-items: start;
     }
@@ -226,7 +262,7 @@
       clip-path: inset(50%);
     }
     .task-search.expanded input {
-      width: calc(100cqw - 160px);
+      width: max(40px, calc(100cqw - 160px));
     }
   }
 </style>

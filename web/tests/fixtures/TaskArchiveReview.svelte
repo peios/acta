@@ -1,14 +1,19 @@
 <script lang="ts">
   import TaskViewTabs from "$lib/components/tasks/TaskViewTabs.svelte";
+  import TaskListToolbar from "$lib/components/tasks/TaskListToolbar.svelte";
+  import { provideNavigation } from "$lib/navigation-context";
   import TaskTree from "$lib/components/tasks/TaskTree.svelte";
   import { provideAccount } from "$lib/account-context";
   import { defaultViewSettings } from "$lib/task-views.js";
   import type { Account } from "$lib/api";
   import type { TaskConfig } from "$lib/tasks";
   provideAccount({ account: { id: "review" } as Account, update: () => {} });
+  provideNavigation({ open: () => {} });
   let archived = $state(false),
     settings = $state(defaultViewSettings()),
     view = $state("");
+  let tabs: TaskViewTabs;
+  let width = $state(1000);
   const config: TaskConfig = {
     prefix: "QA",
     previous_prefixes: [],
@@ -23,9 +28,17 @@
   };
 </script>
 
-<div class="fixture">
-  <h1>{archived ? "Archived tasks" : "Tasks"}</h1>
+<div class="fixture" bind:clientWidth={width}>
+  <TaskListToolbar
+    {archived}
+    {width}
+    taskOpen={false}
+    canCreate={!archived}
+    oncreate={() => {}}
+    onarchive={() => tabs?.openArchive()}
+  />
   <TaskViewTabs
+    bind:this={tabs}
     workspace="review"
     {config}
     panelID="results"

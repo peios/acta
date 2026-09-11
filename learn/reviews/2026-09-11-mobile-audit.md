@@ -117,3 +117,19 @@ passed sidebar opening, vertical scrolling, snapping and cross-column dragging.
 production frontend build, Go vet and Go tests. These tests do not reproduce
 iOS's native history gesture recognizer; suppression on Jack's phone remains
 unverified until the patch is installed there.
+
+### Follow-up after phone feedback
+
+Jack confirmed v0.2.1 blocks swipe-back when opening the sidebar, but repeating
+the swipe with it already open still navigated back. Edge cancellation now
+precedes overlay gating and applies with the drawer, dialogs and popovers open.
+A rightward swipe leaves the open drawer alone; leftward closing is unchanged.
+The six-dot card drag handle and immediate-pickup path were also removed at
+Jack's request. Long-press pickup retains the 350ms delay and the three-dot move
+menu remains available.
+
+The updated board suite passed in Chromium, Firefox and Linux WebKit, including
+repeated edge swipes while open, dialog/popover protection, control exemptions,
+and absence of drag handles. Native Chromium cross-column movement and save
+conflict recovery now use whole-card long press. Native iOS suppression with
+overlays still requires a phone check.

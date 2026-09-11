@@ -131,6 +131,22 @@ try {
   const restored = await page.getByTestId("state").textContent();
   assert.deepEqual(JSON.parse(restored).settings.filters.statuses, ["todo"]);
   assert.equal(queries.at(-1).get("archived"), "false");
+  await page.setViewportSize({ width: 320, height: 760 });
+  const createButton = page.getByRole("button", {
+    name: "Create task",
+    exact: true,
+  });
+  const createBounds = await createButton.boundingBox();
+  assert.ok(createBounds && createBounds.x >= 240 && createBounds.y >= 680);
+  assert.equal(createBounds.width, 56);
+  await page.getByRole("button", { name: "Search tasks", exact: true }).click();
+  await page.getByRole("searchbox").waitFor({ state: "visible" });
+  assert.ok(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  );
+  await page.screenshot({ path: "/tmp/acta-archive-header-mobile.png" });
   await page
     .getByRole("button", { name: "Archived tasks", exact: true })
     .click();

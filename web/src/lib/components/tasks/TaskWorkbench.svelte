@@ -234,6 +234,9 @@
         canWorkspace(current.workspace, "tasks.create") &&
         !!config}
       oncreate={() => create?.open()}
+      onarchive={config && current.workspace
+        ? () => viewTabs?.openArchive()
+        : undefined}
     />
     {#if config && current.workspace}
       {#key `${current.workspace.id}:${board}`}<TaskViewTabs
@@ -372,6 +375,9 @@
     display: none;
   }
   @media (max-width: 759px) {
+    .task-results {
+      padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    }
     .full > .list {
       display: block;
     }
