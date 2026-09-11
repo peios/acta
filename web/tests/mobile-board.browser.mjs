@@ -148,6 +148,7 @@ try {
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   );
+  assert.equal(await page.locator(".touch-handle").count(), 0);
   // Synthetic events verify cancellation and lifecycle also in Firefox. Chromium
   // additionally uses real browser touch input for pan arbitration and edge drag.
   async function dispatch(type, x, y, selector = ".shell", cancelled = false) {
@@ -192,12 +193,78 @@ try {
   await page
     .getByRole("dialog", { name: "Navigation" })
     .waitFor({ state: "visible" });
+  // A second rightward edge swipe is suppressed and leaves navigation open.
+  assert.equal(await dispatch("touchstart", 8, 220, "dialog"), true);
+  await dispatch("touchmove", 110, 220);
+  await dispatch("touchend", 110, 220);
+  assert.equal(
+    await page
+      .locator('dialog[aria-label="Navigation"]')
+      .evaluate((el) => el.open),
+    true,
+  );
+  assert.equal(await dispatch("touchstart", 8, 220, "dialog button"), false);
+  await dispatch("touchcancel", 8, 220);
   assert.equal(await dispatch("touchstart", 180, 260, "dialog"), false);
   await dispatch("touchmove", 70, 262);
   await dispatch("touchend", 70, 262);
   await page
     .getByRole("dialog", { name: "Navigation" })
     .waitFor({ state: "hidden" });
+  // Dialogs and popovers retain edge protection without opening navigation.
+  // A backdrop tap dismisses navigation without activating the page beneath it.
+  await page.evaluate(() => {
+    const button = document.createElement("button");
+    button.id = "under-drawer";
+    button.textContent = "Underlying task";
+    button.style.cssText =
+      "position:fixed;right:0;top:300px;width:60px;height:60px";
+    window.underDrawerClicks = 0;
+    button.onclick = () => window.underDrawerClicks++;
+    document.body.append(button);
+    document.querySelector('dialog[aria-label="Navigation"]').showModal();
+  });
+  await page.touchscreen.tap(365, 330);
+  await page
+    .getByRole("dialog", { name: "Navigation" })
+    .waitFor({ state: "hidden" });
+  assert.equal(await page.evaluate(() => window.underDrawerClicks), 0);
+  await page.touchscreen.tap(365, 330);
+  assert.equal(await page.evaluate(() => window.underDrawerClicks), 1);
+  await page.locator("#under-drawer").evaluate((el) => el.remove());
+  for (const kind of ["dialog", "popover"]) {
+    await page.evaluate((kind) => {
+      const el = document.createElement(kind === "dialog" ? "dialog" : "div");
+      el.id = "edge-overlay";
+      el.innerHTML = "<p>Overlay content</p><button>Overlay action</button>";
+      document.querySelector(".shell").append(el);
+      if (kind === "dialog") el.showModal();
+      else {
+        el.setAttribute("popover", "auto");
+        el.showPopover();
+      }
+    }, kind);
+    assert.equal(await dispatch("touchstart", 8, 220, "#edge-overlay p"), true);
+    await dispatch("touchmove", 110, 220);
+    await dispatch("touchend", 110, 220);
+    assert.equal(
+      await page
+        .locator('dialog[aria-label="Navigation"]')
+        .evaluate((el) => el.open),
+      false,
+    );
+    assert.equal(
+      await dispatch("touchstart", 80, 220, "#edge-overlay p"),
+      false,
+    );
+    await dispatch("touchcancel", 80, 220);
+    assert.equal(
+      await dispatch("touchstart", 8, 220, "#edge-overlay button"),
+      false,
+    );
+    await dispatch("touchcancel", 8, 220);
+    await page.locator("#edge-overlay").evaluate((el) => el.remove());
+  }
   assert.equal(await dispatch("touchstart", 29, 220), false);
   await dispatch("touchcancel", 29, 220);
   assert.equal(await dispatch("touchstart", 8, 220, ".shell", true), false);
@@ -339,7 +406,7 @@ try {
     await page
       .getByRole("dialog", { name: "Navigation" })
       .waitFor({ state: "hidden" });
-    // Whole-card long press works with real browser input as well as the handle.
+    // Whole-card long press works with real browser input.
     b = await card().boundingBox();
     await touch("touchStart", b.x + 90, b.y + 45);
     await page.waitForTimeout(400);
@@ -385,11 +452,10 @@ try {
     await page.locator(".board").evaluate((e) => (e.scrollLeft = 0));
     await page.waitForTimeout(150);
     console.log("Native column snap passed");
-    // Handle immediately owns touch; edge holding moves board, then drops once.
-    b = await page
-      .getByRole("button", { name: "Drag QA-1 to another column", exact: true })
-      .boundingBox();
-    await touch("touchStart", b.x + 22, b.y + 22);
+    // Long-press pickup can move across columns and drops exactly once.
+    b = await card().boundingBox();
+    await touch("touchStart", b.x + 60, b.y + 30);
+    await page.waitForTimeout(400);
     await page.locator(".drag-preview").waitFor();
     await touch("touchMove", 370, b.y + 22);
     await page.waitForFunction(
@@ -413,9 +479,13 @@ try {
     await page.waitForTimeout(150);
     fail = true;
     b = await page
-      .getByRole("button", { name: "Drag QA-2 to another column", exact: true })
+      .getByRole("button", {
+        name: "Open QA-2: Check mobile interaction 2",
+        exact: true,
+      })
       .boundingBox();
-    await touch("touchStart", b.x + 22, b.y + 22);
+    await touch("touchStart", b.x + 60, b.y + 30);
+    await page.waitForTimeout(400);
     await touch("touchMove", 370, b.y + 22);
     await page.waitForFunction(
       () => document.querySelector(".board").scrollLeft > 260,

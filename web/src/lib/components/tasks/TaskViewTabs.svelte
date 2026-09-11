@@ -318,6 +318,12 @@
     drafts[active.id] = copyViewSettings(active);
     errors[active.id] = "";
   }
+  export function openArchive() {
+    if (!settings || archived) return;
+    archiveSettings = defaultViewSettings();
+    archiveSettings.display = copyViewSettings(settings).display;
+    archived = true;
+  }
   async function openCreate() {
     createLayout = readTableLayout(workspace, activeID);
     createSourceID = active && dirty(active) ? active.id : "";
@@ -480,19 +486,6 @@
         >
       </button>{/if}
     {#if settings}
-      {#if !archived}<button
-          class="icon-button"
-          aria-label="Archived tasks"
-          title="Archived tasks"
-          onclick={() => {
-            archiveSettings = defaultViewSettings();
-            archiveSettings.display = copyViewSettings(settings).display;
-            archived = true;
-          }}
-          ><svg viewBox="0 0 20 20" aria-hidden="true"
-            ><path d="M3 7h14v10H3zM2 3h16v4H2zM7 10h6" /></svg
-          ></button
-        >{/if}
       <TaskFilterMenu
         {workspace}
         {config}

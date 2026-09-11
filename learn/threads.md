@@ -14,6 +14,12 @@ sends messages to an idle or working connected provider; model settings apply wi
 new model turn. See [Harnesses](harnesses.md) for current interaction details and
 [Claude integration review](claude-provider-review.md) for provider differences.
 
+On mobile, the thread title stays on one line beside the navigation button, with
+long titles and working directories truncated. Usage gauges and Kill/Resume live
+inside the three-dot options popup; desktop retains them in the header. Gauges
+still open their detailed usage popups. Show debug frames is a muted button just
+above Delete thread, with a checkmark when enabled, rather than a switch.
+
 The provider's existing local MCP configuration remains its source of Acta access;
 thread ownership does not assign a separate Acta agent identity automatically.
 

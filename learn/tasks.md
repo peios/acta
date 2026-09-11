@@ -19,7 +19,18 @@ has its own status and assignments independently of its ancestors.
 
 The task page starts directly with its Tasks heading and creation action, without
 a separate workspace-name header or tagline. On mobile, the navigation button
-sits inline with Tasks, Search and Create task. It is hidden while a task is open.
+sits inline with Tasks and Search. It is hidden while a task is open.
+On mobile, Create task floats at the bottom right with safe-area clearance, for
+both Tasks and Backlog. It is hidden while viewing a task or archived tasks.
+Mobile creation opens a full-screen dialog that follows the visible keyboard
+viewport. The focused title field, close button and Create action stay at the
+bottom; optional status, priority, type and size fields scroll above. The header
+identifies the current workspace and board. Subtasks retain their parent's board
+and default status. Enter submits, failed requests retain the entered values,
+and closing or reloading preserves the existing account/workspace/parent-scoped
+title draft. Successful creation clears that draft. Create task (also Enter)
+closes the dialog and keeps the current view; Create and open opens the new task.
+Desktop retains the compact title-first dialog.
 The mobile toolbar uses a tighter left inset. Its sidebar slides in and out with
 a short backdrop fade; reduced-motion preferences disable these transitions.
 On screens up to 720px wide, swipe right from the leftmost 28px to open navigation,
@@ -200,14 +211,14 @@ and Board preserves settings and browser-local table column layouts.
 
 On mobile (up to 720px), horizontal board scrolling snaps to each column, with a
 small glimpse of the next column. Touch users can hold a card for 350ms to pick
-it up, or drag immediately using its six-dot handle. Moving before the hold
+it up. Moving before the hold
 completes retains native scrolling; tapping opens the task normally. A floating
 preview identifies the task and destination, and the destination column is
 highlighted. Holding near either horizontal edge scrolls to other columns;
 vertical edge scrolling keeps longer boards accessible. Snapping is disabled
 only while dragging. Releasing over an available different column applies the
 same version-checked move as desktop dragging. Releasing elsewhere, cancelling
-the touch or leaving the page does not move the task. Drag handles are absent
+the touch or leaving the page does not move the task. Long-press pickup is disabled
 without edit access or on ungrouped boards. A card's three-dot **Move to…**
 control opens a searchable destination list. The current column is marked and
 unavailable destinations cannot be selected. It uses the same version-checked
@@ -554,7 +565,9 @@ See [archive contracts](task-archiving.md) for API, CLI and MCP details.
 
 ## Tasks and Backlog boards (ACT-105)
 
-Each workspace has Tasks and Backlog in its sidebar. Tasks retains the existing
+Each workspace has Tasks and Backlog in its sidebar. Backlog uses an inbox-tray
+icon distinct from the Tasks board icon, including in the collapsed sidebar.
+Tasks retains the existing
 workflow and presets on upgrade. Backlog begins with one Backlog status and no
 completed status; workspace status managers can add lanes and optionally choose
 a completed status. Status names are unique within a board, so both workflows

@@ -40,7 +40,8 @@ activity entry and notifies its followers through existing notification rules.
 - CLI: `acta task archive ACT-12 --version 1`, `task restore ACT-12 --version 2`,
   `task list -w acta --archived`, `task search query --include-archived`.
 
-The separate workspace Archived view keeps independent temporary filters and
+The archive icon beside Search in the task header opens the separate workspace
+Archived view, which keeps independent temporary filters and
 preserves active preset drafts. Global search hides archived matches by default;
 its Include archived checkbox exposes them explicitly.
 

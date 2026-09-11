@@ -8,6 +8,16 @@ It accepts 2–200 characters, waits briefly while typing, and cancels obsolete
 requests. Arrow keys or Ctrl+N/Ctrl+P select the next/previous result, Enter opens
 it, and Escape closes search.
 
+Below 760px, Search fills the visible screen. A horizontally scrollable workspace
+pill bar sits at the top, including All workspaces. Results scroll between that
+bar and the focused search input with a 44px X control at the bottom. Mobile hides
+the Include archived checkbox; desktop retains its workspace picker and checkbox.
+The overlay follows the visual viewport so the controls stay above the
+software keyboard, respecting safe areas. Selecting a result, X or Escape closes
+it; tapping empty space does not dismiss it or activate the page underneath.
+Desktop retains its centred popup. Backdrop dismissal occurs on click rather
+than pointer-down so the page remains inert throughout the dismissal gesture.
+
 Results contain one row per task: reference, title, status, workspace, ancestors
 and an excerpt of the best matching description or comment. Highlighted spans
 are plain text, never provider-supplied HTML. Clicking opens the existing task

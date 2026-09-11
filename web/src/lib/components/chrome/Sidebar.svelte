@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ProviderIcon from "../threads/ProviderIcon.svelte";
   import { useThreads, threadName } from "$lib/threads.svelte";
   const threads = useThreads();
   import { useNotifications } from "$lib/notifications.svelte";
@@ -218,15 +219,8 @@
           href={`/my-agents/${thread.id}`}
           aria-label={threadName(thread)}
           title={thread.cwd}
-          ><svg
-            width="19"
-            height="19"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            aria-hidden="true"><path d="M4 4h16v12H9l-5 4z" /></svg
-          ><span class="scope-name">{threadName(thread)}</span
+          ><ProviderIcon provider={thread.provider} />
+          <span class="scope-name">{threadName(thread)}</span
           >{#if notifications?.inbox.counts[thread.id]}<span
               class="unread-dot"
               title="Unread notifications"
@@ -418,9 +412,14 @@
               stroke="currentColor"
               stroke-width="1.6"
               aria-hidden="true"
-              ><rect x="3" y="3" width="18" height="18" rx="3" /><path
-                d="M3 9h18"
-              /></svg
+              >{#if board.slug === "backlog"}
+                <path d="M4 4h16l2 10v6H2v-6L4 4Z" />
+                <path d="M2 14h6l2 3h4l2-3h6" />
+              {:else}
+                <rect x="3" y="3" width="18" height="18" rx="3" /><path
+                  d="M3 9h18"
+                />
+              {/if}</svg
             ><span class="scope-name">{board.name}</span><span
               class="rail-tooltip"
               aria-hidden="true">{board.name}</span
@@ -431,9 +430,9 @@
             {boardError}
           </p>{/if}
         {#if canWorkspace(w, "workspace.edit") || canWorkspace(w, "tasks.statuses.manage") || canWorkspace(w, "workspace.members.manage") || canWorkspace(w, "workspace.permissions.manage")}
-          {#if !collapsed}<p class="workspace-section">
-              Workspace settings
-            </p>{/if}
+          {#if collapsed}
+            <hr class="workspace-divider" />
+          {:else}<p class="workspace-section">Workspace settings</p>{/if}
           {#each [{ name: "Details", path: "details", show: canWorkspace(w, "workspace.edit") || canWorkspace(w, "tasks.statuses.manage") }, { name: "Members", path: "members", show: canWorkspace(w, "workspace.members.manage") || canWorkspace(w, "workspace.permissions.manage") }] as item}
             {#if item.show}<a
                 href={workspacePath(w) + "/settings/" + item.path}
@@ -778,6 +777,11 @@
     color: var(--muted);
     padding: 16px 12px 0;
   }
+  .workspace-divider {
+    border: 0;
+    border-top: 1px solid var(--panel-border);
+    margin: 8px 4px;
+  }
   .sidebar-inner {
     height: 100%;
     display: flex;
@@ -785,7 +789,7 @@
     min-height: 300px;
   }
   .sidebar-heading {
-    min-height: 76px;
+    min-height: 64px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -878,7 +882,7 @@
     font-weight: 550;
   }
   .search-button {
-    margin-bottom: 10px;
+    margin-bottom: 22px;
     border: 1px solid var(--panel-border);
     background: var(--surface);
     color: var(--text);

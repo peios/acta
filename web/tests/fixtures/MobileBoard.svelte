@@ -2,9 +2,11 @@
   import { onMount } from "svelte";
   import TaskBoard from "$lib/components/tasks/TaskBoard.svelte";
   import { swipeNavigation } from "$lib/swipe-navigation";
+  import { dismissDialogBackdrop } from "$lib/dialog-backdrop";
   import { defaultViewDisplay } from "$lib/task-views.js";
   import type { TaskConfig } from "$lib/tasks";
   let drawer = $state<HTMLDialogElement>();
+  let drawerContent: HTMLDivElement;
   let opened = $state("");
   let editable = $state(true);
   let group = $state("status");
@@ -34,11 +36,25 @@
       >Mobile board</strong
     >
   </header>
-  <dialog bind:this={drawer} aria-label="Navigation">
-    <button onclick={() => drawer?.close()}>Close navigation</button>
-    <p>Workspaces</p>
-    <p>My Agents</p>
-    <input aria-label="Navigation input" />
+  <dialog
+    bind:this={drawer}
+    aria-label="Navigation"
+    onclick={(event) => {
+      if (drawer)
+        dismissDialogBackdrop(
+          event,
+          drawer,
+          () => drawer?.close(),
+          drawerContent,
+        );
+    }}
+  >
+    <div class="drawer-content" bind:this={drawerContent}>
+      <button onclick={() => drawer?.close()}>Close navigation</button>
+      <p>Workspaces</p>
+      <p>My Agents</p>
+      <input aria-label="Navigation input" />
+    </div>
   </dialog>
   <main>
     <p class="controls">
@@ -96,9 +112,17 @@
     margin: 0;
     height: 100dvh;
     max-height: none;
-    width: 280px;
-    max-width: 85vw;
+    width: 100%;
+    max-width: none;
+    padding: 0;
     border: 0;
+    background: transparent;
+    overflow: hidden;
+    color: var(--text);
+  }
+  .drawer-content {
+    width: min(280px, 85vw);
+    height: 100%;
     background: var(--sidebar-surface);
     color: var(--text);
   }

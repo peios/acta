@@ -1,6 +1,7 @@
 <script lang="ts">
   import { mobileViewport } from "$lib/mobile-viewport";
   import { swipeNavigation } from "$lib/swipe-navigation";
+  import { dismissDialogBackdrop } from "$lib/dialog-backdrop";
   import { ScopeHistory } from "$lib/scope-history.js";
   import { tick, type Snippet } from "svelte";
   import { goto, afterNavigate } from "$app/navigation";
@@ -91,12 +92,14 @@
                     : "Profile",
   );
   const scopeHistory = new ScopeHistory(() => window.localStorage);
+  let drawerContent: HTMLDivElement;
+  let keepDrawerFor = "";
   async function choose(next: "site" | "user" | "workspace" | "agents") {
     scopeHistory.remember(
       account.id,
       page.url.pathname + page.url.search + page.url.hash,
     );
-    await goto(
+    const destination =
       next === "agents"
         ? scopeHistory.destination(account.id, "agents")
         : next === "workspace"
@@ -107,14 +110,23 @@
               : checkPermission(account, "site.permissions.manage")
                 ? "/site-settings/groups"
                 : "/site-settings/backups"
-            : "/user-settings/profile",
-    );
+            : "/user-settings/profile";
+    const keepOpen = !!drawer?.open;
+    keepDrawerFor = keepOpen
+      ? new URL(destination, window.location.origin).href
+      : "";
+    try {
+      await goto(destination, { keepFocus: keepOpen });
+    } finally {
+      keepDrawerFor = "";
+    }
   }
   afterNavigate(async (navigation) => {
     scopeHistory.remember(
       account.id,
       page.url.pathname + page.url.search + page.url.hash,
     );
+    if (drawer?.open && navigation.to?.url.href === keepDrawerFor) return;
     drawer?.close();
     if (
       navigation.type !== "enter" &&
@@ -172,11 +184,17 @@
     bind:this={drawer}
     class="mobile-sidebar"
     aria-label="Navigation"
-    onpointerdown={(event) => {
-      if (event.target === drawer) drawer?.close();
+    onclick={(event) => {
+      if (drawer)
+        dismissDialogBackdrop(
+          event,
+          drawer,
+          () => drawer?.close(),
+          drawerContent,
+        );
     }}
   >
-    <div class="drawer-content">
+    <div class="drawer-content" bind:this={drawerContent}>
       <Sidebar
         {account}
         {scope}

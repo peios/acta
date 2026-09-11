@@ -47,9 +47,21 @@ try {
     ...(engine !== "firefox" ? { isMobile: true } : {}),
   });
   const errors = [];
+  const creations = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("http://localhost:8081/**", (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path === "/api/workspaces/mobile/tasks") {
+      creations.push(route.request().postDataJSON());
+      return creations.length === 1
+        ? route.fulfill({
+            status: 503,
+            json: { error: { code: "unavailable", message: "Try again" } },
+          })
+        : route.fulfill({
+            json: { id: "created", title: creations.at(-1).title },
+          });
+    }
     if (path.startsWith("/api/"))
       return route.fulfill({ json: { models: [] } });
     if (path === "/fixture.js")
@@ -173,7 +185,47 @@ try {
     create.y >= 30 && create.y + create.height <= 450,
     "creation controls fit above keyboard",
   );
-  await page.getByRole("button", { name: "Cancel", exact: true }).tap();
+  const titleInput = page.getByRole("textbox", { name: "Title", exact: true });
+  assert.equal(
+    await titleInput.evaluate((e) => e === document.activeElement),
+    true,
+  );
+  const titleBounds = await titleInput.boundingBox();
+  assert.ok(titleBounds.y > 290 && titleBounds.y + titleBounds.height < 450);
+  await page.getByLabel("Priority", { exact: true }).selectOption("high");
+  await page.getByLabel("Type", { exact: true }).selectOption("bug");
+  await page.getByLabel("Size", { exact: true }).selectOption("s");
+  await page.screenshot({ path: `/tmp/acta-create-keyboard-${engine}.png` });
+  await page.getByRole("button", { name: "Create task", exact: true }).tap();
+  await page.getByRole("alert").filter({ hasText: "Try again" }).waitFor();
+  assert.equal(await titleInput.inputValue(), "Remember this task");
+  assert.equal(
+    await page.getByLabel("Priority", { exact: true }).inputValue(),
+    "high",
+  );
+  await titleInput.press("Enter");
+  await page
+    .getByRole("dialog", { name: "Create task", exact: true })
+    .waitFor({ state: "hidden" });
+  assert.deepEqual(creations[1], {
+    title: "Remember this task",
+    parent_id: "",
+    board: "tasks",
+    priority: "high",
+    type: "bug",
+    size: "s",
+  });
+  assert.equal(await page.getByTestId("created-opened").textContent(), "0");
+  await page.getByRole("button", { name: "New task", exact: true }).tap();
+  assert.equal(await titleInput.inputValue(), "");
+  await titleInput.fill("Open this one");
+  await page
+    .getByRole("button", { name: "Create and open", exact: true })
+    .tap();
+  await page
+    .getByRole("dialog", { name: "Create task", exact: true })
+    .waitFor({ state: "hidden" });
+  assert.equal(await page.getByTestId("created-opened").textContent(), "1");
   for (const width of [320, 390, 720]) {
     await page.setViewportSize({ width, height: 844 });
     assert.ok(

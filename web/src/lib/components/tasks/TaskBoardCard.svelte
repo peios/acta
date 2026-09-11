@@ -135,21 +135,6 @@
       >
     </button>
   {/if}
-  {#if canDrag && !moving && ontouchdrag}
-    <button
-      class="touch-handle"
-      data-touch-drag-handle
-      aria-label={`Drag ${task.reference} to another column`}
-      title="Drag to another column"
-      onclick={() => onopen(task)}
-    >
-      <svg viewBox="0 0 24 24" aria-hidden="true"
-        ><path
-          d="M8 5h.01M16 5h.01M8 12h.01M16 12h.01M8 19h.01M16 19h.01"
-        /></svg
-      >
-    </button>
-  {/if}
 </div>
 
 <style>
@@ -158,9 +143,6 @@
   }
   .card-shell:global([data-touch-dragging="true"]) {
     opacity: 0.4;
-  }
-  .touch-handle {
-    display: none;
   }
   .move-button {
     display: grid;
@@ -193,32 +175,6 @@
     .board-card {
       user-select: none;
       -webkit-touch-callout: none;
-    }
-    .touch-handle {
-      display: grid;
-      place-items: center;
-      position: absolute;
-      right: 0;
-      top: 0;
-      width: 44px;
-      height: 44px;
-      border: 0;
-      border-radius: 10px;
-      background: transparent;
-      color: var(--muted);
-      touch-action: none;
-    }
-    .touch-handle svg {
-      width: 20px;
-      height: 20px;
-      stroke-width: 4;
-      stroke-linecap: round;
-    }
-    .movable .touch-handle {
-      right: 44px;
-    }
-    .movable .card-top {
-      padding-right: 72px;
     }
   }
 
