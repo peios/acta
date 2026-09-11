@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"acta2/internal/threads"
+	"acta/internal/threads"
 	webpush "github.com/SherClockHolmes/webpush-go"
 )
 
@@ -45,7 +45,7 @@ type Delivery struct {
 func VAPID(secret []byte) (private, public string, err error) {
 	for counter := byte(0); ; counter++ {
 		h := hmac.New(sha256.New, secret)
-		h.Write([]byte("acta2:webpush:v1"))
+		h.Write([]byte("acta:webpush:v1"))
 		h.Write([]byte{counter})
 		raw := h.Sum(nil)
 		key, e := ecdh.P256().NewPrivateKey(raw)

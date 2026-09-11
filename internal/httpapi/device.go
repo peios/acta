@@ -1,7 +1,7 @@
 package httpapi
 
 import (
-	"acta2/internal/auth"
+	"acta/internal/auth"
 	"errors"
 	"net/http"
 )

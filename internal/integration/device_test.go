@@ -1,11 +1,11 @@
 package integration
 
 import (
-	"acta2/internal/accounts"
-	"acta2/internal/auth"
-	actaclient "acta2/internal/client"
-	"acta2/internal/config"
-	"acta2/internal/httpapi"
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	actaclient "acta/internal/client"
+	"acta/internal/config"
+	"acta/internal/httpapi"
 	"errors"
 	"github.com/pquerna/otp/totp"
 	"net/http"

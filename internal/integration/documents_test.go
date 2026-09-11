@@ -1,13 +1,13 @@
 package integration
 
 import (
-	"acta2/internal/accounts"
-	"acta2/internal/auth"
-	apiclient "acta2/internal/client"
-	"acta2/internal/config"
-	"acta2/internal/documents"
-	"acta2/internal/httpapi"
-	"acta2/internal/tasks"
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	apiclient "acta/internal/client"
+	"acta/internal/config"
+	"acta/internal/documents"
+	"acta/internal/httpapi"
+	"acta/internal/tasks"
 	"bytes"
 	"encoding/json"
 	"errors"

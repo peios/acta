@@ -1,7 +1,7 @@
 package httpapi
 
 import (
-	"acta2/internal/accounts"
+	"acta/internal/accounts"
 	"net/http"
 	"strconv"
 )

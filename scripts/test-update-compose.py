@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Real signed-release update/recovery test in a disposable Compose installation.
 Requires two signed release files, the matching public key, docker registry login,
-and bin/acta2-update. Never targets an existing deployment. Retains failed stacks
+and bin/acta-update. Never targets an existing deployment. Retains failed stacks
 only with KEEP_UPDATE_TEST=1. Signing fixtures use a new test-only key.
 """
 import argparse,base64,hashlib,json,os,secrets,shutil,signal,subprocess,tempfile,time,uuid
@@ -10,17 +10,15 @@ signal.signal(signal.SIGTERM,interrupted)
 from pathlib import Path
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--current',type=Path,required=True);p.add_argument('--target',type=Path,required=True)
-p.add_argument('--bootstrap-controller',action='store_true',help='Test initial pre-production app transition using the candidate controller')
 p.add_argument('--public-key',type=Path,default=Path('deploy/update/release.pub'))
 a=p.parse_args();repo=Path(__file__).resolve().parents[1]
 root=Path(tempfile.mkdtemp(prefix='acta-update-test-'));project='acta-update-test-'+uuid.uuid4().hex[:8]
-binary=repo/'bin/acta2-update';config=root/'config';state=root/'state'
+binary=repo/'bin/acta-update';config=root/'config';state=root/'state'
 def run(args,**kw):return subprocess.run(list(map(str,args)),cwd=repo,check=True,text=True,**kw)
 def out(args):return run(args,stdout=subprocess.PIPE).stdout.strip()
 def decoded(path):return json.loads(out([binary,'-input',path,'-public-key',a.public_key,'verify']))
 old,new=decoded(a.current),decoded(a.target)
 assert new['sequence']>old['sequence']
-if a.bootstrap_controller:old['images']['updater']=new['images']['updater']
 run(['python3','scripts/configure-deployment.py','--domain','acta.test','--email','test@example.com','--directory',config,'--project',project])
 run([binary,'-key',root/'test.seed','-public-key',root/'test.pub','keygen'])
 run(['python3','scripts/configure-updates.py','--deployment',config,'--bundle',repo,'--state',state,'--public-key',root/'test.pub','--prereleases'])
@@ -41,7 +39,7 @@ age=out(['docker','run','--rm','--entrypoint','age-keygen',old['images']['backup
 recipient=next(l.removeprefix('# public key: ') for l in age.splitlines() if l.startswith('# public key: '))
 backup_config=json.loads((repo/'deploy/production/backup.example.json').read_text());backup_config['recovery_recipient']=recipient
 (operator/'backup.json').write_text(json.dumps(backup_config))
-(operator/'database-url').write_text('postgres://postgres@/acta2?host=/var/run/postgresql')
+(operator/'database-url').write_text('postgres://postgres@/acta?host=/var/run/postgresql')
 (operator/'pgbackrest.conf').write_text((repo/'deploy/production/pgbackrest.example.conf').read_text().replace('REPLACE_WITH_A_RANDOM_SECRET',secrets.token_hex(32)))
 for path in operator.iterdir():path.chmod(0o600)
 (config/'Caddyfile').write_text((repo/'deploy/production/Caddyfile').read_text().replace('{$ACTA_DOMAIN} {','{$ACTA_DOMAIN} {\n tls internal'))
@@ -63,8 +61,8 @@ compose=(['sudo','-n'] if os.environ.get('GITHUB_ACTIONS')=='true' else [])+['do
 for file in c['compose_files']:compose+=['-f',file]
 compose+=['-f',state/'active.json','--profile','backups','--profile','updates']
 def dc(*args):return out([*compose,*args])
-def control(*args):return json.loads(dc('exec','-T','updater','acta2-update','-config','/etc/acta-update/config.json',*args))
-def sql(q):return dc('exec','-T','-u','postgres','db','psql','-U','postgres','-d','acta2','-At','-v','ON_ERROR_STOP=1','-c',q)
+def control(*args):return json.loads(dc('exec','-T','updater','acta-update','-config','/etc/acta-update/config.json',*args))
+def sql(q):return dc('exec','-T','-u','postgres','db','psql','-U','postgres','-d','acta','-At','-v','ON_ERROR_STOP=1','-c',q)
 def wait(fn,label,seconds=600):
  until=time.monotonic()+seconds
  while time.monotonic()<until:
@@ -116,7 +114,7 @@ try:
  dc('up','-d','--no-build','--no-deps','backup')
  dc('exec','-T','backup','chown','999:10001','/repository')
  dc('up','-d','--no-build','--wait','--wait-timeout','300','db','app','caddy','backup','updater')
- dc('exec','-T','-u','999:10001','backup','pgbackrest','--config=/var/lib/acta-backup/config/pgbackrest.conf','--stanza=acta2','stanza-create')
+ dc('exec','-T','-u','999:10001','backup','pgbackrest','--config=/var/lib/acta-backup/config/pgbackrest.conf','--stanza=acta','stanza-create')
  https_port=dc('port','caddy','443').rsplit(':',1)[1]
  assert http_status()=='200'
  sql("CREATE TABLE update_probe(id int PRIMARY KEY, value text NOT NULL); INSERT INTO update_probe VALUES(1,'preserve this')")
@@ -140,9 +138,9 @@ try:
 import("context";"os";"time";"github.com/jackc/pgx/v5")
 func main(){c,e:=pgx.Connect(context.Background(),os.Getenv("ACTA_DATABASE_URL"));if e!=nil{os.Exit(41)};_,e=c.Exec(context.Background(),"CREATE TABLE IF NOT EXISTS update_failure(id int)");if e!=nil{os.Exit(43)};time.Sleep(5*time.Second);_,_=c.Exec(context.Background(),"SELECT 1/0");os.Exit(42)}
 ''')
- run(['docker','run','--rm','-v',f'{fixture}:/fixture','acta2-release-tools','go','build','-o','/fixture/fail','/fixture/main.go'])
- (fixture/'Dockerfile').write_text('FROM '+new['images']['app']+'\nCOPY fail /usr/local/bin/acta2-server\n')
- tag='ghcr.io/peios/acta2-app:qa-failure-'+uuid.uuid4().hex[:10]
+ run(['docker','run','--rm','-v',f'{fixture}:/fixture','acta-release-tools','go','build','-o','/fixture/fail','/fixture/main.go'])
+ (fixture/'Dockerfile').write_text('FROM '+new['images']['app']+'\nCOPY fail /usr/local/bin/acta-server\n')
+ tag='ghcr.io/peios/acta-app:qa-failure-'+uuid.uuid4().hex[:10]
  run(['docker','buildx','build','--platform','linux/amd64','--push','-t',tag,fixture])
  digest=json.loads(out(['docker','buildx','imagetools','inspect',tag,'--format','{{json .Manifest.Digest}}']))
  broken=json.loads(json.dumps(new));broken['images']['app']=tag.split(':')[0]+'@'+digest

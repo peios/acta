@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"acta2/internal/accounts"
-	"acta2/internal/auth"
-	"acta2/internal/config"
-	"acta2/internal/hyperharness"
-	"acta2/internal/threads"
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/config"
+	"acta/internal/hyperharness"
+	"acta/internal/threads"
 )
 
 type Handler struct {

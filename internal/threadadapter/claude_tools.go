@@ -1,7 +1,7 @@
 package threadadapter
 
 import (
-	"acta2/internal/threads"
+	"acta/internal/threads"
 	"encoding/json"
 	"path/filepath"
 	"strings"

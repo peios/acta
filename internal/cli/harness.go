@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"acta2/internal/client"
-	"acta2/internal/harnesspipe"
-	"acta2/internal/hyperharness"
-	"acta2/internal/providers"
+	"acta/internal/client"
+	"acta/internal/harnesspipe"
+	"acta/internal/hyperharness"
+	"acta/internal/providers"
 	"github.com/spf13/cobra"
 )
 

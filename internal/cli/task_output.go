@@ -6,8 +6,8 @@ import (
 	"text/tabwriter"
 	"unicode"
 
-	"acta2/internal/client"
-	"acta2/internal/tasks"
+	"acta/internal/client"
+	"acta/internal/tasks"
 )
 
 // Untrusted task text must not execute terminal control sequences or break rows.

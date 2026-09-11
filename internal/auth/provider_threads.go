@@ -1,8 +1,8 @@
 package auth
 
 import (
-	"acta2/internal/conversation"
-	"acta2/internal/threads"
+	"acta/internal/conversation"
+	"acta/internal/threads"
 	"context"
 	"errors"
 )

@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"acta2/internal/accounts"
-	"acta2/internal/auth"
+	"acta/internal/accounts"
+	"acta/internal/auth"
 	"github.com/jackc/pgx/v5"
 )
 

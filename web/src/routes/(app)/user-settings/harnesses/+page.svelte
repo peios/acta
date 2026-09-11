@@ -35,7 +35,7 @@
       <span class="machine large" aria-hidden="true">{@render machine()}</span>
       <h2>Connect your development machine</h2>
       <p>Run this command from a signed-in Acta CLI profile.</p>
-      <code>acta2 harness</code>
+      <code>acta harness</code>
       <p class="profile-hint">
         Use <code>-p &lt;profile&gt;</code> to choose another profile.
       </p>
@@ -76,7 +76,7 @@
       {/each}
     </ul>
     <p class="footnote">
-      Only active connections appear here. Run <code>acta2 harness</code> on another
+      Only active connections appear here. Run <code>acta harness</code> on another
       machine to connect it.
     </p>
   {/if}

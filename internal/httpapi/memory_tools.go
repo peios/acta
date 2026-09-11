@@ -1,8 +1,8 @@
 package httpapi
 
 import (
-	"acta2/internal/auth"
-	"acta2/internal/memories"
+	"acta/internal/auth"
+	"acta/internal/memories"
 	"context"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"slices"

@@ -225,10 +225,10 @@ redundant JSON text copies. Rich content remains explicitly unreviewed. Regressi
 cases cover text, structured-only, duplicate structured/text, failure, rich-content
 fallback and duplicate terminal snapshots.
 
-Fresh Codex whoami verification rendered one acta2/whoami tool card (41ms) and
+Fresh Codex whoami verification rendered one acta/whoami tool card (41ms) and
 returned MCP-VERIFIED; the existing composer draft remained intact.
 
-A server-restart deployment exposed a startup gap: normal acta2 harness exited
+A server-restart deployment exposed a startup gap: normal acta harness exited
 when /api/account was unavailable, before entering its WebSocket retry loop.
 Its detached providers survived; reconnected the normal supervisor. Added initial
 account lookup retries using the connection loop's shared backoff/cancellation

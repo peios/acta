@@ -76,12 +76,12 @@ retry the same `request_id` and inputs. On conflict, read/reconcile before editi
 CLI examples:
 
 ```sh
-acta2 task comment add ACT-151 --body 'Review complete.'
-acta2 task comment add ACT-151 --reply-to <comment-uuid> --body-file notes.md
-acta2 task comment get ACT-151 <comment-uuid>
-acta2 task comment replies ACT-151 <root-comment-uuid>
-acta2 task comment edit ACT-151 <comment-uuid> --version 1 --body 'Updated review.'
-acta2 task comment delete ACT-151 <comment-uuid> --version 2
+acta task comment add ACT-151 --body 'Review complete.'
+acta task comment add ACT-151 --reply-to <comment-uuid> --body-file notes.md
+acta task comment get ACT-151 <comment-uuid>
+acta task comment replies ACT-151 <root-comment-uuid>
+acta task comment edit ACT-151 <comment-uuid> --version 1 --body 'Updated review.'
+acta task comment delete ACT-151 <comment-uuid> --version 2
 ```
 
 `--body-file -` reads stdin. `--json` uses the normal structured CLI output. The

@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"acta2/internal/client"
+	"acta/internal/client"
 	"charm.land/huh/v2"
 	"github.com/spf13/cobra"
 )
@@ -73,7 +73,7 @@ func (a *App) loginCommand() *cobra.Command {
 		}
 		if server == "" {
 			if !a.interactive {
-				return errors.New("No server configured; supply acta2 login <server>")
+				return errors.New("No server configured; supply acta login <server>")
 			}
 			if err = a.prompt(ctx, huh.NewInput().Title("Acta server URL").Placeholder("https://acta.example.org").Value(&server).Validate(func(v string) error { _, e := client.NormalizeURL(v); return e })); err != nil {
 				return err

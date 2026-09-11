@@ -1,7 +1,7 @@
 package postgres
 
 import (
-	"acta2/internal/auth"
+	"acta/internal/auth"
 	"context"
 	"crypto/sha256"
 	"fmt"

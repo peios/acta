@@ -1,7 +1,7 @@
 package httpapi
 
 import (
-	"acta2/internal/push"
+	"acta/internal/push"
 	"errors"
 	"github.com/google/uuid"
 	"net/http"

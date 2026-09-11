@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"acta2/internal/client"
+	"acta/internal/client"
 	"charm.land/huh/v2"
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
@@ -38,7 +38,7 @@ func NewCommand(in *os.File, out, errOut *os.File) (*cobra.Command, error) {
 	return a.command(), nil
 }
 func (a *App) command() *cobra.Command {
-	root := &cobra.Command{Use: "acta2", Short: "Acta for your terminal", SilenceUsage: true, SilenceErrors: true}
+	root := &cobra.Command{Use: "acta", Short: "Acta for your terminal", SilenceUsage: true, SilenceErrors: true}
 	root.SetIn(a.input)
 	root.SetOut(a.out)
 	root.SetErr(a.errOut)
@@ -76,7 +76,7 @@ func (a *App) selected() (string, Profile, error) {
 	}
 	p, ok := c.Profiles[n]
 	if !ok {
-		return n, p, fmt.Errorf("Profile %q does not exist; use acta2 profile add %s", n, n)
+		return n, p, fmt.Errorf("Profile %q does not exist; use acta profile add %s", n, n)
 	}
 	return n, p, nil
 }
@@ -129,10 +129,10 @@ func (a *App) status(ctx context.Context) error {
 		return fmt.Errorf("read credential: %w", err)
 	}
 	if p.URL == "" {
-		return errors.New("No server configured; run acta2 login <server>")
+		return errors.New("No server configured; run acta login <server>")
 	}
 	if token == "" {
-		return errors.New("Not signed in; run acta2 login")
+		return errors.New("Not signed in; run acta login")
 	}
 	c := client.New(p.URL, token)
 	account, err := c.Account(ctx)
@@ -238,7 +238,7 @@ func (a *App) profileCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return a.emit(map[string]string{"profile": args[0], "server": server}, "Created profile "+args[0]+". Sign in with acta2 -p "+args[0]+" login.")
+		return a.emit(map[string]string{"profile": args[0], "server": server}, "Created profile "+args[0]+". Sign in with acta -p "+args[0]+" login.")
 	}}
 	add.Flags().StringVar(&server, "server", "", "Server URL (optional)")
 	cmd.AddCommand(add)
@@ -263,14 +263,14 @@ func (a *App) authenticatedClient() (*client.Client, error) {
 		return nil, e
 	}
 	if p.URL == "" {
-		return nil, errors.New("No server configured; run acta2 login <server>")
+		return nil, errors.New("No server configured; run acta login <server>")
 	}
 	token, _, e := a.credential(p)
 	if e != nil {
 		return nil, e
 	}
 	if token == "" {
-		return nil, errors.New("Not signed in; run acta2 login")
+		return nil, errors.New("Not signed in; run acta login")
 	}
 	return client.New(p.URL, token), nil
 }

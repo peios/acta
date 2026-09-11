@@ -26,8 +26,8 @@ Client names are labels, not verified publisher identities.
 For Codex, after building/running Acta:
 
 ```sh
-codex mcp add acta2 --url http://localhost:8081/mcp
-codex mcp login acta2
+codex mcp add acta --url http://localhost:8081/mcp
+codex mcp login acta
 ```
 
 The server implements dynamic client registration for public clients; clients

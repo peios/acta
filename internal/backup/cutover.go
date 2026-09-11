@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"time"
 
-	"acta2/internal/localstate"
+	"acta/internal/localstate"
 	"github.com/gofrs/flock"
 	"github.com/jackc/pgx/v5"
 )

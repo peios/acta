@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"acta2/internal/harnesspipe"
-	"acta2/internal/hyperharness"
-	"acta2/internal/threads"
+	"acta/internal/harnesspipe"
+	"acta/internal/hyperharness"
+	"acta/internal/threads"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/google/uuid"
@@ -71,7 +71,7 @@ func socketWrite(ctx context.Context, c *websocket.Conn, v any) error {
 func (h *Handler) harnessConnect(w http.ResponseWriter, r *http.Request) {
 	// Opening a machine connection requires CLI bearer authority, never cookies.
 	if r.Header.Get("Origin") != "" || !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer cli_") {
-		writeError(w, 401, "cli_required", "Connect with a signed-in CLI profile. Run acta2 login.", nil)
+		writeError(w, 401, "cli_required", "Connect with a signed-in CLI profile. Run acta login.", nil)
 		return
 	}
 	owner, ok := h.harnessOwner(w, r)

@@ -13,7 +13,7 @@ import (
 	"time"
 	"unicode"
 
-	"acta2/internal/accounts"
+	"acta/internal/accounts"
 	"github.com/google/uuid"
 )
 

@@ -1,14 +1,14 @@
 package integration
 
 import (
-	"acta2/internal/activity"
-	"acta2/internal/auth"
-	"acta2/internal/comments"
-	"acta2/internal/config"
-	"acta2/internal/httpapi"
-	"acta2/internal/push"
-	"acta2/internal/tasks"
-	"acta2/internal/threads"
+	"acta/internal/activity"
+	"acta/internal/auth"
+	"acta/internal/comments"
+	"acta/internal/config"
+	"acta/internal/httpapi"
+	"acta/internal/push"
+	"acta/internal/tasks"
+	"acta/internal/threads"
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"

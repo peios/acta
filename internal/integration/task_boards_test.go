@@ -1,7 +1,7 @@
 package integration
 
 import (
-	"acta2/internal/tasks"
+	"acta/internal/tasks"
 	"encoding/json"
 	"github.com/google/uuid"
 	"testing"

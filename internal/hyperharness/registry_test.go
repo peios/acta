@@ -1,7 +1,7 @@
 package hyperharness
 
 import (
-	"acta2/internal/providers"
+	"acta/internal/providers"
 	"sync"
 	"testing"
 )

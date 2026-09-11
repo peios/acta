@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"acta2/internal/localstate"
+	"acta/internal/localstate"
 )
 
 // Prune only copies named in our durable terminal jobs and carrying both exact

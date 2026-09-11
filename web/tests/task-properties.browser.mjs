@@ -123,7 +123,7 @@ try {
   });
   await page.goto("http://localhost:8081/_review/task-properties-test");
   await page.addStyleTag({
-    content: readFileSync(join(out, "acta2-web.css"), "utf8"),
+    content: readFileSync(join(out, "acta-web.css"), "utf8"),
   });
   await page.addScriptTag({
     content: readFileSync(join(out, "fixture.js"), "utf8"),

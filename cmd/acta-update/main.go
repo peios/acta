@@ -14,9 +14,9 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"acta2/internal/backup"
-	"acta2/internal/localstate"
-	"acta2/internal/update"
+	"acta/internal/backup"
+	"acta/internal/localstate"
+	"acta/internal/update"
 )
 
 func main() {

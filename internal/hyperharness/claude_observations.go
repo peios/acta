@@ -1,7 +1,7 @@
 package hyperharness
 
 import (
-	"acta2/internal/harnesspipe"
+	"acta/internal/harnesspipe"
 	"bufio"
 	"context"
 	"encoding/json"

@@ -10,13 +10,13 @@ const memory = (id = a) => ({
   scope: "workspace",
   summary: "Build guidance",
 });
-const call = (output, args = {}, name = "mcp__acta2__memory_get") => ({
+const call = (output, args = {}, name = "mcp__acta__memory_get") => ({
   data: { name, arguments: args },
   output: typeof output === "string" ? output : JSON.stringify(output),
 });
 test("memory results from both providers, aliases, recall lists and structured output", () => {
   for (const name of [
-    "mcp__acta2__memory_get",
+    "mcp__acta__memory_get",
     "my-acta1/memory_get",
     "mcp__AcTa__memory_save",
   ]) {

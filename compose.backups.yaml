@@ -9,7 +9,7 @@ services:
       - -c
       - archive_timeout=60
       - -c
-      - archive_command=pgbackrest --config=/var/lib/acta-backup/config/pgbackrest.conf --stanza=acta2 archive-push %p
+      - archive_command=pgbackrest --config=/var/lib/acta-backup/config/pgbackrest.conf --stanza=acta archive-push %p
     volumes:
       - backup-state:/var/lib/acta-backup
       - type: bind

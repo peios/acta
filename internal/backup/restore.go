@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"acta2/internal/localstate"
+	"acta/internal/localstate"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )

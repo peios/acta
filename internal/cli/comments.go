@@ -1,9 +1,9 @@
 package cli
 
 import (
-	"acta2/internal/activity"
-	"acta2/internal/client"
-	"acta2/internal/comments"
+	"acta/internal/activity"
+	"acta/internal/client"
+	"acta/internal/comments"
 	"context"
 	"errors"
 	"fmt"

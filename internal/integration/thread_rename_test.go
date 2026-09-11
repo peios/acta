@@ -1,7 +1,7 @@
 package integration
 
 import (
-	"acta2/internal/threads"
+	"acta/internal/threads"
 	"testing"
 	"time"
 

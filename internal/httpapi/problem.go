@@ -1,13 +1,13 @@
 package httpapi
 
 import (
-	"acta2/internal/accounts"
-	"acta2/internal/auth"
-	"acta2/internal/documents"
-	"acta2/internal/guide"
-	"acta2/internal/memories"
-	"acta2/internal/migration"
-	"acta2/internal/tasks"
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/documents"
+	"acta/internal/guide"
+	"acta/internal/memories"
+	"acta/internal/migration"
+	"acta/internal/tasks"
 	"errors"
 	"log/slog"
 	"net/http"

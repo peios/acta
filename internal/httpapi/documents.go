@@ -1,7 +1,7 @@
 package httpapi
 
 import (
-	"acta2/internal/documents"
+	"acta/internal/documents"
 	"bytes"
 	"io"
 	"mime"

@@ -1,7 +1,7 @@
 package integration
 
 import (
-	"acta2/internal/tasks"
+	"acta/internal/tasks"
 	"testing"
 )
 

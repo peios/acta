@@ -1,8 +1,8 @@
 package integration
 
 import (
-	"acta2/internal/accounts"
-	"acta2/internal/tasks"
+	"acta/internal/accounts"
+	"acta/internal/tasks"
 	"errors"
 	"slices"
 	"testing"

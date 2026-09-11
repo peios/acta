@@ -1,9 +1,9 @@
 package integration
 
 import (
-	"acta2/internal/config"
-	"acta2/internal/httpapi"
-	"acta2/internal/threads"
+	"acta/internal/config"
+	"acta/internal/httpapi"
+	"acta/internal/threads"
 	"encoding/json"
 	"github.com/google/uuid"
 	"net/http"

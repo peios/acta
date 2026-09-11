@@ -42,7 +42,7 @@ inside the same consistent database read as search.
 - HTTP: `GET /api/tasks/search?q=words&workspace=optional-slug&cursor=optional`.
 - MCP: `task_search({"query":"words","workspace":"optional-slug"})`, under
   the existing `tasks.read` grant. Omit workspace to search everywhere allowed.
-- CLI: `acta2 task search "words" [--workspace slug] [--cursor cursor] [--json]`.
+- CLI: `acta task search "words" [--workspace slug] [--cursor cursor] [--json]`.
 
 Each page contains `tasks`, `more` and `cursor`, with at most 25 compact task
 results. A result includes `id`, `reference`, `title`, `status`, `workspace_id`,

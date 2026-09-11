@@ -1,9 +1,9 @@
 package client
 
 import (
-	"acta2/internal/activity"
-	"acta2/internal/tasks"
-	"acta2/internal/workspaces"
+	"acta/internal/activity"
+	"acta/internal/tasks"
+	"acta/internal/workspaces"
 	"context"
 	"net/url"
 	"strconv"

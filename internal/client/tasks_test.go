@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"acta2/internal/tasks"
+	"acta/internal/tasks"
 )
 
 type taskTransport func(*http.Request) (*http.Response, error)

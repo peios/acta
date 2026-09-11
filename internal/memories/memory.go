@@ -1,7 +1,7 @@
 package memories
 
 import (
-	"acta2/internal/accounts"
+	"acta/internal/accounts"
 	"errors"
 	"regexp"
 	"strings"

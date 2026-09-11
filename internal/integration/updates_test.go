@@ -1,9 +1,9 @@
 package integration
 
 import (
-	"acta2/internal/accounts"
-	"acta2/internal/config"
-	"acta2/internal/httpapi"
+	"acta/internal/accounts"
+	"acta/internal/config"
+	"acta/internal/httpapi"
 	"net/http"
 	"testing"
 )

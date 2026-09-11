@@ -1,7 +1,7 @@
 package httpapi
 
 import (
-	"acta2/internal/activity"
+	"acta/internal/activity"
 	"net/http"
 )
 

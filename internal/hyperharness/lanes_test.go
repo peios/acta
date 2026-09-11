@@ -1,8 +1,8 @@
 package hyperharness
 
 import (
-	"acta2/internal/threadadapter"
-	"acta2/internal/threads"
+	"acta/internal/threadadapter"
+	"acta/internal/threads"
 	"testing"
 )
 

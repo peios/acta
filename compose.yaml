@@ -1,18 +1,18 @@
 # Local development only. Production supplies its own ACTA_DATABASE_URL.
-name: acta2
+name: acta
 services:
   db:
     image: postgres:17
     environment:
-      POSTGRES_USER: acta2
-      POSTGRES_PASSWORD: acta2-development-only
-      POSTGRES_DB: acta2
+      POSTGRES_USER: acta
+      POSTGRES_PASSWORD: acta-development-only
+      POSTGRES_DB: acta
     ports:
       - "127.0.0.1:5433:5432"
     volumes:
       - database:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U acta2 -d acta2"]
+      test: ["CMD-SHELL", "pg_isready -U acta -d acta"]
       interval: 2s
       timeout: 3s
       retries: 15

@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"slices"
 
-	"acta2/internal/accounts"
-	"acta2/internal/activity"
-	"acta2/internal/auth"
-	"acta2/internal/tasks"
-	"acta2/internal/workspaces"
+	"acta/internal/accounts"
+	"acta/internal/activity"
+	"acta/internal/auth"
+	"acta/internal/tasks"
+	"acta/internal/workspaces"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

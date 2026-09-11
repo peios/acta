@@ -412,7 +412,7 @@ root tasks. UUID validation and selection limits are enforced in the shared serv
 
 CLI and MCP use the shared [task interface contract](task-interfaces.md), including
 compact pages, workspace UUID/slug resolution, direct-subtask inspection and
-explicit field updates. `acta2 task --help` lists commands; MCP tool schemas
+explicit field updates. `acta task --help` lists commands; MCP tool schemas
 describe the corresponding inputs. Browser display presets remain personal UI
 configuration and are not exposed through MCP.
 

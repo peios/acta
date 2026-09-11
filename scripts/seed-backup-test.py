@@ -6,7 +6,7 @@ key=secrets.token_bytes(32)
 (p/'security.key').write_text(base64.b64encode(key).decode().rstrip('='));(p/'security.key').chmod(0o600)
 (p/'database-url').write_text('postgres://postgres@/acta?host=/review/source-socket');(p/'database-url').chmod(0o600)
 (p/'api-token').write_text(secrets.token_hex(32));(p/'api-token').chmod(0o600)
-(p/'release.json').write_text(json.dumps(dict(id='acta100-review',sha256=hashlib.sha256((p/'acta2-server').read_bytes()).hexdigest(),public_url='http://localhost:8081',installation='backup-isolated-review')))
+(p/'release.json').write_text(json.dumps(dict(id='acta100-review',sha256=hashlib.sha256((p/'acta-server').read_bytes()).hexdigest(),public_url='http://localhost:8081',installation='backup-isolated-review')))
 (p/'pgbackrest.conf').write_text('[global]\nrepo1-path=/review/repository\nrepo1-cipher-type=aes-256-cbc\nrepo1-cipher-pass='+secrets.token_hex(32)+'\nlog-path=/review/log\nlock-path=/review/lock\nspool-path=/review/spool\nlog-level-file=detail\nrepo1-retention-full=2\nexpire-auto=n\n[acta]\npg1-path=/review/source\npg1-socket-path=/review/source-socket\npg1-port=5432\n')
 (p/'pgbackrest.conf').chmod(0o600)
 parts=['CREATE TABLE schema_migrations(name text PRIMARY KEY,checksum text NOT NULL);']
@@ -43,4 +43,4 @@ pgbackrest --config=/review/pgbackrest.conf --stanza=acta check
 (p/'config.base.json').write_text(json.dumps(dict(release_dir='/review/releases',state_dir='/review/state',socket='/review/backup.sock',token_file='/review/api-token',database_url_file='/review/database-url',database_name='acta',database_user='postgres',stanza='acta',pgbackrest='/usr/bin/pgbackrest',age='/usr/bin/age',postgres_bin='/usr/lib/postgresql/17/bin',security_key_file='/review/security.key',release_file='/review/release.json',recovery_recipient='PLACEHOLDER',recovery_identity_file='/review/recovery.age',restore_root='/review/restores',job_timeout_minutes=10,min_retain_full=2,max_retain_full=30,destinations=[dict(id='review',name='Isolated encrypted repository',config_file='/review/pgbackrest.conf',repo=1)])))
 
 with (p/'setup.sh').open('a') as f:
- f.write('digest=$(sha256sum /review/acta2-server | cut -d " " -f 1)\nmkdir -p /review/releases/$digest\ncp /review/acta2-server /review/releases/$digest/acta2-server\n')
+ f.write('digest=$(sha256sum /review/acta-server | cut -d " " -f 1)\nmkdir -p /review/releases/$digest\ncp /review/acta-server /review/releases/$digest/acta-server\n')

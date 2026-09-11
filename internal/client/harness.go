@@ -10,9 +10,9 @@ import (
 	"slices"
 	"time"
 
-	"acta2/internal/hyperharness"
-	"acta2/internal/providers"
-	"acta2/internal/threads"
+	"acta/internal/hyperharness"
+	"acta/internal/providers"
+	"acta/internal/threads"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"reflect"
@@ -50,7 +50,7 @@ func (c *Client) RunHarness(ctx context.Context, hostname string, discovery prov
 		var apiErr *Error
 		if errors.As(err, &apiErr) && apiErr.Status >= 400 && apiErr.Status < 500 && apiErr.Status != 429 {
 			if apiErr.Status == 401 {
-				return fmt.Errorf("harness authentication ended; run acta2 login using the selected profile: %w", err)
+				return fmt.Errorf("harness authentication ended; run acta login using the selected profile: %w", err)
 			}
 			return err
 		}
@@ -81,7 +81,7 @@ func (c *Client) harnessConnection(ctx context.Context, server, hostname string,
 	// prevent redirects from forwarding the profile credential to another host.
 	hc := *c.HTTP
 	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	conn, resp, err := websocket.Dial(dialCtx, server+"/api/harnesses/connect", &websocket.DialOptions{HTTPClient: &hc, HTTPHeader: http.Header{"Authorization": []string{"Bearer " + c.Token}, "User-Agent": []string{"acta2-harness"}}, Subprotocols: []string{hyperharness.Protocol}})
+	conn, resp, err := websocket.Dial(dialCtx, server+"/api/harnesses/connect", &websocket.DialOptions{HTTPClient: &hc, HTTPHeader: http.Header{"Authorization": []string{"Bearer " + c.Token}, "User-Agent": []string{"acta-harness"}}, Subprotocols: []string{hyperharness.Protocol}})
 	cancel()
 	if err != nil {
 		if resp != nil && resp.StatusCode != http.StatusSwitchingProtocols {

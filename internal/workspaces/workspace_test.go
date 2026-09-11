@@ -1,7 +1,7 @@
 package workspaces
 
 import (
-	"acta2/internal/accounts"
+	"acta/internal/accounts"
 	"testing"
 )
 

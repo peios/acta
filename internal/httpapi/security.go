@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"acta2/internal/auth"
+	"acta/internal/auth"
 )
 
 func (h *Handler) binding(w http.ResponseWriter, r *http.Request) (string, error) {

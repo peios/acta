@@ -23,7 +23,7 @@ async function workerMessage(reg: ServiceWorkerRegistration, message: unknown) {
 }
 export async function clearBrowserPush(owner: string) {
   try {
-    localStorage.removeItem(`acta2:notifications:${owner}`);
+    localStorage.removeItem(`acta:notifications:${owner}`);
   } catch {
     /* unavailable */
   }
@@ -51,7 +51,7 @@ export class BrowserPush {
     this.installPrompt = e as InstallEvent;
   };
   constructor(owner: string) {
-    this.key = `acta2:notifications:${owner}`;
+    this.key = `acta:notifications:${owner}`;
   }
   async start() {
     if (this.initializing || this.stopped) return;

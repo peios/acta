@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"acta2/internal/activity"
+	"acta/internal/activity"
 	"fmt"
 	"strings"
 )

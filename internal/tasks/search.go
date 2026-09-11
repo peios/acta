@@ -1,7 +1,7 @@
 package tasks
 
 import (
-	"acta2/internal/accounts"
+	"acta/internal/accounts"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"

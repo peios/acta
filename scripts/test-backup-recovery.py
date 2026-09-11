@@ -13,10 +13,10 @@ env = dict(os.environ, CGO_ENABLED='0', TMPDIR='/tmp')
 def run(args, **kwargs):
     subprocess.run(args, cwd=repo, env=env, check=True, **kwargs)
 try:
-    for package, target in [('build', 'acta2-server'), ('test', 'backup.test')]:
+    for package, target in [('build', 'acta-server'), ('test', 'backup.test')]:
         args = ['go', package]
         if package == 'test': args += ['-c']
-        args += ['-o', str(root/target), './cmd/acta2' if package=='build' else './internal/backup']
+        args += ['-o', str(root/target), './cmd/acta' if package=='build' else './internal/backup']
         run(args)
     run(['python3', 'scripts/seed-backup-test.py', str(root)])
     run(['docker', 'build', '-t', 'acta-backup-test', '-f', 'deploy/backup/test.Dockerfile', 'deploy/backup'])

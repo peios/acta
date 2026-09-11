@@ -14,10 +14,10 @@ services:
       - ${ACTA_UPDATE_DIR}:/run/acta-update-state:ro
   updater:
     profiles: [updates]
-    image: acta2-updater-local:${ACTA_VERSION:-development}
+    image: acta-updater-local:${ACTA_VERSION:-development}
     build: {context: ., target: updater}
     restart: unless-stopped
-    entrypoint: [/usr/local/bin/acta2-update]
+    entrypoint: [/usr/local/bin/acta-update]
     command: [-config, /etc/acta-update/config.json, serve]
     environment:
       DOCKER_CONFIG: /run/registry

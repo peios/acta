@@ -107,8 +107,8 @@ Ordinary API session, Origin and MFA protections apply. Read acknowledgements do
 not themselves create activity or increment the workspace task revision.
 
 ```sh
-acta2 task activity ACT-151
-acta2 task activity ACT-151 --cursor 123 --json
+acta task activity ACT-151
+acta task activity ACT-151 --cursor 123 --json
 ```
 
 MCP `task_activity` takes `task` and optional `cursor`, and uses the existing

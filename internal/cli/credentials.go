@@ -35,7 +35,7 @@ func (v Vault) Read(p Profile) (string, error) {
 	}
 	switch p.Storage {
 	case "keyring":
-		return v.Get("acta2", p.Credential)
+		return v.Get("acta", p.Credential)
 	case "file":
 		info, err := os.Lstat(path)
 		if err != nil {
@@ -54,7 +54,7 @@ func (v Vault) Save(token string, file bool) (Profile, string, error) {
 	p := Profile{Credential: uuid.NewString(), Storage: "keyring"}
 	notice := ""
 	if !file {
-		if err := v.Set("acta2", p.Credential, token); err == nil {
+		if err := v.Set("acta", p.Credential, token); err == nil {
 			return p, "", nil
 		}
 		notice = "System credential store unavailable; saving the credential in an owner-only plaintext file."
@@ -81,7 +81,7 @@ func (v Vault) Remove(p Profile) error {
 		return err
 	}
 	if p.Storage == "keyring" {
-		err = v.Delete("acta2", p.Credential)
+		err = v.Delete("acta", p.Credential)
 		if errors.Is(err, keyring.ErrNotFound) {
 			return nil
 		}

@@ -1,8 +1,8 @@
 package httpapi
 
 import (
-	"acta2/internal/auth"
-	"acta2/internal/documents"
+	"acta/internal/auth"
+	"acta/internal/documents"
 	"context"
 	"encoding/base64"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -41,7 +41,7 @@ func (h *Handler) documentTools(s *mcp.Server, grants []string) {
 		}) (documents.History, error) {
 			return h.management.DocumentVersions(ctx, "", in.ID, in.Before)
 		})
-		addTaskTool(s, tool("document_read", "Read up to 32 KiB of a document version. revision=0 selects latest; use the returned revision for subsequent chunks to avoid mixing versions. Text is UTF-8; binary is base64. next_offset=null means finished. For binary files prefer acta2 document download to a local file, then the provider's native file tools.", false), func(ctx context.Context, in struct {
+		addTaskTool(s, tool("document_read", "Read up to 32 KiB of a document version. revision=0 selects latest; use the returned revision for subsequent chunks to avoid mixing versions. Text is UTF-8; binary is base64. next_offset=null means finished. For binary files prefer acta document download to a local file, then the provider's native file tools.", false), func(ctx context.Context, in struct {
 			ID       string `json:"id"`
 			Revision int64  `json:"revision"`
 			Offset   int64  `json:"offset,omitempty"`
@@ -80,7 +80,7 @@ func (h *Handler) documentTools(s *mcp.Server, grants []string) {
 		})
 	}
 	if slices.Contains(grants, auth.MCPTasksWrite) {
-		addTaskTool(s, tool("document_save", "Create a task document (revision=0) or upload a new immutable version (id plus latest revision from document_get). Supply task, title, filename and exactly one of content (UTF-8) or base64. Inline payload is limited to 128 KiB; for larger/local files use acta2 document upload, up to 20 MiB, without encoding bytes into model context. Never silently retry a revision conflict or overwrite another agent's update. Documents are task-owned outputs; do not copy them into memories.", true), func(ctx context.Context, in struct {
+		addTaskTool(s, tool("document_save", "Create a task document (revision=0) or upload a new immutable version (id plus latest revision from document_get). Supply task, title, filename and exactly one of content (UTF-8) or base64. Inline payload is limited to 128 KiB; for larger/local files use acta document upload, up to 20 MiB, without encoding bytes into model context. Never silently retry a revision conflict or overwrite another agent's update. Documents are task-owned outputs; do not copy them into memories.", true), func(ctx context.Context, in struct {
 			ID       string  `json:"id,omitempty"`
 			Task     string  `json:"task"`
 			Title    string  `json:"title"`

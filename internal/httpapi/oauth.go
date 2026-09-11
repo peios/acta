@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"acta2/internal/auth"
+	"acta/internal/auth"
 )
 
 func (h *Handler) mcpResource() string { return h.config.PublicURL + "/mcp" }

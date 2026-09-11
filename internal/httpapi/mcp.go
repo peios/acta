@@ -7,9 +7,9 @@ import (
 	"slices"
 	"strings"
 
-	"acta2/internal/accounts"
-	"acta2/internal/auth"
-	"acta2/internal/version"
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/version"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

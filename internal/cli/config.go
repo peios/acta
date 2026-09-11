@@ -34,7 +34,7 @@ func configDir() (string, error) {
 		return dir, nil
 	}
 	dir, err := os.UserConfigDir()
-	return filepath.Join(dir, "acta2"), err
+	return filepath.Join(dir, "acta"), err
 }
 func (r Repository) Load() (Config, error) {
 	c := Config{Active: "default", Profiles: map[string]Profile{"default": {}}}
@@ -66,7 +66,7 @@ func (r Repository) Update(fn func(*Config) error) error {
 		return err
 	}
 	if !ok {
-		return errors.New("Another acta2 command is updating profiles; try again")
+		return errors.New("Another acta command is updating profiles; try again")
 	}
 	defer lock.Close()
 	c, err := r.Load()

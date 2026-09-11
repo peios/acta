@@ -1,7 +1,7 @@
 package hyperharness
 
 import (
-	"acta2/internal/threads"
+	"acta/internal/threads"
 	"context"
 )
 

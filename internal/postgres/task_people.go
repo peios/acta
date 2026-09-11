@@ -1,7 +1,7 @@
 package postgres
 
 import (
-	"acta2/internal/tasks"
+	"acta/internal/tasks"
 	"context"
 	"slices"
 	"strconv"

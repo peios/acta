@@ -1,9 +1,9 @@
 package integration
 
 import (
-	"acta2/internal/conversation"
-	"acta2/internal/threadadapter"
-	"acta2/internal/threads"
+	"acta/internal/conversation"
+	"acta/internal/threadadapter"
+	"acta/internal/threads"
 	"encoding/json"
 	"github.com/google/uuid"
 	"testing"

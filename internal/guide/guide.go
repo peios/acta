@@ -2,7 +2,7 @@
 package guide
 
 import (
-	"acta2/internal/accounts"
+	"acta/internal/accounts"
 	"errors"
 	"strings"
 	"unicode/utf8"

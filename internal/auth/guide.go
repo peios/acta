@@ -1,8 +1,8 @@
 package auth
 
 import (
-	"acta2/internal/accounts"
-	"acta2/internal/guide"
+	"acta/internal/accounts"
+	"acta/internal/guide"
 	"context"
 )
 

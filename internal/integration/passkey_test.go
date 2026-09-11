@@ -11,7 +11,7 @@ import (
 	"errors"
 	"testing"
 
-	"acta2/internal/auth"
+	"acta/internal/auth"
 	"github.com/fxamacker/cbor/v2"
 )
 

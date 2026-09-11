@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"acta2/internal/accounts"
-	ws "acta2/internal/workspaces"
+	"acta/internal/accounts"
+	ws "acta/internal/workspaces"
 	"github.com/google/uuid"
 )
 

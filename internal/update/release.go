@@ -14,7 +14,9 @@ import (
 )
 
 const Protocol = 1
-const Layout = 1
+
+// Layout 2 uses the final Acta executable, database and backup-stanza names.
+const Layout = 2
 
 type Release struct {
 	Version       string            `json:"version"`

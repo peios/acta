@@ -5,7 +5,7 @@ from pathlib import Path
 image="postgres:17@sha256:e38411452a464af89e5adadb8d223bf53b898d47d6ef918b2d58c08707350449"
 source=(Path(__file__).resolve().parents[1]/"internal/update/postgres.go").read_text()
 recovery=source.split("const prepareRecovery = `",1)[1].split("`",1)[0]
-recovery=recovery.replace("pgbackrest --config=/var/lib/acta-backup/config/pgbackrest.conf --stanza=acta2 archive-get", "cp /archive/").replace('cp /archive/ "%f" "%p"', 'cp "/archive/%f" "%p"')
+recovery=recovery.replace("pgbackrest --config=/var/lib/acta-backup/config/pgbackrest.conf --stanza=acta archive-get", "cp /archive/").replace('cp /archive/ "%f" "%p"', 'cp "/archive/%f" "%p"')
 n='acta-timeline-'+uuid.uuid4().hex[:8];v=n+'-data';s=n+'-snapshot';a=n+'-archive'
 def run(*args):return subprocess.check_output(['docker',*args],text=True).strip()
 def sql(q):return run('exec','-u','postgres',n,'psql','-h','127.0.0.1','-At','-c',q)

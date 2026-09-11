@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"acta2/internal/accounts"
+	"acta/internal/accounts"
 )
 
 // SecurityStore serializes security changes and session issuance by locking the

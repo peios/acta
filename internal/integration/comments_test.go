@@ -1,11 +1,11 @@
 package integration
 
 import (
-	"acta2/internal/activity"
-	"acta2/internal/auth"
-	"acta2/internal/comments"
-	"acta2/internal/tasks"
-	ws "acta2/internal/workspaces"
+	"acta/internal/activity"
+	"acta/internal/auth"
+	"acta/internal/comments"
+	"acta/internal/tasks"
+	ws "acta/internal/workspaces"
 	"errors"
 	"fmt"
 	"github.com/google/uuid"

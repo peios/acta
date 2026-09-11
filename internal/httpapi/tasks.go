@@ -1,7 +1,7 @@
 package httpapi
 
 import (
-	"acta2/internal/tasks"
+	"acta/internal/tasks"
 	"net/http"
 	"strconv"
 	"time"

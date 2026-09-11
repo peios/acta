@@ -1,8 +1,8 @@
 package integration
 
 import (
-	"acta2/internal/auth"
-	"acta2/internal/tasks"
+	"acta/internal/auth"
+	"acta/internal/tasks"
 	"errors"
 	"sync"
 	"testing"

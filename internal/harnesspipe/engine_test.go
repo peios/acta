@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"acta2/internal/localstate"
+	"acta/internal/localstate"
 	"github.com/google/uuid"
 )
 

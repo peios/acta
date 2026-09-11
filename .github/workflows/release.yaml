@@ -1,4 +1,4 @@
-name: Publish isolated Acta 2 prerelease
+name: Publish Acta prerelease
 on:
   workflow_dispatch:
     inputs:
@@ -15,11 +15,11 @@ permissions:
   contents: write
   packages: write
 concurrency:
-  group: acta2-release
+  group: acta-release
   cancel-in-progress: false
 jobs:
   release:
-    if: github.repository == 'peios/acta2' && github.ref == 'refs/heads/main'
+    if: github.repository == 'peios/acta' && github.ref == 'refs/heads/main' && vars.ACTA_RELEASE_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -58,11 +58,12 @@ jobs:
       - name: Package release
         env:
           VERSION: ${{ inputs.version }}
+          ACTA_RELEASE_ENABLED: ${{ vars.ACTA_RELEASE_ENABLED }}
         run: |
           python3 scripts/package-release.py --repository "$GITHUB_REPOSITORY" --version "$VERSION" --sequence "$GITHUB_RUN_NUMBER" --notes /tmp/release-notes --output /tmp/manifest.json
-          docker build --target build --build-arg "ACTA_VERSION=$VERSION" -t acta2-release-tools .
-          id=$(docker create acta2-release-tools)
-          docker cp "$id:/out/acta2-update" /tmp/acta2-update
+          docker build --target build --build-arg "ACTA_VERSION=$VERSION" -t acta-release-tools .
+          id=$(docker create acta-release-tools)
+          docker cp "$id:/out/acta-update" /tmp/acta-update
           docker rm "$id"
       - name: Sign the manifest
         env:
@@ -71,8 +72,8 @@ jobs:
           umask 077
           printf '%s' "$SIGNING_SEED" > /tmp/release-key
           trap 'rm -f /tmp/release-key' EXIT
-          /tmp/acta2-update -key /tmp/release-key -input /tmp/manifest.json -output /tmp/acta-release.json sign
-          /tmp/acta2-update -public-key deploy/update/release.pub -input /tmp/acta-release.json verify
+          /tmp/acta-update -key /tmp/release-key -input /tmp/manifest.json -output /tmp/acta-release.json sign
+          /tmp/acta-update -public-key deploy/update/release.pub -input /tmp/acta-release.json verify
       - name: Exercise the real update and failed migration recovery
         if: inputs.previous_version != ''
         env:
@@ -81,14 +82,12 @@ jobs:
         run: |
           mkdir -p /tmp/previous-release bin
           gh release download "$PREVIOUS" --repo "$GITHUB_REPOSITORY" --pattern acta-release.json --dir /tmp/previous-release
-          cp /tmp/acta2-update bin/acta2-update
+          cp /tmp/acta-update bin/acta-update
           python3 scripts/test-update-timeline.py
-          extra=()
-          if [ "$PREVIOUS" = "v0.1.0-preview.1" ]; then extra+=(--bootstrap-controller); fi
-          python3 scripts/test-update-compose.py "${extra[@]}" --current /tmp/previous-release/acta-release.json --target /tmp/acta-release.json
+          python3 scripts/test-update-compose.py --current /tmp/previous-release/acta-release.json --target /tmp/acta-release.json
       - name: Publish prerelease after every image and signature is ready
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ inputs.version }}
         run: |
-          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "$VERSION" --notes-file /tmp/release-notes /tmp/acta-release.json /tmp/acta2-update
+          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "$VERSION" --notes-file /tmp/release-notes /tmp/acta-release.json /tmp/acta-update

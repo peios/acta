@@ -1,7 +1,7 @@
 package httpapi
 
 import (
-	"acta2/internal/memories"
+	"acta/internal/memories"
 	"net/http"
 )
 

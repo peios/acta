@@ -1,8 +1,8 @@
 package httpapi
 
 import (
-	"acta2/internal/guide"
-	"acta2/learn"
+	"acta/internal/guide"
+	"acta/learn"
 	"net/http"
 )
 

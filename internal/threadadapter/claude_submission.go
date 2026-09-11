@@ -1,6 +1,6 @@
 package threadadapter
 
-import "acta2/internal/threads"
+import "acta/internal/threads"
 
 // Local slash commands may acknowledge their UUID without ever echoing the
 // submitted text. Only settle a durable Acta send belonging to this exact run.

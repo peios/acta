@@ -37,7 +37,7 @@ activity entry and notifies its followers through existing notification rules.
   archived matches. The cursor binds this option along with query/workspace.
 - MCP `task_archive` / `task_restore` take `task` and `version`, under `tasks.write`.
   `tasks_list` takes optional `archived`; `task_search` takes `include_archived`.
-- CLI: `acta2 task archive ACT-12 --version 1`, `task restore ACT-12 --version 2`,
+- CLI: `acta task archive ACT-12 --version 1`, `task restore ACT-12 --version 2`,
   `task list -w acta --archived`, `task search query --include-archived`.
 
 The separate workspace Archived view keeps independent temporary filters and

@@ -1,9 +1,9 @@
 package integration
 
 import (
-	"acta2/internal/auth"
-	"acta2/internal/tasks"
-	ws "acta2/internal/workspaces"
+	"acta/internal/auth"
+	"acta/internal/tasks"
+	ws "acta/internal/workspaces"
 	"encoding/json"
 	"errors"
 	"github.com/google/uuid"

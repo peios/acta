@@ -1,7 +1,7 @@
 package httpapi
 
 import (
-	"acta2/internal/config"
+	"acta/internal/config"
 	"net/http/httptest"
 	"strings"
 	"testing"

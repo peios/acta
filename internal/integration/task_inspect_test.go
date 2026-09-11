@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"acta2/internal/tasks"
+	"acta/internal/tasks"
 )
 
 func TestTaskInspectionPaginatesDirectChildren(t *testing.T) {

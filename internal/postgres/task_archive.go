@@ -1,9 +1,9 @@
 package postgres
 
 import (
-	"acta2/internal/accounts"
-	"acta2/internal/activity"
-	"acta2/internal/tasks"
+	"acta/internal/accounts"
+	"acta/internal/activity"
+	"acta/internal/tasks"
 	"context"
 	"github.com/google/uuid"
 )

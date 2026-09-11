@@ -19,7 +19,7 @@
   let error = $state("");
   onMount(() => {
     try {
-      cwd = localStorage.getItem("acta2.thread.cwd") || "";
+      cwd = localStorage.getItem("acta.thread.cwd") || "";
     } catch {}
     return watchHarnesses((next) => {
       harnesses = next;
@@ -82,7 +82,7 @@
         cwd: cwd.trim(),
       });
       try {
-        localStorage.setItem("acta2.thread.cwd", cwd.trim());
+        localStorage.setItem("acta.thread.cwd", cwd.trim());
       } catch {}
       threads.pending = { id, connection, started: Date.now() };
       threads.notice = "";

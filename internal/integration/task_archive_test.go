@@ -1,11 +1,11 @@
 package integration
 
 import (
-	"acta2/internal/accounts"
-	"acta2/internal/auth"
-	"acta2/internal/comments"
-	"acta2/internal/documents"
-	"acta2/internal/tasks"
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/comments"
+	"acta/internal/documents"
+	"acta/internal/tasks"
 	"errors"
 	"sync"
 	"testing"
