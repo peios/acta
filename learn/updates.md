@@ -27,8 +27,9 @@ entry uses the `acta-server` image package. Reusing that package was explicitly
 approved after disabling the only old installation's auto-updater.
 Publishing remains disabled until the GitHub repository variable
 `ACTA_RELEASE_ENABLED=true` is explicitly set after the repository handover.
-The packaging script requires the same environment gate. Workflow dispatch still
-publishes prereleases only; enabling a stable release is part of release validation.
+The packaging script requires the same environment gate. Workflow dispatch accepts
+stable and prerelease versions. Stable releases are marked latest only after the
+source checks, signed image validation and update/recovery rehearsal pass.
 
 Deployment layout 2 uses the final executable, database and backup-stanza names.
 The earlier development previews use layout 1 and cannot be updated in place by
@@ -164,9 +165,14 @@ are never GitHub releases. `KEEP_UPDATE_TEST=1` retains the test installation fo
 inspection; otherwise only its own containers and volumes are removed.
 
 The release workflow accepts a `previous_version` to run this real recovery test
-before publishing the target release. A first bootstrap prerelease has no previous
-release; every subsequent release must specify its predecessor. The workflow rejects a
-missing predecessor once a bootstrap release exists.
+before publishing the target release. Every stable release requires a compatible
+predecessor. The sole bootstrap exception is `v0.1.0-rc.1`, the first layout-2
+candidate: `--bootstrap` verifies its production signature, then uses a disposable
+test signature and lower sequence with the same image set as its rehearsal
+baseline. This tests a fresh installation, update execution and both recovery
+paths; it does not claim compatibility with a previous release. Stable `v0.1.0`
+must subsequently pass a real candidate-to-stable upgrade. Existing tags and
+release versions cannot be overwritten through the workflow.
 
 References: [Docker volumes](https://docs.docker.com/engine/storage/volumes/),
 [Compose up](https://docs.docker.com/reference/cli/docker/compose/up/),

@@ -30,8 +30,12 @@ Publishing requires the repository to be `peios/acta`, the main branch and the
 explicit repository variable `ACTA_RELEASE_ENABLED=true`. The packaging script
 requires the corresponding environment variable too. Leave the gate unset until
 the repository handover, signing key, registry permissions and final image names
-have been checked. Stable release publication and release-to-release validation
-remain the next release slice; the workflow currently permits prereleases only.
+have been checked. The handover is complete: the old repository is
+`peios/acta-legacy`, and the new repository is `peios/acta`. The release workflow
+permits stable versions only with a compatible predecessor and successful real
+update/recovery validation. `v0.1.0-rc.1` is the sole bootstrap exception: it runs
+the recovery suite using a disposable same-image baseline for layout 2. Stable
+`v0.1.0` must then pass a real upgrade from that candidate.
 
 The existing checkout directory can retain its development name until repository
 handover. Filesystem location does not determine product or release identity.
