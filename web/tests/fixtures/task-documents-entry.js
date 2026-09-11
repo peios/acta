@@ -1,3 +1,4 @@
+import "./mobile-audit-support.js";
 import { mount } from "svelte";
 import TaskDocuments from "../../src/lib/components/tasks/TaskDocuments.svelte";
 const target = document.getElementById("app");

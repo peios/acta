@@ -175,3 +175,16 @@ See [Thread names](thread-names.md) for renaming and local metadata persistence.
 
 See [Agent notifications](thread-notifications.md) for unread updates, browser
 alerts, subagent attention and acknowledgement guarantees.
+
+## Mobile composer
+
+On touch devices, opening a conversation does not automatically focus the composer
+and open the keyboard. Enter inserts a new line; tap Send or use Ctrl/Cmd+Enter
+to send. Desktop Enter-to-send and Shift+Enter for a new line are unchanged.
+The composer stays within the visible viewport above the software keyboard.
+Draft text continues to be saved as it changes, so switching apps or reloading
+does not require retyping it.
+
+The effort slider has a 44px touch region on coarse-pointer devices while keeping
+its compact visual track. Approval, question and model popups remain constrained
+to the visible viewport above the software keyboard.

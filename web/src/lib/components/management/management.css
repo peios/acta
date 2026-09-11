@@ -157,3 +157,13 @@
     flex-wrap: wrap;
   }
 }
+
+@media (max-width: 759px) {
+  .management-dialog {
+    position: fixed;
+    top: calc(var(--mobile-viewport-top, 0px) + 16px);
+    bottom: auto;
+    margin: 0 auto;
+    max-height: calc(var(--mobile-viewport-height, 100dvh) - 32px);
+  }
+}

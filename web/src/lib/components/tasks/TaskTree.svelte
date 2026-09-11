@@ -24,6 +24,7 @@
   } from "$lib/task-table-layout.js";
   import TaskTableHeader from "./TaskTableHeader.svelte";
   import TaskTree from "./TaskTree.svelte";
+  import type { TouchDragOptions } from "$lib/touch-drag";
   import TaskBoardCard from "./TaskBoardCard.svelte";
   import TaskSubtaskRow from "./TaskSubtaskRow.svelte";
   let {
@@ -56,6 +57,8 @@
     movingID = "",
     oncarddrag = () => {},
     oncarddragend = () => {},
+    touchDragFor,
+    oncardmove,
     oncount = () => {},
   }: {
     archived?: boolean;
@@ -87,6 +90,8 @@
     movingID?: string;
     oncarddrag?: (event: DragEvent, task: Task) => void;
     oncarddragend?: () => void;
+    touchDragFor?: (task: Task) => TouchDragOptions;
+    oncardmove?: (task: Task) => void;
     oncount?: (total: number | null) => void;
   } = $props();
   let rows = $state<Task[]>([]),
@@ -407,6 +412,8 @@
         moving={movingID === task.id}
         ondrag={oncarddrag}
         ondragend={oncarddragend}
+        ontouchdrag={touchDragFor?.(task)}
+        onmove={oncardmove}
       />{/each}
     {@render feedback()}
   </div>

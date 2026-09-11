@@ -1,3 +1,4 @@
+import { checkAccessibility } from "./mobile-accessibility.mjs";
 import { build } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { mkdtempSync, rmSync, readFileSync, readdirSync } from "node:fs";
@@ -5,9 +6,10 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import assert from "node:assert/strict";
-const { chromium } = await import(
+const { chromium, firefox, webkit } = await import(
   process.env.ACTA_PLAYWRIGHT_MODULE || "playwright"
 );
+const mobile = process.env.ACTA_MOBILE_AUDIT === "1";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const out = mkdtempSync(join(tmpdir(), "acta-documents-test-"));
 await build({
@@ -33,13 +35,19 @@ await build({
     cssCodeSplit: false,
   },
 });
-const browser = await chromium.launch({
+const browser = await { chromium, firefox, webkit }[
+  process.env.ACTA_MOBILE_BROWSER || "chromium"
+].launch({
   headless: true,
-  executablePath: process.env.ACTA_CHROMIUM_EXECUTABLE || undefined,
+  executablePath:
+    process.env.ACTA_MOBILE_EXECUTABLE ||
+    process.env.ACTA_CHROMIUM_EXECUTABLE ||
+    undefined,
 });
 try {
   const page = await browser.newPage({
-    viewport: { width: 1100, height: 820 },
+    viewport: { width: mobile ? 390 : 1100, height: 820 },
+    hasTouch: mobile,
   });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -64,7 +72,7 @@ try {
     if (!u.pathname.startsWith("/api/"))
       return route.fulfill({
         contentType: "text/html",
-        body: '<div id="app"></div>',
+        body: '<!doctype html><html lang="en"><head><title>Acta documents audit</title></head><body><div id="app"></div></body></html>',
       });
     if (u.pathname === "/api/tasks/review/documents") {
       if (req.method() === "POST") {
@@ -97,7 +105,9 @@ try {
     }
     throw new Error(`Unexpected request ${u.pathname}`);
   });
-  await page.goto("http://localhost:8081/_review/documents");
+  await page.goto(
+    "http://localhost:8081/_review/documents" + (mobile ? "?mobile-audit" : ""),
+  );
   await page.addStyleTag({
     content:
       readFileSync(
@@ -106,8 +116,10 @@ try {
           readdirSync(out).find((f) => f.endsWith(".css")),
         ),
         "utf8",
-      ) +
-      `body{background:#202020;color:#ddd;font:15px system-ui;margin:40px;--muted:#aaa;--border:#3b3b3b;--surface:#292929;--text:#ddd;--accent:#b6c9e0}dialog{background:#252525;color:#ddd;border:1px solid #444;border-radius:16px;padding:24px}button,input{font:inherit}button{cursor:pointer}dialog::backdrop{background:#0008}`,
+      ) + `body{margin:${mobile ? 12 : 40}px}`,
+  });
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = "dark";
   });
   await page.addScriptTag({ path: join(out, "fixture.js") });
   await page
@@ -117,6 +129,27 @@ try {
     name: "Upload document",
     exact: true,
   });
+  if (mobile) {
+    await page.evaluate(() => {
+      Object.defineProperty(visualViewport, "height", {
+        configurable: true,
+        value: 380,
+      });
+      visualViewport.dispatchEvent(new Event("resize"));
+    });
+    await page.waitForTimeout(100);
+    const bounds = await page
+      .getByRole("dialog", { name: "Upload document", exact: true })
+      .boundingBox();
+    assert.ok(
+      bounds.y >= 0 && bounds.y + bounds.height <= 380,
+      `dialog exceeds keyboard viewport: ${JSON.stringify(bounds)}`,
+    );
+    await page.evaluate(() => {
+      delete visualViewport.height;
+      visualViewport.dispatchEvent(new Event("resize"));
+    });
+  }
   await upload.locator("input[type=file]").setInputFiles({
     name: "brief.md",
     mimeType: "text/markdown",
@@ -172,6 +205,7 @@ try {
     .getByRole("button", { name: "Delete document", exact: true })
     .click();
   await page.getByText("No documents yet", { exact: true }).waitFor();
+  await checkAccessibility(page, "documents");
   assert.deepEqual(errors, []);
   console.log(
     "PASS documents: multipart uploads, versions, Markdown preview, history, deletion and mobile layout",

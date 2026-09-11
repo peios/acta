@@ -1,3 +1,4 @@
+import { checkAccessibility } from "./mobile-accessibility.mjs";
 import { build } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
@@ -5,9 +6,10 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import assert from "node:assert/strict";
-const { chromium, firefox } = await import(
+const { chromium, firefox, webkit } = await import(
   process.env.ACTA_PLAYWRIGHT_MODULE || "playwright"
 );
+const mobile = process.env.ACTA_MOBILE_AUDIT === "1";
 const root = fileURLToPath(new URL("../", import.meta.url)),
   out = mkdtempSync(join(tmpdir(), "acta-search-"));
 await build({
@@ -29,12 +31,16 @@ await build({
     cssCodeSplit: false,
   },
 });
-const browser = await (
-  process.env.ACTA_SEARCH_BROWSER === "firefox" ? firefox : chromium
-).launch({ headless: true });
+const browser = await { chromium, firefox, webkit }[
+  process.env.ACTA_SEARCH_BROWSER || "chromium"
+].launch({
+  headless: true,
+  executablePath: process.env.ACTA_MOBILE_EXECUTABLE || undefined,
+});
 try {
   const context = await browser.newContext({
-    viewport: { width: 1100, height: 800 },
+    viewport: { width: mobile ? 390 : 1100, height: 800 },
+    hasTouch: mobile,
   });
   let fail = false,
     queries = [];
@@ -125,7 +131,7 @@ try {
     }
     if (url.pathname === "/fixture.js")
       return route.fulfill({
-        contentType: "text/javascript",
+        contentType: "text/javascript; charset=utf-8",
         body: readFileSync(join(out, "fixture.js")),
       });
     if (url.pathname === "/fixture.css")
@@ -135,12 +141,12 @@ try {
       });
     return route.fulfill({
       contentType: "text/html",
-      body: '<html><head><meta charset="utf-8"><link rel="stylesheet" href="/fixture.css"></head><body><div id="app"></div><script src="/fixture.js"></script></body></html>',
+      body: '<html lang="en"><head><title>Acta mobile audit</title><meta charset="utf-8"><link rel="stylesheet" href="/fixture.css"></head><body><div id="app"></div><script src="/fixture.js"></script></body></html>',
     });
   });
   const page = await context.newPage();
   page.on("pageerror", (e) => errors.push(String(e)));
-  await page.goto("http://localhost:8081");
+  await page.goto("http://localhost:8081" + (mobile ? "?mobile-audit" : ""));
   await page.getByRole("button", { name: "Search tasks", exact: true }).click();
   const input = page.getByRole("combobox", { name: "Search tasks" });
   await input.fill("search");
@@ -188,6 +194,27 @@ try {
   await page.getByRole("button", { name: "Try again" }).click();
   await page.getByRole("option").nth(1).waitFor();
   await page.setViewportSize({ width: 390, height: 780 });
+  if (mobile) {
+    await page.evaluate(() => {
+      Object.defineProperty(visualViewport, "height", {
+        configurable: true,
+        value: 380,
+      });
+      visualViewport.dispatchEvent(new Event("resize"));
+    });
+    await page.waitForTimeout(100);
+    const bounds = await page
+      .getByRole("dialog", { name: "Search tasks", exact: true })
+      .boundingBox();
+    assert.ok(
+      bounds.y >= 0 && bounds.y + bounds.height <= 380,
+      `dialog exceeds keyboard viewport: ${JSON.stringify(bounds)}`,
+    );
+    await page.evaluate(() => {
+      delete visualViewport.height;
+      visualViewport.dispatchEvent(new Event("resize"));
+    });
+  }
   await page.screenshot({ path: "/tmp/acta98-search-mobile.png" });
   assert.ok(
     await page.evaluate(
@@ -203,6 +230,7 @@ try {
   await page.waitForFunction(
     () => document.activeElement?.getAttribute("data-read-id") === "old-reply",
   );
+  await checkAccessibility(page, "task-search");
   assert.deepEqual(errors, []);
   console.log(
     "PASS: search results, escaped highlights, keyboard comment selection, pagination, workspace reset, empty/error recovery, mobile fit, Escape and older reply focus",

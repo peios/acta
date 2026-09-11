@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { useAccount } from "$lib/account-context";
   import { tick } from "svelte";
   import { errorMessage } from "$lib/api";
   import {
@@ -13,6 +14,15 @@
     oncreated,
   }: { workspace: string; config: TaskConfig; oncreated: (t: Task) => void } =
     $props();
+  const account = useAccount();
+  let draftKey = "";
+  function saveDraft() {
+    if (!draftKey) return;
+    try {
+      if (title) localStorage.setItem(draftKey, title);
+      else localStorage.removeItem(draftKey);
+    } catch {}
+  }
   let dialog: HTMLDialogElement;
   let title = $state(""),
     parent = $state(""),
@@ -21,7 +31,13 @@
   let input: HTMLInputElement;
   export async function open(p = "") {
     parent = p;
+    draftKey = account?.account.id
+      ? `acta.task-draft:${account.account.id}:${workspace}:${config.board ?? "tasks"}:${p}`
+      : "";
     title = "";
+    try {
+      if (draftKey) title = localStorage.getItem(draftKey) ?? "";
+    } catch {}
     error = "";
     dialog.showModal();
     await tick();
@@ -36,6 +52,8 @@
         parent_id: parent,
         board: parent ? undefined : (config.board ?? "tasks"),
       });
+      title = "";
+      saveDraft();
       dialog.close();
       taskChanged();
       oncreated(t);
@@ -72,6 +90,10 @@
         id="new-task-title"
         bind:this={input}
         bind:value={title}
+        oninput={(event) => {
+          title = event.currentTarget.value;
+          saveDraft();
+        }}
         maxlength="300"
         required
         disabled={busy}

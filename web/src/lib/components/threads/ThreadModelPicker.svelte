@@ -548,4 +548,13 @@
       transition: none;
     }
   }
+  @media (pointer: coarse) {
+    .effort-slider,
+    .effort-slider input {
+      height: 44px;
+    }
+    .slider-track {
+      top: 20px;
+    }
+  }
 </style>

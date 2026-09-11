@@ -22,6 +22,10 @@ a separate workspace-name header or tagline. On mobile, the navigation button
 sits inline with Tasks, Search and Create task. It is hidden while a task is open.
 The mobile toolbar uses a tighter left inset. Its sidebar slides in and out with
 a short backdrop fade; reduced-motion preferences disable these transitions.
+On screens up to 720px wide, swipe right from the leftmost 28px to open navigation,
+or swipe left in the open drawer to close it. A deliberate horizontal swipe is
+required; vertical scrolling, form fields and other open dialogs/popovers retain
+their own gestures. The navigation button and backdrop remain available.
 Search sits to the left of the plus-icon Create task button, with its magnifier
 integrated at the right of a softly filled field. The icon stays anchored beside
 Create task while the input expands to its left. In narrow task lists, the magnifying-glass
@@ -190,9 +194,25 @@ to change status. The existing field-version check rejects conflicting edits;
 failed moves leave the task in its original column, show the error, and refresh
 the data. Successful moves refresh through the live task revision flow. A board
 with no grouping has no status-changing drag. There is no manual card ordering:
-the preset's sort determines order within each column. Keyboard and touch users
-can open a card and use the task's status picker. Switching between Table and
-Board preserves settings and browser-local table column layouts.
+the preset's sort determines order within each column. Keyboard users can open
+a card and use its status, property or assignment picker. Switching between Table
+and Board preserves settings and browser-local table column layouts.
+
+On mobile (up to 720px), horizontal board scrolling snaps to each column, with a
+small glimpse of the next column. Touch users can hold a card for 350ms to pick
+it up, or drag immediately using its six-dot handle. Moving before the hold
+completes retains native scrolling; tapping opens the task normally. A floating
+preview identifies the task and destination, and the destination column is
+highlighted. Holding near either horizontal edge scrolls to other columns;
+vertical edge scrolling keeps longer boards accessible. Snapping is disabled
+only while dragging. Releasing over an available different column applies the
+same version-checked move as desktop dragging. Releasing elsewhere, cancelling
+the touch or leaving the page does not move the task. Drag handles are absent
+without edit access or on ungrouped boards. A card's three-dot **Move to…**
+control opens a searchable destination list. The current column is marked and
+unavailable destinations cannot be selected. It uses the same version-checked
+status, property or assignment move as dragging, including conflict recovery.
+Task pickers remain available on ungrouped boards and in task details.
 
 In assignment grouping, dragging changes only the source assignment. In Assignee
 view, it removes assignments to the source human and all their agents. In Agents
@@ -570,3 +590,25 @@ The database owns status-to-board and board-to-default-status foreign keys.
 Existing workspaces, statuses and preset IDs are retained by migration 040;
 Backlog is seeded without changing existing task membership. New workspaces
 receive both workflows in their creation transaction.
+
+## Mobile forms and task navigation
+
+On touch devices, buttons and menu summaries have at least 44px touch targets,
+and text fields use at least 16px text to avoid automatic focus zoom. Phone layouts
+follow the visual viewport so the software keyboard does not cover the composer
+or task dialog. Pinch zoom remains available.
+
+Task details use a full-screen modal on phones with a visible **Back** control.
+The board remains mounted at its existing horizontal and vertical scroll position
+beneath the modal, and becomes available again on closing it. The URL still
+identifies the selected task, including browser back/forward navigation.
+
+The create-task title is saved as it changes, separately for each signed-in
+account, workspace, board and parent task. Closing the dialog or reloading the
+page preserves that draft; successful creation clears it. Existing comment and
+description draft recovery continues to apply.
+
+Search also follows the visible viewport while the keyboard is open. Filter
+checkbox rows have at least 44px touch targets. Leaving the description editor
+closes it after the destination click is delivered, so tapping another field or
+the comment composer works on the first tap.

@@ -117,10 +117,12 @@
           await tick();
         },
         stress: async () => {
+          next = 1000;
           items = Array.from({ length: 1000 }, (_, i) => row(i));
           await tick();
         },
         reset: async () => {
+          next = 40;
           items = Array.from({ length: 40 }, (_, i) => row(i));
           await tick();
         },
@@ -146,7 +148,7 @@
 <style>
   .test {
     height: 520px;
-    width: 720px;
+    width: min(720px, 100vw);
     display: flex;
     flex-direction: column;
     padding: 16px;
