@@ -51,6 +51,8 @@
   import ThemeToggle from "../ThemeToggle.svelte";
   import { version } from "../../../../package.json";
 
+  import CodeSidebar from "../code/CodeSidebar.svelte";
+  import HostPicker from "../code/HostPicker.svelte";
   import WorkspaceSwitcher from "../workspaces/WorkspaceSwitcher.svelte";
   import { useWorkspace, workspacePath, canWorkspace } from "$lib/workspaces";
   const workspace = useWorkspace();
@@ -59,6 +61,7 @@
     scope,
     onScope,
     onSearch = () => {},
+    onCodeNavigate = () => {},
     onLogout,
     onToggle,
     collapsed = false,
@@ -66,9 +69,10 @@
     busy = false,
   }: {
     account: Account;
-    scope: "site" | "user" | "workspace" | "agents";
-    onScope: (scope: "site" | "user" | "workspace" | "agents") => void;
+    scope: "site" | "user" | "workspace" | "agents" | "code";
+    onScope: (scope: "site" | "user" | "workspace" | "agents" | "code") => void;
     onSearch?: () => void;
+    onCodeNavigate?: () => void;
     onLogout: () => void;
     onToggle: () => void;
     collapsed?: boolean;
@@ -92,7 +96,7 @@
         : "Collapse sidebar",
   );
 
-  function choose(next: "site" | "user" | "workspace" | "agents") {
+  function choose(next: "site" | "user" | "workspace" | "agents" | "code") {
     menu?.hidePopover();
     onScope(next);
   }
@@ -137,16 +141,21 @@
 </script>
 
 <svelte:window onresize={() => menu?.hidePopover()} />
-<div class="sidebar-inner" class:collapsed>
+<div class="sidebar-inner" class:collapsed class:code-scope={scope === "code"}>
   <div class="sidebar-heading">
-    {#if scope === "workspace"}{#if !collapsed}<WorkspaceSwitcher
-        />{/if}{:else}<p class="scope-label">
+    {#if scope === "workspace"}
+      {#if !collapsed}<WorkspaceSwitcher />{/if}
+    {:else if scope === "code"}
+      {#if !collapsed}<HostPicker />{/if}
+    {:else}
+      <p class="scope-label">
         {scope === "agents"
           ? "My Agents"
           : scope === "site"
             ? "Site settings"
             : "User settings"}
-      </p>{/if}
+      </p>
+    {/if}
     <button
       class="collapse-toggle"
       type="button"
@@ -179,11 +188,16 @@
   </div>
   <nav
     class="scope-navigation"
-    aria-label={scope === "workspace"
-      ? "Workspace navigation"
-      : scope === "site"
-        ? "Site settings navigation"
-        : "User settings navigation"}
+    class:code-navigation={scope === "code"}
+    aria-label={scope === "code"
+      ? "Code navigation"
+      : scope === "agents"
+        ? "Agent navigation"
+        : scope === "workspace"
+          ? "Workspace navigation"
+          : scope === "site"
+            ? "Site settings navigation"
+            : "User settings navigation"}
   >
     <button
       class="scope-button search-button"
@@ -204,7 +218,9 @@
         aria-hidden="true">Search</span
       ></button
     >
-    {#if scope === "agents"}
+    {#if scope === "code"}
+      <CodeSidebar {collapsed} onNavigate={onCodeNavigate} />
+    {:else if scope === "agents"}
       <button
         class="scope-button"
         aria-label="New thread"
@@ -636,6 +652,30 @@
           >My Agents</span
         ></button
       >
+      <button
+        class="scope-button"
+        class:active={scope === "code"}
+        aria-label="Code"
+        aria-current={scope === "code" ? "page" : undefined}
+        onclick={() => choose("code")}
+      >
+        <svg
+          width="19"
+          height="19"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+          ><path d="m8 6-6 6 6 6m8-12 6 6-6 6M14 4l-4 16" /></svg
+        >
+        <span class="scope-name">Code</span><span
+          class="rail-tooltip"
+          aria-hidden="true">Code</span
+        >
+      </button>
       {#if canOpenSite(account)}
         <button
           class="scope-button"
@@ -837,6 +877,22 @@
   .scope-navigation {
     flex: 1;
     padding: 0 12px;
+  }
+  .code-navigation {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .code-navigation .search-button {
+    flex-shrink: 0;
+  }
+  .code-scope .sidebar-heading,
+  .code-scope .sidebar-bottom {
+    flex-shrink: 0;
+  }
+  .code-scope .sidebar-bottom {
+    margin-top: 16px;
   }
   .scope-label {
     margin: 0;

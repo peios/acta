@@ -262,6 +262,9 @@ func (a *App) authenticatedClient() (*client.Client, error) {
 	if e != nil {
 		return nil, e
 	}
+	return a.clientForProfile(p)
+}
+func (a *App) clientForProfile(p Profile) (*client.Client, error) {
 	if p.URL == "" {
 		return nil, errors.New("No server configured; run acta login <server>")
 	}

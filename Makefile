@@ -13,6 +13,7 @@ frontend:
 build: frontend
 	go build -trimpath -o bin/acta-server ./cmd/acta
 	go build -trimpath -o bin/acta ./cmd/acta-cli
+	go build -trimpath -o bin/acta-code-host ./cmd/acta-code-host
 	go build -trimpath -o bin/acta-backup ./cmd/acta-backup
 	go build -trimpath -o bin/acta-update ./cmd/acta-update
 

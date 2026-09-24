@@ -10,6 +10,8 @@
   import { provideNotifications } from "$lib/notifications.svelte";
   import { provideThreads } from "$lib/threads.svelte";
   provideThreads();
+  import { provideCodePreview } from "$lib/code-preview.svelte";
+  provideCodePreview();
   import TaskSearch from "../tasks/TaskSearch.svelte";
   import ThreadTaskViewer from "../tasks/ThreadTaskViewer.svelte";
   let search = $state<TaskSearch>();
@@ -42,13 +44,32 @@
   import { canOpenUsers, checkPermission } from "$lib/permissions";
   const workspace = useWorkspace();
   const scope = $derived(
-    page.url.pathname.startsWith("/my-agents")
-      ? "agents"
-      : page.url.pathname.startsWith("/workspaces")
-        ? "workspace"
-        : page.url.pathname.startsWith("/user-settings/")
-          ? "user"
-          : "site",
+    page.url.pathname === "/code" || page.url.pathname.startsWith("/code/")
+      ? "code"
+      : page.url.pathname.startsWith("/my-agents")
+        ? "agents"
+        : page.url.pathname.startsWith("/workspaces")
+          ? "workspace"
+          : page.url.pathname.startsWith("/user-settings/")
+            ? "user"
+            : "site",
+  );
+  import { provideCodeHosts } from "$lib/code-hosts.svelte";
+  import { provideCodebases } from "$lib/codebases.svelte";
+  import { provideCodeThreads } from "$lib/code-threads.svelte";
+  const codeHosts = provideCodeHosts(
+    () => account,
+    () => scope === "code",
+  );
+  const codebases = provideCodebases(
+    () => account,
+    codeHosts,
+    () => scope === "code",
+  );
+  provideCodeThreads(
+    () => account,
+    codebases,
+    () => scope === "code",
   );
   let collapsed = $state(false);
   let sidebarWidth = $state(SIDEBAR_DEFAULT);
@@ -63,54 +84,60 @@
   let content = $state<HTMLElement>();
   const taskPage = $derived(/^\/workspaces\/[^/]+\/?$/.test(page.url.pathname));
   const title = $derived(
-    scope === "agents"
-      ? "My Agents"
-      : scope === "workspace"
-        ? page.url.pathname.endsWith("/settings/details")
-          ? "Workspace details"
-          : page.url.pathname.endsWith("/settings/members")
-            ? "Members"
-            : (workspace.workspace?.name ?? "Workspaces")
-        : scope === "site"
-          ? page.url.pathname.startsWith("/site-settings/users")
-            ? "Users"
-            : page.url.pathname.startsWith("/site-settings/groups")
-              ? "Groups"
-              : page.url.pathname.startsWith("/site-settings/backups")
-                ? "Backups"
-                : "Site Settings"
-          : page.url.pathname === "/user-settings/guide"
-            ? "Guide"
-            : page.url.pathname === "/user-settings/memories"
-              ? "Memories"
-              : page.url.pathname === "/user-settings/security"
-                ? "Security"
-                : page.url.pathname.startsWith("/user-settings/agents")
-                  ? "Agents"
-                  : page.url.pathname === "/user-settings/harnesses"
-                    ? "Harnesses"
-                    : "Profile",
+    scope === "code"
+      ? "Code"
+      : scope === "agents"
+        ? "My Agents"
+        : scope === "workspace"
+          ? page.url.pathname.endsWith("/settings/details")
+            ? "Workspace details"
+            : page.url.pathname.endsWith("/settings/members")
+              ? "Members"
+              : (workspace.workspace?.name ?? "Workspaces")
+          : scope === "site"
+            ? page.url.pathname.startsWith("/site-settings/users")
+              ? "Users"
+              : page.url.pathname.startsWith("/site-settings/groups")
+                ? "Groups"
+                : page.url.pathname.startsWith("/site-settings/backups")
+                  ? "Backups"
+                  : "Site Settings"
+            : page.url.pathname === "/user-settings/guide"
+              ? "Guide"
+              : page.url.pathname === "/user-settings/memories"
+                ? "Memories"
+                : page.url.pathname === "/user-settings/security"
+                  ? "Security"
+                  : page.url.pathname.startsWith("/user-settings/agents")
+                    ? "Agents"
+                    : page.url.pathname === "/user-settings/harnesses"
+                      ? "Harnesses"
+                      : "Profile",
   );
   const scopeHistory = new ScopeHistory(() => window.localStorage);
   let drawerContent: HTMLDivElement;
   let keepDrawerFor = "";
-  async function choose(next: "site" | "user" | "workspace" | "agents") {
+  async function choose(
+    next: "site" | "user" | "workspace" | "agents" | "code",
+  ) {
     scopeHistory.remember(
       account.id,
       page.url.pathname + page.url.search + page.url.hash,
     );
     const destination =
-      next === "agents"
-        ? scopeHistory.destination(account.id, "agents")
-        : next === "workspace"
-          ? scopeHistory.destination(account.id, "workspace")
-          : next === "site"
-            ? canOpenUsers(account)
-              ? "/site-settings/users"
-              : checkPermission(account, "site.permissions.manage")
-                ? "/site-settings/groups"
-                : "/site-settings/backups"
-            : "/user-settings/profile";
+      next === "code"
+        ? scopeHistory.destination(account.id, "code")
+        : next === "agents"
+          ? scopeHistory.destination(account.id, "agents")
+          : next === "workspace"
+            ? scopeHistory.destination(account.id, "workspace")
+            : next === "site"
+              ? canOpenUsers(account)
+                ? "/site-settings/users"
+                : checkPermission(account, "site.permissions.manage")
+                  ? "/site-settings/groups"
+                  : "/site-settings/backups"
+              : "/user-settings/profile";
     const keepOpen = !!drawer?.open;
     keepDrawerFor = keepOpen
       ? new URL(destination, window.location.origin).href
@@ -169,6 +196,7 @@
       {collapsed}
       onToggle={() => (collapsed = !collapsed)}
       onScope={choose}
+      onCodeNavigate={() => drawer?.close()}
       onSearch={openSearch}
       {onLogout}
       {busy}
@@ -201,6 +229,7 @@
         mobile
         onToggle={() => drawer?.close()}
         onScope={choose}
+        onCodeNavigate={() => drawer?.close()}
         onSearch={openSearch}
         {onLogout}
         {busy}
@@ -208,13 +237,13 @@
     </div>
   </dialog>
   <div class="main-column">
-    {#if !taskPage && scope !== "agents"}
+    {#if !taskPage && scope !== "agents" && scope !== "code"}
       <header class="page-header">
         <NavigationToggle />
         <h1 bind:this={heading} tabindex="-1">{title}</h1>
       </header>
     {/if}
-    <main bind:this={content} tabindex="-1">
+    <main bind:this={content} class:code-scope={scope === "code"} tabindex="-1">
       {#if children}{@render children()}{/if}
     </main>
   </div>
@@ -313,6 +342,10 @@
     padding: var(--content-block-padding) 32px;
     display: flex;
     flex-direction: column;
+  }
+  main.code-scope {
+    padding: 0;
+    overflow: hidden;
   }
   .mobile-sidebar {
     padding: 0;

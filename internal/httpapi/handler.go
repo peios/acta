@@ -11,12 +11,14 @@ import (
 
 	"acta/internal/accounts"
 	"acta/internal/auth"
+	"acta/internal/codehosts"
 	"acta/internal/config"
 	"acta/internal/hyperharness"
 	"acta/internal/threads"
 )
 
 type Handler struct {
+	codeHosts                                 *codehosts.Connections
 	pushKey                                   string
 	harnesses                                 *hyperharness.Registry
 	management                                *auth.Management
@@ -29,6 +31,7 @@ type Handler struct {
 
 func New(service *auth.Service, security *auth.Security, profiles *accounts.ProfileService, management *auth.Management, c config.Config, pushKey ...string) http.Handler {
 	h := &Handler{harnesses: hyperharness.NewRegistry(), management: management, auth: service, security: security, bindingCookie: "acta_flow_browser", profiles: profiles, config: c, sessionCookie: "acta_session", setupCookie: "acta_setup"}
+	h.codeHosts = codehosts.NewConnections()
 	if c.SecureCookies {
 		h.sessionCookie = "__Host-acta_session"
 		h.setupCookie = "__Host-acta_setup"
@@ -42,6 +45,7 @@ func New(service *auth.Service, security *auth.Security, profiles *accounts.Prof
 	h.updateRoutes(mux)
 	h.pushRoutes(mux)
 	h.harnessRoutes(mux)
+	h.codeHostRoutes(mux)
 	mux.HandleFunc("GET /api/notifications", h.threadNotifications)
 	mux.HandleFunc("POST /api/notifications/read", h.threadNotificationsRead)
 	h.threadRoutes(mux)
@@ -106,12 +110,12 @@ func New(service *auth.Service, security *auth.Security, profiles *accounts.Prof
 		writeError(w, 404, "not_found", "This endpoint does not exist.", nil)
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if c.RecoveryMode && (r.URL.Path == "/mcp" || strings.HasPrefix(r.URL.Path, "/oauth/") || strings.HasPrefix(r.URL.Path, "/.well-known/") || strings.HasPrefix(r.URL.Path, "/api/harnesses") || strings.HasPrefix(r.URL.Path, "/api/backups") || (r.Method != "GET" && r.Method != "HEAD" && (strings.HasPrefix(r.URL.Path, "/api/threads") || strings.HasPrefix(r.URL.Path, "/api/push")))) {
+		if c.RecoveryMode && (r.URL.Path == "/mcp" || strings.HasPrefix(r.URL.Path, "/oauth/") || strings.HasPrefix(r.URL.Path, "/.well-known/") || strings.HasPrefix(r.URL.Path, "/api/code/") || strings.HasPrefix(r.URL.Path, "/api/harnesses") || strings.HasPrefix(r.URL.Path, "/api/backups") || (r.Method != "GET" && r.Method != "HEAD" && (strings.HasPrefix(r.URL.Path, "/api/threads") || strings.HasPrefix(r.URL.Path, "/api/push")))) {
 			writeError(w, 503, "recovery_mode", "External integrations are disabled in this recovery verification instance.", nil)
 			return
 		}
 		ctx, cancel := context.WithCancel(r.Context())
-		if !harnessStream(r.URL.Path) {
+		if !harnessStream(r.URL.Path) && r.URL.Path != "/api/code/hosts/connect" {
 			cancel()
 			timeout := 15 * time.Second
 			if documentUpload(r) {
