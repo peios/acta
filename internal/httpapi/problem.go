@@ -3,6 +3,7 @@ package httpapi
 import (
 	"acta/internal/accounts"
 	"acta/internal/auth"
+	"acta/internal/codehosts"
 	"acta/internal/documents"
 	"acta/internal/guide"
 	"acta/internal/memories"
@@ -24,6 +25,8 @@ func classifyError(err error) (int, Problem) {
 	var field *accounts.FieldError
 	var conflict *tasks.Conflict
 	switch {
+	case errors.Is(err, codehosts.ErrInUse):
+		return 409, Problem{Code: "host_in_use", Message: err.Error()}
 	case errors.Is(err, migration.ErrConflict):
 		return 409, Problem{Code: "migration_changed", Message: err.Error()}
 	case errors.Is(err, auth.ErrSessionGrantsChanged):

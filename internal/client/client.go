@@ -121,6 +121,7 @@ func (c *Client) Call(ctx context.Context, method, path string, input, output an
 
 type Account struct {
 	ID          string  `json:"id"`
+	OwnerID     *string `json:"owner_id"`
 	Username    string  `json:"username"`
 	DisplayName *string `json:"display_name"`
 	MFARequired bool    `json:"mfa_setup_required"`
