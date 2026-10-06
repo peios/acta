@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { TouchDragPoint } from "$lib/touch-drag";
   import { isTaskProperty } from "$lib/task-properties";
+  import { noRelease } from "$lib/releases";
   import { dragScroll } from "$lib/drag-scroll";
   import "$lib/horizontal-scroll.css";
   import { onMount } from "svelte";
@@ -12,7 +13,7 @@
     type Task,
     type TaskConfig,
   } from "$lib/tasks";
-  import type { ViewDisplay } from "$lib/task-views.js";
+  import type { ViewDisplay, ViewFilters } from "$lib/task-views.js";
   import { moveAssignments, type TaskGroup } from "$lib/task-groups.js";
   import TaskInlineCreate from "./TaskInlineCreate.svelte";
   import TaskTree from "./TaskTree.svelte";
@@ -21,12 +22,7 @@
     workspace,
     config,
     display,
-    priorities = [],
-    types = [],
-    sizes = [],
-    statuses,
-    assignees,
-    unassigned,
+    filters,
     query,
     onopen,
     canEdit,
@@ -38,12 +34,7 @@
     workspace: string;
     config: TaskConfig;
     display: ViewDisplay;
-    priorities?: string[];
-    types?: string[];
-    sizes?: string[];
-    statuses: string[];
-    assignees: string[];
-    unassigned: boolean;
+    filters: ViewFilters;
     query: string;
     onopen: (task: Task) => void;
     canEdit: boolean;
@@ -54,7 +45,9 @@
   const lanes = $derived(
     display.group === "status"
       ? boardStatuses(config)
-          .filter((s) => !statuses.length || statuses.includes(s.id))
+          .filter(
+            (s) => !filters.statuses.length || filters.statuses.includes(s.id),
+          )
           .map((s) => ({ ...s, assign_id: "", available: true }))
       : display.group === "none"
         ? [{ id: "", name: "Tasks", assign_id: "", available: true }]
@@ -212,6 +205,12 @@
           version: task.versions[display.group],
           value: status,
         });
+      else if (display.group === "release")
+        await api<Task>(`tasks/${task.id}`, {
+          field: "release_id",
+          version: task.versions.release_id,
+          value: status === noRelease ? "" : status,
+        });
       else
         await api<Task>(`tasks/${task.id}`, {
           field: "assignees",
@@ -297,7 +296,9 @@
           assignees={lane.assign_id ? [lane.assign_id] : []}
           properties={isTaskProperty(display.group)
             ? { [display.group]: lane.id }
-            : {}}
+            : display.group === "release" && lane.id !== noRelease
+              ? { release_id: lane.id }
+              : {}}
           label={lane.name}
         />{/if}
       <TaskTree
@@ -306,12 +307,7 @@
         {config}
         completion="all"
         {display}
-        {priorities}
-        {types}
-        {sizes}
-        {statuses}
-        {assignees}
-        {unassigned}
+        {filters}
         {query}
         {onopen}
         canEdit={canEdit && !moving}
@@ -319,6 +315,7 @@
         groupStatus={display.group === "status" ? lane.id : ""}
         groupID={display.group === "assignee" ||
         display.group === "agents" ||
+        display.group === "release" ||
         isTaskProperty(display.group)
           ? lane.id
           : ""}

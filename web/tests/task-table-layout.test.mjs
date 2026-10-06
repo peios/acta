@@ -78,6 +78,7 @@ test("reordering visible columns preserves widths and hidden positions", () => {
     "size",
     "status",
     "title",
+    "release",
   ]);
   assert.deepEqual(result.widths, original.widths);
   assert.deepEqual(

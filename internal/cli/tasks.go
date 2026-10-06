@@ -102,6 +102,8 @@ func (a *App) taskCommand() *cobra.Command {
 	list.Flags().StringSliceVar(&f.Priorities, "priority", nil, "none, low, medium, high, urgent; match any")
 	list.Flags().StringSliceVar(&f.Types, "type", nil, "none, bug, chore, feature; match any")
 	list.Flags().StringSliceVar(&f.Sizes, "size", nil, "none, xs, s, m, l, xl; relative effort")
+	list.Flags().StringSliceVar(&f.Releases, "release", nil, "Release UUIDs (see acta release list), or none; match any")
+	list.Flags().BoolVar(&f.AllDepths, "all-depths", false, "Match tasks at every depth instead of one level; omit --parent")
 	list.Flags().BoolVar(&f.Archived, "archived", false, "List only archived tasks")
 	list.Flags().StringVar(&f.State, "state", "all", "all, unfinished or completed")
 	list.Flags().StringVar(&f.Parent, "parent", "", "Parent UUID or reference; omitted lists roots only")
@@ -112,7 +114,7 @@ func (a *App) taskCommand() *cobra.Command {
 	list.Flags().StringVar(&f.Sort, "sort", "number", "number, title, status, priority, type, size, created or updated")
 	list.Flags().StringVar(&f.Direction, "direction", "desc", "asc or desc")
 	list.Flags().StringVar(&f.Cursor, "cursor", "", "Returned cursor; keep all other query options unchanged")
-	list.Flags().StringVar(&f.Group, "group", "", "Group: assignee, agents, priority, type or size; requires --group-id")
+	list.Flags().StringVar(&f.Group, "group", "", "Group: assignee, agents, priority, type, size or release; requires --group-id")
 	list.Flags().StringVar(&f.GroupID, "group-id", "", "Group ID from task groups, including unassigned")
 	var childCursor string
 	get := &cobra.Command{Use: "get <reference-or-uuid>", Short: "Inspect Markdown, assignments, field versions and direct subtasks", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
@@ -145,6 +147,7 @@ func (a *App) taskCommand() *cobra.Command {
 	create.Flags().StringVar(&createIn.Priority, "priority", "none", "none, low, medium, high or urgent")
 	create.Flags().StringVar(&createIn.Type, "type", "none", "none, bug, chore or feature")
 	create.Flags().StringVar(&createIn.Size, "size", "none", "none, xs, s, m, l or xl; relative effort")
+	create.Flags().StringVar(&createIn.ReleaseID, "release", "", "Target release UUID (see acta release list); not inherited by subtasks")
 	create.Flags().StringVar(&createIn.Title, "title", "", "Task title")
 	create.Flags().StringVar(&createIn.Description, "description", "", "Markdown description")
 	create.Flags().StringVar(&descriptionFile, "description-file", "", "Read Markdown from a file, or - for stdin")
@@ -162,9 +165,9 @@ func (a *App) taskCommand() *cobra.Command {
 			return errors.New("Supply --version from task get")
 		}
 		switch field {
-		case "title", "description", "status_id", "board", "parent_id", "assignees", "priority", "type", "size":
+		case "title", "description", "status_id", "board", "parent_id", "assignees", "priority", "type", "size", "release_id":
 		default:
-			return errors.New("Choose --field title, description, status_id, board, parent_id, assignees, priority, type or size")
+			return errors.New("Choose --field title, description, status_id, board, parent_id, assignees, priority, type, size or release_id")
 		}
 		var v any
 		if field == "assignees" {
@@ -179,8 +182,8 @@ func (a *App) taskCommand() *cobra.Command {
 			if cmd.Flags().Changed("assignee") {
 				return errors.New("--assignee requires --field assignees")
 			}
-			if clear && field != "description" && field != "parent_id" && !tasks.IsProperty(field) {
-				return errors.New("Only description, parent_id, assignees and metadata can be cleared")
+			if clear && field != "description" && field != "parent_id" && field != "release_id" && !tasks.IsProperty(field) {
+				return errors.New("Only description, parent_id, release_id, assignees and metadata can be cleared")
 			}
 			if !clear && !cmd.Flags().Changed("value") && !cmd.Flags().Changed("value-file") {
 				return errors.New("Supply --value, --value-file or --clear; omitting a value never clears a field")
@@ -204,10 +207,10 @@ func (a *App) taskCommand() *cobra.Command {
 			return c.UpdateTask(ctx, args[0], tasks.Patch{Field: field, Version: version, Value: raw})
 		}, renderTask)
 	}}
-	edit.Flags().StringVar(&field, "field", "", "title, description, status_id, board, parent_id, assignees, priority, type or size")
+	edit.Flags().StringVar(&field, "field", "", "title, description, status_id, board, parent_id, assignees, priority, type, size or release_id")
 	edit.Flags().StringVar(&value, "value", "", "Explicit new text; empty clears optional fields")
 	edit.Flags().StringVar(&valueFile, "value-file", "", "Read new text from a file, or - for stdin")
-	edit.Flags().BoolVar(&clear, "clear", false, "Explicitly clear description, parent_id, assignees, priority, type or size")
+	edit.Flags().BoolVar(&clear, "clear", false, "Explicitly clear description, parent_id, release_id, assignees, priority, type or size")
 	edit.MarkFlagsMutuallyExclusive("value", "value-file", "clear")
 	edit.Flags().Int64Var(&version, "version", 0, "Expected field version")
 	edit.Flags().StringSliceVar(&ids, "assignee", nil, "Complete replacement set of account UUIDs")
@@ -233,14 +236,14 @@ func (a *App) taskCommand() *cobra.Command {
 		if e := requireWorkspace(); e != nil {
 			return e
 		}
-		if group != "assignee" && group != "agents" && !tasks.IsProperty(group) {
-			return errors.New("Choose --group assignee, agents, priority, type or size")
+		if group != "assignee" && group != "agents" && group != "release" && !tasks.IsProperty(group) {
+			return errors.New("Choose --group assignee, agents, priority, type, size or release")
 		}
 		return runTask(a, cmd, func(ctx context.Context, c *client.Client) ([]tasks.Group, error) {
 			return c.TaskGroups(ctx, workspace, group)
 		}, renderTaskGroups)
 	}}
-	groups.Flags().StringVar(&group, "group", "assignee", "assignee (humans), agents (your assignments), priority, type or size")
+	groups.Flags().StringVar(&group, "group", "assignee", "assignee (humans), agents (your assignments), priority, type, size or release")
 	var activityCursor string
 	history := &cobra.Command{Use: "activity <reference-or-uuid>", Short: "Read grouped activity, newest first; does not mark it read", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		return runTask(a, cmd, func(ctx context.Context, c *client.Client) (activity.Page, error) {

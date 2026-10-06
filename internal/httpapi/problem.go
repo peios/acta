@@ -37,6 +37,8 @@ func classifyError(err error) (int, Problem) {
 		return 409, Problem{Code: "guide_changed", Message: err.Error()}
 	case errors.Is(err, memories.ErrConflict):
 		return 409, Problem{Code: "memory_changed", Message: err.Error()}
+	case errors.Is(err, tasks.ErrReleaseConflict):
+		return 409, Problem{Code: "release_changed", Message: err.Error()}
 	case errors.As(err, &conflict):
 		return 409, Problem{Code: "conflict", Message: conflict.Error(), Current: conflict}
 	case errors.Is(err, auth.ErrAccountDisabled):

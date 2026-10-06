@@ -67,7 +67,7 @@
     {archived}
     completion="all"
     display={settings.display}
-    statuses={settings.filters.statuses}
+    filters={settings.filters}
     onopen={() => {}}
   />
   <h2>Task status</h2>

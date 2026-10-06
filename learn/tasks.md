@@ -1,7 +1,7 @@
 # Tasks
 
 ACT-56 adds workspace-owned tasks for humans and agents. Projects may organise
-these tasks later; they are not required to capture work. Comments and activity are now supported. Labels, dates and task deletion remain outside the task metadata slice.
+these tasks later; they are not required to capture work. Comments and activity are now supported. A task can target a [release](releases.md). Labels, dates and task deletion remain outside the task metadata slice.
 
 ## Identity and hierarchy
 
@@ -168,9 +168,10 @@ Their queries intersect the existing filters before counting and pagination.
 Retained assignments to unavailable accounts remain visible, but those accounts
 cannot receive new assignments. Group membership uses UUID parentage, not handles.
 
-Saved display JSON has `mode` (`table` or `board`), `columns` (an array containing `status` and/or `assignees`),
-`sort` (`number`, `title`, `status`, `created`, `updated`), `direction` (`asc`, `desc`),
-`group` (`none`, `status`, `assignee`, `agents`) and `density` (`comfortable`, `compact`). Defaults show
+Saved display JSON has `mode` (`table` or `board`), `columns` (an array of up to six of `status`,
+`assignees`, `priority`, `size`, `type` and `release`),
+`sort` (`number`, `title`, `status`, `created`, `updated`, `priority`, `type`, `size`), `direction` (`asc`, `desc`),
+`group` (`none`, `status`, `assignee`, `agents`, `priority`, `type`, `size`, `release`) and `density` (`comfortable`, `compact`). Defaults show
 table mode with both optional columns, sort by descending task number, use no grouping, and use
 comfortable rows. Existing personal tabs receive these defaults. An empty columns
 array hides both optional columns. Display changes share filters' draft, Save,
@@ -294,8 +295,9 @@ atomic. Configuration saves use an expected revision; stale edits are rejected.
 | Capability | Identifier | Controls |
 | --- | --- | --- |
 | Create tasks | `tasks.create` | Tasks and subtasks. |
-| Edit tasks | `tasks.edit` | Title, description, status, parent and assignees. |
+| Edit tasks | `tasks.edit` | Title, description, status, parent, assignees and target release. |
 | Manage statuses | `tasks.statuses.manage` | Status definitions and creation/completed selections. |
+| Manage releases | `tasks.releases.manage` | Creating [releases](releases.md) and changing their names, notes and states. |
 | Edit workspace | `workspace.edit` | Task prefix, as well as the existing workspace fields. |
 
 Workspace access permits reading tasks. Creation and editing are not implied by
@@ -464,7 +466,8 @@ access and edit permission checks. Sending the already-saved value is an
 idempotent success. Other fields are never changed by the request.
 
 MCP adds `workspaces_list`, `tasks_list`, `task_get`, `task_statuses`, `task_people`,
-`task_groups`, `task_create` and `task_update`. New OAuth approvals offer task read
+`task_groups`, `task_create` and `task_update`, plus the release tools `releases_list`,
+`release_get`, `release_create` and `release_update` ([Releases](releases.md)). New OAuth approvals offer task read
 and write capabilities alongside identity. Existing connections retain their
 original grants and need new approval for additional capabilities. Tool consent
 is an additional ceiling on current workspace permissions. The SDK invokes the

@@ -31,6 +31,7 @@ func (h *Handler) taskRoutes(m *http.ServeMux) {
 		writeJSON(w, 200, v)
 	})
 	h.taskViewRoutes(m)
+	h.taskReleaseRoutes(m)
 	h.taskActivityRoutes(m)
 	h.documentRoutes(m)
 	m.HandleFunc("GET /api/workspaces/{workspace}/task-config", func(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +70,7 @@ func (h *Handler) taskRoutes(m *http.ServeMux) {
 	m.HandleFunc("GET /api/workspaces/{workspace}/tasks", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		before, _ := strconv.ParseInt(q.Get("before"), 10, 64)
-		f := tasks.Filter{Board: q.Get("board"), Archived: q.Get("archived") == "true", Group: q.Get("group"), GroupID: q.Get("group_id"), Sort: q.Get("sort"), Direction: q.Get("direction"), Cursor: q.Get("cursor"), Parent: q.Get("parent"), State: q.Get("state"), Query: q.Get("q"), Before: before, Priorities: q["priority"], Types: q["type"], Sizes: q["size"], Statuses: q["status"], Assignees: q["assignee"], Unassigned: q.Get("unassigned") == "true"}
+		f := tasks.Filter{Board: q.Get("board"), Archived: q.Get("archived") == "true", Group: q.Get("group"), GroupID: q.Get("group_id"), Sort: q.Get("sort"), Direction: q.Get("direction"), Cursor: q.Get("cursor"), Parent: q.Get("parent"), State: q.Get("state"), Query: q.Get("q"), Before: before, Priorities: q["priority"], Types: q["type"], Sizes: q["size"], Releases: q["release"], Statuses: q["status"], Assignees: q["assignee"], Unassigned: q.Get("unassigned") == "true", AllDepths: q.Get("all_depths") == "true"}
 		if q.Get("summary") == "true" {
 			v, e := h.management.TaskSummaries(r.Context(), token(r, h.sessionCookie), r.PathValue("workspace"), f)
 			if e != nil {

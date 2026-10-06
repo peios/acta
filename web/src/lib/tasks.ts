@@ -17,6 +17,12 @@ export type TaskConfig = {
   revision: number;
 };
 export type TaskSource = { id: string; reference: string; title: string };
+export type TaskReleaseRef = {
+  id: string;
+  name: string;
+  codename: string;
+  state: string;
+};
 export type TaskPerson = {
   owner_id: string;
   id: string;
@@ -38,6 +44,8 @@ export type Task = {
   priority: string;
   type: string;
   size: string;
+  release_id: string;
+  release: TaskReleaseRef | null;
   description: string;
   status_id: string;
   parent_id: string;
@@ -78,6 +86,7 @@ export function createTask(
     priority?: string;
     type?: string;
     size?: string;
+    release_id?: string;
     parent_id?: string;
     status_id?: string;
     assignees?: string[];

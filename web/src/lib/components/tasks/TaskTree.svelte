@@ -1,8 +1,16 @@
 <script lang="ts">
   import { isTaskProperty, propertyLabel } from "$lib/task-properties";
+  import { releaseStateLabel } from "$lib/releases";
   import { dragScroll } from "$lib/drag-scroll";
   import "$lib/horizontal-scroll.css";
-  import { defaultViewDisplay, type ViewDisplay } from "$lib/task-views.js";
+  import {
+    appendViewFilters,
+    defaultViewDisplay,
+    emptyViewFilters,
+    hasViewFilters,
+    type ViewDisplay,
+    type ViewFilters,
+  } from "$lib/task-views.js";
   import { untrack, onDestroy } from "svelte";
   import { LatestRequest } from "$lib/requests.js";
   import { readTaskWindow } from "$lib/task-pages.js";
@@ -39,12 +47,8 @@
     depth = 0,
     presentation = "tree",
     canEdit = false,
-    priorities = [],
-    types = [],
-    sizes = [],
-    statuses = [],
-    assignees = [],
-    unassigned = false,
+    filters = emptyViewFilters(),
+    allDepths = false,
     display = defaultViewDisplay(),
     embedded = false,
     groupStatus = "",
@@ -72,12 +76,9 @@
     depth?: number;
     presentation?: "tree" | "subtasks" | "board";
     canEdit?: boolean;
-    priorities?: string[];
-    types?: string[];
-    sizes?: string[];
-    statuses?: string[];
-    assignees?: string[];
-    unassigned?: boolean;
+    filters?: ViewFilters;
+    /** List matching tasks at every depth as a flat list, e.g. a release's tasks. */
+    allDepths?: boolean;
     display?: ViewDisplay;
     embedded?: boolean;
     groupStatus?: string;
@@ -100,14 +101,9 @@
     cursor = $state(""),
     loading = $state(false),
     error = $state("");
-  const filtered = $derived(
-    priorities.length > 0 ||
-      types.length > 0 ||
-      sizes.length > 0 ||
-      statuses.length > 0 ||
-      assignees.length > 0 ||
-      unassigned,
-  );
+  const filtered = $derived(allDepths || hasViewFilters(filters));
+  // Reload on any filter change, whether a new object or an edited one.
+  const filterKey = $derived(JSON.stringify(filters));
   const columns = $derived(visibleColumns(layout, display.columns));
   const columnCount = $derived(columns.length);
   let containerWidth = $state(0);
@@ -122,7 +118,7 @@
   const groups = $derived(
     display.group === "status"
       ? boardStatuses(config).filter(
-          (s) => !statuses.length || statuses.includes(s.id),
+          (s) => !filters.statuses.length || filters.statuses.includes(s.id),
         )
       : assignmentGroups,
   );
@@ -156,20 +152,12 @@
         sort: display.sort,
         direction: display.direction,
       });
-      for (const id of groupStatus ? [groupStatus] : statuses)
-        q.append("status", id);
-      for (const [key, values] of Object.entries({
-        priority: priorities,
-        type: types,
-        size: sizes,
-      }))
-        for (const value of values) q.append(key, value);
-      for (const id of assignees) q.append("assignee", id);
+      appendViewFilters(q, filters, groupStatus);
+      if (allDepths) q.set("all_depths", "true");
       if (groupID) {
         q.set("group", display.group);
         q.set("group_id", groupID);
       }
-      if (unassigned) q.set("unassigned", "true");
       const identity = new URLSearchParams(q);
       identity.delete("cursor");
       const key = `${workspace}:${identity}`;
@@ -215,12 +203,8 @@
     void query;
     void revision;
     void refresh.recovery;
-    void priorities;
-    void types;
-    void sizes;
-    void statuses;
-    void assignees;
-    void unassigned;
+    void filterKey;
+    void allDepths;
     void display.group;
     void display.sort;
     void display.direction;
@@ -332,6 +316,15 @@
               class="metadata-value"
               class:unset={task[column.id] === "none"}
               >{propertyLabel(column.id, task[column.id])}</span
+            ></td
+          >
+        {:else if column.id === "release"}<td
+            ><span
+              class="metadata-value"
+              class:unset={!task.release}
+              title={task.release
+                ? `${task.release.name} · ${releaseStateLabel(task.release.state)}`
+                : undefined}>{task.release?.name ?? "None"}</span
             ></td
           >
         {:else if column.id === "assignees"}
@@ -481,12 +474,7 @@
                 {revision}
                 {onopen}
                 {canEdit}
-                {priorities}
-                {types}
-                {sizes}
-                {statuses}
-                {assignees}
-                {unassigned}
+                {filters}
                 {display}
                 {layout}
                 embedded

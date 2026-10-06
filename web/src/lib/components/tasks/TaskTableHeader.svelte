@@ -52,7 +52,8 @@
   let gesture: Gesture | null = null;
   let frame = 0;
   let suppressSort = false;
-  const sortable = (id: ColumnID) => id !== "assignees";
+  // The server has no sort order for assignees or releases.
+  const sortable = (id: ColumnID) => id !== "assignees" && id !== "release";
   function sort(event: MouseEvent, id: ColumnID) {
     if (suppressSort && event.detail !== 0) {
       suppressSort = false;

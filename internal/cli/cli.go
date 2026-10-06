@@ -44,7 +44,7 @@ func (a *App) command() *cobra.Command {
 	root.SetErr(a.errOut)
 	root.PersistentFlags().StringVarP(&a.profile, "profile", "p", "", "Use this profile instead of the active profile")
 	root.PersistentFlags().BoolVar(&a.json, "json", false, "Write structured JSON output")
-	root.AddCommand(a.loginCommand(), a.profileCommand(), a.taskCommand(), a.documentCommand(), a.workspaceCommand(), a.harnessCommand(), a.pipeCommand())
+	root.AddCommand(a.loginCommand(), a.profileCommand(), a.taskCommand(), a.releaseCommand(), a.documentCommand(), a.workspaceCommand(), a.harnessCommand(), a.pipeCommand())
 	status := &cobra.Command{Use: "status", Aliases: []string{"whoami"}, Short: "Show the selected server, account and credential source", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return a.status(cmd.Context()) }}
 	logout := &cobra.Command{Use: "logout", Short: "Revoke the selected session and remove its saved credential", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return a.logout(cmd.Context()) }}
 	root.AddCommand(status, logout)

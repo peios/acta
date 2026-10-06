@@ -1,6 +1,7 @@
 <script lang="ts">
   import { touchDrag, type TouchDragOptions } from "$lib/touch-drag";
   import { taskProperties, propertyLabel } from "$lib/task-properties";
+  import { releaseStateLabel } from "$lib/releases";
   import { personName, type Task, type TaskConfig } from "$lib/tasks";
   import type { ViewDisplay } from "$lib/task-views.js";
   let {
@@ -94,6 +95,11 @@
             class="metadata"
             title={p.label}>{propertyLabel(p.value, task[p.value])}</span
           >{/each}
+        {#if display.columns.includes("release") && task.release}<span
+            class="metadata"
+            title={`Release · ${releaseStateLabel(task.release.state)}`}
+            >{task.release.name}</span
+          >{/if}
         {#if display.columns.includes("status")}<span
             class="status"
             title={config.statuses.find((s) => s.id === task.status_id)?.name}

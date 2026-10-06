@@ -12,7 +12,12 @@
     workspace: string;
     status: string;
     label: string;
-    properties?: { priority?: string; type?: string; size?: string };
+    properties?: {
+      priority?: string;
+      type?: string;
+      size?: string;
+      release_id?: string;
+    };
     assignees?: string[];
   } = $props();
   let editing = $state(false),

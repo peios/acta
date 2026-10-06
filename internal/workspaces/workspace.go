@@ -18,6 +18,7 @@ const (
 	CreateTasks    = "tasks.create"
 	EditTasks      = "tasks.edit"
 	ManageStatuses = "tasks.statuses.manage"
+	ManageReleases = "tasks.releases.manage"
 	Edit           = "workspace.edit"
 	Members        = "workspace.members.manage"
 	Permissions    = "workspace.permissions.manage"
@@ -29,8 +30,9 @@ func Catalogue() []accounts.Permission {
 		{ID: CommentTasks, Category: "Tasks", Label: "Comment", Description: "Post comments and replies, and edit or delete your own comments."},
 		{ID: ManageComments, Category: "Tasks", Label: "Manage others’ comments", Description: "Edit or delete comments written by other accounts."},
 		{ID: CreateTasks, Category: "Tasks", Label: "Create tasks", Description: "Create tasks and subtasks in this workspace."},
-		{ID: EditTasks, Category: "Tasks", Label: "Edit tasks", Description: "Edit titles, descriptions, status, assignees, parentage and task documents."},
+		{ID: EditTasks, Category: "Tasks", Label: "Edit tasks", Description: "Edit titles, descriptions, status, assignees, parentage, target releases and task documents."},
 		{ID: ManageStatuses, Category: "Tasks", Label: "Manage statuses", Description: "Configure task statuses and the creation and completed selections."},
+		{ID: ManageReleases, Category: "Tasks", Label: "Manage releases", Description: "Create releases and change their names, notes and states."},
 		{ID: Edit, Category: "Workspace", Label: "Edit workspace", Description: "Change the workspace name, slug and description."},
 		{ID: Members, Category: "Workspace", Label: "Manage members", Description: "Add existing site accounts and remove members whose workspace permissions you hold."},
 		{ID: Permissions, Category: "Workspace", Label: "Manage workspace permissions", Description: "Manage direct and site-group grants, limited to permissions you hold."},

@@ -53,7 +53,8 @@ func (t workspaceTx) SearchTasks(ctx context.Context, allowed []string, q tasks.
  SELECT p.id AS child,t.parent_id AS id,1 AS depth FROM page p JOIN tasks t ON t.id=p.id WHERE t.parent_id IS NOT NULL
  UNION ALL SELECT a.child,t.parent_id,a.depth+1 FROM ancestry a JOIN tasks t ON t.id=a.id WHERE t.parent_id IS NOT NULL
  )
- SELECT (t.archived_at IS NOT NULL),t.id::text,cfg.prefix||'-'||t.number,t.title,s.id::text,s.name,s.board,w.id::text,w.slug,w.name,p.source,COALESCE(p.comment_id::text,''),p.score,
+ SELECT (t.archived_at IS NOT NULL),t.id::text,cfg.prefix||'-'||t.number,t.title,s.id::text,s.name,s.board,
+ (SELECT jsonb_build_object('id',r.id,'name',r.name,'codename',r.codename,'state',r.state) FROM task_releases r WHERE r.id=t.release_id),w.id::text,w.slug,w.name,p.source,COALESCE(p.comment_id::text,''),p.score,
  COALESCE((SELECT jsonb_agg(jsonb_build_object('id',a.id,'reference',cfg.prefix||'-'||parent.number,'title',parent.title) ORDER BY a.depth DESC) FROM ancestry a JOIN tasks parent ON parent.id=a.id WHERE a.child=t.id),'[]'::jsonb),
  ts_headline('english',replace(replace(CASE p.source WHEN 'comment' THEN cm.body WHEN 'description' THEN t.description ELSE t.title END,chr(57344),''),chr(57345),''),CASE WHEN p.source='title' THEN q.prefix ELSE q.full END,
  'StartSel='||chr(57344)||', StopSel='||chr(57345)||', MaxWords=32, MinWords=12, MaxFragments=1, FragmentDelimiter= … ')
@@ -66,11 +67,16 @@ func (t workspaceTx) SearchTasks(ctx context.Context, allowed []string, q tasks.
 	scores := []int{}
 	for rows.Next() {
 		var r tasks.SearchResult
-		var ancestors []byte
+		var ancestors, release []byte
 		var snippet string
 		var score int
-		if e = rows.Scan(&r.Archived, &r.ID, &r.Reference, &r.Title, &r.Status.ID, &r.Status.Name, &r.Status.Board, &r.WorkspaceID, &r.WorkspaceSlug, &r.WorkspaceName, &r.Source, &r.CommentID, &score, &ancestors, &snippet); e != nil {
+		if e = rows.Scan(&r.Archived, &r.ID, &r.Reference, &r.Title, &r.Status.ID, &r.Status.Name, &r.Status.Board, &release, &r.WorkspaceID, &r.WorkspaceSlug, &r.WorkspaceName, &r.Source, &r.CommentID, &score, &ancestors, &snippet); e != nil {
 			return out, e
+		}
+		if release != nil {
+			if e = json.Unmarshal(release, &r.Release); e != nil {
+				return out, e
+			}
 		}
 		if e = json.Unmarshal(ancestors, &r.Ancestors); e != nil {
 			return out, e

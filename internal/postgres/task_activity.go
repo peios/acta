@@ -19,6 +19,10 @@ func taskActivityValue(t tasks.Task, field string, c tasks.Config) activity.Valu
 				v.Items = []activity.Reference{{ID: s.ID, Label: statusActivityLabel(c, s)}}
 			}
 		}
+	case "release_id":
+		if t.Release != nil {
+			v.Items = []activity.Reference{{ID: t.Release.ID, Label: t.Release.Name}}
+		}
 	case "parent_id":
 		if len(t.Ancestors) > 0 {
 			p := t.Ancestors[len(t.Ancestors)-1]

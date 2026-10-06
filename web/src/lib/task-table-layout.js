@@ -1,4 +1,4 @@
-/** @typedef {'number' | 'title' | 'status' | 'assignees' | 'priority' | 'type' | 'size'} ColumnID */
+/** @typedef {'number' | 'title' | 'status' | 'assignees' | 'priority' | 'type' | 'size' | 'release'} ColumnID */
 /** @typedef {{order: ColumnID[], widths: Record<ColumnID, number>}} TableLayout */
 /** @type {{id: ColumnID, label: string, size: 'small' | 'medium' | 'big', minimum: number, required?: boolean}[]} */
 export const taskColumns = [
@@ -9,6 +9,7 @@ export const taskColumns = [
   { id: "size", label: "Size", size: "small", minimum: 75 },
   { id: "status", label: "Status", size: "medium", minimum: 100 },
   { id: "assignees", label: "Assignees", size: "medium", minimum: 100 },
+  { id: "release", label: "Release", size: "small", minimum: 100 },
 ];
 const weights = { small: 1, medium: 1.5, big: 4 };
 /** @returns {TableLayout} */

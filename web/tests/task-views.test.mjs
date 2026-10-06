@@ -1,11 +1,43 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { copyViewFilters, sameViewFilters } from "../src/lib/task-views.js";
+import {
+  appendViewFilters,
+  copyViewFilters,
+  emptyViewFilters,
+  hasViewFilters,
+  sameViewFilters,
+} from "../src/lib/task-views.js";
+test("filters build the task list query, with status groups replacing statuses", () => {
+  assert.equal(hasViewFilters(emptyViewFilters()), false);
+  const filters = {
+    ...emptyViewFilters(),
+    statuses: ["todo"],
+    priorities: ["high"],
+    releases: ["none", "r1"],
+    assignees: ["jack"],
+    unassigned: true,
+  };
+  assert.equal(hasViewFilters(filters), true);
+  assert.equal(
+    hasViewFilters({ ...emptyViewFilters(), unassigned: true }),
+    true,
+  );
+  const q = new URLSearchParams();
+  appendViewFilters(q, filters);
+  assert.equal(
+    q.toString(),
+    "status=todo&priority=high&release=none&release=r1&assignee=jack&unassigned=true",
+  );
+  const grouped = new URLSearchParams();
+  appendViewFilters(grouped, filters, "done");
+  assert.deepEqual(grouped.getAll("status"), ["done"]);
+});
 test("view drafts are independent of saved filters and each other", () => {
   const saved = {
     priorities: [],
     types: [],
     sizes: [],
+    releases: [],
     statuses: ["todo"],
     assignees: ["jack"],
     unassigned: false,
@@ -18,6 +50,17 @@ test("view drafts are independent of saved filters and each other", () => {
   assert.deepEqual(second, saved);
   assert.equal(sameViewFilters(first, saved), false);
   assert.equal(sameViewFilters(copyViewFilters(saved), saved), true);
+});
+test("views saved before release filters existed have no release selection", () => {
+  const old = {
+    statuses: [],
+    assignees: [],
+    unassigned: false,
+    releases: null,
+  };
+  assert.deepEqual(copyViewFilters(old).releases, []);
+  assert.equal(sameViewFilters(old, { ...old, releases: [] }), true);
+  assert.equal(sameViewFilters(old, { ...old, releases: ["none"] }), false);
 });
 test("selection order and duplicates do not make a view dirty", () => {
   assert.equal(

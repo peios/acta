@@ -1,27 +1,43 @@
 <script lang="ts">
-  import { propertyOptions } from "$lib/task-properties";
+  import {
+    propertyOptions,
+    taskProperties,
+    type TaskProperty,
+  } from "$lib/task-properties";
   import { anchoredPopover } from "$lib/anchored-popover";
   import { api, errorMessage } from "$lib/api";
   import { personName, type TaskConfig, type TaskPerson } from "$lib/tasks";
+  import { loadReleases, noRelease, type Release } from "$lib/releases";
+  import { emptyViewFilters, type ViewFilters } from "$lib/task-views.js";
   let {
     workspace,
     config,
-    priorities = $bindable<string[]>([]),
-    types = $bindable<string[]>([]),
-    sizes = $bindable<string[]>([]),
-    statuses = $bindable<string[]>([]),
-    assignees = $bindable<string[]>([]),
-    unassigned = $bindable(false),
+    filters = $bindable(),
   }: {
     workspace: string;
     config: TaskConfig;
-    priorities?: string[];
-    types?: string[];
-    sizes?: string[];
-    statuses?: string[];
-    assignees?: string[];
-    unassigned?: boolean;
+    filters: ViewFilters;
   } = $props();
+  let releaseList = $state<Release[]>([]),
+    releaseError = $state("");
+  $effect(() => {
+    if (!open) return;
+    const w = workspace;
+    let cancelled = false;
+    loadReleases(w)
+      .then((r) => {
+        if (!cancelled) {
+          releaseList = r;
+          releaseError = "";
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) releaseError = errorMessage(e);
+      });
+    return () => {
+      cancelled = true;
+    };
+  });
   const id = $props.id();
   let trigger: HTMLButtonElement, popup: HTMLDivElement;
   let open = $state(false),
@@ -32,25 +48,28 @@
   let known = $state<Record<string, TaskPerson>>({});
 
   const count = $derived(
-    priorities.length +
-      types.length +
-      sizes.length +
-      statuses.length +
-      assignees.length +
-      (unassigned ? 1 : 0),
+    filters.priorities.length +
+      filters.types.length +
+      filters.sizes.length +
+      filters.releases.length +
+      filters.statuses.length +
+      filters.assignees.length +
+      (filters.unassigned ? 1 : 0),
   );
-  function toggle(values: string[], value: string) {
-    return values.includes(value)
+  type Selection = Exclude<keyof ViewFilters, "unassigned">;
+  const propertyFilters: Record<TaskProperty, Selection> = {
+    priority: "priorities",
+    type: "types",
+    size: "sizes",
+  };
+  function toggle(key: Selection, value: string) {
+    const values = filters[key];
+    filters[key] = values.includes(value)
       ? values.filter((id) => id !== value)
       : [...values, value];
   }
   function clear() {
-    priorities = [];
-    types = [];
-    sizes = [];
-    statuses = [];
-    assignees = [];
-    unassigned = false;
+    filters = emptyViewFilters();
   }
 
   $effect(() => {
@@ -137,8 +156,8 @@
       {#each config.statuses as status}<label
           ><input
             type="checkbox"
-            checked={statuses.includes(status.id)}
-            onchange={() => (statuses = toggle(statuses, status.id))}
+            checked={filters.statuses.includes(status.id)}
+            onchange={() => toggle("statuses", status.id)}
           /><span>{status.name}</span></label
         >{/each}
     </fieldset>
@@ -154,15 +173,16 @@
       <label
         ><input
           type="checkbox"
-          checked={unassigned}
-          onchange={(event) => (unassigned = event.currentTarget.checked)}
+          checked={filters.unassigned}
+          onchange={(event) =>
+            (filters.unassigned = event.currentTarget.checked)}
         /><span>Unassigned</span></label
       >
-      {#each assignees.filter((id) => !people.some((p) => p.id === id)) as personID}<label
+      {#each filters.assignees.filter((id) => !people.some((p) => p.id === id)) as personID}<label
           ><input
             type="checkbox"
             checked
-            onchange={() => (assignees = toggle(assignees, personID))}
+            onchange={() => toggle("assignees", personID)}
           /><span
             >{known[personID]
               ? personName(known[personID])
@@ -172,8 +192,8 @@
       {#each people as person}<label
           ><input
             type="checkbox"
-            checked={assignees.includes(person.id)}
-            onchange={() => (assignees = toggle(assignees, person.id))}
+            checked={filters.assignees.includes(person.id)}
+            onchange={() => toggle("assignees", person.id)}
           /><span>{personName(person)}<small>@{person.username}</small></span
           ></label
         >{/each}
@@ -186,38 +206,30 @@
           No matching people.
         </p>{/if}
     </fieldset>
+    {#each taskProperties as property}{@const key =
+        propertyFilters[property.value]}
+      <fieldset>
+        <legend>{property.label}</legend>
+        <div class="property-options">
+          {#each propertyOptions(property.value) as option}<button
+              class="filter-pill"
+              aria-pressed={filters[key].includes(option.value)}
+              onclick={() => toggle(key, option.value)}>{option.label}</button
+            >{/each}
+        </div>
+      </fieldset>{/each}
     <fieldset>
-      <legend>Priority</legend>
+      <legend>Release</legend>
       <div class="property-options">
-        {#each propertyOptions("priority") as option}<button
+        {#each [{ id: noRelease, name: "None" }, ...releaseList] as option}<button
             class="filter-pill"
-            aria-pressed={priorities.includes(option.value)}
-            onclick={() => (priorities = toggle(priorities, option.value))}
-            >{option.label}</button
+            aria-pressed={filters.releases.includes(option.id)}
+            onclick={() => toggle("releases", option.id)}>{option.name}</button
           >{/each}
       </div>
-    </fieldset>
-    <fieldset>
-      <legend>Type</legend>
-      <div class="property-options">
-        {#each propertyOptions("type") as option}<button
-            class="filter-pill"
-            aria-pressed={types.includes(option.value)}
-            onclick={() => (types = toggle(types, option.value))}
-            >{option.label}</button
-          >{/each}
-      </div>
-    </fieldset>
-    <fieldset>
-      <legend>Size</legend>
-      <div class="property-options">
-        {#each propertyOptions("size") as option}<button
-            class="filter-pill"
-            aria-pressed={sizes.includes(option.value)}
-            onclick={() => (sizes = toggle(sizes, option.value))}
-            >{option.label}</button
-          >{/each}
-      </div>
+      {#if releaseError}<p class="notice error" role="alert">
+          {releaseError}
+        </p>{/if}
     </fieldset>
     <footer>
       <span>Match any selection in each category.</span><button

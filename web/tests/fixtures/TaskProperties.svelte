@@ -5,7 +5,7 @@
   import TaskDisplayMenu from "$lib/components/tasks/TaskDisplayMenu.svelte";
   import TaskFilterMenu from "$lib/components/tasks/TaskFilterMenu.svelte";
   import TaskStatusPicker from "$lib/components/tasks/TaskStatusPicker.svelte";
-  import { defaultViewDisplay } from "$lib/task-views.js";
+  import { defaultViewDisplay, emptyViewFilters } from "$lib/task-views.js";
   import { isTaskProperty, propertyOptions } from "$lib/task-properties";
   import type { TaskConfig } from "$lib/tasks";
   let display = $state({
@@ -13,9 +13,7 @@
     group: "priority",
     columns: ["priority", "type", "size"],
   });
-  let priorities = $state<string[]>([]),
-    types = $state<string[]>([]),
-    sizes = $state<string[]>([]);
+  let filters = $state(emptyViewFilters());
   let config = $state<TaskConfig>({
     prefix: "QA",
     previous_prefixes: [],
@@ -50,24 +48,15 @@
       disabled={false}
       onchange={() => {}}
     />
-    <TaskFilterMenu
-      workspace="review"
-      {config}
-      bind:priorities
-      bind:types
-      bind:sizes
-    /><TaskDisplayMenu bind:display />
+    <TaskFilterMenu workspace="review" {config} bind:filters /><TaskDisplayMenu
+      bind:display
+    />
   </header>
   {#if display.mode === "board"}<TaskBoard
       workspace="review"
       {config}
       {display}
-      {priorities}
-      {types}
-      {sizes}
-      statuses={[]}
-      assignees={[]}
-      unassigned={false}
+      {filters}
       query=""
       onopen={() => {}}
       hover={{ id: "" }}
@@ -79,9 +68,7 @@
       workspace="review"
       {config}
       {display}
-      {priorities}
-      {types}
-      {sizes}
+      {filters}
       completion="all"
       assignmentGroups={groups}
       revision={config.revision}

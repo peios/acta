@@ -62,6 +62,7 @@ export function activityAction(e: ActivityEntry): string {
         size: "changed size",
         status_id: "changed status",
         parent_id: "changed parent",
+        release_id: "changed release",
         assignees: "changed assignees",
       } as Record<string, string>
     )[e.field ?? ""] ?? "updated the task"

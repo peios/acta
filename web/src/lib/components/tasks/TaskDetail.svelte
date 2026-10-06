@@ -1,5 +1,12 @@
 <script lang="ts">
   import { taskProperties, propertyOptions } from "$lib/task-properties";
+  import {
+    loadReleases,
+    releaseOptions,
+    releaseStateLabel,
+    releaseStates,
+    type Release,
+  } from "$lib/releases";
   import OptionPicker from "../OptionPicker.svelte";
   import { tick, onMount } from "svelte";
   import TaskActivity from "./TaskActivity.svelte";
@@ -35,6 +42,24 @@
     onopen: (t: Task) => void;
     oncreate: (parent: string) => void;
   } = $props();
+  let releases = $state<Release[]>([]);
+  $effect(() => {
+    const w = workspace.id;
+    void config.revision;
+    const controller = new AbortController();
+    loadReleases(w, controller.signal)
+      .then((r) => (releases = r))
+      .catch(() => {});
+    return () => controller.abort();
+  });
+  // The task's own release stays selectable before the list loads.
+  const releasePickerOptions = $derived(
+    releaseOptions(
+      task.release && !releases.some((r) => r.id === task.release_id)
+        ? [...releases, task.release]
+        : releases,
+    ),
+  );
   let tab = $state("activity");
   let activity = $state<TaskActivity>();
   $effect(() => {
@@ -239,6 +264,23 @@
           onchange={(value) => void patch(property.value, value)}
         />
       </div>{/each}
+    <div class="metadata-property">
+      <span class="metadata-label"
+        ><svg viewBox="0 0 20 20" aria-hidden="true"
+          ><path d="M4 3v14M4 4h10l-2 3 2 3H4" /></svg
+        >Release{#if task.release}<span
+            class="release-state"
+            title={releaseStates.find((s) => s.value === task.release?.state)
+              ?.hint}>· {releaseStateLabel(task.release.state)}</span
+          >{/if}</span
+      ><OptionPicker
+        label="Release"
+        value={task.release_id}
+        options={releasePickerOptions}
+        disabled={!editable || busy}
+        onchange={(value) => void patch("release_id", value)}
+      />
+    </div>
   </div>
   {#if error}<p class="notice error" role="alert">
       {error} Reload the task before retrying if it changed elsewhere.
@@ -469,6 +511,9 @@
     color: var(--muted);
     font-size: 11px;
     margin: 0 0 4px 6px;
+  }
+  .release-state {
+    margin-left: -2px;
   }
   .metadata-label svg {
     width: 14px;

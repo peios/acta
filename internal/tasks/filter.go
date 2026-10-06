@@ -18,6 +18,12 @@ func NormalizeFilter(f Filter) (Filter, error) {
 	if e = ValidatePropertyFilters(f.Priorities, f.Types, f.Sizes); e != nil {
 		return f, e
 	}
+	if e = ValidateReleaseSelections(f.Releases); e != nil {
+		return f, e
+	}
+	if f.AllDepths && f.Parent != "" {
+		return f, field("all_depths", "Omit parent when listing every depth.")
+	}
 	if e = ValidateGroupFilter(f); e != nil {
 		return f, e
 	}

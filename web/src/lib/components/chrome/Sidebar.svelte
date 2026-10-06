@@ -442,6 +442,26 @@
             ></a
           >
         {/each}
+        {@const releasesPath = workspacePath(w) + "/releases"}
+        <a
+          href={releasesPath}
+          class="scope-button"
+          class:active={page.url.pathname.startsWith(releasesPath)}
+          aria-current={page.url.pathname === releasesPath ? "page" : undefined}
+          aria-label="Releases"
+          ><svg
+            width="19"
+            height="19"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            aria-hidden="true"><path d="M5 21V4M5 4h12l-2.5 4L17 12H5" /></svg
+          ><span class="scope-name">Releases</span><span
+            class="rail-tooltip"
+            aria-hidden="true">Releases</span
+          ></a
+        >
         {#if boardError}<p class="notice error" role="alert">
             {boardError}
           </p>{/if}

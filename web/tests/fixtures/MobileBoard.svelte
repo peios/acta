@@ -3,7 +3,7 @@
   import TaskBoard from "$lib/components/tasks/TaskBoard.svelte";
   import { swipeNavigation } from "$lib/swipe-navigation";
   import { dismissDialogBackdrop } from "$lib/dialog-backdrop";
-  import { defaultViewDisplay } from "$lib/task-views.js";
+  import { defaultViewDisplay, emptyViewFilters } from "$lib/task-views.js";
   import type { TaskConfig } from "$lib/tasks";
   let drawer = $state<HTMLDialogElement>();
   let drawerContent: HTMLDivElement;
@@ -72,9 +72,7 @@
       workspace="mobile"
       {config}
       display={{ ...defaultViewDisplay(), mode: "board", group }}
-      statuses={[]}
-      assignees={[]}
-      unassigned={false}
+      filters={emptyViewFilters()}
       query=""
       onopen={(t) => (opened = t.reference)}
       canEdit={editable}
