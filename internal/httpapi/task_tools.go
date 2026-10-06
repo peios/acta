@@ -44,13 +44,15 @@ type listTasksInput struct {
 	Priorities []string `json:"priorities,omitempty" jsonschema:"none, low, medium, high, urgent; match any selected priority."`
 	Types      []string `json:"types,omitempty" jsonschema:"none, bug, chore, feature; match any selected type."`
 	Sizes      []string `json:"sizes,omitempty" jsonschema:"none, xs, s, m, l, xl; relative effort, not hours."`
+	Releases   []string `json:"releases,omitempty" jsonschema:"Release UUIDs from releases_list, or none for tasks without a target release; matches any selected value."`
+	AllDepths  bool     `json:"all_depths,omitempty" jsonschema:"Match tasks at every depth instead of one hierarchy level, e.g. everything targeted at a release. Omit parent."`
 	Statuses   []string `json:"statuses,omitempty" jsonschema:"Status UUIDs from task_statuses; matches any selected status."`
 	Assignees  []string `json:"assignees,omitempty" jsonschema:"Direct account UUID assignments; matches any selected account."`
 	Unassigned bool     `json:"unassigned,omitempty" jsonschema:"Include tasks with no direct assignments; OR with the assignees selection."`
 	Sort       string   `json:"sort,omitempty" jsonschema:"number (default), title, status, priority, type, size, created or updated."`
 	Direction  string   `json:"direction,omitempty" jsonschema:"asc or desc (default). Keep unchanged while paging."`
 	Cursor     string   `json:"cursor,omitempty" jsonschema:"Opaque cursor returned by this query. Keep all other query options unchanged."`
-	Group      string   `json:"group,omitempty" jsonschema:"Optional assignee, agents, priority, type or size grouping; requires group_id from task_groups."`
+	Group      string   `json:"group,omitempty" jsonschema:"Optional assignee, agents, priority, type, size or release grouping; requires group_id from task_groups."`
 	GroupID    string   `json:"group_id,omitempty" jsonschema:"Group ID from task_groups, including unassigned."`
 }
 
@@ -59,14 +61,14 @@ func (in listTasksInput) filter() tasks.Filter {
 	if state == "" {
 		state = "all"
 	}
-	return tasks.Filter{Board: in.Board, Archived: in.Archived, Parent: in.Parent, State: state, Query: in.Query, Priorities: in.Priorities, Types: in.Types, Sizes: in.Sizes, Statuses: in.Statuses, Assignees: in.Assignees, Unassigned: in.Unassigned, Sort: in.Sort, Direction: in.Direction, Cursor: in.Cursor, Group: in.Group, GroupID: in.GroupID}
+	return tasks.Filter{Board: in.Board, Archived: in.Archived, Parent: in.Parent, State: state, Query: in.Query, Priorities: in.Priorities, Types: in.Types, Sizes: in.Sizes, Releases: in.Releases, AllDepths: in.AllDepths, Statuses: in.Statuses, Assignees: in.Assignees, Unassigned: in.Unassigned, Sort: in.Sort, Direction: in.Direction, Cursor: in.Cursor, Group: in.Group, GroupID: in.GroupID}
 }
 
 type updateTaskInput struct {
 	Task      string    `json:"task" jsonschema:"Task UUID or reference, including a previous workspace prefix."`
-	Field     string    `json:"field" jsonschema:"Exactly one of title, description, status_id, parent_id, assignees, board, priority, type or size."`
+	Field     string    `json:"field" jsonschema:"Exactly one of title, description, status_id, parent_id, assignees, board, priority, type, size or release_id."`
 	Version   int64     `json:"version" jsonschema:"For board use versions.status_id. Otherwise positive expected version for this field, from task_get or the previous mutation result."`
-	Text      *string   `json:"text,omitempty" jsonschema:"Required for text fields. Empty string explicitly clears description, parent_id or metadata. Priority: none/low/medium/high/urgent. Type: none/bug/chore/feature. Size: none/xs/s/m/l/xl (relative effort). Omit for assignees."`
+	Text      *string   `json:"text,omitempty" jsonschema:"Required for text fields. Empty string explicitly clears description, parent_id, release_id or metadata. Priority: none/low/medium/high/urgent. Type: none/bug/chore/feature. Size: none/xs/s/m/l/xl (relative effort). release_id: a release UUID from releases_list. Omit for assignees."`
 	Assignees *[]string `json:"assignees,omitempty" jsonschema:"Required for field=assignees: complete replacement UUID array. [] explicitly removes all assignments. Omit for text fields."`
 }
 
@@ -88,6 +90,7 @@ func (in updateTaskInput) patch() (tasks.Patch, error) {
 }
 func (h *Handler) taskTools(s *mcp.Server, grants []string) {
 	h.commentTools(s, grants)
+	h.releaseTools(s, grants)
 	no := false
 	read := func(name, description string) *mcp.Tool {
 		return &mcp.Tool{Name: name, Description: description, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, DestructiveHint: &no, OpenWorldHint: &no}}
@@ -134,7 +137,7 @@ func (h *Handler) taskTools(s *mcp.Server, grants []string) {
 		})
 		addTaskTool(s, read("task_groups", "Resolve assignment or fixed metadata group IDs. assignee combines humans with their agents; agents contains unassigned, the current human and their agents. A multiply assigned task may appear in several groups."), func(ctx context.Context, in struct {
 			Workspace string `json:"workspace"`
-			Group     string `json:"group" jsonschema:"assignee, agents, priority, type or size"`
+			Group     string `json:"group" jsonschema:"assignee, agents, priority, type, size or release"`
 		}) (struct {
 			Groups []tasks.Group `json:"groups"`
 		}, error) {
@@ -164,13 +167,14 @@ func (h *Handler) taskTools(s *mcp.Server, grants []string) {
 			Priority    string   `json:"priority,omitempty" jsonschema:"none (default), low, medium, high or urgent."`
 			Type        string   `json:"type,omitempty" jsonschema:"none (default), bug, chore or feature."`
 			Size        string   `json:"size,omitempty" jsonschema:"none (default), xs, s, m, l or xl. Relative effort, not hours; no subtask roll-up."`
+			Release     string   `json:"release_id,omitempty" jsonschema:"Optional target release UUID from releases_list. Not inherited by subtasks."`
 			Title       string   `json:"title"`
 			Description string   `json:"description,omitempty" jsonschema:"Markdown; omitted means empty."`
 			Status      string   `json:"status_id,omitempty"`
 			Parent      string   `json:"parent,omitempty"`
 			Assignees   []string `json:"assignees,omitempty"`
 		}) (tasks.Task, error) {
-			return h.management.CreateTask(ctx, "", in.Workspace, tasks.Create{Board: in.Board, Priority: in.Priority, Type: in.Type, Size: in.Size, Title: in.Title, Description: in.Description, StatusID: in.Status, ParentID: in.Parent, Assignees: in.Assignees})
+			return h.management.CreateTask(ctx, "", in.Workspace, tasks.Create{Board: in.Board, Priority: in.Priority, Type: in.Type, Size: in.Size, ReleaseID: in.Release, Title: in.Title, Description: in.Description, StatusID: in.Status, ParentID: in.Parent, Assignees: in.Assignees})
 		})
 		addTaskTool(s, &mcp.Tool{Name: "task_update", Description: "Change one explicitly supplied field using its expected version. Other fields stay unchanged. Returns the saved task. On conflict, error.current contains the current field value/version: reconcile before retrying. Set field=board with text=tasks/backlog and versions.status_id to move to its entry status; choose status_id for a specific destination status. Moves preserve identity, history and parent links; children keep their statuses. Reparenting preserves task identity; assignment replacement never starts agents.", Annotations: &mcp.ToolAnnotations{IdempotentHint: true, DestructiveHint: &no, OpenWorldHint: &no}}, func(ctx context.Context, in updateTaskInput) (tasks.Task, error) {
 			p, e := in.patch()

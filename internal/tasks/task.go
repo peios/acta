@@ -75,6 +75,8 @@ type Task struct {
 	Priority            string           `json:"priority"`
 	Type                string           `json:"type"`
 	Size                string           `json:"size"`
+	ReleaseID           string           `json:"release_id"`
+	Release             *ReleaseRef      `json:"release"`
 	Description         string           `json:"description"`
 	StatusID            string           `json:"status_id"`
 	ParentID            string           `json:"parent_id"`
@@ -93,6 +95,7 @@ type Create struct {
 	Priority    string   `json:"priority"`
 	Type        string   `json:"type"`
 	Size        string   `json:"size"`
+	ReleaseID   string   `json:"release_id"`
 	Description string   `json:"description"`
 	StatusID    string   `json:"status_id"`
 	ParentID    string   `json:"parent_id"`
@@ -120,9 +123,12 @@ type Filter struct {
 	Priorities []string `json:"priorities"`
 	Types      []string `json:"types"`
 	Sizes      []string `json:"sizes"`
+	Releases   []string `json:"releases"`
 	Statuses   []string `json:"statuses"`
 	Assignees  []string `json:"assignees"`
 	Unassigned bool     `json:"unassigned"`
+	// AllDepths matches tasks at every depth instead of one hierarchy level.
+	AllDepths bool `json:"all_depths"`
 }
 
 type Page struct {

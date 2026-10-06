@@ -27,8 +27,17 @@ func ValidateGroupFilter(f Filter) error {
 		_, e := PropertyValue(f.Group, f.GroupID)
 		return e
 	}
+	if f.Group == "release" {
+		if f.GroupID == NoRelease {
+			return nil
+		}
+		if _, e := uuid.Parse(f.GroupID); e != nil {
+			return field("group_id", "Choose a group.")
+		}
+		return nil
+	}
 	if f.Group != "assignee" && f.Group != "agents" {
-		return field("group", "Choose assignee, agents, priority, type or size grouping.")
+		return field("group", "Choose assignee, agents, priority, type, size or release grouping.")
 	}
 	if f.GroupID != "unassigned" {
 		if _, e := uuid.Parse(f.GroupID); e != nil {

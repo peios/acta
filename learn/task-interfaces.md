@@ -113,6 +113,12 @@ response, search/inspect before retrying to avoid duplicate tasks.
 | `task_groups` | Resolve assignee/agents group IDs | `tasks.read` |
 | `task_create` | Create task or subtask | `tasks.write` |
 | `task_update` | Update one explicit field with its version | `tasks.write` |
+| `releases_list` | Releases with state and progress, without notes | `tasks.read` |
+| `release_get` | One release, including notes | `tasks.read` |
+| `release_create` | Create a release | `tasks.write` |
+| `release_update` | Change a release's supplied fields with its version | `tasks.write` |
+
+See [Releases](releases.md) for release semantics and the matching CLI and HTTP interfaces.
 
 Task tools return `{"data": ...}` on success. Service errors return
 `{"error": ...}` and set `isError`; structured JSON is also emitted as text for
@@ -190,6 +196,10 @@ acta task edit ACT-151 --field priority --version 2 --clear
 MCP `task_create` accepts the same singular property names. `task_update` uses
 `field`, `version` and `text`, with `none` (or explicit empty text) to clear.
 See [Tasks](tasks.md#optional-task-properties-act-88) for the fixed values and semantics.
+
+A task's target release works the same way through `release_id` (create field,
+edit field and `--release` flags), cleared with empty text. List queries take
+`release` (MCP `releases`) selections and `all_depths`. See [Releases](releases.md).
 
 ## Global search
 

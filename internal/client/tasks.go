@@ -17,13 +17,16 @@ func (c *Client) Tasks(ctx context.Context, workspace string, f tasks.Filter) (t
 	for _, id := range f.Assignees {
 		q.Add("assignee", id)
 	}
-	for key, values := range map[string][]string{"priority": f.Priorities, "type": f.Types, "size": f.Sizes} {
+	for key, values := range map[string][]string{"priority": f.Priorities, "type": f.Types, "size": f.Sizes, "release": f.Releases} {
 		for _, value := range values {
 			q.Add(key, value)
 		}
 	}
 	if f.Unassigned {
 		q.Set("unassigned", "true")
+	}
+	if f.AllDepths {
+		q.Set("all_depths", "true")
 	}
 	var out tasks.SummaryPage
 	e := c.Call(ctx, "GET", "workspaces/"+url.PathEscape(workspace)+"/tasks?"+q.Encode(), nil, &out)
@@ -62,6 +65,29 @@ func (c *Client) TaskGroups(ctx context.Context, workspace, group string) ([]tas
 	}
 	e := c.Call(ctx, "GET", "workspaces/"+url.PathEscape(workspace)+"/task-groups?group="+url.QueryEscape(group), nil, &out)
 	return out.Groups, e
+}
+
+func (c *Client) TaskReleases(ctx context.Context, workspace string) ([]tasks.Release, error) {
+	var out struct {
+		Releases []tasks.Release `json:"releases"`
+	}
+	e := c.Call(ctx, "GET", "workspaces/"+url.PathEscape(workspace)+"/releases", nil, &out)
+	return out.Releases, e
+}
+func (c *Client) TaskRelease(ctx context.Context, workspace, id string) (tasks.Release, error) {
+	var out tasks.Release
+	e := c.Call(ctx, "GET", "workspaces/"+url.PathEscape(workspace)+"/releases/"+url.PathEscape(id), nil, &out)
+	return out, e
+}
+func (c *Client) CreateTaskRelease(ctx context.Context, workspace string, in tasks.ReleaseCreate) (tasks.Release, error) {
+	var out tasks.Release
+	e := c.Call(ctx, "POST", "workspaces/"+url.PathEscape(workspace)+"/releases", in, &out)
+	return out, e
+}
+func (c *Client) UpdateTaskRelease(ctx context.Context, workspace, id string, in tasks.ReleaseUpdate) (tasks.Release, error) {
+	var out tasks.Release
+	e := c.Call(ctx, "POST", "workspaces/"+url.PathEscape(workspace)+"/releases/"+url.PathEscape(id), in, &out)
+	return out, e
 }
 
 type WorkspacePage struct {

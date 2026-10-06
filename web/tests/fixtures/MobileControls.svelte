@@ -7,6 +7,7 @@
   import TaskTextField from "$lib/components/tasks/TaskTextField.svelte";
   import type { Task } from "$lib/tasks";
   import TaskFilterMenu from "$lib/components/tasks/TaskFilterMenu.svelte";
+  import { emptyViewFilters } from "$lib/task-views.js";
   import TaskAssigneePicker from "$lib/components/tasks/TaskAssigneePicker.svelte";
   import CommentComposer from "$lib/components/tasks/CommentComposer.svelte";
   import ThreadComposer from "$lib/components/threads/ThreadComposer.svelte";
@@ -23,6 +24,8 @@
     priority: "",
     type: "",
     size: "",
+    release_id: "",
+    release: null,
     status_id: "todo",
     parent_id: "",
     assignees: [],
@@ -132,7 +135,11 @@
       onsaved={(next) => (task = next)}
     />
     <div class="actions">
-      <TaskFilterMenu workspace="audit" {config} /><TaskAssigneePicker
+      <TaskFilterMenu
+        workspace="audit"
+        {config}
+        filters={emptyViewFilters()}
+      /><TaskAssigneePicker
         workspace="audit"
         assignees={[]}
         disabled={false}

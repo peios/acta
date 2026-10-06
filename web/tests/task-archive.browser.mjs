@@ -90,6 +90,7 @@ try {
         contentType: "text/css",
         body: readFileSync(join(out, "fixture.css")),
       });
+    if (url.pathname.endsWith("/releases")) return json({ releases: [] });
     if (url.pathname.startsWith("/api/"))
       throw Error("Unexpected request " + url.pathname);
     return route.fulfill({

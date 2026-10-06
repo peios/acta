@@ -101,6 +101,8 @@ try {
     }
     if (url.pathname.endsWith("/task-people"))
       return route.fulfill({ json: { people: [] } });
+    if (url.pathname.endsWith("/releases"))
+      return route.fulfill({ json: { releases: [] } });
     let rows = tasks.filter(
       (t) =>
         !url.searchParams.get("group") ||

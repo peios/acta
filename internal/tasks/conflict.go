@@ -20,7 +20,7 @@ func NewConflict(t Task, field string) *Conflict {
 		}
 		value = ids
 	} else {
-		value = map[string]string{"priority": t.Priority, "type": t.Type, "size": t.Size, "title": t.Title, "description": t.Description, "status_id": t.StatusID, "parent_id": t.ParentID}[field]
+		value = map[string]string{"priority": t.Priority, "type": t.Type, "size": t.Size, "title": t.Title, "description": t.Description, "status_id": t.StatusID, "parent_id": t.ParentID, "release_id": t.ReleaseID}[field]
 	}
 	return &Conflict{field, t.Versions[field], value}
 }

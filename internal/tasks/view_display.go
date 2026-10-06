@@ -44,23 +44,23 @@ func NormalizeViewDisplay(d ViewDisplay) (ViewDisplay, error) {
 	if d.Direction != "asc" && d.Direction != "desc" {
 		return d, field("direction", "Choose ascending or descending order.")
 	}
-	if !slices.Contains([]string{"none", "status", "assignee", "agents", "priority", "type", "size"}, d.Group) {
-		return d, field("group", "Choose no grouping, status, assignee, agents, priority, type or size.")
+	if !slices.Contains([]string{"none", "status", "assignee", "agents", "priority", "type", "size", "release"}, d.Group) {
+		return d, field("group", "Choose no grouping, status, assignee, agents, priority, type, size or release.")
 	}
 	if d.Density != "comfortable" && d.Density != "compact" {
 		return d, field("density", "Choose comfortable or compact density.")
 	}
-	if len(d.Columns) > 5 {
-		return d, field("columns", "Choose status, assignees, priority, type or size.")
+	if len(d.Columns) > 6 {
+		return d, field("columns", "Choose status, assignees, priority, type, size or release.")
 	}
 	for _, col := range d.Columns {
-		if col != "status" && col != "assignees" && !IsProperty(col) {
-			return d, field("columns", "Choose status, assignees, priority, type or size.")
+		if col != "status" && col != "assignees" && col != "release" && !IsProperty(col) {
+			return d, field("columns", "Choose status, assignees, priority, type, size or release.")
 		}
 	}
 	// Canonical order makes equivalent saves idempotent; number/title are always shown.
 	cols := []string{}
-	for _, col := range []string{"status", "assignees", "priority", "size", "type"} {
+	for _, col := range []string{"status", "assignees", "priority", "size", "type", "release"} {
 		if slices.Contains(d.Columns, col) {
 			cols = append(cols, col)
 		}

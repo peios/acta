@@ -1,16 +1,56 @@
-/** @typedef {{statuses: string[], assignees: string[], unassigned: boolean, priorities?: string[], types?: string[], sizes?: string[]}} ViewFilters */
-/** @param {ViewFilters} filters @returns {ViewFilters} */
+/** Filters as saved. Views saved before a category existed omit it (the server may send null); that means no selection.
+ * @typedef {{statuses: string[], assignees: string[], unassigned: boolean, priorities?: string[] | null, types?: string[] | null, sizes?: string[] | null, releases?: string[] | null}} SavedViewFilters */
+/** Normalised filters, with every category present. copyViewFilters produces them.
+ * @typedef {{statuses: string[], assignees: string[], unassigned: boolean, priorities: string[], types: string[], sizes: string[], releases: string[]}} ViewFilters */
+/** @returns {ViewFilters} */
+export function emptyViewFilters() {
+  return {
+    priorities: [],
+    types: [],
+    sizes: [],
+    releases: [],
+    statuses: [],
+    assignees: [],
+    unassigned: false,
+  };
+}
+/** @param {ViewFilters} f */
+export function hasViewFilters(f) {
+  return (
+    f.unassigned ||
+    [f.priorities, f.types, f.sizes, f.releases, f.statuses, f.assignees].some(
+      (values) => values.length > 0,
+    )
+  );
+}
+/** Adds a task list query's filter parameters. A status group replaces the status selection.
+ * @param {URLSearchParams} q @param {ViewFilters} f @param {string} [groupStatus] */
+export function appendViewFilters(q, f, groupStatus = "") {
+  for (const id of groupStatus ? [groupStatus] : f.statuses)
+    q.append("status", id);
+  for (const [key, values] of /** @type {[string, string[]][]} */ ([
+    ["priority", f.priorities],
+    ["type", f.types],
+    ["size", f.sizes],
+    ["release", f.releases],
+    ["assignee", f.assignees],
+  ]))
+    for (const value of values) q.append(key, value);
+  if (f.unassigned) q.set("unassigned", "true");
+}
+/** @param {SavedViewFilters} filters @returns {ViewFilters} */
 export function copyViewFilters(filters) {
   return {
     priorities: [...(filters.priorities ?? [])],
     types: [...(filters.types ?? [])],
     sizes: [...(filters.sizes ?? [])],
+    releases: [...(filters.releases ?? [])],
     statuses: [...filters.statuses],
     assignees: [...filters.assignees],
     unassigned: filters.unassigned,
   };
 }
-/** @param {ViewFilters} a @param {ViewFilters} b */
+/** @param {SavedViewFilters} a @param {SavedViewFilters} b */
 export function sameViewFilters(a, b) {
   /** @param {string[]} values */
   const key = (values) => JSON.stringify([...new Set(values)].sort());
@@ -18,6 +58,7 @@ export function sameViewFilters(a, b) {
     key(a.priorities ?? []) === key(b.priorities ?? []) &&
     key(a.types ?? []) === key(b.types ?? []) &&
     key(a.sizes ?? []) === key(b.sizes ?? []) &&
+    key(a.releases ?? []) === key(b.releases ?? []) &&
     a.unassigned === b.unassigned &&
     key(a.statuses) === key(b.statuses) &&
     key(a.assignees) === key(b.assignees)
@@ -26,6 +67,7 @@ export function sameViewFilters(a, b) {
 
 /** @typedef {{mode: string, columns: string[], sort: string, direction: string, group: string, density: string}} ViewDisplay */
 /** @typedef {{filters: ViewFilters, display: ViewDisplay}} ViewSettings */
+/** @typedef {{filters: SavedViewFilters, display: ViewDisplay}} SavedViewSettings */
 /** @returns {ViewDisplay} */
 export function defaultViewDisplay() {
   return {
@@ -39,26 +81,16 @@ export function defaultViewDisplay() {
 }
 /** @returns {ViewSettings} */
 export function defaultViewSettings() {
-  return {
-    filters: {
-      priorities: [],
-      types: [],
-      sizes: [],
-      statuses: [],
-      assignees: [],
-      unassigned: false,
-    },
-    display: defaultViewDisplay(),
-  };
+  return { filters: emptyViewFilters(), display: defaultViewDisplay() };
 }
-/** @param {ViewSettings} settings @returns {ViewSettings} */
+/** @param {SavedViewSettings} settings @returns {ViewSettings} */
 export function copyViewSettings(settings) {
   return {
     filters: copyViewFilters(settings.filters),
     display: { ...settings.display, columns: [...settings.display.columns] },
   };
 }
-/** @param {ViewSettings} a @param {ViewSettings} b */
+/** @param {SavedViewSettings} a @param {SavedViewSettings} b */
 export function sameViewSettings(a, b) {
   return (
     sameViewFilters(a.filters, b.filters) &&

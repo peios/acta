@@ -40,6 +40,7 @@ type SearchResult struct {
 	Reference     string           `json:"reference"`
 	Title         string           `json:"title"`
 	Status        Status           `json:"status"`
+	Release       *ReleaseRef      `json:"release"`
 	WorkspaceID   string           `json:"workspace_id"`
 	WorkspaceSlug string           `json:"workspace_slug"`
 	WorkspaceName string           `json:"workspace_name"`

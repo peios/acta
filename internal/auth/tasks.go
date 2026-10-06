@@ -33,6 +33,10 @@ type TaskTx interface {
 	TaskConfig(context.Context, string) (tasks.Config, error)
 	TaskPrefix(context.Context, string, string, int64) error
 	TaskStatuses(context.Context, string, tasks.StatusChange) error
+	TaskReleases(context.Context, string) ([]tasks.Release, error)
+	TaskRelease(context.Context, string, string) (tasks.Release, error)
+	TaskReleaseCreate(context.Context, string, tasks.ReleaseCreate) (tasks.Release, error)
+	TaskReleaseSave(context.Context, tasks.Release, int64) (tasks.Release, error)
 	TaskGet(context.Context, string) (tasks.Task, error)
 	TaskList(context.Context, string, tasks.Filter) (tasks.Page, error)
 	TaskCreate(context.Context, string, tasks.Create) (tasks.Task, error)
@@ -186,6 +190,9 @@ func (m *Management) CreateTask(ctx context.Context, token, w string, in tasks.C
 		if e != nil {
 			return e
 		}
+		if in.ReleaseID, e = taskReleaseID(ctx, tx, w, in.ReleaseID); e != nil {
+			return e
+		}
 		if e = validAssignees(ctx, tx, w, in.Assignees, nil); e != nil {
 			return e
 		}
@@ -222,7 +229,7 @@ func (m *Management) PatchTask(ctx context.Context, token, ref string, in tasks.
 			return &accounts.FieldError{Field: "value", Message: "Supply an explicit value; use an empty string or empty array to clear a field."}
 		}
 		switch in.Field {
-		case "title", "description", "status_id", "board", "parent_id", "priority", "type", "size":
+		case "title", "description", "status_id", "board", "parent_id", "priority", "type", "size", "release_id":
 			var value string
 			if e = json.Unmarshal(in.Value, &value); e != nil {
 				return &accounts.FieldError{Field: in.Field, Message: "Supply a text value."}
@@ -261,6 +268,8 @@ func (m *Management) PatchTask(ctx context.Context, token, ref string, in tasks.
 				e = taskStatus(ctx, tx, t.WorkspaceID, value)
 			case "parent_id":
 				value, e = taskRelation(ctx, tx, t.WorkspaceID, value)
+			case "release_id":
+				value, e = taskReleaseID(ctx, tx, t.WorkspaceID, value)
 			}
 			if e != nil {
 				return e
@@ -279,7 +288,7 @@ func (m *Management) PatchTask(ctx context.Context, token, ref string, in tasks.
 				return e
 			}
 		default:
-			return &accounts.FieldError{Field: "field", Message: "Choose title, description, status_id, parent_id, assignees, board, priority, type or size."}
+			return &accounts.FieldError{Field: "field", Message: "Choose title, description, status_id, parent_id, assignees, board, priority, type, size or release_id."}
 		}
 		out, e = tx.TaskPatch(ctx, t, in)
 		return e
@@ -298,10 +307,15 @@ func (m *Management) TaskPeople(ctx context.Context, token, w, q string) ([]task
 
 func (m *Management) TaskGroups(ctx context.Context, token, w, mode string) ([]tasks.Group, error) {
 	var out []tasks.Group
-	if mode != "assignee" && mode != "agents" && !tasks.IsProperty(mode) {
-		return out, &accounts.FieldError{Field: "group", Message: "Choose assignee, agents, priority, type or size grouping."}
+	if mode != "assignee" && mode != "agents" && mode != "release" && !tasks.IsProperty(mode) {
+		return out, &accounts.FieldError{Field: "group", Message: "Choose assignee, agents, priority, type, size or release grouping."}
 	}
 	e := m.taskScope(ctx, token, w, false, "", func(tx WorkspaceTx, w string) error {
+		if mode == "release" {
+			rs, e := tx.TaskReleases(ctx, w)
+			out = releaseGroups(rs)
+			return e
+		}
 		if tasks.IsProperty(mode) {
 			for _, o := range tasks.PropertyOptions(mode) {
 				out = append(out, tasks.Group{ID: o.Value, Name: o.Label, Available: true})

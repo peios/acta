@@ -79,8 +79,8 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 	defer session.Close()
 	catalogue, e := session.ListTools(ctx, nil)
 	must(t, e)
-	if len(catalogue.Tools) != 25 {
-		t.Fatalf("expected guide, identity, seventeen task tools and six document tools: %d", len(catalogue.Tools))
+	if len(catalogue.Tools) != 29 {
+		t.Fatalf("expected guide, identity, twenty-one task tools and six document tools: %d", len(catalogue.Tools))
 	}
 	for _, tool := range catalogue.Tools {
 		// The guide deliberately returns Markdown text, not a JSON output envelope.
@@ -365,6 +365,45 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 	decodeTool(t, boardResult, &boardEnvelope)
 	if boardResult.IsError || boardEnvelope.Data.Board != "backlog" {
 		t.Fatal(boardResult)
+	}
+	// Releases round-trip through the MCP schema and the CLI parser.
+	releaseResult, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "release_create", Arguments: map[string]any{"workspace": "interfaces", "name": "2026.9", "state": "open", "description": "Notes"}})
+	must(t, err)
+	var releaseEnvelope struct {
+		Data tasks.Release `json:"data"`
+	}
+	decodeTool(t, releaseResult, &releaseEnvelope)
+	if releaseResult.IsError || releaseEnvelope.Data.State != "open" {
+		t.Fatal(releaseResult)
+	}
+	release := releaseEnvelope.Data
+	boardResult, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "task_update", Arguments: map[string]any{"task": promoted.ID, "field": "release_id", "text": release.ID, "version": 1}})
+	must(t, err)
+	decodeTool(t, boardResult, &boardEnvelope)
+	if boardResult.IsError || boardEnvelope.Data.Release == nil || boardEnvelope.Data.Release.State != "open" {
+		t.Fatal(boardResult)
+	}
+	result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "tasks_list", Arguments: map[string]any{"workspace": "interfaces", "board": "*", "releases": []string{release.ID}, "all_depths": true}})
+	must(t, err)
+	decodeTool(t, result, &listed)
+	if result.IsError || listed.Data.Total != 1 || listed.Data.Tasks[0].Release == nil {
+		t.Fatal(result)
+	}
+	result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "releases_list", Arguments: map[string]any{"workspace": "interfaces"}})
+	must(t, err)
+	data, _ = json.Marshal(result.StructuredContent)
+	if result.IsError || !strings.Contains(string(data), `"total":1`) || strings.Contains(string(data), "Notes") {
+		t.Fatal("releases_list", string(data))
+	}
+	var frozen tasks.Release
+	must(t, json.Unmarshal(runTaskCLI(t, srv.URL, cliToken, "", "release", "edit", release.ID, "-w", "interfaces", "--state", "frozen", "--version", "1"), &frozen))
+	if frozen.State != "frozen" || frozen.Description != "Notes" || frozen.Version != 2 {
+		t.Fatal(frozen)
+	}
+	var releases []tasks.Release
+	must(t, json.Unmarshal(runTaskCLI(t, srv.URL, cliToken, "", "release", "list", "-w", "interfaces"), &releases))
+	if len(releases) != 1 || releases[0].State != "frozen" {
+		t.Fatal(releases)
 	}
 	// Explicit assignment replacement and clearing work through the same tool.
 	for i, ids := range [][]string{{agent.ID}, {}} {

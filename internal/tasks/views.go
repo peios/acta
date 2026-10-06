@@ -11,6 +11,7 @@ type ViewFilters struct {
 	Priorities []string `json:"priorities"`
 	Types      []string `json:"types"`
 	Sizes      []string `json:"sizes"`
+	Releases   []string `json:"releases"`
 	Statuses   []string `json:"statuses"`
 	Assignees  []string `json:"assignees"`
 	Unassigned bool     `json:"unassigned"`
@@ -57,6 +58,10 @@ func NormalizeViewFilters(f ViewFilters) (ViewFilters, error) {
 	if e := ValidatePropertyFilters(f.Priorities, f.Types, f.Sizes); e != nil {
 		return f, e
 	}
+	if e := ValidateReleaseSelections(f.Releases); e != nil {
+		return f, e
+	}
+	f.Releases = normalizeReleaseSelections(f.Releases)
 	canonical := func(v []string) []string {
 		out := append([]string{}, v...)
 		slices.Sort(out)

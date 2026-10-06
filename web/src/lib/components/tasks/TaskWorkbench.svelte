@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { defaultViewDisplay, type ViewDisplay } from "$lib/task-views.js";
+  import {
+    defaultViewDisplay,
+    emptyViewFilters,
+    type ViewDisplay,
+    type ViewFilters,
+  } from "$lib/task-views.js";
   import {
     defaultTableLayout,
     readTableLayout,
@@ -50,7 +55,10 @@
     groupError = "";
     const needsGroups =
       !!workspace &&
-      (group === "assignee" || group === "agents" || isTaskProperty(group));
+      (group === "assignee" ||
+        group === "agents" ||
+        group === "release" ||
+        isTaskProperty(group));
     groupsLoading = needsGroups;
     if (needsGroups) {
       api<{ groups: import("$lib/task-groups.js").TaskGroup[] }>(
@@ -115,12 +123,7 @@
     mode = $state("modal");
   const searchID = $props.id();
   const filterID = `${searchID}-completion`;
-  let priorities = $state<string[]>([]),
-    types = $state<string[]>([]),
-    sizes = $state<string[]>([]);
-  let statusFilters = $state<string[]>([]);
-  let assigneeFilters = $state<string[]>([]);
-  let unassignedFilter = $state(false);
+  let filters = $state<ViewFilters>(emptyViewFilters());
   let viewLabelID = $state("");
   const taskReads = new LatestRequest();
   let feed: ReturnType<typeof createTaskFeed> | undefined;
@@ -247,14 +250,8 @@
           config={{ ...scopedConfig!, statuses: boardStatuses(scopedConfig!) }}
           panelID={`${filterID}-panel`}
           onchange={(settings) => {
-            const filters = settings.filters;
             display = settings.display;
-            priorities = filters.priorities ?? [];
-            types = filters.types ?? [];
-            sizes = filters.sizes ?? [];
-            statusFilters = filters.statuses;
-            assigneeFilters = filters.assignees;
-            unassignedFilter = filters.unassigned;
+            filters = settings.filters;
           }}
           onviewchange={(id) => {
             activeViewID = id;
@@ -291,12 +288,7 @@
               {hover}
               config={scopedConfig!}
               {display}
-              {priorities}
-              {types}
-              {sizes}
-              statuses={statusFilters}
-              assignees={assigneeFilters}
-              unassigned={unassignedFilter}
+              {filters}
               query={search}
               onopen={open}
               canEdit={!archived &&
@@ -317,12 +309,7 @@
               onlayoutchange={changeTableLayout}
               onsort={(field) => viewTabs?.sortBy(field)}
               {display}
-              {priorities}
-              {types}
-              {sizes}
-              statuses={statusFilters}
-              assignees={assigneeFilters}
-              unassigned={unassignedFilter}
+              {filters}
               query={search}
               revision={config.revision}
               onopen={open}

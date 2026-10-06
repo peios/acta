@@ -95,6 +95,7 @@
           options={[
             { value: "none", label: "No grouping" },
             ...taskProperties,
+            { value: "release", label: "Release" },
             { value: "status", label: "Status" },
             { value: "assignee", label: "Assignee" },
             { value: "agents", label: "Agents" },

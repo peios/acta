@@ -222,6 +222,33 @@ relative effort, not hours, and does not roll up from subtasks. Supply these fie
 selections match any value within a category and intersect across categories. These
 properties can also be used for sorting and grouping.
 
+## Releases
+
+A workspace can sequence work into releases. `task_get`, `tasks_list` and
+`task_search` show a task's target `release` with its `state`:
+
+- `planned`: the release exists, but nobody is working toward it yet.
+- `open`: it is taking work.
+- `frozen`: no new work starts; only work already in flight finishes.
+- `released`: it has shipped.
+
+Respect the state when choosing work. Do not start new work targeted at a frozen
+release unless the user asks; finishing work already in flight is expected. Acta
+does not enforce this.
+
+A task's release is set directly and is not inherited by its subtasks. Use
+`releases_list` to find release UUIDs, states and progress, and `release_get` for
+the release notes. To see everything targeted at a release, call `tasks_list`
+with `releases: ["<release UUID>"]` and `all_depths: true`; `releases: ["none"]`
+matches tasks without a release. Set or clear a task's release with `task_update`,
+field `release_id`. Only target a release when the user or project has decided
+the work belongs in it; do not assign releases just to fill the field.
+
+Creating releases and changing their state or notes (`release_create`,
+`release_update`) requires Manage releases and is a project decision: do it only
+when asked. `release_update` takes only the fields to change, plus the release's
+current version. Releases cannot be deleted.
+
 ## Provider-hosted artifacts
 
 Some Acta-managed Claude sessions expose a native `Artifact` tool separately from

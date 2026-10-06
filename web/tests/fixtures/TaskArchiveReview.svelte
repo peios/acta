@@ -54,7 +54,7 @@
     {archived}
     completion="all"
     display={settings.display}
-    statuses={settings.filters.statuses}
+    filters={settings.filters}
     onopen={() => {}}
   />
 </div>

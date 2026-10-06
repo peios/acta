@@ -486,16 +486,7 @@
         >
       </button>{/if}
     {#if settings}
-      <TaskFilterMenu
-        {workspace}
-        {config}
-        bind:priorities={settings.filters.priorities}
-        bind:types={settings.filters.types}
-        bind:sizes={settings.filters.sizes}
-        bind:statuses={settings.filters.statuses}
-        bind:assignees={settings.filters.assignees}
-        bind:unassigned={settings.filters.unassigned}
-      />
+      <TaskFilterMenu {workspace} {config} bind:filters={settings.filters} />
     {/if}
     {#if settings}
       <TaskDisplayMenu bind:display={settings.display} />

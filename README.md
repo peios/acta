@@ -25,6 +25,7 @@ Projects remain subsequent work.
 - [Provider threads and raw frames](learn/threads.md)
 - [Workspaces and scoped access](learn/workspaces.md)
 - [Tasks, editing and agent interfaces](learn/tasks.md)
+- [Releases](learn/releases.md)
 - [Foundation quality review](learn/quality-review-2026-09-07.md)
 - Project records: ACT-50 (foundation), ACT-51 (accounts and authentication), ACT-52 (CLI), ACT-53 (MCP), ACT-54 (agent accounts), ACT-55 (workspaces), ACT-56 (tasks), ACT-57 (quality pass).
 
