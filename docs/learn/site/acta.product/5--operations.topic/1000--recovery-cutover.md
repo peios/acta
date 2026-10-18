@@ -36,6 +36,13 @@ rolled back, so apply any known post-backup account disables/password changes
 before reopening access. Preparation is repeatable and records
 `prepared.json`; it does not switch traffic.
 
+Restore and cutover preparation attempt to stop their isolated PostgreSQL
+process on failure, using a separate cleanup timeout even if the operation was
+canceled. A cleanup failure is reported alongside the original error. If the
+error includes `stop recovery PostgreSQL`, inspect the target's PostgreSQL log
+and confirm that its process has stopped before retrying or removing the
+target.
+
 ## Switch the installation
 
 Configure production PostgreSQL explicitly (including WAL archiving,

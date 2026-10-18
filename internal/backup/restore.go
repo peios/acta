@@ -36,8 +36,7 @@ type RestoreReport struct {
 // Restore never opens the source database. Repository configuration and an age
 // identity are sufficient even when the original host and Acta are gone.
 // target must not exist, including an empty directory or symlink.
-func (e PGBackRest) Restore(ctx context.Context, p Policy, label, identity, target, targetTime string) (RestoreReport, error) {
-	var report RestoreReport
+func (e PGBackRest) Restore(ctx context.Context, p Policy, label, identity, target, targetTime string) (report RestoreReport, err error) {
 	if len(filepath.Join(target, "socket")) > 90 {
 		return report, errors.New("restore path is too long for an isolated PostgreSQL socket")
 	}
@@ -140,9 +139,7 @@ func (e PGBackRest) Restore(ctx context.Context, p Policy, label, identity, targ
 	stopped := false
 	defer func() {
 		if !stopped {
-			cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			_, _ = command(cleanup, pgctl, []string{"-D", data, "-m", "immediate", "-w", "stop"}, nil)
+			err = errors.Join(err, stopRecoveryPostgres(pgctl, data))
 		}
 	}()
 	if _, err = command(
@@ -186,7 +183,7 @@ func (e PGBackRest) Restore(ctx context.Context, p Policy, label, identity, targ
 		return report, errors.New("restored PostgreSQL did not accept a local verification connection")
 	}
 	report, err = verifyDatabase(ctx, c, meta)
-	_ = c.Close(ctx)
+	err = errors.Join(err, c.Close(ctx))
 	if err != nil {
 		return report, err
 	}

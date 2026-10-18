@@ -8,6 +8,7 @@ go_library(
         "http.go",
         "pgbackrest.go",
         "process.go",
+        "recovery_process.go",
         "restore.go",
         "service.go",
         "types.go",
@@ -27,10 +28,12 @@ go_test(
     srcs = [
         "http_test.go",
         "recovery_integration_test.go",
+        "recovery_process_test.go",
         "service_test.go",
     ],
     embed = [":backup"],
     deps = [
+        "//internal/localstate",
         "@com_github_google_uuid//:uuid",
         "@com_github_jackc_pgx_v5//:pgx",
     ],

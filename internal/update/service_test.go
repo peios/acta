@@ -36,6 +36,7 @@ func testRelease(seq int64) Release {
 }
 
 type fakeEngine struct {
+	stepHook func(string) error
 	calls    []string
 	fail     string
 	cancel   func()
@@ -45,6 +46,11 @@ type fakeEngine struct {
 
 func (f *fakeEngine) step(name string) error {
 	f.calls = append(f.calls, name)
+	if f.stepHook != nil {
+		if err := f.stepHook(name); err != nil {
+			return err
+		}
+	}
 	if name == f.crash {
 		f.cancel()
 		return context.Canceled
@@ -282,5 +288,52 @@ func TestDevelopmentLayoutRequiresFreshInstallation(t *testing.T) {
 	r.Layout = 1
 	if err := r.Validate(); err == nil {
 		t.Fatal("development layout accepted under the renamed database and executable paths")
+	}
+}
+
+func TestOperationAndJournalFailuresAreBothReported(t *testing.T) {
+	for _, scenario := range []struct{ phase, step string }{
+		{"preparing", "prepare"},
+		{"quiescing", "quiesce"},
+		{"snapshotting", "snapshot"},
+		{"committing", "publish-new"},
+		{"restoring", "restore"},
+		{"rollback_committing", "publish-old"},
+	} {
+		t.Run(scenario.phase, func(t *testing.T) {
+			engine := &fakeEngine{}
+			service := openTest(t, engine)
+			installTest(t, service)
+			if err := service.transition(scenario.phase, nil); err != nil {
+				t.Fatal(err)
+			}
+			before := service.View()
+			operationErr := errors.New("injected engine failure")
+			engine.stepHook = func(step string) error {
+				if step != scenario.step {
+					t.Fatalf("unexpected engine step %q", step)
+				}
+				journal := filepath.Join(service.c.StateDir, "state.json")
+				if err := os.Rename(journal, journal+".saved"); err != nil {
+					t.Fatal(err)
+				}
+				// A directory reliably blocks atomic journal replacement, even as root.
+				if err := os.Mkdir(journal, 0700); err != nil {
+					t.Fatal(err)
+				}
+				return operationErr
+			}
+			err := service.advance(t.Context())
+			var pathErr *os.LinkError
+			if !errors.Is(err, operationErr) || !errors.As(err, &pathErr) {
+				t.Fatalf("lost operation or journal failure: %v", err)
+			}
+			if !strings.Contains(err.Error(), "save update journal") {
+				t.Fatalf("missing journal failure context: %v", err)
+			}
+			if !reflect.DeepEqual(service.View(), before) {
+				t.Fatal("unsaved transition changed the in-memory journal")
+			}
+		})
 	}
 }

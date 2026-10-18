@@ -24,8 +24,7 @@ type CutoverReport struct {
 
 // PrepareCutover changes only a previously verified, stopped recovery target.
 // It deliberately does not reconfigure a proxy, start Acta or replace production.
-func (e PGBackRest) PrepareCutover(ctx context.Context, target string) (CutoverReport, error) {
-	var out CutoverReport
+func (e PGBackRest) PrepareCutover(ctx context.Context, target string) (out CutoverReport, err error) {
 	if !regexp.MustCompile(`^/[a-zA-Z0-9_./-]+$`).MatchString(target) {
 		return out, errors.New("invalid recovery target path")
 	}
@@ -56,11 +55,7 @@ func (e PGBackRest) PrepareCutover(ctx context.Context, target string) (CutoverR
 	pgctl := filepath.Join(e.Config.PostgresBin, "pg_ctl")
 	options := isolatedOptions(target)
 	defer func() {
-		cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if _, err := os.Stat(filepath.Join(data, "postmaster.pid")); err == nil {
-			_, _ = command(cleanup, pgctl, []string{"-D", data, "-m", "immediate", "-w", "stop"}, nil)
-		}
+		err = errors.Join(err, stopRecoveryPostgres(pgctl, data))
 	}()
 	if _, err = command(
 		ctx,

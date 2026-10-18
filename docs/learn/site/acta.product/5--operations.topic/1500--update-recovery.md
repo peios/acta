@@ -57,8 +57,11 @@ normal backup retention. Never delete the active job's volume or run broad
 Docker prune commands during an update.
 
 The journal records errors and resumable phases even when the app cannot
-respond. Inspect `docker compose logs updater` for private command
-diagnostics. The local operator interface provides `status`, `check`,
-`install -release-id` (flags precede the command), and `retry`. Retry
-reconciles the saved phase; it never creates a new job or assumes that a
-timed-out command did not run.
+respond. If saving a failure to the journal also fails, the updater reports
+both errors in its operator log. The saved phase remains authoritative; the
+browser can still show the earlier state. Restore writable journal storage
+before retrying. Inspect `docker compose logs updater` for private command
+diagnostics. The local operator interface provides `status`, `check`, `install
+-release-id` (flags precede the command), and `retry`. Retry reconciles the
+saved phase; it never creates a new job or assumes that a timed-out command
+did not run.

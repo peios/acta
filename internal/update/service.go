@@ -203,7 +203,7 @@ func (s *Service) transition(phase string, cause error) error {
 		s.state.Jobs[0] = old
 		s.state.Current = current
 		s.state.Available = available
-		return err
+		return errors.Join(cause, fmt.Errorf("save update journal: %w", err))
 	}
 	return nil
 }
@@ -311,7 +311,9 @@ func (s *Service) advance(parent context.Context) error {
 				}
 				continue
 			default:
-				_ = s.transition(j.Phase, err)
+				if saveErr := s.transition(j.Phase, err); saveErr != nil {
+					return saveErr
+				}
 				return err
 			}
 		}
