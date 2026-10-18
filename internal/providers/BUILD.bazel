@@ -1,0 +1,24 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "providers",
+    srcs = [
+        "adapters.go",
+        "discovery.go",
+        "probe.go",
+        "probe_other.go",
+        "probe_unix.go",
+        "status.go",
+    ],
+    importpath = "acta/internal/providers",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "providers_test",
+    srcs = [
+        "probe_unix_test.go",
+        "providers_test.go",
+    ],
+    embed = [":providers"],
+)

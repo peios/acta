@@ -1,0 +1,9 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "learn",
+    srcs = ["embed.go"],
+    embedsrcs = ["mcp-agent-guide.md"],
+    importpath = "acta/learn",
+    visibility = ["//visibility:public"],
+)

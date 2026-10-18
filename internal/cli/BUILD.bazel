@@ -1,0 +1,54 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "cli",
+    srcs = [
+        "activity.go",
+        "cli.go",
+        "comments.go",
+        "config.go",
+        "connection.go",
+        "credentials.go",
+        "documents.go",
+        "harness.go",
+        "login.go",
+        "private_unix.go",
+        "private_windows.go",
+        "releases.go",
+        "task_output.go",
+        "tasks.go",
+    ],
+    importpath = "acta/internal/cli",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/activity",
+        "//internal/client",
+        "//internal/comments",
+        "//internal/documents",
+        "//internal/harnesspipe",
+        "//internal/hyperharness",
+        "//internal/providers",
+        "//internal/tasks",
+        "@com_github_charmbracelet_x_term//:term",
+        "@com_github_gofrs_flock//:flock",
+        "@com_github_google_uuid//:uuid",
+        "@com_github_spf13_cobra//:cobra",
+        "@com_github_zalando_go_keyring//:go-keyring",
+        "@land_charm_huh_v2//:huh",
+    ] + select({
+        "@rules_go//go/platform:windows": [
+            "@org_golang_x_sys//windows",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+go_test(
+    name = "cli_test",
+    srcs = [
+        "config_test.go",
+        "connection_test.go",
+        "tasks_test.go",
+    ],
+    embed = [":cli"],
+)

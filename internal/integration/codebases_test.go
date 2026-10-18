@@ -25,6 +25,7 @@ import (
 
 func TestCodebaseRelayLifecycleAndPrivateOwnership(t *testing.T) {
 	providerBin := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv("PATH", providerBin)
 	must(t, os.WriteFile(filepath.Join(providerBin, "claude"), []byte(`#!/bin/sh
 if [ "$1" = '--print' ]; then

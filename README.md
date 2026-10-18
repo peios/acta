@@ -30,9 +30,8 @@ Projects remain subsequent work.
 - Project records: ACT-50 (foundation), ACT-51 (accounts and authentication), ACT-52 (CLI), ACT-53 (MCP), ACT-54 (agent accounts), ACT-55 (workspaces), ACT-56 (tasks), ACT-57 (quality pass).
 
 ```sh
-make install
-make db
-make run
+./bazel run //:db
+./bazel run //:run
 ```
 
 Open http://localhost:8081 and use the setup code printed in the server terminal.

@@ -1,39 +1,28 @@
 .PHONY: install frontend build run check test-integration db dev
 
-# Development-only connection matching compose.yaml. The executable itself
-# requires ACTA_DATABASE_URL explicitly and has no database/password fallback.
-DEV_DATABASE_URL ?= postgres://acta:acta-development-only@127.0.0.1:5433/acta?sslmode=disable
-
+# Compatibility shortcuts. Bazel owns compilation, dependencies and checks.
 install:
-	npm --prefix web ci
+	./bazel fetch //...
 
 frontend:
-	npm --prefix web run build
+	./bazel build //:frontend
 
-build: frontend
-	go build -trimpath -o bin/acta-server ./cmd/acta
-	go build -trimpath -o bin/acta ./cmd/acta-cli
-	go build -trimpath -o bin/acta-code-host ./cmd/acta-code-host
-	go build -trimpath -o bin/acta-backup ./cmd/acta-backup
-	go build -trimpath -o bin/acta-update ./cmd/acta-update
+build:
+	./bazel run //:export
 
 db:
-	docker compose up -d --wait db
+	./bazel run //:db
 
-run: build
-	ACTA_DATABASE_URL="$${ACTA_DATABASE_URL:-$(DEV_DATABASE_URL)}" ACTA_DEV_ORIGIN="$${ACTA_DEV_ORIGIN:-http://localhost:5173}" ./bin/acta-server -listen :8081
+run:
+	ACTA_DATABASE_URL="$${ACTA_DATABASE_URL:-$(DEV_DATABASE_URL)}" ./bazel run //:run
 
-check: frontend
-	npm --prefix web run format:check
-	npm --prefix web run check
-	npm --prefix web test
-	go vet ./...
-	go test ./...
-	@test -z "$$(gofmt -l cmd internal web/*.go)"
+check:
+	./bazel test //...
+	./bazel run //:format-check
+	./bazel run //:gazelle -- -mode=diff
 
 test-integration:
-	@test -n "$(ACTA_TEST_DATABASE_URL)" || (echo 'Set ACTA_TEST_DATABASE_URL to a PostgreSQL URL.' >&2; exit 1)
-	go test -race -count=1 ./...
+	./bazel run //:integration
 
 dev:
-	npm --prefix web run dev
+	./bazel run //:dev

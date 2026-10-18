@@ -27,7 +27,7 @@ require (
 	charm.land/bubbles/v2 v2.0.0 // indirect
 	charm.land/bubbletea/v2 v2.0.2 // indirect
 	charm.land/lipgloss/v2 v2.0.1 // indirect
-	github.com/SherClockHolmes/webpush-go v1.4.0 // indirect
+	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/catppuccin/go v0.2.0 // indirect

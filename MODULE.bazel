@@ -1,0 +1,27 @@
+module(name = "acta")
+
+bazel_dep(name = "rules_go", version = "0.64.2")
+bazel_dep(name = "gazelle", version = "0.54.0")
+bazel_dep(name = "rules_shell", version = "0.8.0")
+
+go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
+go_sdk.download(
+    name = "acta_go_sdk",
+    version = "1.26.8",
+)
+go_sdk.nogo(nogo = "//build:vet")
+use_repo(go_sdk, "acta_go_sdk")
+
+go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
+go_deps.from_file(go_mod = "//:go.mod")
+use_repo(go_deps, "com_github_charmbracelet_x_term", "com_github_coder_websocket", "com_github_fxamacker_cbor_v2", "com_github_go_webauthn_webauthn", "com_github_gofrs_flock", "com_github_google_jsonschema_go", "com_github_google_uuid", "com_github_jackc_pgx_v5", "com_github_modelcontextprotocol_go_sdk", "com_github_pquerna_otp", "com_github_rivo_uniseg", "com_github_spf13_cobra", "com_github_yuin_goldmark", "com_github_zalando_go_keyring", "land_charm_huh_v2", "org_golang_x_crypto", "org_golang_x_sys", "org_golang_x_text")
+
+npm_dependencies = use_repo_rule("//build:repositories.bzl", "npm_dependencies")
+
+npm_dependencies(
+    name = "acta_npm",
+    package_json = "//web:package.json",
+    package_lock = "//web:package-lock.json",
+)
+
+use_repo(go_deps, "com_github_sherclockholmes_webpush_go")

@@ -1,0 +1,33 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "harnesspipe",
+    srcs = [
+        "engine.go",
+        "journal.go",
+        "process_linux.go",
+        "process_other.go",
+        "transport.go",
+        "types.go",
+    ],
+    importpath = "acta/internal/harnesspipe",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/localstate",
+        "@com_github_gofrs_flock//:flock",
+        "@com_github_google_uuid//:uuid",
+    ],
+)
+
+go_test(
+    name = "harnesspipe_test",
+    srcs = [
+        "engine_test.go",
+        "recovery_linux_test.go",
+    ],
+    embed = [":harnesspipe"],
+    deps = [
+        "//internal/localstate",
+        "@com_github_google_uuid//:uuid",
+    ],
+)

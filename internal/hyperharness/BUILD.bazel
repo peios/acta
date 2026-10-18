@@ -1,0 +1,63 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "hyperharness",
+    srcs = [
+        "claude.go",
+        "claude_observations.go",
+        "codex.go",
+        "commitment.go",
+        "controller.go",
+        "delivery.go",
+        "input.go",
+        "interrupt.go",
+        "lanes.go",
+        "models.go",
+        "permissions.go",
+        "registry.go",
+        "rename.go",
+        "rpc.go",
+        "send.go",
+    ],
+    importpath = "acta/internal/hyperharness",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/harnesspipe",
+        "//internal/localstate",
+        "//internal/providers",
+        "//internal/threadadapter",
+        "//internal/threads",
+        "@com_github_gofrs_flock//:flock",
+        "@com_github_google_uuid//:uuid",
+    ],
+)
+
+go_test(
+    name = "hyperharness_test",
+    srcs = [
+        "artifacts_integration_test.go",
+        "claude_integration_test.go",
+        "claude_test.go",
+        "controller_test.go",
+        "frames_test.go",
+        "input_test.go",
+        "interrupt_test.go",
+        "lanes_test.go",
+        "midturn_integration_test.go",
+        "midturn_test.go",
+        "models_test.go",
+        "permissions_test.go",
+        "questions_test.go",
+        "registry_test.go",
+        "rename_test.go",
+        "send_test.go",
+    ],
+    embed = [":hyperharness"],
+    deps = [
+        "//internal/harnesspipe",
+        "//internal/providers",
+        "//internal/threadadapter",
+        "//internal/threads",
+        "@com_github_google_uuid//:uuid",
+    ],
+)

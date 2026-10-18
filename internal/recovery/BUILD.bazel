@@ -1,0 +1,8 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "recovery",
+    srcs = ["revoke.go"],
+    importpath = "acta/internal/recovery",
+    visibility = ["//:__subpackages__"],
+)

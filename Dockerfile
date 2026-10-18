@@ -1,24 +1,10 @@
-# Build locally until the release channel has been isolated from old Acta.
-FROM node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5 AS frontend
-WORKDIR /src/web
-COPY web/package.json web/package-lock.json ./
-RUN npm ci
-COPY web/ ./
-COPY internal/tasks/properties.json /src/internal/tasks/properties.json
-ARG ACTA_VERSION=0.0.0
-RUN npm pkg set version="${ACTA_VERSION#v}" && npm run build
-
+# Build the same Bazel targets used by developers and CI.
 FROM golang:1.26-bookworm@sha256:9fdc884aacc3bec89b20ffc69f4bb369c78210e3e4f600387b5128b12c199f81 AS build
+RUN apt-get update && apt-get install -y --no-install-recommends python3 curl unzip && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
 COPY . .
-COPY --from=frontend /src/web/build ./web/build
-ENV CGO_ENABLED=0 GOMAXPROCS=4
 ARG ACTA_VERSION=0.0.0
-RUN go build -p 2 -trimpath -ldflags "-X acta/internal/version.Current=${ACTA_VERSION#v}" -o /out/acta-server ./cmd/acta && \
-    go build -p 2 -trimpath -ldflags "-X acta/internal/version.Current=${ACTA_VERSION#v}" -o /out/acta-backup ./cmd/acta-backup && \
-    go build -p 2 -trimpath -ldflags "-X acta/internal/version.Current=${ACTA_VERSION#v}" -o /out/acta-update ./cmd/acta-update
+RUN ACTA_OUTPUT_DIR=/out ./bazel run --config=release --define "ACTA_VERSION=${ACTA_VERSION#v}" //:export && ./bazel shutdown
 
 FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS app
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gosu && rm -rf /var/lib/apt/lists/* && \

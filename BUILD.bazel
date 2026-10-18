@@ -1,0 +1,109 @@
+load("@gazelle//:def.bzl", "gazelle")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+
+# gazelle:prefix acta
+# gazelle:exclude bin
+# gazelle:exclude .local
+# gazelle:exclude .qa-harness
+# gazelle:exclude web/node_modules
+# gazelle:exclude web/build
+# gazelle:exclude web/.svelte-kit
+
+gazelle(name = "gazelle")
+
+filegroup(
+    name = "binaries",
+    srcs = [
+        "//cmd/acta",
+        "//cmd/acta-backup",
+        "//cmd/acta-cli",
+        "//cmd/acta-code-host",
+        "//cmd/acta-update",
+    ],
+)
+
+alias(
+    name = "server",
+    actual = "//cmd/acta",
+)
+
+alias(
+    name = "cli",
+    actual = "//cmd/acta-cli",
+)
+
+alias(
+    name = "frontend",
+    actual = "//web:frontend",
+)
+
+sh_binary(
+    name = "format-check",
+    srcs = ["//build:developer.sh"],
+    args = [
+        "format-check",
+        "$(rootpath @acta_go_sdk//:bin/gofmt)",
+    ],
+    data = ["@acta_go_sdk//:bin/gofmt"],
+)
+
+sh_binary(
+    name = "integration",
+    srcs = ["//build:developer.sh"],
+    args = ["integration"],
+)
+
+sh_binary(
+    name = "db",
+    srcs = ["//build:developer.sh"],
+    args = ["db"],
+)
+
+sh_binary(
+    name = "run",
+    srcs = ["//build:developer.sh"],
+    args = [
+        "run",
+        "$(rootpath //cmd/acta)",
+    ],
+    data = ["//cmd/acta"],
+)
+
+sh_binary(
+    name = "dev",
+    srcs = ["//build:developer.sh"],
+    args = [
+        "dev",
+        "$(rootpath @acta_npm//:node/bin/node)",
+        "$(rootpath @acta_npm//:node/lib/node_modules/npm/bin/npm-cli.js)",
+    ],
+    data = [
+        "@acta_npm//:files",
+        "@acta_npm//:node/bin/node",
+        "@acta_npm//:node/lib/node_modules/npm/bin/npm-cli.js",
+    ],
+)
+
+sh_binary(
+    name = "export",
+    srcs = ["//build:export.sh"],
+    args = [
+        "acta-server",
+        "$(rootpath //cmd/acta)",
+        "acta",
+        "$(rootpath //cmd/acta-cli)",
+        "acta-code-host",
+        "$(rootpath //cmd/acta-code-host)",
+        "acta-backup",
+        "$(rootpath //cmd/acta-backup)",
+        "acta-update",
+        "$(rootpath //cmd/acta-update)",
+    ],
+    data = [
+        "//cmd/acta",
+        "//cmd/acta-backup",
+        "//cmd/acta-cli",
+        "//cmd/acta-code-host",
+        "//cmd/acta-update",
+    ],
+)

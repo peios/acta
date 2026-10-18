@@ -1,54 +1,110 @@
 # Developing Acta
 
-Acta uses Go 1.26, PostgreSQL, and Svelte 5 with SvelteKit's static adapter.
-Node 22 (22.12 or newer) and npm are build/development dependencies. Deployment
-runs one Go executable with embedded static assets plus PostgreSQL; it does not
-run a Node or SvelteKit server.
+Acta uses Go, PostgreSQL, and Svelte with SvelteKit's static adapter. Bazel is
+our build and test entry point. The initial supported build host is **x86_64
+Linux**, with Bash, Python 3, curl, Git and a C/C++ compiler for race tests.
+Docker is needed for the supplied local database and container builds.
+
+`./bazel` downloads checksum-verified Bazel 8.4.2 into the user cache. The build
+pins Go 1.26.8 and Node 22.22.1 (including npm 10.9.4); no host Go, Node or npm
+installation is required. Go dependencies come from `go.mod`/`go.sum`; frontend
+dependencies come from `web/package-lock.json`. Initial dependency fetching
+needs network access. npm lifecycle scripts are disabled; the current locked
+frontend builds without them. Build actions do not install dependencies.
+
+Deployment remains a Go executable with embedded static assets plus PostgreSQL;
+it does not run a Node or SvelteKit server.
 
 ## Run locally
 
 From the repository root:
 
 ```sh
-make install
-make db
-make run
+./bazel run //:db
+./bazel run //:run
 ```
 
-Open http://localhost:8081. `make db` starts an isolated PostgreSQL 17 container
-with a persistent named volume. Its port is **127.0.0.1:5433**, leaving other
-PostgreSQL instances alone. Compose contains development-only credentials.
-The Go server remains in the foreground; its terminal prints the setup code
-for a new installation. Stop with Ctrl-C. PostgreSQL continues running.
+Open http://localhost:8081. The database command starts the existing development
+Compose service on **127.0.0.1:5433** with its persistent named volume and
+development-only credentials. The server command builds the frontend and Go
+server, then runs it from the repository root on **8081**. Its terminal prints
+the setup code for a new installation. Stop with Ctrl-C; PostgreSQL continues
+running. Starting the server applies embedded schema migrations.
 
-`make run` uses the Compose connection by default and permits the local Vite
-origin. Override `DEV_DATABASE_URL` or `ACTA_DATABASE_URL` when needed. The
-executable itself requires `ACTA_DATABASE_URL` and has no default password.
-Starting the server applies embedded schema migrations before listening.
+`//:run` uses the Compose connection and permits the local Vite origin by
+default. Override `ACTA_DATABASE_URL` and `ACTA_DEV_ORIGIN` when needed. The
+executable itself still requires `ACTA_DATABASE_URL` and has no password default.
+For interactive review, keep the server on **8081**.
 
-For interactive review with Jack, rebuild and restart the Go server on **8081**
-so the visible app stays current. Do not move review to another port.
+For frontend hot reload, keep Go running and use `./bazel run //:dev` in another
+terminal. This installs the locked npm dependencies into `web/node_modules`
+using the pinned Node/npm toolchain, then starts Vite at http://localhost:5173.
+Vite proxies `/api` to Go; use that exact hostname. Go changes require a restart.
+Normal Bazel builds and tests use scratch directories and do not write frontend
+outputs into the source tree. Only the development server needs a writable
+frontend checkout.
 
-For optional frontend hot reload, keep Go running and use `make dev` in another terminal.
-Open http://localhost:5173. Vite proxies `/api` to the Go server. Its allowed
-origin is `http://localhost:5173`; use that exact hostname. Edits to Go require
-a server restart. `make build` rebuilds the frontend before embedding it; using
-`go build` alone retains whatever assets were last built.
-
-## Checks
+## Builds and checks
 
 ```sh
-make check
-ACTA_TEST_DATABASE_URL='postgres://acta:acta-development-only@127.0.0.1:5433/acta?sslmode=disable' make test-integration
+./bazel build //:binaries       # all five executables
+./bazel build //:frontend       # assets in bazel-bin/web/build
+./bazel run //:export           # copies executables to bin/
+./bazel test //...              # Go unit tests and frontend checks
+./bazel run //:format-check     # pinned gofmt, read-only
+./bazel run //:gazelle -- -mode=diff
+ACTA_TEST_DATABASE_URL='postgres://acta:acta-development-only@127.0.0.1:5433/acta?sslmode=disable' ./bazel run //:integration
 ```
 
-`make check` builds the frontend, checks Prettier formatting, runs Svelte/TypeScript diagnostics, frontend
-interaction-rule tests, `go vet`, Go unit tests and Go formatting checks. Run
-`npm --prefix web run format` to format frontend sources, tests and configuration.
-Prettier and its Svelte plugin are pinned in the lockfile; a global formatter is
-not required. PostgreSQL integration tests are skipped
-unless `ACTA_TEST_DATABASE_URL` is set. The explicit integration target refuses
-to run without it and runs the full Go suite with the race detector.
+The executables are `//cmd/acta` (server), `//cmd/acta-cli`,
+`//cmd/acta-code-host`, `//cmd/acta-backup` and `//cmd/acta-update`. `//:server`
+and `//:cli` are convenient aliases. Export preserves the established names
+`acta-server`, `acta`, `acta-code-host`, `acta-backup` and `acta-update`.
+Set `ACTA_OUTPUT_DIR` to export elsewhere.
+
+Native Go targets track package dependencies and embedded migrations, schemas,
+and documentation. The server depends on the generated frontend directory, so
+it cannot silently embed an older build. Standard Go vet analyzers run during
+compilation through `nogo`. Frontend checks include Prettier, Svelte/TypeScript
+and the existing Node interaction-rule tests. Browser tests requiring a running
+application remain explicit workflows; `//...` does not claim browser coverage.
+
+Default Go tests skip database-backed cases. `//:integration` refuses to run
+without `ACTA_TEST_DATABASE_URL`, forwards that variable explicitly, disables
+cached test results and runs the full suite with the Go race detector. Backup
+recovery tests requiring their own disposable deployment remain separate;
+passing the regular suite does not qualify backup/update recovery.
+
+The Make targets remain compatibility shortcuts to these Bazel commands.
+`make install` fetches Bazel dependencies; `make frontend` now writes assets to
+`bazel-bin/web/build`, not `web/build`. Use Bazel for compilation rather than
+running `go build` against absent or stale checkout assets.
+
+## Dependency and release maintenance
+
+After changing Go sources or dependencies, run `./bazel run //:gazelle`, then
+`./bazel mod tidy`. Commit the generated BUILD files and `MODULE.bazel.lock`.
+The web BUILD file is maintained explicitly because it embeds a generated
+directory. Explicit test fixture declarations must be retained. The existing
+Web Push dependency is directly imported, so it is marked direct in `go.mod`.
+
+Update npm dependencies and commit `package.json` and `package-lock.json`
+together. Bazel re-fetches them when either changes. Toolchain updates belong
+in `MODULE.bazel`, `build/repositories.bzl`, and `.bazelversion` with the matching
+`build/bazel.sha256` as appropriate. This wrapper depends on host Linux utilities;
+it is not a claim of a fully hermetic or cross-platform build environment.
+
+For a versioned build, pass `--define ACTA_VERSION=0.1.0` before the target:
+
+```sh
+./bazel run --config=release --define ACTA_VERSION=0.1.0 //:export
+```
+
+The release profile disables CGO, preserving the previous container binaries'
+static Go build. The version definition sets both the frontend package version and Go's embedded release version.
+The Docker build uses these same targets and exports to `/out`. Signing,
+publication restrictions and update/recovery gates are unchanged. CI runs the
+Bazel suite with a disposable PostgreSQL service and race detection.
 
 Use an expendable development database and a role allowed to create schemas.
 Each integration test creates a randomly named schema, migrates it, exercises

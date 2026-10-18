@@ -58,10 +58,8 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          docker build --target frontend --build-arg "ACTA_VERSION=$VERSION" -t acta-release-frontend .
-          docker run --rm acta-release-frontend sh -c 'npm run format:check && npm run check && npm test'
           docker build --target build --build-arg "ACTA_VERSION=$VERSION" -t acta-release-tools .
-          docker run --rm acta-release-tools sh -c 'go vet ./... && go test ./...'
+          docker run --rm acta-release-tools sh -c './bazel test //... && ./bazel run //:format-check && ./bazel run //:gazelle -- -mode=diff'
       - name: Log in to the container registry
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

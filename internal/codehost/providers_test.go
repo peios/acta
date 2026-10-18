@@ -35,6 +35,7 @@ func TestProviderAuthParsing(t *testing.T) {
 
 func TestProviderDiscoveryAndBoundedProbes(t *testing.T) {
 	dir := t.TempDir()
+	t.Setenv("HOME", dir)
 	t.Setenv("PATH", dir)
 	missing := discoverProviders(t.Context())
 	if !missing.Valid() || missing.Providers[0].Installed || missing.Providers[1].Installed {
