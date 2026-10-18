@@ -1,9 +1,20 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "learn",
     srcs = ["embed.go"],
-    embedsrcs = ["mcp-agent-guide.md"],
+    embedsrcs = [
+        "site/acta.product/3--connections.topic/400--agent-guide.md",
+        "site/download-sources/thread-frame.schema.json",
+    ],
     importpath = "acta/learn",
     visibility = ["//visibility:public"],
 )
+
+go_test(
+    name = "learn_test",
+    srcs = ["embed_test.go"],
+    embed = [":learn"],
+)
+
+exports_files(["site/download-sources/thread-frame.examples.json"])

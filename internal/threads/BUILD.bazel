@@ -14,7 +14,7 @@ go_library(
     importpath = "acta/internal/threads",
     visibility = ["//:__subpackages__"],
     deps = [
-        "//learn/schemas",
+        "//learn",
         "@com_github_google_jsonschema_go//jsonschema",
         "@com_github_google_uuid//:uuid",
     ],
@@ -27,6 +27,6 @@ go_test(
         "images_test.go",
         "name_test.go",
     ],
-    data = ["//learn/schemas:thread-frame.examples.json"],  # keep
+    data = ["//learn:site/download-sources/thread-frame.examples.json"],  # keep
     embed = [":threads"],
 )

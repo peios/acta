@@ -1,7 +1,7 @@
 # Working on Acta
 
-Acta is a deliberate rebuild intended to become a substantial product. Give
-human experience and agent experience equal importance.
+Acta is a self-hosted project tool for humans and agents. Give human experience
+and agent experience equal importance.
 
 ## Collaboration
 
@@ -13,8 +13,6 @@ human experience and agent experience equal importance.
   happen. Do not move visual review to a separate preview port.
 - Speak up about problems, better approaches, and trade-offs, including problems
   with earlier assistant recommendations. Jack expects independent judgment.
-- Approach the product as a fresh design. Do not inspect or reuse old Acta's
-  implementation or product decisions unless agreed with Jack.
 
 ## Quality and maintainability
 
@@ -27,19 +25,22 @@ human experience and agent experience equal importance.
 - During this pre-production phase, backward compatibility of Acta code and
   protocols is not a requirement. Replace or remove obsolete implementations
   and contracts when appropriate; do not retain compatibility layers solely to
-  preserve earlier iterations. This applies to the new Acta project.
+  preserve earlier iterations.
 - PostgreSQL is the chosen database. Isolate database-specific persistence from
   domain and transport logic, and define the transactional guarantees a future
   storage implementation must preserve.
 
 ## Project records
 
-- Keep program behaviour and development instructions in this project's learn/.
-- When adding or changing agent-facing features, update learn/mcp-agent-guide.md
-  and the affected tool descriptions alongside the implementation. The MCP guide
-  is embedded directly from that Markdown file; keep its examples and behavioral
-  guidance consistent with the actual tools.
+- Keep maintained product documentation in `learn/site/acta.product`, following
+  Panorama's [Core Style](../panorama/docs/psc.product/1--technical-writing-and-documentation.shelf/2--style.topic/100--core-style.md)
+  and [Learn](../panorama/docs/psc.product/1--technical-writing-and-documentation.shelf/2--style.topic/300--learn.md) rules. Run `trail lint learn/site` and
+  `trail build learn/site --strict` with a Trail build supporting attachments.
+  `docs/archive` contains historical records and is not published.
+- When changing agent-facing features, update
+  `learn/site/acta.product/3--connections.topic/400--agent-guide.md` and affected
+  tool descriptions. The application embeds that page body without Trail
+  metadata. Thread schemas in `learn/site/download-sources` also feed runtime
+  validation and tests; keep these canonical inputs consistent with the code.
 - Record work, agreed decisions, rationale and validation in the corresponding
   Acta task. Distinguish agreed decisions from open proposals.
-- The initial empty-page foundation is ACT-50 (528cdm65). Account,
-  authentication and permission design is ACT-51 (b29dwnb2) in the acta workspace.

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"acta/learn/schemas"
+	"acta/learn"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/google/uuid"
 )
@@ -39,7 +39,7 @@ type OutputReference struct {
 
 var frameSchema = func() *jsonschema.Resolved {
 	var s jsonschema.Schema
-	if err := json.Unmarshal(schemas.ThreadFrame, &s); err != nil {
+	if err := json.Unmarshal(learn.ThreadFrameSchema, &s); err != nil {
 		panic(err)
 	}
 	r, err := s.Resolve(nil)

@@ -11,3 +11,6 @@ __pycache__/
 *.pyc
 
 /bazel-*
+
+/learn/site/dist/
+/learn/site/.trail-cache/

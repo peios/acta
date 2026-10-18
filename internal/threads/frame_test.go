@@ -44,16 +44,16 @@ func TestUnknownRejectsInvalidCapture(t *testing.T) {
 }
 
 func TestDocumentedExamplesValidate(t *testing.T) {
-	raw, err := os.ReadFile("../../learn/schemas/thread-frame.examples.json")
+	raw, err := os.ReadFile("../../learn/site/download-sources/thread-frame.examples.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var frames []Frame
-	if err = json.Unmarshal(raw, &frames); err != nil {
+	if err := json.Unmarshal(raw, &frames); err != nil {
 		t.Fatal(err)
 	}
 	for _, f := range frames {
-		if err = f.Validate(); err != nil {
+		if err := f.Validate(); err != nil {
 			t.Fatal(f.Kind, err)
 		}
 	}

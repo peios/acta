@@ -1,9 +1,26 @@
-// Package learn embeds the agent-facing guide from its maintained documentation source.
+// Package learn embeds Acta's canonical published documentation inputs.
 package learn
 
-import _ "embed"
+import (
+	_ "embed"
+	"strings"
+)
 
-// AgentGuide is the same Markdown reviewed and maintained in learn/.
+//go:embed site/acta.product/3--connections.topic/400--agent-guide.md
+var agentGuidePage string
+
+// AgentGuide is the published guide body with its title, without Trail metadata.
+var AgentGuide = guideMarkdown(agentGuidePage)
+
+// ThreadFrameSchema is the same schema published as a Learn download.
 //
-//go:embed mcp-agent-guide.md
-var AgentGuide string
+//go:embed site/download-sources/thread-frame.schema.json
+var ThreadFrameSchema []byte
+
+func guideMarkdown(page string) string {
+	_, body, ok := strings.Cut(page, "\n---\n")
+	if !strings.HasPrefix(page, "---\n") || !ok {
+		panic("agent guide is missing Trail frontmatter")
+	}
+	return "# Working with Acta\n\n" + strings.TrimLeft(body, "\n")
+}

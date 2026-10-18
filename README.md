@@ -1,39 +1,42 @@
 # Acta
 
-A deliberate rebuild of Acta: a self-hosted project tool for humans and agents.
-Go serves a compiled Svelte 5 frontend, with PostgreSQL persistence.
+Acta is a self-hosted project tool for humans and agents. It brings tasks,
+discussion, documents, releases, and provider conversations together. A Go
+server serves the compiled Svelte frontend and stores application data in
+PostgreSQL.
 
-Accounts include local passwords, passkeys, MFA, session management, invitations,
-recovery, direct permissions and additive groups. The standalone Go CLI supports
-profiles and browser-approved device login. A hosted MCP endpoint supports
-OAuth connections and identity lookup. User-owned agents have bounded permissions
-and can be selected during CLI or MCP authorization. Workspaces provide member-only
-access, scoped permissions and inherited agent access. Tasks include nested subtasks, multiple assignees, configurable statuses, live
-autosave and CLI/MCP access. A local hyperharness lists connected development machines and discovers Codex and Claude Code providers in User Settings.
-Provider threads support local execution, approvals, tool activity and subagents.
-Projects remain subsequent work.
+Start with the [Acta overview](learn/site/acta.product/1--getting-started.topic/100--overview.md).
+The documentation includes user guides, administration and recovery procedures,
+and an [implementation manual](learn/site/acta.product/8--technical-reference.book/1--introduction/1--overview.md).
 
-- [Development and running locally](learn/development.md)
-- [Production Compose deployment with Caddy](learn/deployment.md)
-- [Final naming and repository handover](learn/rename.md)
-- [Account behavior and architecture](learn/accounts.md)
-- [Application chrome](learn/chrome.md)
-- [CLI profiles and authentication](learn/cli.md)
-- [Hosted MCP and OAuth](learn/mcp.md)
-- [User-owned agents](learn/agents.md)
-- [Connected development harnesses](learn/harnesses.md)
-- [Provider threads and raw frames](learn/threads.md)
-- [Workspaces and scoped access](learn/workspaces.md)
-- [Tasks, editing and agent interfaces](learn/tasks.md)
-- [Releases](learn/releases.md)
-- [Foundation quality review](learn/quality-review-2026-09-07.md)
-- Project records: ACT-50 (foundation), ACT-51 (accounts and authentication), ACT-52 (CLI), ACT-53 (MCP), ACT-54 (agent accounts), ACT-55 (workspaces), ACT-56 (tasks), ACT-57 (quality pass).
+## Development
+
+On an x86_64 Linux host with the [build prerequisites](learn/site/acta.product/7--development.topic/100--running-locally.md), run:
 
 ```sh
 ./bazel run //:db
 ./bazel run //:run
 ```
 
-Open http://localhost:8081 and use the setup code printed in the server terminal.
+Open [the development server](http://localhost:8081). For an empty installation,
+use the setup code printed in the protected server terminal. See
+[builds and checks](learn/site/acta.product/7--development.topic/200--checking.md)
+for the test and export targets.
 
-Installation recovery: [backup service and restore runbook](learn/backups.md).
+## Deployment and documentation
+
+Follow [Deploying Acta](learn/site/acta.product/5--operations.topic/100--deployment.md)
+and [Backup and Recovery](learn/site/acta.product/5--operations.topic/400--backups.md)
+for an operated installation.
+
+`learn/site` is a standalone Trail tree, ready to merge into Peios Learn:
+
+```sh
+trail lint learn/site
+trail build learn/site --strict
+```
+
+Use Trail with attachment support. The public tree contains only maintained
+product documentation and its declared downloads. Historical source pages and
+review reports are preserved in [the repository archive](docs/archive/README.md).
+Repository collaboration instructions remain in [AGENTS.md](AGENTS.md).

@@ -1,0 +1,3 @@
+title = "Acta Technical Reference Manual"
+short = "Acta TRM"
+description = "Account authority, work records, provider execution, persistence, and failure behavior in the Acta implementation."

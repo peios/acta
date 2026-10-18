@@ -53,7 +53,7 @@ func run() error {
 	cfg.RecoveryMode = os.Getenv("ACTA_RECOVERY_MODE") == "true"
 	databaseURL := os.Getenv("ACTA_DATABASE_URL")
 	if databaseURL == "" {
-		return errors.New("ACTA_DATABASE_URL is required; see learn/development.md")
+		return errors.New("ACTA_DATABASE_URL is required; see README.md for setup instructions")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

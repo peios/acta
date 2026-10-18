@@ -2,7 +2,7 @@
   let { provider }: { provider: string } = $props();
 </script>
 
-<!-- Provider marks from Simple Icons (CC0); see learn/chrome.md. -->
+<!-- Provider marks from Simple Icons (CC0); see the Acta manual, Application Navigation. -->
 <svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true">
   {#if provider === "claude"}
     <path
