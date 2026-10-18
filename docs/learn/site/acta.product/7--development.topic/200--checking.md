@@ -46,11 +46,15 @@ semantics of reactive props and derived values. Braces follow the common Peios
 rule; short single-line clauses can omit them.
 
 `//:style-check` checks maintained Python, shell, and Starlark sources with
-pinned Ruff, shfmt, ShellCheck, and buildifier. Pass `-- --fix` to apply their
-formatters; lint findings still require review. `//:format-check` checks Go.
-Frontend formatting and lint run as part of `./bazel test //...`. With the
-locked frontend dependencies installed, `npm run format` in `web/` applies
-frontend formatting and `npm run lint` checks the result.
+pinned Ruff, shfmt, ShellCheck, and buildifier. It also checks maintained
+JSON, YAML, and web manifests with the frontend's pinned Prettier. The
+repository formatter settings are shared with the frontend; npm's generated
+lockfile is excluded. Keep workflow Python in `scripts/` to include it in
+these checks. Pass `-- --fix` to apply formatters; lint findings still require
+review. `//:format-check` checks Go. Frontend formatting and lint run as part
+of `./bazel test //...`. With the locked frontend dependencies installed, `npm
+run format` in `web/` applies frontend formatting and `npm run lint` checks
+the result.
 
 These checks do not enforce hard function-length or complexity limits. Review
 names, units, error handling, ownership, import initialization order, and

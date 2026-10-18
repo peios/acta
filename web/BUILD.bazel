@@ -24,6 +24,7 @@ filegroup(
         "*.ts",
         ".prettier*",
     ]) + [
+        "//:.prettierrc.json",
         "//build/style:eslint-peios.mjs",
         "//internal/tasks:properties.json",
     ],

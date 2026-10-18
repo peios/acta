@@ -2,6 +2,8 @@ load("@gazelle//:def.bzl", "gazelle")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
+exports_files([".prettierrc.json"])
+
 # gazelle:prefix acta
 # gazelle:exclude bin
 # gazelle:exclude .local

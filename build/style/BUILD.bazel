@@ -11,6 +11,10 @@ sh_binary(
     srcs = ["check.sh"],
     args = [
         "$(rootpath :check.py)",
+        "--node",
+        "$(rootpath @acta_npm//:node/bin/node)",
+        "--prettier",
+        "$(rootpath @acta_npm//:node_modules/prettier/bin/prettier.cjs)",
         "--ruff",
         "$(rootpath @acta_style_tools//:ruff)",
         "--shfmt",
@@ -22,6 +26,9 @@ sh_binary(
     ],
     data = [
         "check.py",
+        "@acta_npm//:files",
+        "@acta_npm//:node/bin/node",
+        "@acta_npm//:node_modules/prettier/bin/prettier.cjs",
         "@acta_style_tools//:buildifier",
         "@acta_style_tools//:ruff",
         "@acta_style_tools//:shellcheck",
