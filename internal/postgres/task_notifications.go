@@ -181,10 +181,10 @@ func (t workspaceTx) notifyTask(ctx context.Context, task tasks.Task, entry stri
 	}
 	for owner, title := range recipients {
 		_, e = t.tx.Exec(ctx, `WITH changed AS (
-   INSERT INTO notifications(id,owner_id,task_id,activity_id,notice_key,kind,title,blocking,source_sequence)
-   VALUES($1,$2,$3,$4::uuid,$4::text,'task',$5,false,$6)
+   INSERT INTO notifications(id,owner_id,task_id,activity_id,kind,title,source_sequence)
+   VALUES($1,$2,$3,$4::uuid,'task',$5,$6)
    ON CONFLICT(owner_id,task_id,activity_id) WHERE task_id IS NOT NULL DO UPDATE SET
-    title=EXCLUDED.title,revision=nextval('thread_notification_revision'),source_sequence=EXCLUDED.source_sequence,created_at=now(),read_at=NULL
+    title=EXCLUDED.title,revision=nextval('notification_revision'),source_sequence=EXCLUDED.source_sequence,created_at=now(),read_at=NULL
    WHERE notifications.source_sequence<EXCLUDED.source_sequence RETURNING id,owner_id,revision)
    INSERT INTO push_deliveries(subscription_id,notification_id,revision)
    SELECT p.id,n.id,n.revision FROM changed n JOIN push_subscriptions p ON p.owner_id=n.owner_id

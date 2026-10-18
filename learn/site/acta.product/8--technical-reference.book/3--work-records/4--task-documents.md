@@ -64,5 +64,4 @@ creates a new local file, never overwrites one, and removes a partial file on
 failure. CLI transfers are binary; they do not put base64 into an agent's
 context.
 
-Task documents are independent of thread image messages and provider-hosted
-artifacts.
+Task documents belong to their task and retain immutable versions.

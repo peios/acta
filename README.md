@@ -1,7 +1,7 @@
 # Acta
 
 Acta is a self-hosted project tool for humans and agents. It brings tasks,
-discussion, documents, releases, and provider conversations together. A Go
+discussion, documents, and releases together. A Go
 server serves the compiled Svelte frontend and stores application data in
 PostgreSQL.
 

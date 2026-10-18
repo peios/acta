@@ -61,5 +61,4 @@ go_test(
     name = "web_test",
     srcs = ["embed_test.go"],
     embed = [":web"],
-    deps = ["//internal/hyperharness"],
 )

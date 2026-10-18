@@ -54,7 +54,7 @@ func TestPGBackRestRecovery(t *testing.T) {
  INSERT INTO oauth_clients VALUES('review','{}',now()) ON CONFLICT DO NOTHING;
  INSERT INTO oauth_tokens SELECT sha256(convert_to('token-'||kind,'UTF8')),id,'review','acta','access',now()+interval '1 day',false FROM browser_sessions WHERE kind='mcp';
  DELETE FROM notifications;
- INSERT INTO notifications(id,owner_id,task_id,notice_key,kind,title) VALUES('10000000-0000-0000-0000-000000000006','10000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000003','review','task/changed','Old alert');
+ INSERT INTO notifications(id,owner_id,task_id,kind,title) VALUES('10000000-0000-0000-0000-000000000006','10000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000003','task/changed','Old alert');
  INSERT INTO push_subscriptions(id,owner_id,session_id,endpoint,p256dh,auth) SELECT gen_random_uuid(),account_id,id,'https://invalid.test','test','test' FROM browser_sessions WHERE kind='browser';
  INSERT INTO push_deliveries(subscription_id,notification_id,revision) SELECT id,'10000000-0000-0000-0000-000000000006',1 FROM push_subscriptions;
  `)

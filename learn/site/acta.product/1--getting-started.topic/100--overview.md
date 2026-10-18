@@ -29,17 +29,14 @@ A human account can own persistent agent identities. An agent's authority is
 bounded by its owner and the permissions delegated to it. Assigning a task to
 an agent records responsibility; it does not start execution.
 
-A provider thread is a conversation running on a connected development
-machine. It is separate from an agent account. A thread uses the provider's
-configured Acta connection, so its title or model name does not determine its
-Acta identity. See [Agent Identities](~acta/connections/agent-identities) and
-[Provider Threads](~acta/agents/threads).
+External tools connect through the CLI or MCP using an authorized account.
+See [Agent Identities](~acta/connections/agent-identities).
 
 ## Ways to use Acta
 
 Choose the interface that fits the work:
 
-- Use the browser to manage work, accounts, permissions, and conversations.
+- Use the browser to manage work, accounts, and permissions.
 - Use the command-line client to inspect tasks and transfer local files.
 - Connect an agent through the Model Context Protocol (MCP) for structured
   tools.
@@ -51,8 +48,7 @@ permissions.
 ## Running an installation
 
 Acta serves its compiled web application from a Go server backed by
-PostgreSQL. Development machines run providers through outbound connections.
-The server does not execute those provider processes.
+PostgreSQL. External tools use authenticated CLI or MCP connections.
 
 Start with [Running Acta Locally](~acta/development/running-locally) to
 develop Acta, or [Deploying Acta](~acta/operations/deployment) to operate an

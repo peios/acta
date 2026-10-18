@@ -1,4 +1,4 @@
-const roots = { agents: "/my-agents", workspace: "/workspaces", code: "/code" };
+const roots = { workspace: "/workspaces" };
 /** @typedef {keyof typeof roots} RememberedScope */
 /** Only in-app paths belonging to the requested scope can be restored.
  * @param {unknown} value @param {RememberedScope} scope

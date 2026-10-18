@@ -5,7 +5,6 @@ go_library(
     srcs = ["embed.go"],
     embedsrcs = [
         "site/acta.product/3--connections.topic/400--agent-guide.md",
-        "site/download-sources/thread-frame.schema.json",
     ],
     importpath = "acta/learn",
     visibility = ["//visibility:public"],
@@ -16,5 +15,3 @@ go_test(
     srcs = ["embed_test.go"],
     embed = [":learn"],
 )
-
-exports_files(["site/download-sources/thread-frame.examples.json"])

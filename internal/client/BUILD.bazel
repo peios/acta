@@ -4,27 +4,18 @@ go_library(
     name = "client",
     srcs = [
         "client.go",
-        "code_hosts.go",
         "comments.go",
         "documents.go",
-        "harness.go",
-        "harness_account.go",
         "tasks.go",
     ],
     importpath = "acta/internal/client",
     visibility = ["//:__subpackages__"],
     deps = [
         "//internal/activity",
-        "//internal/codehosts",
         "//internal/comments",
         "//internal/documents",
-        "//internal/hyperharness",
-        "//internal/providers",
         "//internal/tasks",
-        "//internal/threads",
         "//internal/workspaces",
-        "@com_github_coder_websocket//:websocket",
-        "@com_github_coder_websocket//wsjson",
     ],
 )
 
@@ -32,16 +23,8 @@ go_test(
     name = "client_test",
     srcs = [
         "client_test.go",
-        "harness_account_test.go",
-        "harness_test.go",
         "tasks_test.go",
     ],
     embed = [":client"],
-    deps = [
-        "//internal/hyperharness",
-        "//internal/providers",
-        "//internal/tasks",
-        "@com_github_coder_websocket//:websocket",
-        "@com_github_coder_websocket//wsjson",
-    ],
+    deps = ["//internal/tasks"],
 )

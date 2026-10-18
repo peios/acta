@@ -7,8 +7,7 @@ description: >-
 ---
 
 A memory stores working knowledge that remains useful beyond one task. It is
-separate from a provider conversation and does not depend on a thread
-remaining available.
+available across authorized client sessions.
 
 ## Choose the right record
 

@@ -3,10 +3,6 @@
   "baseline": "b9e4157a426f18e0d6453188be8ff09a2c9472d3",
   "date": "2026-10-18",
   "pages": {
-    "workspaces.md": {
-      "archive": "pre-learn/workspaces.md",
-      "current_source": "../../learn/site/acta.product/8--technical-reference.book/2--accounts/8--workspaces.md"
-    },
     "user-management.md": {
       "archive": "pre-learn/user-management.md",
       "current_source": "../../learn/site/acta.product/8--technical-reference.book/2--accounts/4--user-management.md"
@@ -14,50 +10,6 @@
     "updates.md": {
       "archive": "pre-learn/updates.md",
       "current_source": "../../learn/site/acta.product/5--operations.topic/1200--updates.md"
-    },
-    "threads.md": {
-      "archive": "pre-learn/threads.md",
-      "current_source": "../../learn/site/acta.product/8--technical-reference.book/5--execution/4--threads.md"
-    },
-    "thread-permission-mapping.md": {
-      "archive": "pre-learn/thread-permission-mapping.md",
-      "disposition": "Historical investigation or review; retained outside publication."
-    },
-    "thread-notifications.md": {
-      "archive": "pre-learn/thread-notifications.md",
-      "current_source": "../../learn/site/acta.product/8--technical-reference.book/7--application/2--thread-notifications.md"
-    },
-    "thread-names.md": {
-      "archive": "pre-learn/thread-names.md",
-      "current_source": "../../learn/site/acta.product/8--technical-reference.book/5--execution/9--thread-names.md"
-    },
-    "thread-lifecycle-investigation.md": {
-      "archive": "pre-learn/thread-lifecycle-investigation.md",
-      "disposition": "Historical investigation or review; retained outside publication."
-    },
-    "thread-image-input.md": {
-      "archive": "pre-learn/thread-image-input.md",
-      "current_source": "../../learn/site/acta.product/8--technical-reference.book/5--execution/10--thread-image-input.md"
-    },
-    "thread-frame-schema.md": {
-      "archive": "pre-learn/thread-frame-schema.md",
-      "current_source": "../../learn/site/acta.product/8--technical-reference.book/6--frames/1--thread-frame-schema/1--overview.md"
-    },
-    "thread-frame-mapping-design.md": {
-      "archive": "pre-learn/thread-frame-mapping-design.md",
-      "disposition": "Historical investigation or review; retained outside publication."
-    },
-    "thread-conversation-storage.md": {
-      "archive": "pre-learn/thread-conversation-storage.md",
-      "current_source": "../../learn/site/acta.product/8--technical-reference.book/5--execution/7--thread-conversation-storage.md"
-    },
-    "thread-artifacts.md": {
-      "archive": "pre-learn/thread-artifacts.md",
-      "current_source": "../../learn/site/acta.product/8--technical-reference.book/5--execution/11--thread-artifacts.md"
-    },
-    "thread-approvals.md": {
-      "archive": "pre-learn/thread-approvals.md",
-      "current_source": "../../learn/site/acta.product/8--technical-reference.book/5--execution/6--thread-approvals.md"
     },
     "tasks.md": {
       "archive": "pre-learn/tasks.md",
@@ -83,14 +35,6 @@
       "archive": "pre-learn/task-archiving.md",
       "current_source": "../../learn/site/acta.product/8--technical-reference.book/3--work-records/6--task-archiving.md"
     },
-    "subagent-lanes.md": {
-      "archive": "pre-learn/subagent-lanes.md",
-      "current_source": "../../learn/site/acta.product/8--technical-reference.book/5--execution/8--subagent-lanes.md"
-    },
-    "subagent-lanes-validation.md": {
-      "archive": "pre-learn/subagent-lanes-validation.md",
-      "disposition": "Historical investigation or review; retained outside publication."
-    },
     "security.md": {
       "archive": "pre-learn/security.md",
       "current_source": "../../learn/site/acta.product/8--technical-reference.book/2--accounts/2--security.md"
@@ -107,14 +51,6 @@
       "archive": "pre-learn/releases.md",
       "current_source": "../../learn/site/acta.product/8--technical-reference.book/3--work-records/7--releases.md"
     },
-    "quality-review-2026-09-07.md": {
-      "archive": "pre-learn/quality-review-2026-09-07.md",
-      "disposition": "Historical investigation or review; retained outside publication."
-    },
-    "pwa.md": {
-      "archive": "pre-learn/pwa.md",
-      "current_source": "../../learn/site/acta.product/8--technical-reference.book/7--application/3--pwa.md"
-    },
     "permissions.md": {
       "archive": "pre-learn/permissions.md",
       "current_source": "../../learn/site/acta.product/8--technical-reference.book/2--accounts/5--permissions.md"
@@ -123,73 +59,17 @@
       "archive": "pre-learn/migration-assistant.md",
       "current_source": "../../learn/site/acta.product/8--technical-reference.book/4--connections/4--migration-assistant.md"
     },
-    "memories.md": {
-      "archive": "pre-learn/memories.md",
-      "current_source": "../../learn/site/acta.product/8--technical-reference.book/3--work-records/9--memories.md"
-    },
     "mcp.md": {
       "archive": "pre-learn/mcp.md",
       "current_source": "../../learn/site/acta.product/8--technical-reference.book/4--connections/2--mcp.md"
-    },
-    "mcp-agent-guide.md": {
-      "archive": "pre-learn/mcp-agent-guide.md",
-      "current_source": "../../learn/site/acta.product/3--connections.topic/400--agent-guide.md"
-    },
-    "harnesses.md": {
-      "archive": "pre-learn/harnesses.md",
-      "current_source": "../../learn/site/acta.product/8--technical-reference.book/5--execution/3--harnesses/1--overview.md"
     },
     "groups.md": {
       "archive": "pre-learn/groups.md",
       "current_source": "../../learn/site/acta.product/8--technical-reference.book/2--accounts/6--groups.md"
     },
-    "development.md": {
-      "archive": "pre-learn/development.md",
-      "current_source": "../../learn/site/acta.product/7--development.topic/100--running-locally.md",
-      "additional_sources": [
-        "../../learn/site/acta.product/7--development.topic/200--checking.md",
-        "../../learn/site/acta.product/7--development.topic/300--dependencies.md"
-      ]
-    },
-    "deployment.md": {
-      "archive": "pre-learn/deployment.md",
-      "current_source": "../../learn/site/acta.product/5--operations.topic/100--deployment.md"
-    },
     "comments.md": {
       "archive": "pre-learn/comments.md",
       "current_source": "../../learn/site/acta.product/8--technical-reference.book/3--work-records/2--comments.md"
-    },
-    "codebases.md": {
-      "archive": "pre-learn/codebases.md",
-      "current_source": "../../learn/site/acta.product/8--technical-reference.book/5--execution/1--codebases.md"
-    },
-    "code-threads.md": {
-      "archive": "pre-learn/code-threads.md",
-      "current_source": "../../learn/site/acta.product/8--technical-reference.book/5--execution/5--code-threads/1--overview.md"
-    },
-    "code-preview.md": {
-      "archive": "pre-learn/code-preview.md",
-      "current_source": "../../learn/site/acta.product/8--technical-reference.book/5--execution/12--code-preview.md"
-    },
-    "code-host.md": {
-      "archive": "pre-learn/code-host.md",
-      "current_source": "../../learn/site/acta.product/8--technical-reference.book/5--execution/2--code-host.md"
-    },
-    "cli.md": {
-      "archive": "pre-learn/cli.md",
-      "current_source": "../../learn/site/acta.product/8--technical-reference.book/4--connections/1--cli.md"
-    },
-    "claude-provider-review.md": {
-      "archive": "pre-learn/claude-provider-review.md",
-      "disposition": "Historical investigation or review; retained outside publication."
-    },
-    "chrome.md": {
-      "archive": "pre-learn/chrome.md",
-      "current_source": "../../learn/site/acta.product/8--technical-reference.book/7--application/1--chrome.md"
-    },
-    "backups.md": {
-      "archive": "pre-learn/backups.md",
-      "current_source": "../../learn/site/acta.product/5--operations.topic/400--backups.md"
     },
     "agents.md": {
       "archive": "pre-learn/agents.md",
@@ -215,28 +95,8 @@
       "archive": "pre-learn/reviews/2026-09-10-production-compose.md",
       "disposition": "Historical investigation or review; retained outside publication."
     },
-    "reviews/2026-09-10-old-acta-feature-parity.md": {
-      "archive": "pre-learn/reviews/2026-09-10-old-acta-feature-parity.md",
-      "disposition": "Historical investigation or review; retained outside publication."
-    },
     "reviews/2026-09-10-backup-recovery.md": {
       "archive": "pre-learn/reviews/2026-09-10-backup-recovery.md",
-      "disposition": "Historical investigation or review; retained outside publication."
-    },
-    "reviews/2026-09-08-thread-refactor.md": {
-      "archive": "pre-learn/reviews/2026-09-08-thread-refactor.md",
-      "disposition": "Historical investigation or review; retained outside publication."
-    },
-    "reviews/2026-09-08-thread-permissions.md": {
-      "archive": "pre-learn/reviews/2026-09-08-thread-permissions.md",
-      "disposition": "Historical investigation or review; retained outside publication."
-    },
-    "reviews/2026-09-08-thread-conversations.md": {
-      "archive": "pre-learn/reviews/2026-09-08-thread-conversations.md",
-      "disposition": "Historical investigation or review; retained outside publication."
-    },
-    "reviews/2026-09-08-provider-qa.md": {
-      "archive": "pre-learn/reviews/2026-09-08-provider-qa.md",
       "disposition": "Historical investigation or review; retained outside publication."
     }
   }

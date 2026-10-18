@@ -6,9 +6,9 @@ import (
 	"acta/internal/comments"
 	"acta/internal/config"
 	"acta/internal/httpapi"
+	"acta/internal/notifications"
 	"acta/internal/push"
 	"acta/internal/tasks"
-	"acta/internal/threads"
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
@@ -22,9 +22,9 @@ import (
 	"time"
 )
 
-func taskNotices(t *testing.T, f securityFixture, owner string, want int) threads.NotificationPage {
+func taskNotices(t *testing.T, f securityFixture, owner string, want int) notifications.NotificationPage {
 	t.Helper()
-	p, e := f.store.ThreadNotifications(t.Context(), owner)
+	p, e := f.store.Notifications(t.Context(), owner)
 	must(t, e)
 	if p.Total != want || len(p.Items) != want {
 		t.Fatalf("want %d notices, got %+v", want, p)
@@ -58,7 +58,7 @@ func TestTaskNotificationsFollowingAssignmentsAndAgents(t *testing.T) {
 	if p.Items[0].ID != n.ID || p.Items[0].Revision <= n.Revision {
 		t.Fatal("group not coalesced", p)
 	}
-	must(t, f.store.ReadThreadNotifications(ctx, owner.ID, []threads.NotificationRead{{ID: n.ID, Revision: n.Revision}}))
+	must(t, f.store.ReadNotifications(ctx, owner.ID, []notifications.NotificationRead{{ID: n.ID, Revision: n.Revision}}))
 	taskNotices(t, f, owner.ID, 1)
 	entry := history(t, f, task.ID).Entries[0]
 	must(t, manager(f).ReadTaskActivity(ctx, f.token, task.ID, []activity.Seen{{ID: entry.ID, Through: entry.Last}}))
@@ -132,7 +132,7 @@ func TestTaskNotificationsMentionsRepliesAccessAndReplay(t *testing.T) {
 	if next := taskNotices(t, f, owner.ID, 1).Items[0]; next.Revision != p.Items[0].Revision {
 		t.Fatal("unchanged mention re-pinged")
 	}
-	must(t, f.store.ReadThreadNotifications(ctx, owner.ID, []threads.NotificationRead{{ID: p.Items[0].ID, Revision: p.Items[0].Revision}}))
+	must(t, f.store.ReadNotifications(ctx, owner.ID, []notifications.NotificationRead{{ID: p.Items[0].ID, Revision: p.Items[0].Revision}}))
 	// Replies notify the comment author even when they are not following.
 	parent := postComment(t, f, task.ID, "Question", "")
 	postComment(t, root, task.ID, "Answer", parent.ID)
@@ -141,7 +141,7 @@ func TestTaskNotificationsMentionsRepliesAccessAndReplay(t *testing.T) {
 		t.Fatal(p)
 	}
 	// A foreign owner cannot acknowledge the notice, and revocation hides it.
-	must(t, f.store.ReadThreadNotifications(ctx, outsider.ID, []threads.NotificationRead{{ID: p.Items[0].ID, Revision: p.Items[0].Revision}}))
+	must(t, f.store.ReadNotifications(ctx, outsider.ID, []notifications.NotificationRead{{ID: p.Items[0].ID, Revision: p.Items[0].Revision}}))
 	taskNotices(t, f, owner.ID, 1)
 	w = readWorkspace(t, root, w.ID)
 	must(t, manager(root).WorkspaceMembership(ctx, root.token, w.ID, owner.ID, w.Version, false))

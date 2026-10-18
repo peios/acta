@@ -43,16 +43,17 @@ delivery](~acta/technical-reference/application/pwa) for deployment setup.
 - `GET /api/tasks/{task}/following` returns `{"following":true}` or false.
 - `POST /api/tasks/{task}/following` accepts the same explicit boolean. Both
   endpoints require an authorized human session and normal workspace access.
-- `GET /api/notifications` is the shared unread task/agent inbox. Task records
+- `GET /api/notifications` is the unread task inbox. Task records
   include `task_id`, `workspace_slug`, `task_reference`, `task_title`, and
-  `activity_id`. Counts are keyed by the task or thread UUID.
+  `activity_id`. Counts are keyed by the task UUID.
 - `POST /api/notifications/read` acknowledges exact notification
-  IDs/revisions, using the same contract as [agent
-  notifications](~acta/technical-reference/application/thread-notifications).
+  IDs/revisions. The request contains `items`, each with an `id` UUID and a
+  positive `revision`. It accepts between 1 and 200 items and requires a human
+  session. A newer revision remains unread.
 
 `task_followers` retains explicit true/false preferences per task and human.
-`notifications` holds task and agent records, with exactly one subject per
-row. Task mutations, activity, following, and notification/push intents commit
+`notifications` holds task records, each with a required task UUID.
+Task mutations, activity, following, and notification/push intents commit
 in one transaction. Task notice uniqueness is `(owner, task, activity entry)`.
 Replayed comment requests and rolled-back mutations cannot create extra
 notifications. Revision-bound reads also advance the corresponding activity

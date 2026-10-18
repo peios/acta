@@ -12,14 +12,6 @@ Mobile buttons suppress focus outlines after pointer/touch interaction,
 including focus restored when closing a dialog. Keyboard interaction restores
 focus rings; input focus indicators and desktop button focus remain unchanged.
 
-Thread entries in the sidebar use the Claude mark for Claude Code and the
-OpenAI mark for Codex, in the sidebar's current text color. Unknown providers
-retain the generic conversation icon. The inline SVG marks come from Simple
-Icons
-([Claude](https://github.com/simple-icons/simple-icons/blob/develop/icons/claude.svg),
-[OpenAI
-v15](https://github.com/simple-icons/simple-icons/blob/15.0.0/icons/openai.svg)),
-distributed under CC0; the provider trademarks remain their owners'.
 
 ## Structure
 

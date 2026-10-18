@@ -9,10 +9,8 @@ const { chromium } = await import(
   process.env.ACTA_PLAYWRIGHT_MODULE || "playwright"
 );
 const root = fileURLToPath(new URL("../static/", import.meta.url));
-const subscription = randomUUID(),
-  thread = randomUUID();
+const subscription = randomUUID();
 let status = 200;
-let taskMode = false;
 const task = randomUUID();
 let hold = false,
   release;
@@ -25,18 +23,11 @@ const server = createServer((req, res) => {
         JSON.stringify({
           id: url.searchParams.get("id"),
           revision: Number(url.searchParams.get("revision")),
-          title: "Approval needed",
-          thread_name: "Private review",
-          thread_id: thread,
-          lane_id: "child/lane",
-          ...(taskMode
-            ? {
-                task_id: task,
-                workspace_slug: "review",
-                task_reference: "ACT-97",
-                task_title: "Task notification",
-              }
-            : {}),
+          title: "Task updated",
+          task_id: task,
+          workspace_slug: "review",
+          task_reference: "ACT-97",
+          task_title: "Task notification",
         }),
       );
     };
@@ -152,11 +143,8 @@ try {
     "background push was not displayed",
   );
   let notifications = await notices();
-  assert.equal(notifications[0].title, "Approval needed");
-  assert.equal(
-    notifications[0].data.url,
-    `/my-agents/${thread}?lane=child%2Flane`,
-  );
+  assert.equal(notifications[0].title, "Task updated");
+  assert.equal(notifications[0].data.url, `/workspaces/review?task=${task}`);
   await push(first);
   await new Promise((r) => setTimeout(r, 100));
   assert.equal((await notices()).length, 1, "duplicate push displayed");
@@ -202,18 +190,9 @@ try {
     2,
     "revoked local subscription survived",
   );
-  await page.goto(origin + `/my-agents/${thread}`);
+  await page.goto(origin + `/workspaces/review?task=${task}`);
   await config();
   await page.bringToFront();
-  await push();
-  await new Promise((r) => setTimeout(r, 150));
-  assert.equal(
-    (await notices()).length,
-    2,
-    "focused conversation was interrupted",
-  );
-  taskMode = true;
-  await page.goto(origin + `/workspaces/review?task=${task}`);
   await push();
   await new Promise((r) => setTimeout(r, 150));
   assert.equal((await notices()).length, 2, "focused task was interrupted");
@@ -223,10 +202,9 @@ try {
   const taskNotice = (await notices()).find((n) => n.body.includes("ACT-97"));
   assert.ok(taskNotice, "task title missing from push");
   assert.equal(taskNotice.data.url, `/workspaces/review?task=${task}`);
-  taskMode = false;
   // Clear while an authenticated fetch is in flight: its late response must
   // not display an alert after logout.
-  await page.goto(origin + "/my-agents");
+  await page.goto(origin + "/workspaces");
   hold = true;
   await push();
   await until(() => !!release, "push fetch did not start");
@@ -252,7 +230,7 @@ try {
   assert.deepEqual(await page.evaluate(() => caches.keys()), []);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: real service worker installation, manifest/icons, push without an open Acta tab, durable duplicate suppression, resolved/revoked filtering, generic offline fallback, focused-thread suppression, logout cleanup, offline navigation",
+    "PASS: real service worker installation, manifest/icons, push without an open Acta tab, durable duplicate suppression, resolved/revoked filtering, generic offline fallback, focused-task suppression, logout cleanup, offline navigation",
   );
 } finally {
   await context.close();

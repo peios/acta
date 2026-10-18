@@ -15,13 +15,13 @@ func (h *Handler) pushRoutes(m *http.ServeMux) {
 	m.HandleFunc("GET /api/push/notification", h.pushNotification)
 }
 func (h *Handler) pushConfig(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.harnessOwner(w, r); !ok {
+	if _, ok := h.notificationOwner(w, r); !ok {
 		return
 	}
 	writeJSON(w, 200, map[string]string{"public_key": h.pushKey})
 }
 func (h *Handler) pushSubscribe(w http.ResponseWriter, r *http.Request) {
-	owner, ok := h.harnessOwner(w, r)
+	owner, ok := h.notificationOwner(w, r)
 	if !ok {
 		return
 	}
@@ -49,7 +49,7 @@ func (h *Handler) pushSubscribe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"id": id})
 }
 func (h *Handler) pushUnsubscribe(w http.ResponseWriter, r *http.Request) {
-	owner, ok := h.harnessOwner(w, r)
+	owner, ok := h.notificationOwner(w, r)
 	if !ok {
 		return
 	}
@@ -70,7 +70,7 @@ func (h *Handler) pushUnsubscribe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 func (h *Handler) pushNotification(w http.ResponseWriter, r *http.Request) {
-	owner, ok := h.harnessOwner(w, r)
+	owner, ok := h.notificationOwner(w, r)
 	if !ok {
 		return
 	}

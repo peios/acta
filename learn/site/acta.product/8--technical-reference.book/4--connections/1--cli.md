@@ -147,17 +147,3 @@ surface.
 See [Task comments and
 replies](~acta/technical-reference/work-records/comments) for threaded
 discussions, read state and CLI/MCP comment commands.
-
-## Connected development machines
-
-`acta [-p profile] harness` connects a human profile's development machine to
-Acta in the foreground. It uses the same credentials and URL selection as
-other commands and discovers installed Codex and Claude Code versions and
-local sign-in states. See [Connected
-harnesses](~acta/technical-reference/execution/harnesses/overview) for
-discovery, presence, heartbeat, reconnection, and authorization behavior.
-
-`acta harness --separate-pipe` keeps provider process ownership in a detached
-local helper, allowing development restarts of the hyperharness. My Agents
-provides the current Codex Start/Kill/Resume controls; see [Provider
-threads](~acta/technical-reference/execution/threads).

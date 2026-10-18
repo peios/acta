@@ -47,16 +47,16 @@ try {
     failRead = false,
     failGet = false;
   const errors = [];
-  const notice = (id, rev = 1, lane = "") => ({
+  const notice = (id, rev = 1) => ({
     id,
     revision: rev,
-    thread_id: "thread",
-    run_id: "run",
-    lane_id: lane,
+    task_id: "task",
+    workspace_slug: "review",
+    task_reference: "ACT-1",
+    task_title: "Review",
     sequence: rev,
-    kind: "attention",
-    title: "Approval needed",
-    thread_name: "Code review",
+    kind: "task",
+    title: "Task updated",
     created_at: new Date().toISOString(),
   });
   records = [notice("initial")];
@@ -99,9 +99,7 @@ try {
           json: { error: { message: "Offline" } },
         });
       const counts = {};
-      for (const n of records)
-        counts[n.task_id || n.thread_id] =
-          (counts[n.task_id || n.thread_id] || 0) + 1;
+      for (const n of records) counts[n.task_id] = (counts[n.task_id] || 0) + 1;
       return route.fulfill({
         json: { items: records, counts, total: records.length },
       });
@@ -194,35 +192,15 @@ try {
   await page.waitForFunction(() => window.review.enabled);
   await page.evaluate(() => window.review.refresh());
 
-  // Seen only once its frames are loaded; no browser interruption while viewing.
-  await page.evaluate(
-    () =>
-      (window.review.viewing = {
-        thread: "thread",
-        lane: "",
-        sequence: 2,
-        ready: true,
-      }),
-  );
-  records.push(notice("visible", 3));
+  // Opening a task notice navigates and acknowledges only its revision.
+  await page.evaluate(() => window.review.read(window.review.inbox.items));
+  records.push(notice("open", 4));
   await page.evaluate(() => window.review.refresh());
-  assert.deepEqual(
-    records.map((n) => n.id),
-    ["visible"],
-  );
-
-  // A later frame is not read until it is actually loaded.
-  await page.evaluate(() => (window.review.viewing.sequence = 3));
-  await page.evaluate(() => window.review.readViewed());
-  await page.waitForFunction(() => window.review.inbox.total === 0);
-  await page.evaluate(() => (window.review.viewing = null));
-  records.push(notice("lane", 4, "child/lane"));
-  await page.evaluate(() => window.review.refresh());
-  await page.getByRole("button", { name: /Approval needed.*Subagent/ }).click();
+  await page.getByRole("button", { name: /Task updated.*ACT-1/ }).click();
   await page.waitForFunction(() => window.review.inbox.total === 0);
   assert.equal(
     await page.evaluate(() => window.reviewURL),
-    "/my-agents/thread?lane=child%2Flane",
+    "/workspaces/review?task=task",
   );
   // Failed acknowledgement must preserve the unread card and show a retryable error.
   records.push(notice("failure", 5));
@@ -240,16 +218,15 @@ try {
   records.push(notice("corrected", 6));
   await page.evaluate(() => window.review.refresh());
   records = [
-    { ...notice("corrected", 7), kind: "failed", title: "Turn failed" },
+    { ...notice("corrected", 7), kind: "task", title: "Task changed" },
   ];
   await page.getByRole("button", { name: "Mark all read" }).click();
   await page.waitForFunction(() => !window.review.reading);
   await page.evaluate(() => window.review.refresh());
   assert.equal(records.length, 1);
-  await page.getByText("Turn failed", { exact: true }).waitFor();
+  await page.getByText("Task changed", { exact: true }).waitFor();
   records.push({
     ...notice("task", 8),
-    thread_id: "",
     kind: "task",
     title: "jack/helper · Mentioned you",
     task_id: "task-uuid",
@@ -285,7 +262,7 @@ try {
   await page.screenshot({ path: "/tmp/acta92-notifications-mobile.png" });
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: persisted unread UI, permission opt-in, suppression, lane links, acknowledgement races, failure recovery, push subscription opt-in, responsive popup",
+    "PASS: persisted unread UI, permission opt-in, task links, acknowledgement races, failure recovery, push subscription opt-in, responsive popup",
   );
 } finally {
   await browser.close();

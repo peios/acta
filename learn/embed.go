@@ -12,11 +12,6 @@ var agentGuidePage string
 // AgentGuide is the published guide body with its title, without Trail metadata.
 var AgentGuide = guideMarkdown(agentGuidePage)
 
-// ThreadFrameSchema is the same schema published as a Learn download.
-//
-//go:embed site/download-sources/thread-frame.schema.json
-var ThreadFrameSchema []byte
-
 func guideMarkdown(page string) string {
 	_, body, ok := strings.Cut(page, "\n---\n")
 	if !strings.HasPrefix(page, "---\n") || !ok {

@@ -2,10 +2,12 @@ package integration
 
 import (
 	"acta/internal/auth"
+	"acta/internal/comments"
 	"acta/internal/config"
 	"acta/internal/httpapi"
+	"acta/internal/notifications"
 	"acta/internal/push"
-	"acta/internal/threads"
+	"acta/internal/tasks"
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
@@ -14,15 +16,15 @@ import (
 	"github.com/google/uuid"
 	"net/http"
 	"testing"
-	"time"
 )
 
 func TestPushQueueLifecycle(t *testing.T) {
-	f := securityDatabase(t)
+	root := securityDatabase(t)
+	_, f, workspace := workspaceOwner(t, root, "pushqueue")
 	ctx := t.Context()
 	owner, err := f.service.Current(ctx, f.token)
 	must(t, err)
-	other, otherFixture := permissionMember(t, f, "other")
+	other, otherFixture := permissionMember(t, root, "other")
 	receiver, err := ecdh.P256().GenerateKey(rand.Reader)
 	must(t, err)
 	sub := push.Subscription{Endpoint: "https://push.example/unique", Keys: webpush.Keys{Auth: base64.RawURLEncoding.EncodeToString(make([]byte, 16)), P256dh: base64.RawURLEncoding.EncodeToString(receiver.PublicKey().Bytes())}}
@@ -40,21 +42,14 @@ func TestPushQueueLifecycle(t *testing.T) {
 	must(t, err)
 	c := client{t, httpapi.New(f.service, f.security, nil, nil, cfg, "public-key"), map[string]*http.Cookie{"acta_session": {Name: "acta_session", Value: f.token}}}
 	c.request("POST", "push/subscribe", `{"endpoint":"http://localhost/","keys":{"auth":"invalid","p256dh":"invalid"}}`, 400)
-	id := uuid.NewString()
-	desc := threads.Descriptor{ID: id, RunID: id, Provider: "codex", CWD: "/tmp", Name: "Push review", State: "running", CreatedAt: time.Now().UTC(), Revision: 1}
-	must(t, f.store.DiscoverThreads(ctx, owner.ID, []threads.Descriptor{desc}))
-	var sequence int64
-	appendTurn := func(turn, outcome string) []threads.Frame {
+	task, err := manager(f).CreateTask(ctx, f.token, workspace.ID, tasks.Create{Title: "Push review"})
+	must(t, err)
+	appendComment := func(body string) comments.Create {
 		t.Helper()
-		sequence++
-		p := threads.ProviderFrame{ThreadID: id, RunID: id, Provider: "codex", Sequence: sequence, ReceivedAt: desc.CreatedAt}
-		debug := threads.NewFrame(p, "debug/resolved", map[string]any{"stream": "stdout", "raw": "{}", "reason": "mapped", "outputs": []threads.OutputReference{{OutputIndex: 1, Kind: "turn/completed"}}})
-		frame := threads.NewFrame(p, "turn/completed", map[string]any{"turn_id": turn, "outcome": outcome, "error": nil, "started_at": nil, "completed_at": nil, "duration_ms": nil})
-		frame.OutputIndex = 1
-		frames := []threads.Frame{debug, frame}
-		_, err := f.store.AppendThreadFrames(ctx, owner.ID, id, frames)
+		input := comments.Create{Body: body, RequestID: uuid.NewString()}
+		_, err := manager(root).CreateComment(ctx, root.token, task.ID, input)
 		must(t, err)
-		return frames
+		return input
 	}
 	due := func() {
 		t.Helper()
@@ -70,7 +65,7 @@ func TestPushQueueLifecycle(t *testing.T) {
 		}
 		return d
 	}
-	frames := appendTurn("first", "completed")
+	first := appendComment("first")
 	due()
 	d := claim()
 	if d.SubscriptionID != subID {
@@ -81,7 +76,7 @@ func TestPushQueueLifecycle(t *testing.T) {
 	}
 	n, err := f.store.PushNotice(ctx, owner.ID, auth.Digest(f.token), subID, d.NotificationID, d.Revision)
 	must(t, err)
-	if n.ThreadName != "Push review" {
+	if n.TaskTitle != "Push review" {
 		t.Fatal(n)
 	}
 	if _, err = f.store.PushNotice(ctx, other.ID, auth.Digest(otherFixture.token), subID, d.NotificationID, d.Revision); !errors.Is(err, auth.ErrNotFound) {
@@ -104,27 +99,27 @@ func TestPushQueueLifecycle(t *testing.T) {
 	}
 	must(t, f.store.FinishPush(ctx, *replacement, 410))
 	must(t, f.store.FinishPush(ctx, *recovered, 201))
-	_, err = f.store.AppendThreadFrames(ctx, owner.ID, id, frames)
+	_, err = manager(root).CreateComment(ctx, root.token, task.ID, first)
 	must(t, err)
 	due()
 	if next, err := f.store.ClaimPush(ctx); err != nil || next != nil {
 		t.Fatal("replay queued twice", err)
 	}
-	appendTurn("second", "completed")
-	page, err := f.store.ThreadNotifications(ctx, owner.ID)
+	appendComment("second")
+	page, err := f.store.Notifications(ctx, owner.ID)
 	must(t, err)
-	var reads []threads.NotificationRead
+	var reads []notifications.NotificationRead
 	for _, n := range page.Items {
-		reads = append(reads, threads.NotificationRead{ID: n.ID, Revision: n.Revision})
+		reads = append(reads, notifications.NotificationRead{ID: n.ID, Revision: n.Revision})
 	}
-	must(t, f.store.ReadThreadNotifications(ctx, owner.ID, reads))
+	must(t, f.store.ReadNotifications(ctx, owner.ID, reads))
 	due()
 	if next, err := f.store.ClaimPush(ctx); err != nil || next != nil {
 		t.Fatal("read notice sent", err)
 	}
 	// The worker's authenticated fetch sees read and stale revisions as 404.
 	c.request("GET", "push/notification?subscription="+subID+"&id="+d.NotificationID+"&revision=1", "", 404)
-	appendTurn("third", "completed")
+	appendComment("third")
 	due()
 	gone := claim()
 	must(t, f.store.FinishPush(ctx, *gone, 410))
@@ -135,7 +130,7 @@ func TestPushQueueLifecycle(t *testing.T) {
 	}
 	subID, err = f.store.SavePushSubscription(ctx, owner.ID, auth.Digest(f.token), sub)
 	must(t, err)
-	appendTurn("logout", "completed")
+	appendComment("logout")
 	must(t, f.service.Logout(ctx, f.token))
 	due()
 	if next, err := f.store.ClaimPush(ctx); err != nil || next != nil {

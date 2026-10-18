@@ -88,27 +88,6 @@ try {
           ],
         },
       });
-    if (path.includes("/threads/audit/control"))
-      return route.fulfill({
-        json: {
-          result: {
-            outcome: "accepted",
-            models: [
-              {
-                id: "small",
-                name: "Small model",
-                description: "Fast review model",
-                efforts: [
-                  { id: "low", description: "Brief" },
-                  { id: "high", description: "Thorough" },
-                ],
-                default_effort: "low",
-                fast_mode: true,
-              },
-            ],
-          },
-        },
-      });
     if (path.endsWith("/comments")) {
       posts.push(request.postDataJSON());
       if (failure) return route.abort("internetdisconnected");
@@ -270,93 +249,6 @@ try {
   await assign.getByText("Mobile Reviewer", { exact: true }).tap();
   await page.keyboard.press("Escape");
   await viewport(null);
-  // Composer popups remain reachable above the keyboard, including their last action.
-  for (const label of ["Model settings", "Permission mode"]) {
-    const trigger = page.getByRole("button", { name: label, exact: true });
-    const box = await trigger.boundingBox();
-    assert.equal(box.width, 44);
-    assert.ok(box.height >= 44);
-    assert.equal(
-      await trigger
-        .locator("span")
-        .evaluateAll((nodes) =>
-          nodes.every((node) => getComputedStyle(node).display === "none"),
-        ),
-      true,
-    );
-  }
-  await page
-    .getByRole("button", { name: "Permission mode", exact: true })
-    .tap();
-  await page
-    .getByRole("group", { name: "Permission modes", exact: true })
-    .waitFor();
-  await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Model settings", exact: true }).tap();
-  const models = page.getByRole("dialog", {
-    name: "Model settings",
-    exact: true,
-  });
-  await models.getByText("Small model", { exact: true }).waitFor();
-  const slider = await models.getByRole("slider").boundingBox();
-  assert.ok(slider.height >= 44, `effort touch target ${slider.height}px`);
-  await viewport(380);
-  await fits(models, 380);
-  await checkAccessibility(page, "model popup");
-  await page.keyboard.press("Escape");
-  await viewport(null);
-  await page
-    .getByRole("button", { name: "Request approval", exact: true })
-    .tap();
-  const popup = page.locator(".approval-popup:popover-open");
-  await popup.waitFor();
-  await viewport(380);
-  await fits(popup, 380);
-  await checkAccessibility(page, "approval/question popup");
-  await page.screenshot({ path: `/tmp/acta-audit-popup-${engine}.png` });
-  await popup.getByRole("button", { name: "Approve", exact: true }).tap();
-  assert.equal(await page.locator("output").textContent(), "approve{}");
-  await viewport(null);
-  await page.getByRole("button", { name: "Ask question", exact: true }).tap();
-  await popup.waitFor();
-  await popup
-    .getByRole("textbox", { name: /Custom answer/ })
-    .fill("Use my mobile answer");
-  await viewport(380);
-  await fits(popup, 380);
-  await checkAccessibility(page, "approval/question popup");
-  await popup.getByRole("button", { name: "Answer", exact: true }).tap();
-  assert.match(
-    await page.locator("output").textContent(),
-    /Use my mobile answer/,
-  );
-  await viewport(null);
-  await page
-    .getByRole("button", { name: "Request approval", exact: true })
-    .tap();
-  await page.keyboard.press("Escape");
-  await page
-    .getByRole("button", { name: "Toggle connection", exact: true })
-    .tap();
-  await page.getByRole("button", { name: "Needs approval", exact: true }).tap();
-  assert.equal(
-    await popup
-      .getByRole("button", { name: "Approve", exact: true })
-      .isEnabled(),
-    false,
-  );
-  await page.keyboard.press("Escape");
-  await page
-    .getByRole("button", { name: "Toggle connection", exact: true })
-    .tap();
-  await page.getByRole("button", { name: "Needs approval", exact: true }).tap();
-  assert.equal(
-    await popup
-      .getByRole("button", { name: "Approve", exact: true })
-      .isEnabled(),
-    true,
-  );
-  await popup.getByRole("button", { name: "Deny", exact: true }).tap();
   // Long URLs, code and tables must stay inside the phone's content area.
   await page.setViewportSize({ width: 320, height: 844 });
   await page
@@ -376,8 +268,6 @@ try {
     .fill(longDescription);
   await page.waitForTimeout(800);
   assert.equal(task.description, longDescription);
-  await page.getByRole("button", { name: "Model settings", exact: true }).tap();
-  await page.keyboard.press("Escape");
   assert.ok(
     await page
       .locator("main")
@@ -386,11 +276,6 @@ try {
   );
   for (const width of [320, 390, 720, 844]) {
     await page.setViewportSize({ width, height: width === 844 ? 390 : 844 });
-    await page
-      .getByRole("button", { name: "Model settings", exact: true })
-      .tap();
-    await fits(models);
-    await page.keyboard.press("Escape");
     assert.ok(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
@@ -401,7 +286,7 @@ try {
   await checkAccessibility(page, "mobile-controls");
   assert.deepEqual(errors, []);
   console.log(
-    `PASS ${engine}: comment editing/draft/retry, filters/assignees, model/approval/question keyboard bounds, disconnect/reconnect controls, rotation fit`,
+    `PASS ${engine}: comment editing/draft/retry, filters/assignees, rotation fit`,
   );
 } finally {
   await browser.close();

@@ -48,7 +48,7 @@ exports. A versioned build does not sign, publish, or deploy a release.
 
 Edit the Trail product in `learn/site/acta.product`. Keep user concepts and
 procedures in topics and implementation details in the technical manual. The
-agent guide and thread schema are embedded from their canonical Learn files.
+agent guide is embedded from its canonical Learn file.
 Changes to those files also change the application inputs.
 
 Run the documentation checks from the repository root:

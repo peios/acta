@@ -1,7 +1,6 @@
 package web
 
 import (
-	"acta/internal/hyperharness"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -63,35 +62,6 @@ func TestFrontendRouting(t *testing.T) {
 	}
 	if w.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
 		t.Fatal("hashed assets should be cached as immutable")
-	}
-}
-
-func TestEmbeddedHarnessProtocolMatchesServer(t *testing.T) {
-	found := false
-	err := fs.WalkDir(assets, "build", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() || !strings.HasSuffix(path, ".js") {
-			return nil
-		}
-		raw, err := fs.ReadFile(assets, path)
-		if err != nil {
-			return err
-		}
-		if strings.Contains(string(raw), "acta-harness-v") {
-			if !strings.Contains(string(raw), hyperharness.Protocol) {
-				t.Errorf("embedded harness client disagrees with server protocol: %s", path)
-			}
-			found = true
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !found {
-		t.Fatal("embedded frontend has no harness protocol")
 	}
 }
 

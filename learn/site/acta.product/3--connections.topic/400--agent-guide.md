@@ -169,7 +169,7 @@ Choose the scope according to where the knowledge is true:
   user-specific merely because this user owns the project.
 - **Agent:** rare; knowledge specific to a persistent agent identity or role.
   Learning something yourself does not make it agent-specific. An Acta agent
-  account is not the same thing as a running conversation or subagent lane.
+  account identifies responsibility across external tool sessions.
 - **Site:** rare; knowledge truly applicable across this entire Acta
   installation, independently of any particular user or workspace. It does not
   mean "important."
@@ -271,15 +271,6 @@ Creating releases and changing their state or notes (`release_create`,
 `release_update`) requires Manage releases and is a project decision: do it
 only when asked. `release_update` takes only the fields to change, plus the
 release's current version. Releases cannot be deleted.
-
-## Provider-hosted artifacts
-
-Some Acta-managed Claude sessions expose a native `Artifact` tool separately
-from Acta MCP. It publishes a file to Anthropic-hosted claude.ai; its returned
-URL can be shared with the user. Preserve that URL when updating the same
-artifact. Artifacts are presentation outputs: durable task decisions still
-belong in the Acta work record, and shared project documentation belongs in
-the project's docs.
 
 ## Task documents
 

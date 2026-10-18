@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"acta/internal/threads"
+	"acta/internal/notifications"
 	webpush "github.com/SherClockHolmes/webpush-go"
 )
 
@@ -30,7 +30,7 @@ var ErrSubscription = errors.New("invalid or unavailable push subscription")
 type Store interface {
 	SavePushSubscription(context.Context, string, []byte, Subscription) (string, error)
 	DeletePushSubscription(context.Context, string, []byte, string) error
-	PushNotice(context.Context, string, []byte, string, string, int64) (threads.Notification, error)
+	PushNotice(context.Context, string, []byte, string, string, int64) (notifications.Notification, error)
 	ClaimPush(context.Context) (*Delivery, error)
 	FinishPush(context.Context, Delivery, int) error
 }

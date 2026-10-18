@@ -76,7 +76,7 @@ and pgBackRest need access under the configured service account. Recovery
 PostgreSQL uses a private Unix socket and no TCP listener, with preload
 libraries and logical replication workers disabled. These controls do not
 replace an OS/container egress boundary: allow access only to the backup
-repository during drills, with no access to provider harnesses, mail, webhook
+repository during drills, with no access to external clients, mail, webhook
 or push endpoints. Repository credentials and operator logs are sensitive; do
 not expose them through Acta.
 

@@ -10,27 +10,15 @@ export type Notice = {
   activity_id?: string;
   id: string;
   revision: number;
-  thread_id: string;
-  lane_id: string;
-  run_id: string;
   sequence: number;
   kind: string;
   title: string;
-  thread_name: string;
   created_at: string;
 };
 type Inbox = { items: Notice[]; counts: Record<string, number>; total: number };
-type Viewing = {
-  thread: string;
-  lane: string;
-  sequence: number;
-  ready: boolean;
-};
 const key = Symbol("notifications");
 export function noticeURL(n: Notice) {
-  if (n.task_id && n.workspace_slug)
-    return `/workspaces/${encodeURIComponent(n.workspace_slug)}?task=${encodeURIComponent(n.task_id)}`;
-  return `/my-agents/${encodeURIComponent(n.thread_id)}${n.lane_id ? `?lane=${encodeURIComponent(n.lane_id)}` : ""}`;
+  return `/workspaces/${encodeURIComponent(n.workspace_slug ?? "")}?task=${encodeURIComponent(n.task_id ?? "")}`;
 }
 export class NotificationView {
   inbox = $state<Inbox>({ items: [], counts: {}, total: 0 });
@@ -43,7 +31,6 @@ export class NotificationView {
     return this.push.permission;
   }
   reading = $state(false);
-  viewing = $state<Viewing | null>(null);
   private version = 0;
   private abort = new AbortController();
   constructor(owner: string) {
@@ -55,9 +42,6 @@ export class NotificationView {
   close() {
     this.abort.abort();
     this.push.close();
-  }
-  private focused() {
-    return document.visibilityState === "visible" && document.hasFocus();
   }
   async browserAlerts() {
     await this.push.toggle();
@@ -75,7 +59,6 @@ export class NotificationView {
       if (this.abort.signal.aborted || version !== this.version) return;
       this.inbox = inbox;
       this.error = "";
-      await this.readViewed();
     } catch (e) {
       if (!this.abort.signal.aborted && version === this.version)
         this.error = errorMessage(e);
@@ -102,7 +85,7 @@ export class NotificationView {
       let total = this.inbox.total;
       const remaining = this.inbox.items.filter((n) => {
         if (!ids.has(`${n.id}:${n.revision}`)) return true;
-        const target = n.task_id || n.thread_id;
+        const target = n.task_id!;
         counts[target] = Math.max(0, (counts[target] || 0) - 1);
         total = Math.max(0, total - 1);
 
@@ -116,18 +99,6 @@ export class NotificationView {
       ++this.version;
       this.reading = false;
     }
-  }
-  async readViewed() {
-    const v = this.viewing;
-    if (!v?.ready || !this.focused()) return;
-    await this.read(
-      this.inbox.items.filter(
-        (n) =>
-          n.thread_id === v.thread &&
-          n.lane_id === v.lane &&
-          n.sequence <= v.sequence,
-      ),
-    );
   }
   async open(n: Notice) {
     await goto(noticeURL(n));
@@ -145,18 +116,13 @@ export function provideNotifications(account: () => Account) {
       await view.refresh();
       if (!closed) timer = setTimeout(run, 2000);
     };
-    const focused = () => void view.readViewed();
     const storage = () => view.start();
-    window.addEventListener("focus", focused);
-    document.addEventListener("visibilitychange", focused);
     window.addEventListener("storage", storage);
     void run();
     return () => {
       closed = true;
       clearTimeout(timer);
       view.close();
-      window.removeEventListener("focus", focused);
-      document.removeEventListener("visibilitychange", focused);
       window.removeEventListener("storage", storage);
     };
   });

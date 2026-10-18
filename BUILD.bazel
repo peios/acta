@@ -4,7 +4,6 @@ load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 # gazelle:prefix acta
 # gazelle:exclude bin
 # gazelle:exclude .local
-# gazelle:exclude .qa-harness
 # gazelle:exclude web/node_modules
 # gazelle:exclude web/build
 # gazelle:exclude web/.svelte-kit
@@ -17,7 +16,6 @@ filegroup(
         "//cmd/acta",
         "//cmd/acta-backup",
         "//cmd/acta-cli",
-        "//cmd/acta-code-host",
         "//cmd/acta-update",
     ],
 )
@@ -92,8 +90,6 @@ sh_binary(
         "$(rootpath //cmd/acta)",
         "acta",
         "$(rootpath //cmd/acta-cli)",
-        "acta-code-host",
-        "$(rootpath //cmd/acta-code-host)",
         "acta-backup",
         "$(rootpath //cmd/acta-backup)",
         "acta-update",
@@ -103,7 +99,6 @@ sh_binary(
         "//cmd/acta",
         "//cmd/acta-backup",
         "//cmd/acta-cli",
-        "//cmd/acta-code-host",
         "//cmd/acta-update",
     ],
 )

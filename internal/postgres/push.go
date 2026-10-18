@@ -2,8 +2,8 @@ package postgres
 
 import (
 	"acta/internal/auth"
+	"acta/internal/notifications"
 	"acta/internal/push"
-	"acta/internal/threads"
 	"context"
 	"errors"
 	"github.com/google/uuid"
@@ -51,19 +51,19 @@ func (s *Store) DeletePushSubscription(ctx context.Context, owner string, digest
 	_, err := s.pool.Exec(ctx, `DELETE FROM push_subscriptions p USING browser_sessions b WHERE p.owner_id=$1 AND p.endpoint=$2 AND b.id=p.session_id AND b.token_hash=$3`, owner, endpoint, digest)
 	return err
 }
-func (s *Store) PushNotice(ctx context.Context, owner string, digest []byte, subscription, id string, revision int64) (threads.Notification, error) {
+func (s *Store) PushNotice(ctx context.Context, owner string, digest []byte, subscription, id string, revision int64) (notifications.Notification, error) {
 
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
-		return threads.Notification{}, err
+		return notifications.Notification{}, err
 	}
 	defer tx.Rollback(ctx)
 	allowed, err := notificationWorkspaces(ctx, tx, owner)
 	if err != nil {
-		return threads.Notification{}, err
+		return notifications.Notification{}, err
 	}
 	n, err := scanNotice(tx.QueryRow(ctx, `SELECT `+noticeColumns+noticeJoins+` JOIN push_subscriptions p ON p.owner_id=n.owner_id JOIN browser_sessions b ON b.id=p.session_id
- WHERE n.owner_id=$1 AND b.token_hash=$2 AND p.id=$3 AND n.id=$4 AND n.revision=$5 AND n.read_at IS NULL AND n.resolved_at IS NULL AND (n.task_id IS NULL OR task.workspace_id::text=ANY($6))`, owner, digest, subscription, id, revision, allowed))
+ WHERE n.owner_id=$1 AND b.token_hash=$2 AND p.id=$3 AND n.id=$4 AND n.revision=$5 AND n.read_at IS NULL AND n.resolved_at IS NULL AND task.workspace_id::text=ANY($6)`, owner, digest, subscription, id, revision, allowed))
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = auth.ErrNotFound
 	}

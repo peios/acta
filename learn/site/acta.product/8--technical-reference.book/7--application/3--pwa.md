@@ -13,10 +13,10 @@ alerts from its bell menu. Installation does not automatically grant
 notification permission. Desktop browser support and installation menus
 differ.
 
-The app remains server-backed: account pages, API data, threads, and tool
+The app remains server-backed: account pages, API data, tasks, and tool
 results are not cached for offline browsing. Offline navigation shows a simple
 reconnect screen. This avoids retaining authenticated content in a shared
-browser cache. Agent execution remains independent of whether the app is open.
+browser cache.
 
 ## Deployment
 
@@ -37,7 +37,7 @@ Allow outbound DNS and HTTPS to browser-selected public push services. Acta
 rejects private/reserved addresses, checks DNS at connection time, pins
 resolved addresses for the connection and does not follow redirects or
 environment HTTP proxies. The push service receives an encrypted identifier
-payload; it does not receive plaintext conversation content. The device
+payload; it does not receive plaintext task content. The device
 retrieves current notification details from Acta using its existing browser
 session.
 

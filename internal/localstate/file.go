@@ -1,4 +1,4 @@
-// Package localstate provides crash-safe local files for the harness runtime.
+// Package localstate provides crash-safe local files for Acta command-line tools.
 package localstate
 
 import (

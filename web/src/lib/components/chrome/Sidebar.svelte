@@ -1,10 +1,5 @@
 <script lang="ts">
-  import ProviderIcon from "../threads/ProviderIcon.svelte";
-  import { useThreads, threadName } from "$lib/threads.svelte";
-  const threads = useThreads();
-  import { useNotifications } from "$lib/notifications.svelte";
   import NotificationBell from "./NotificationBell.svelte";
-  const notifications = useNotifications();
   import { api, errorMessage } from "$lib/api";
   import { taskChanged } from "$lib/tasks";
   let boardError = $state("");
@@ -51,8 +46,6 @@
   import ThemeToggle from "../ThemeToggle.svelte";
   import { version } from "../../../../package.json";
 
-  import CodeSidebar from "../code/CodeSidebar.svelte";
-  import HostPicker from "../code/HostPicker.svelte";
   import WorkspaceSwitcher from "../workspaces/WorkspaceSwitcher.svelte";
   import { useWorkspace, workspacePath, canWorkspace } from "$lib/workspaces";
   const workspace = useWorkspace();
@@ -61,7 +54,6 @@
     scope,
     onScope,
     onSearch = () => {},
-    onCodeNavigate = () => {},
     onLogout,
     onToggle,
     collapsed = false,
@@ -69,10 +61,9 @@
     busy = false,
   }: {
     account: Account;
-    scope: "site" | "user" | "workspace" | "agents" | "code";
-    onScope: (scope: "site" | "user" | "workspace" | "agents" | "code") => void;
+    scope: "site" | "user" | "workspace";
+    onScope: (scope: "site" | "user" | "workspace") => void;
     onSearch?: () => void;
-    onCodeNavigate?: () => void;
     onLogout: () => void;
     onToggle: () => void;
     collapsed?: boolean;
@@ -96,7 +87,7 @@
         : "Collapse sidebar",
   );
 
-  function choose(next: "site" | "user" | "workspace" | "agents" | "code") {
+  function choose(next: "site" | "user" | "workspace") {
     menu?.hidePopover();
     onScope(next);
   }
@@ -141,19 +132,13 @@
 </script>
 
 <svelte:window onresize={() => menu?.hidePopover()} />
-<div class="sidebar-inner" class:collapsed class:code-scope={scope === "code"}>
+<div class="sidebar-inner" class:collapsed>
   <div class="sidebar-heading">
     {#if scope === "workspace"}
       {#if !collapsed}<WorkspaceSwitcher />{/if}
-    {:else if scope === "code"}
-      {#if !collapsed}<HostPicker />{/if}
     {:else}
       <p class="scope-label">
-        {scope === "agents"
-          ? "My Agents"
-          : scope === "site"
-            ? "Site settings"
-            : "User settings"}
+        {scope === "site" ? "Site settings" : "User settings"}
       </p>
     {/if}
     <button
@@ -188,16 +173,11 @@
   </div>
   <nav
     class="scope-navigation"
-    class:code-navigation={scope === "code"}
-    aria-label={scope === "code"
-      ? "Code navigation"
-      : scope === "agents"
-        ? "Agent navigation"
-        : scope === "workspace"
-          ? "Workspace navigation"
-          : scope === "site"
-            ? "Site settings navigation"
-            : "User settings navigation"}
+    aria-label={scope === "workspace"
+      ? "Workspace navigation"
+      : scope === "site"
+        ? "Site settings navigation"
+        : "User settings navigation"}
   >
     <button
       class="scope-button search-button"
@@ -218,34 +198,7 @@
         aria-hidden="true">Search</span
       ></button
     >
-    {#if scope === "code"}
-      <CodeSidebar {collapsed} onNavigate={onCodeNavigate} />
-    {:else if scope === "agents"}
-      <button
-        class="scope-button"
-        aria-label="New thread"
-        onclick={() => (threads.createOpen = true)}
-        ><span aria-hidden="true">＋</span><span class="scope-name"
-          >New thread</span
-        ><span class="rail-tooltip" aria-hidden="true">New thread</span></button
-      >
-      {#each threads.items as thread (thread.id)}<a
-          class="scope-button"
-          class:active={page.url.pathname === `/my-agents/${thread.id}`}
-          href={`/my-agents/${thread.id}`}
-          aria-label={threadName(thread)}
-          title={thread.cwd}
-          ><ProviderIcon provider={thread.provider} />
-          <span class="scope-name">{threadName(thread)}</span
-          >{#if notifications?.inbox.counts[thread.id]}<span
-              class="unread-dot"
-              title="Unread notifications"
-              aria-label="Unread notifications"
-            ></span>{/if}<span class="rail-tooltip" aria-hidden="true"
-            >{threadName(thread)}</span
-          ></a
-        >{/each}
-    {:else if scope === "user"}
+    {#if scope === "user"}
       <a
         href="/user-settings/profile"
         class="scope-button"
@@ -368,33 +321,6 @@
         ><span class="scope-name">Memories</span><span
           class="rail-tooltip"
           aria-hidden="true">Memories</span
-        >
-      </a>
-      <a
-        href="/user-settings/harnesses"
-        class="scope-button"
-        class:active={page.url.pathname === "/user-settings/harnesses"}
-        aria-current={page.url.pathname === "/user-settings/harnesses"
-          ? "page"
-          : undefined}
-        aria-label="Harnesses"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          width="19"
-          height="19"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.6"
-          stroke-linecap="round"
-          aria-hidden="true"
-          ><rect x="3" y="3" width="18" height="13" rx="2" /><path
-            d="M8 21h8m-4-5v5"
-          /></svg
-        >
-        <span class="scope-name">Harnesses</span><span
-          class="rail-tooltip"
-          aria-hidden="true">Harnesses</span
         >
       </a>
     {:else if scope === "workspace"}
@@ -647,55 +573,6 @@
           aria-hidden="true">Workspaces</span
         ></button
       >
-      <button
-        class="scope-button"
-        class:active={scope === "agents"}
-        aria-label="My Agents"
-        onclick={() => choose("agents")}
-        ><svg
-          width="19"
-          height="19"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.6"
-          aria-hidden="true"
-          ><rect x="4" y="7" width="16" height="13" rx="4" /><path
-            d="M12 3v4M8 12v2m8-2v2M9 17h6"
-          /></svg
-        ><span class="scope-name">My Agents</span
-        >{#if notifications?.inbox.total}<span
-            class="unread-dot"
-            title="Unread notifications"
-            aria-label="Unread notifications"
-          ></span>{/if}<span class="rail-tooltip" aria-hidden="true"
-          >My Agents</span
-        ></button
-      >
-      <button
-        class="scope-button"
-        class:active={scope === "code"}
-        aria-label="Code"
-        aria-current={scope === "code" ? "page" : undefined}
-        onclick={() => choose("code")}
-      >
-        <svg
-          width="19"
-          height="19"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.6"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-          ><path d="m8 6-6 6 6 6m8-12 6 6-6 6M14 4l-4 16" /></svg
-        >
-        <span class="scope-name">Code</span><span
-          class="rail-tooltip"
-          aria-hidden="true">Code</span
-        >
-      </button>
       {#if canOpenSite(account)}
         <button
           class="scope-button"
@@ -817,19 +694,6 @@
     outline: 2px solid var(--accent);
     background: var(--hover-surface);
   }
-  .unread-dot {
-    display: block;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--accent);
-    flex-shrink: 0;
-  }
-  .collapsed .unread-dot {
-    position: absolute;
-    top: 5px;
-    right: 6px;
-  }
   .workspace-section {
     font-size: 11px;
     text-transform: uppercase;
@@ -897,22 +761,6 @@
   .scope-navigation {
     flex: 1;
     padding: 0 12px;
-  }
-  .code-navigation {
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-  .code-navigation .search-button {
-    flex-shrink: 0;
-  }
-  .code-scope .sidebar-heading,
-  .code-scope .sidebar-bottom {
-    flex-shrink: 0;
-  }
-  .code-scope .sidebar-bottom {
-    margin-top: 16px;
   }
   .scope-label {
     margin: 0;

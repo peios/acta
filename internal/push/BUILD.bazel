@@ -6,7 +6,7 @@ go_library(
     importpath = "acta/internal/push",
     visibility = ["//:__subpackages__"],
     deps = [
-        "//internal/threads",
+        "//internal/notifications",
         "@com_github_sherclockholmes_webpush_go//:webpush-go",
     ],
 )

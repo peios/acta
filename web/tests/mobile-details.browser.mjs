@@ -80,23 +80,6 @@ try {
     });
   });
   await page.goto("http://localhost:8081");
-  const input = page.getByRole("textbox", { name: "Message", exact: true });
-  await input.waitFor();
-  assert.equal(
-    await input.evaluate((e) => document.activeElement === e),
-    false,
-    "mobile composer must not steal focus",
-  );
-  await input.fill("First line");
-  await input.press("Enter");
-  assert.equal(await input.inputValue(), "First line\n");
-  assert.equal(await page.locator("output").textContent(), "");
-  await input.press("Control+Enter");
-  assert.equal(await page.locator("output").textContent(), "First line\n");
-  assert.equal(
-    await input.evaluate((e) => getComputedStyle(e).fontSize),
-    "16px",
-  );
   // Keep both axes of the board intact through full-screen detail navigation.
   await page.locator(".board").evaluate((e) => (e.scrollLeft = 316));
   await page.locator("main").evaluate((e) => (e.scrollTop = 160));
@@ -191,13 +174,6 @@ try {
         "--mobile-viewport-height",
       ) === "420px",
   );
-  const composer = await page
-    .getByRole("group", { name: "Message composer", exact: true })
-    .boundingBox();
-  assert.ok(
-    composer.y >= 30 && composer.y + composer.height <= 450,
-    "composer fits above keyboard",
-  );
   await page.getByRole("button", { name: "New task", exact: true }).tap();
   const create = await page
     .getByRole("dialog", { name: "Create task", exact: true })
@@ -261,7 +237,7 @@ try {
   await checkAccessibility(page, "mobile-details");
   assert.deepEqual(errors, []);
   console.log(
-    `PASS ${engine}: mobile composer, keyboard viewport, touch sizing, detail back/browser back with both scroll axes retained, task drafts after reload`,
+    `PASS ${engine}: keyboard viewport, touch sizing, detail back/browser back with both scroll axes retained, task drafts after reload`,
   );
 } finally {
   await browser.close();

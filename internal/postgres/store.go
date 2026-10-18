@@ -38,10 +38,6 @@ func Open(ctx context.Context, databaseURL string) (*Store, error) {
 		pool.Close()
 		return nil, err
 	}
-	if err = store.backfillConversations(ctx); err != nil {
-		pool.Close()
-		return nil, err
-	}
 	return store, nil
 }
 func (s *Store) Close() { s.pool.Close() }

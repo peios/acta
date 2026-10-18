@@ -48,6 +48,6 @@ release identity, and requested time. Protect the entire target as secret
 data. Verification runs no application workers, network listeners, or
 migrations. For a separate UI review on an isolated host, start the recorded
 executable with `ACTA_RECOVERY_MODE=true`, the recovered database and key;
-that disables push, harness/MCP/OAuth entry points, backup controls, and
-thread mutations. This is not a replacement for network isolation and is not a
+that disables push, MCP/OAuth entry points, backup controls, and
+push mutations. This is not a replacement for network isolation and is not a
 production setting.

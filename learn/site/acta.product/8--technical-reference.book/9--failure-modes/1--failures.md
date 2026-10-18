@@ -1,7 +1,7 @@
 ---
 title: "Failure Modes"
 description: >-
-  How conflicts, expired credentials, uncertain delivery, missing history,
+  How conflicts, expired credentials, uncertain responses,
   and recovery failures appear.
 ---
 
@@ -34,24 +34,6 @@ reflect the account's live permissions.
 OAuth refresh tokens rotate. Reuse revokes the connection, so competing
 refreshes or a lost refresh response can require authorization again. Browser
 revocation invalidates the durable MCP connection and its tokens together.
-
-## Provider uncertainty
-
-A lost harness connection does not establish process exit. Commands and frame
-batches retain their durable identities across reconnects. Conflicting replay
-or a sequence gap is rejected rather than silently accepted.
-
-A crash across process launch or input writing can leave an uncertain result.
-The controller does not assume the action was unsent. Complete journal
-corruption fails closed; a torn final record can be truncated during recovery.
-Capture failure terminates the affected provider rather than leaving
-unrecorded execution.
-
-A stored PID is not sufficient authority to adopt or signal a process after a
-pipe crash. Live, inaccessible, or reused PIDs remain uncertain. An explicitly
-resumed thread uses its native session ID; missing native history is reported
-without replacement. Server transcript retention cannot repair provider
-history.
 
 ## Installation failures
 

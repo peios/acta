@@ -75,7 +75,7 @@ self.addEventListener("fetch", (event) => {
     fetch(event.request).catch(
       () =>
         new Response(
-          `<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline · Acta</title><style>body{background:#202020;color:#e6e6e6;font:16px system-ui;display:grid;place-content:center;min-height:90vh;padding:24px;text-align:center}p{color:#aaa;max-width:36rem;line-height:1.6}a{color:#bccadd}</style><h1>You're offline</h1><p>Reconnect to open Acta. Your agents may still be running on their development machines.</p><a href="/my-agents">Try again</a></html>`,
+          `<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline · Acta</title><style>body{background:#202020;color:#e6e6e6;font:16px system-ui;display:grid;place-content:center;min-height:90vh;padding:24px;text-align:center}p{color:#aaa;max-width:36rem;line-height:1.6}a{color:#bccadd}</style><h1>You're offline</h1><p>Reconnect to open Acta.</p><a href="/workspaces">Try again</a></html>`,
           {
             status: 503,
             headers: {
@@ -127,10 +127,10 @@ async function receive(data) {
     // when opened. The durable inbox remains available after reconnecting.
     n = {
       title: "Acta",
-      thread_name: "There is an update. Open Acta to check.",
+      message: "There is an update. Open Acta to check.",
     };
   }
-  let url = "/my-agents";
+  let url = "/workspaces";
   if (uuid(n.task_id) && typeof n.workspace_slug === "string") {
     url = `/workspaces/${encodeURIComponent(n.workspace_slug)}?task=${n.task_id}`;
     const clients = await self.clients.matchAll({
@@ -146,22 +146,6 @@ async function receive(data) {
       )
     )
       return;
-  } else if (uuid(n.thread_id)) {
-    const path = `/my-agents/${n.thread_id}`;
-    const clients = await self.clients.matchAll({
-      type: "window",
-      includeUncontrolled: true,
-    });
-    if (
-      clients.some(
-        (c) =>
-          c.focused &&
-          c.visibilityState === "visible" &&
-          new URL(c.url).pathname === path,
-      )
-    )
-      return;
-    url = path + (n.lane_id ? `?lane=${encodeURIComponent(n.lane_id)}` : "");
   }
   if (
     generation !== cleared ||
@@ -170,7 +154,7 @@ async function receive(data) {
     return;
   // Keep the same tag for retries or a corrected notification revision.
   await self.registration.showNotification(n.title, {
-    body: n.task_id ? `${n.task_reference} · ${n.task_title}` : n.thread_name,
+    body: n.task_id ? `${n.task_reference} · ${n.task_title}` : n.message,
     tag: `acta:${data.id}`,
     icon: "/icons/acta-192.png",
     badge: "/icons/acta-192.png",
@@ -206,10 +190,12 @@ self.addEventListener("notificationclick", (event) => {
   event.waitUntil(
     (async () => {
       const data = event.notification.data || {};
-      const url = new URL(data.url || "/my-agents", self.location.origin);
+      const url = new URL(data.url || "/workspaces", self.location.origin);
       if (
         url.origin !== self.location.origin ||
-        !/^\/my-agents(?:\/[0-9a-f-]{36})?$/.test(url.pathname)
+        !/^\/workspaces(?:\/[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)?$/.test(
+          url.pathname,
+        )
       )
         return;
       const clients = await self.clients.matchAll({

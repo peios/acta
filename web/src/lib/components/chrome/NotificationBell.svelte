@@ -77,23 +77,10 @@
             void view.open(n);
           }}
         >
-          <span
-            class="indicator"
-            class:failed={n.kind === "failed"}
-            class:attention={n.kind === "attention"}
-            >{n.task_id
-              ? "↗"
-              : n.kind === "finished"
-                ? "✓"
-                : n.kind === "failed"
-                  ? "!"
-                  : "?"}</span
-          >
+          <span class="indicator">↗</span>
           <span class="content"
             ><span class="title">{n.title}</span><span class="name"
-              >{n.task_id
-                ? `${n.task_reference} · ${n.task_title}`
-                : n.thread_name}{n.lane_id ? " · Subagent" : ""}</span
+              >{n.task_reference} · {n.task_title}</span
             ><time
               datetime={n.created_at}
               title={new Date(n.created_at).toLocaleString()}
@@ -104,7 +91,7 @@
         </button>
       {:else}<div class="empty">
           <span aria-hidden="true">✓</span><strong>All caught up</strong>
-          <p>Updates from your tasks and agents will appear here.</p>
+          <p>Updates from your tasks will appear here.</p>
         </div>{/each}
     </div>
     {#if view.inbox.total > view.inbox.items.length}<p class="limit">
@@ -258,14 +245,6 @@
     color: var(--muted);
     flex-shrink: 0;
     font-size: 13px;
-  }
-  .indicator.attention {
-    color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
-  }
-  .indicator.failed {
-    color: #ef9b92;
-    background: #ef9b9212;
   }
   .content {
     display: grid;

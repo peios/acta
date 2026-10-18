@@ -40,7 +40,6 @@ and agent experience equal importance.
 - When changing agent-facing features, update
   `learn/site/acta.product/3--connections.topic/400--agent-guide.md` and affected
   tool descriptions. The application embeds that page body without Trail
-  metadata. Thread schemas in `learn/site/download-sources` also feed runtime
-  validation and tests; keep these canonical inputs consistent with the code.
+  metadata. Keep that canonical source consistent with the tools.
 - Record work, agreed decisions, rationale and validation in the corresponding
   Acta task. Distinguish agreed decisions from open proposals.

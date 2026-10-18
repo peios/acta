@@ -43,7 +43,7 @@ policy too; otherwise it correctly treats that intermediary as the client.
 This is operator configuration, not an editable Site Settings page.
 
 Before cutover, verify public DNS/TLS, OAuth/MCP URLs, passkeys, push and
-harness reconnection on the real hostname; prove backup restoration and
+CLI reconnection on the real hostname; prove backup restoration and
 preserve the matching security key; rehearse migration and rollback. A schema
 migration can prevent an older binary from starting: image rollback alone is
 not recovery.

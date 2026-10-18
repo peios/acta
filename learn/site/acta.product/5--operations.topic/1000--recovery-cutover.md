@@ -29,7 +29,8 @@ Preparation requires a verified, stopped target. It rechecks the restored
 data, then transactionally revokes **all** restored browser, CLI and MCP
 sessions, clears in-flight authentication/setup grants, and discards pending
 push deliveries. Old notifications are marked read/resolved, retaining their
-historical records. Users and harnesses must authenticate again. Passwords and
+historical records. Users and external clients must authenticate again.
+Passwords and
 MFA enrollment remain; credentials legitimately changed after the backup have
 rolled back, so apply any known post-backup account disables/password changes
 before reopening access. Preparation is repeatable and records

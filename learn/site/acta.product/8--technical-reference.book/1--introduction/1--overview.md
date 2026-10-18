@@ -5,10 +5,9 @@ description: >-
   this manual.
 ---
 
-Acta separates collaboration records from provider execution. The server
-stores accounts, workspaces, tasks, documents, and conversation projections in
-PostgreSQL. Providers run on connected development machines, under their local
-credentials and policy.
+Acta stores accounts, workspaces, tasks, documents, and project history in
+PostgreSQL. People use the browser or CLI; external tools use authenticated
+CLI and MCP connections.
 
 The browser, command-line client, and Model Context Protocol (MCP) tools share
 server-side domain services. Site grants, workspace access, delegated-agent
@@ -31,5 +30,4 @@ earlier manual differs from it.
 The [Learn guides](~acta/getting-started/overview) explain user workflows.
 [Operational procedures](~acta/operations/deployment) cover installation and
 recovery. The command-line executables' help and the MCP tool schemas provide
-the available command and argument surfaces. The downloadable thread schema is
-the same schema embedded by runtime validation.
+the available command and argument surfaces.

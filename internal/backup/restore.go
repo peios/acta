@@ -214,7 +214,7 @@ func verifyDatabase(ctx context.Context, c *pgx.Conn, meta recovery) (RestoreRep
 	if !reflect.DeepEqual(meta.Migrations, migrations) {
 		return r, errors.New("restored migration set differs from the backup release; use the matching recovery record for the selected time")
 	}
-	for _, table := range []string{"accounts", "tasks", "task_comments", "documents", "document_versions", "document_files", "provider_threads", "provider_thread_frames", "thread_conversation_items"} {
+	for _, table := range []string{"accounts", "tasks", "task_comments", "documents", "document_versions", "document_files"} {
 		var n int64
 		if err = c.QueryRow(ctx, "SELECT count(*) FROM "+pgx.Identifier{table}.Sanitize()).Scan(&n); err != nil {
 			return r, err

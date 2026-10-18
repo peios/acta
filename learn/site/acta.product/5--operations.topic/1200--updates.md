@@ -19,3 +19,15 @@ Use these pages for the relevant stage:
 - [Provisioning the Updater](~acta/operations/updater-setup)
 - [Update Execution and Recovery](~acta/operations/update-recovery)
 - [Checking Update Recovery](~acta/operations/update-checks)
+
+## Database retirement migration
+
+Migration `043_retire_execution.sql` deletes stored execution conversations,
+frames, commands, Code host registrations, and execution notifications. Task
+records, agent accounts, MCP access, task notifications, and queued task push
+deliveries remain. Startup applies this migration automatically.
+
+Keep a verified backup with its matching executable before starting this
+release against an older database. Recover retired execution history from
+that backup in an isolated environment. An older executable cannot open the
+upgraded schema.

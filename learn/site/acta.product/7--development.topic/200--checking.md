@@ -23,8 +23,8 @@ From the repository root, run the checks needed for the change:
 ./bazel run //:gazelle -- -mode=diff
 ```
 
-The export target writes `acta-server`, `acta`, `acta-code-host`,
-`acta-backup`, and `acta-update` to `bin/`. Set `ACTA_OUTPUT_DIR` to choose
+The export target writes `acta-server`, `acta`, `acta-backup`, and
+`acta-update` to `bin/`. Set `ACTA_OUTPUT_DIR` to choose
 another destination. The frontend target writes assets under
 `bazel-bin/web/build`.
 
@@ -48,10 +48,8 @@ results, and runs the suite with the Go race detector. Each test creates a
 randomly named schema, applies migrations, exercises real transactions, and
 drops its own schema. It does not wipe the database's `public` schema.
 
-Backup recovery, update recovery, device passkeys, and provider execution need
-their own qualification. Do not infer those results from ordinary unit tests.
-Provider integration tests can start paid work or publish artifacts; use their
-explicit opt-in only within the authorized test scope.
+Backup recovery, update recovery, and device passkeys need their own
+qualification. Do not infer those results from ordinary unit tests.
 
 ## Check the result
 

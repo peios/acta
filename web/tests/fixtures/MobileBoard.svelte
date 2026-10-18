@@ -52,7 +52,7 @@
     <div class="drawer-content" bind:this={drawerContent}>
       <button onclick={() => drawer?.close()}>Close navigation</button>
       <p>Workspaces</p>
-      <p>My Agents</p>
+      <p>Workspaces</p>
       <input aria-label="Navigation input" />
     </div>
   </dialog>

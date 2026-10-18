@@ -96,8 +96,6 @@ func run() error {
 		fmt.Println("Restored schema, security data, documents and embedded UI verified.")
 		return nil
 	}
-	// Projection backfill is cancellable with server shutdown, but must not be
-	// repeatedly rolled back by the short authentication-startup deadline.
 	store, err := postgres.Open(ctx, databaseURL)
 	if err != nil {
 		return err

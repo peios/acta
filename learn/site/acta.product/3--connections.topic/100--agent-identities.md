@@ -25,17 +25,15 @@ Explicit grants are pruned when the owner loses the corresponding authority.
 Restoring the owner's access does not restore those explicit grants. Inherited
 workspace permissions follow the owner's restored permissions automatically.
 
-## Connections and execution
+## Connections
 
 In **User Settings → Agents**, create an identity, configure its access, and
 inspect its sessions. When approving a command-line or MCP connection, select
 that identity in **Act as**. The resulting session acts as the selected
 account.
 
-Creating an identity or assigning it work does not run a model. Provider
-threads have their own lifecycle and use the Acta connection configured in the
-provider. Use the connection's identity tool to confirm which account it
-represents.
+Creating an identity or assigning it work records responsibility. Use the
+connection's identity tool to confirm which account it represents.
 
 ## Suspension
 

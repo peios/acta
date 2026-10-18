@@ -147,9 +147,9 @@ storage contract includes these atomicity and consistency guarantees.
 
 ## Returning between scopes
 
-The Workspaces and My Agents scope buttons return to the last visited location
-in their respective sections, including the workspace task query and URL
-fragment. Locations are remembered per account in the current browser and
+The Workspaces scope button returns to the last visited workspace location,
+including its task query and URL fragment. Locations are remembered per
+account in the current browser and
 survive reloads. A section without a saved location opens its normal index.
 Navigation still remembers locations for the current session when browser
 storage is unavailable. Site Settings and User Settings retain their existing

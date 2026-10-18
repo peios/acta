@@ -5,11 +5,9 @@ go 1.26.0
 require (
 	charm.land/huh/v2 v2.0.3
 	github.com/charmbracelet/x/term v0.2.2
-	github.com/coder/websocket v1.8.15
 	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/go-webauthn/webauthn v0.17.4
 	github.com/gofrs/flock v0.13.1
-	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/modelcontextprotocol/go-sdk v1.7.0
@@ -22,6 +20,8 @@ require (
 	golang.org/x/sys v0.47.0
 	golang.org/x/text v0.41.0
 )
+
+require github.com/google/jsonschema-go v0.4.3 // indirect
 
 require (
 	charm.land/bubbles/v2 v2.0.0 // indirect

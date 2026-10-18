@@ -3,7 +3,7 @@
   "name": "Acta",
   "short_name": "Acta",
   "description": "Your tasks, agents and shared knowledge.",
-  "start_url": "/my-agents",
+  "start_url": "/workspaces",
   "scope": "/",
   "display": "standalone",
   "background_color": "#202020",

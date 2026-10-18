@@ -1,8 +1,8 @@
 package auth
 
 import (
+	"acta/internal/notifications"
 	"acta/internal/push"
-	"acta/internal/threads"
 	"context"
 	"errors"
 )
@@ -28,10 +28,10 @@ func (s *Service) DeletePush(ctx context.Context, owner, token, endpoint string)
 	}
 	return p.DeletePushSubscription(ctx, owner, Digest(token), endpoint)
 }
-func (s *Service) PushNotice(ctx context.Context, owner, token, subscription, id string, revision int64) (threads.Notification, error) {
+func (s *Service) PushNotice(ctx context.Context, owner, token, subscription, id string, revision int64) (notifications.Notification, error) {
 	p, e := s.pushStore()
 	if e != nil {
-		return threads.Notification{}, e
+		return notifications.Notification{}, e
 	}
 	return p.PushNotice(ctx, owner, Digest(token), subscription, id, revision)
 }

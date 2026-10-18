@@ -5,7 +5,6 @@
   import { mobileViewport } from "$lib/mobile-viewport";
   import DetailViewer from "$lib/components/DetailViewer.svelte";
   import CreateTaskDialog from "$lib/components/tasks/CreateTaskDialog.svelte";
-  import ThreadComposerReview from "./ThreadComposerReview.svelte";
   import { provideAccount } from "$lib/account-context";
   import type { Account } from "$lib/api";
   provideAccount({
@@ -60,7 +59,6 @@
         </section>{/each}
     </div>
   </main>
-  <footer><ThreadComposerReview /></footer>
 </div>
 <DetailViewer
   {selected}
@@ -120,9 +118,6 @@
     width: 100%;
     padding: 24px;
     margin: 8px 0;
-  }
-  footer {
-    padding: 12px;
   }
   .details {
     padding: 16px;

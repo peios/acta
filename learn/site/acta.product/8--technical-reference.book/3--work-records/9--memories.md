@@ -2,10 +2,10 @@
 title: "Memories"
 description: >-
   Knowledge scopes, access boundaries, revision-checked writes, recall
-  pagination, and conversation references.
+  pagination, and explicit client reads.
 ---
 
-Memories are core Acta records, independent of threads, and provider sessions.
+Memories are core Acta records available across authorized client sessions.
 They store durable standalone knowledge. Task-specific progress, decisions,
 and findings belong in task descriptions/comments; public documentation
 belongs in learn/. Do not store facts readily rediscovered from current
@@ -21,7 +21,7 @@ source.
   writes require an explicit `own.memories.write` agent grant and that
   permission on the owner. Sibling agents do not share agent-scoped memories.
 - Agent is rare, for knowledge specific to a persistent Acta agent
-  identity/role. The agent and its human owner can read/write it. Threads
+  identity/role. The agent and its human owner can read/write it. Clients
   using the same agent identity share these records. Learning something does
   not make it agent-specific.
 - Site is rare, for truly global knowledge across the installation.
@@ -71,34 +71,5 @@ HTTP endpoints: GET `/api/memories`, GET `/api/memories/{id}`, POST
 `/api/memories`, POST `/api/memories/{id}/delete`. The human browser at User
 Settings → Memories can select an owned agent using `agent_id` and add a
 workspace. MCP does not expose agent selection. Recall never injects full
-memory bodies into a thread automatically. No provider files or hooks are
-modified.
-
-## References in agent conversations
-
-Memory MCP calls receive the same reference chips as task calls. The browser
-recognizes `memory_get`, `memory_save`, `memory_recall`, and `memory_delete`
-on MCP connections whose configured name contains `acta` (case-insensitive),
-using Claude's `mcp__name__tool` and Codex's `name/tool` naming forms. IDs
-come from reviewed arguments or structured memory results, including recall
-lists and MCP JSON text/structured-result envelopes. Scope IDs, prose, and
-arbitrary object IDs do not become links.
-
-Each candidate is checked against this Acta server's memory API using the
-signed-in human's access. Accessible memories show their current scope and
-key; unresolved, deleted, or inaccessible references remain plain text. There
-is no cross-server lookup. Verification shares the task resolver's coalescing,
-four-request concurrency limit, short-lived per-page cache, and cancellation
-on account/navigation teardown. Opening a chip performs a fresh read, so a
-memory deleted or access-revoked since verification shows the API error rather
-than cached content.
-
-Opening a memory keeps the chat, lane and composer draft mounted. It uses
-`?memory=<uuid>` and replaces an open task panel; opening a task replaces it
-in turn. Browser back/forward can restore the selection. Task and memory
-viewers share their responsive shell: a resizable right panel when space
-permits, a modal at intermediate widths, and full screen on mobile. Memory
-panel width/fullscreen preferences are browser-local and independent of task
-preferences. Markdown, revision-checked editing, and deletion use the same
-detail component as the Memories settings page; writes still require the
-memory's scope permissions.
+memory bodies into external tools automatically. Clients read relevant
+records explicitly.

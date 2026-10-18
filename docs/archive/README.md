@@ -1,9 +1,10 @@
 # Documentation Archive
 
-`pre-learn/` preserves the Markdown documentation as it stood before the
+`pre-learn/` preserves retained Markdown documentation from before the
 October 18, 2026 Learn migration. It includes dated investigations, proposals,
 validation reports, and the predecessor pages used for the rewrite. It is a
-historical snapshot, not a second maintained documentation set.
+historical snapshot, not a second maintained documentation set. Retired
+execution and Code material is available only in Git history.
 
 These files are outside the published Trail root. Dates, local paths, links,
 and validation claims retain their original context and can be obsolete.
