@@ -20,7 +20,7 @@ def main() -> None:
     }
     root = Path(os.environ["BUILD_WORKSPACE_DIRECTORY"])
     # Include new maintained files during development without walking dependencies
-    # or build outputs. Archives and migration history are not rewrite targets.
+    # or build outputs. SQL migration history is not a rewrite target.
     files = (
         subprocess.check_output(
             ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"], cwd=root
@@ -28,13 +28,7 @@ def main() -> None:
         .decode()
         .split("\0")
     )
-    files = sorted(
-        {
-            name
-            for name in files
-            if name and not name.startswith("docs/archive/") and (root / name).is_file()
-        }
-    )
+    files = sorted({name for name in files if name and (root / name).is_file()})
     python = [name for name in files if name.endswith(".py")]
     shell = [name for name in files if name.endswith(".sh") or name == "bazel"]
     starlark = [name for name in files if name.endswith((".bzl", ".bazel"))]

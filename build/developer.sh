@@ -8,7 +8,7 @@ case "$mode" in
 format-check)
     gofmt=$(realpath "$1")
     cd "$root"
-    mapfile -d '' files < <(find cmd internal web learn \
+    mapfile -d '' files < <(find cmd internal web docs/learn \
         -type d \( -name node_modules -o -name .svelte-kit -o -path web/build \) -prune \
         -o -type f -name '*.go' -print0)
     result=$("$gofmt" -l "${files[@]}")

@@ -6,7 +6,7 @@ go_library(
     embedsrcs = [
         "site/acta.product/3--connections.topic/400--agent-guide.md",
     ],
-    importpath = "acta/learn",
+    importpath = "acta/docs/learn",
     visibility = ["//visibility:public"],
 )
 

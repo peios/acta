@@ -12,12 +12,12 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"acta/docs/learn"
 	"acta/internal/accounts"
 	"acta/internal/auth"
 	"acta/internal/config"
 	"acta/internal/guide"
 	"acta/internal/httpapi"
-	"acta/learn"
 )
 
 func TestGuidePreferencesOwnershipAndRevisions(t *testing.T) {

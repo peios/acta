@@ -47,19 +47,19 @@ exports. A versioned build does not sign, publish, or deploy a release.
 
 ## Maintain documentation
 
-Edit the Trail product in `learn/site/acta.product`. Keep user concepts and
-procedures in topics and implementation details in the technical manual. The
-agent guide is embedded from its canonical Learn file.
-Changes to those files also change the application inputs.
+Edit the Trail product in `docs/learn/site/acta.product`. Keep user concepts
+and procedures in topics and implementation details in the technical manual.
+The agent guide is embedded from its canonical Learn file. Changes to those
+files also change the application inputs.
 
 Run the documentation checks from the repository root:
 
 ```sh
-trail lint learn/site
-trail build learn/site --strict
+trail lint docs/learn/site
+trail build docs/learn/site --strict
 ```
 
 Use a Trail build with attachment support. Inspect the rendered pages and
-links as well as the diagnostics. Historical investigations belong in
-`docs/archive`, which is excluded from the published source tree.
+links as well as the diagnostics. Historical documentation remains available
+in Git history.
 Work-specific validation and decisions belong on the corresponding Acta task.

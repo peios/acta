@@ -16,11 +16,11 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"acta/docs/learn"
 	"acta/internal/accounts"
 	"acta/internal/auth"
 	"acta/internal/config"
 	"acta/internal/httpapi"
-	"acta/learn"
 )
 
 const mcpResource = "http://localhost:8081/mcp"

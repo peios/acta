@@ -5,8 +5,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"acta/docs/learn"
 	"acta/internal/guide"
-	"acta/learn"
 )
 
 const agentInstructions = `Acta is shared working context for people and agents: tasks track work, comments preserve progress and decisions, and memories hold durable standalone knowledge. Read acta_guide before substantial work with Acta for workflow, memory scope, collaboration and safe-edit guidance. Follow the user's instructions and project conventions. This connection may expose only some capabilities; the guide does not grant access to other tools.`

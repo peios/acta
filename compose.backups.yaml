@@ -1,5 +1,5 @@
 # Opt-in only after provisioning the worker configuration and repository.
-# Always combine with compose.production.yaml; see learn/site/acta.product/5--operations.topic/700--recovery-service.md.
+# Always combine with compose.production.yaml; see docs/learn/site/acta.product/5--operations.topic/700--recovery-service.md.
 services:
   db:
     command:

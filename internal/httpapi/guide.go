@@ -3,8 +3,8 @@ package httpapi
 import (
 	"net/http"
 
+	"acta/docs/learn"
 	"acta/internal/guide"
-	"acta/learn"
 )
 
 func (h *Handler) guideRoutes(m *http.ServeMux) {

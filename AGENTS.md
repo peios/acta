@@ -33,7 +33,7 @@ and agent experience equal importance.
 ## Coding style
 
 - Follow Panorama PSC common and language coding rules. See
-  `learn/site/acta.product/7--development.topic/200--checking.md` for commands
+  `docs/learn/site/acta.product/7--development.topic/200--checking.md` for commands
   and exclusions. Keep formatter success separate from design review.
 - Run `./bazel run //:format-check`, `./bazel run //:style-check`, and the
   relevant Bazel tests. Frontend tests include formatting and ESLint checks.
@@ -42,13 +42,12 @@ and agent experience equal importance.
 
 ## Project records
 
-- Keep maintained product documentation in `learn/site/acta.product`, following
+- Keep maintained product documentation in `docs/learn/site/acta.product`, following
   Panorama's [Core Style](../panorama/docs/psc.product/1--technical-writing-and-documentation.shelf/2--style.topic/100--core-style.md)
-  and [Learn](../panorama/docs/psc.product/1--technical-writing-and-documentation.shelf/2--style.topic/300--learn.md) rules. Run `trail lint learn/site` and
-  `trail build learn/site --strict` with a Trail build supporting attachments.
-  `docs/archive` contains historical records and is not published.
+  and [Learn](../panorama/docs/psc.product/1--technical-writing-and-documentation.shelf/2--style.topic/300--learn.md) rules. Run `trail lint docs/learn/site` and
+  `trail build docs/learn/site --strict` with a Trail build supporting attachments.
 - When changing agent-facing features, update
-  `learn/site/acta.product/3--connections.topic/400--agent-guide.md` and affected
+  `docs/learn/site/acta.product/3--connections.topic/400--agent-guide.md` and affected
   tool descriptions. The application embeds that page body without Trail
   metadata. Keep that canonical source consistent with the tools.
 - Record work, agreed decisions, rationale and validation in the corresponding

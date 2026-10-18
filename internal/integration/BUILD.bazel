@@ -42,6 +42,7 @@ go_test(
         "workspaces_test.go",
     ],
     deps = [
+        "//docs/learn",
         "//internal/accounts",
         "//internal/activity",
         "//internal/auth",
@@ -59,7 +60,6 @@ go_test(
         "//internal/push",
         "//internal/tasks",
         "//internal/workspaces",
-        "//learn",
         "@com_github_fxamacker_cbor_v2//:cbor",
         "@com_github_google_uuid//:uuid",
         "@com_github_jackc_pgx_v5//:pgx",

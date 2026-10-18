@@ -8,8 +8,8 @@ description: >-
 Memories are core Acta records available across authorized client sessions.
 They store durable standalone knowledge. Task-specific progress, decisions,
 and findings belong in task descriptions/comments; public documentation
-belongs in learn/. Do not store facts readily rediscovered from current
-source.
+belongs in maintained Learn documentation. Do not store facts readily
+rediscovered from current source.
 
 ## Scopes and permissions
 

@@ -57,9 +57,8 @@ names, units, error handling, ownership, import initialization order, and
 functions beyond the Peios soft thresholds separately. Preserve published
 field names and protocol contracts during style changes.
 
-Generated outputs, dependencies, and `docs/archive` are outside the style
-rewrite scope. Do not reformat applied SQL migrations: Acta verifies their
-checksums on startup.
+Generated outputs and dependencies are outside the style rewrite scope. Do not
+reformat applied SQL migrations: Acta verifies their checksums on startup.
 
 ## Test database behavior
 
