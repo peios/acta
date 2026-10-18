@@ -48,7 +48,6 @@ func (a *App) readTaskText(path string) (string, error) {
 }
 func (a *App) taskCommand() *cobra.Command {
 	root := &cobra.Command{Use: "task", Short: "Find, inspect, create and edit workspace tasks"}
-	root.AddCommand(a.commentCommand())
 	var workspace string
 	root.PersistentFlags().StringVarP(
 		&workspace,
@@ -57,19 +56,37 @@ func (a *App) taskCommand() *cobra.Command {
 		"",
 		"Workspace UUID or slug (see acta workspace list)",
 	)
-	requireWorkspace := func() error {
-		if strings.TrimSpace(workspace) == "" {
-			return errors.New("Supply --workspace <UUID-or-slug>; use acta workspace list")
-		}
-		return nil
+	// Subcommands read this shared value after Cobra parses the persistent flag.
+	root.AddCommand(a.commentCommand(), a.taskSearchCommand(&workspace))
+	root.AddCommand(a.taskArchiveCommands()...)
+	root.AddCommand(
+		a.taskListCommand(&workspace),
+		a.taskGetCommand(),
+		a.taskCreateCommand(&workspace),
+		a.taskEditCommand(),
+		a.taskStatusesCommand(&workspace),
+		a.taskPeopleCommand(&workspace),
+		a.taskGroupsCommand(&workspace),
+		a.taskActivityCommand(),
+	)
+	return root
+}
+
+func requireTaskWorkspace(workspace string) error {
+	if strings.TrimSpace(workspace) == "" {
+		return errors.New("Supply --workspace <UUID-or-slug>; use acta workspace list")
 	}
+	return nil
+}
+
+func (a *App) taskSearchCommand(workspace *string) *cobra.Command {
 	var searchArchived bool
 	var searchCursor string
 	search := &cobra.Command{Use: "search <query>", Short: "Find tasks across workspaces, including nested tasks and comments", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		q, _, e := tasks.NormalizeSearch(tasks.SearchQuery{
 			IncludeArchived: searchArchived,
 			Query:           args[0],
-			Workspace:       workspace,
+			Workspace:       *workspace,
 			Cursor:          searchCursor,
 		})
 		if e != nil {
@@ -99,7 +116,11 @@ func (a *App) taskCommand() *cobra.Command {
 		false,
 		"Include archived tasks in search",
 	)
-	root.AddCommand(search)
+	return search
+}
+
+func (a *App) taskArchiveCommands() []*cobra.Command {
+	var commands []*cobra.Command
 	for _, archived := range []bool{true, false} {
 		name := "archive"
 		if !archived {
@@ -115,11 +136,15 @@ func (a *App) taskCommand() *cobra.Command {
 			}, renderTask)
 		}}
 		command.Flags().Int64Var(&version, "version", 0, "Expected archived field version from task get")
-		root.AddCommand(command)
+		commands = append(commands, command)
 	}
+	return commands
+}
+
+func (a *App) taskListCommand(workspace *string) *cobra.Command {
 	f := tasks.Filter{}
 	list := &cobra.Command{Use: "list", Short: "Search roots or direct children with filters and sorting", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		if e := requireWorkspace(); e != nil {
+		if e := requireTaskWorkspace(*workspace); e != nil {
 			return e
 		}
 		normalized, e := tasks.NormalizeFilter(f)
@@ -127,7 +152,7 @@ func (a *App) taskCommand() *cobra.Command {
 			return e
 		}
 		return runTask(a, cmd, func(ctx context.Context, c *client.Client) (tasks.SummaryPage, error) {
-			return c.Tasks(ctx, workspace, normalized)
+			return c.Tasks(ctx, *workspace, normalized)
 		}, renderTaskPage)
 	}}
 	list.Flags().StringVar(
@@ -203,6 +228,10 @@ func (a *App) taskCommand() *cobra.Command {
 		"",
 		"Group ID from task groups, including unassigned",
 	)
+	return list
+}
+
+func (a *App) taskGetCommand() *cobra.Command {
 	var childCursor string
 	get := &cobra.Command{Use: "get <reference-or-uuid>", Short: "Inspect Markdown, assignments, field versions and direct subtasks", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		return runTask(a, cmd, func(ctx context.Context, c *client.Client) (tasks.Detail, error) {
@@ -215,10 +244,14 @@ func (a *App) taskCommand() *cobra.Command {
 		"",
 		"Continue the direct-subtask summary page",
 	)
+	return get
+}
+
+func (a *App) taskCreateCommand(workspace *string) *cobra.Command {
 	var createIn tasks.Create
 	var descriptionFile string
 	create := &cobra.Command{Use: "create", Short: "Create a task or subtask", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		if e := requireWorkspace(); e != nil {
+		if e := requireTaskWorkspace(*workspace); e != nil {
 			return e
 		}
 		if strings.TrimSpace(createIn.Title) == "" {
@@ -233,7 +266,7 @@ func (a *App) taskCommand() *cobra.Command {
 			in.Description = v
 		}
 		return runTask(a, cmd, func(ctx context.Context, c *client.Client) (tasks.Task, error) {
-			return c.CreateTask(ctx, workspace, in)
+			return c.CreateTask(ctx, *workspace, in)
 		}, renderTask)
 	}}
 	create.Flags().StringVar(
@@ -283,6 +316,10 @@ func (a *App) taskCommand() *cobra.Command {
 		nil,
 		"Account UUIDs; repeated or comma separated",
 	)
+	return create
+}
+
+func (a *App) taskEditCommand() *cobra.Command {
 	var field, value, valueFile string
 	var version int64
 	var ids []string
@@ -352,8 +389,12 @@ func (a *App) taskCommand() *cobra.Command {
 	edit.Flags().Int64Var(&version, "version", 0, "Expected field version")
 	edit.Flags().StringSliceVar(&ids, "assignee", nil, "Complete replacement set of account UUIDs")
 	edit.MarkFlagsMutuallyExclusive("assignee", "clear")
+	return edit
+}
+
+func (a *App) taskStatusesCommand(workspace *string) *cobra.Command {
 	statuses := &cobra.Command{Use: "statuses", Short: "Find status UUIDs and workflow defaults", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		if e := requireWorkspace(); e != nil {
+		if e := requireTaskWorkspace(*workspace); e != nil {
 			return e
 		}
 		return runTask(
@@ -362,19 +403,23 @@ func (a *App) taskCommand() *cobra.Command {
 			func(ctx context.Context, c *client.Client) (tasks.Config, error) {
 				return c.TaskConfig(
 					ctx,
-					workspace,
+					*workspace,
 				)
 			},
 			renderTaskConfig,
 		)
 	}}
+	return statuses
+}
+
+func (a *App) taskPeopleCommand(workspace *string) *cobra.Command {
 	var peopleQuery string
 	people := &cobra.Command{Use: "people", Short: "Find assignable people and agents; narrow the query to resolve similar names", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		if e := requireWorkspace(); e != nil {
+		if e := requireTaskWorkspace(*workspace); e != nil {
 			return e
 		}
 		return runTask(a, cmd, func(ctx context.Context, c *client.Client) ([]tasks.Person, error) {
-			return c.TaskPeople(ctx, workspace, peopleQuery)
+			return c.TaskPeople(ctx, *workspace, peopleQuery)
 		}, renderTaskPeople)
 	}}
 	people.Flags().StringVar(
@@ -383,16 +428,20 @@ func (a *App) taskCommand() *cobra.Command {
 		"",
 		"Username or display name search; returns at most 50 candidates",
 	)
+	return people
+}
+
+func (a *App) taskGroupsCommand(workspace *string) *cobra.Command {
 	var group string
 	groups := &cobra.Command{Use: "groups", Short: "Find assignment groups for task list", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		if e := requireWorkspace(); e != nil {
+		if e := requireTaskWorkspace(*workspace); e != nil {
 			return e
 		}
 		if group != "assignee" && group != "agents" && group != "release" && !tasks.IsProperty(group) {
 			return errors.New("Choose --group assignee, agents, priority, type, size or release")
 		}
 		return runTask(a, cmd, func(ctx context.Context, c *client.Client) ([]tasks.Group, error) {
-			return c.TaskGroups(ctx, workspace, group)
+			return c.TaskGroups(ctx, *workspace, group)
 		}, renderTaskGroups)
 	}}
 	groups.Flags().StringVar(
@@ -401,6 +450,10 @@ func (a *App) taskCommand() *cobra.Command {
 		"assignee",
 		"assignee (humans), agents (your assignments), priority, type, size or release",
 	)
+	return groups
+}
+
+func (a *App) taskActivityCommand() *cobra.Command {
 	var activityCursor string
 	history := &cobra.Command{Use: "activity <reference-or-uuid>", Short: "Read grouped activity, newest first; does not mark it read", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		return runTask(a, cmd, func(ctx context.Context, c *client.Client) (activity.Page, error) {
@@ -413,9 +466,9 @@ func (a *App) taskCommand() *cobra.Command {
 		"",
 		"Load older activity using the returned cursor",
 	)
-	root.AddCommand(list, get, create, edit, statuses, people, groups, history)
-	return root
+	return history
 }
+
 func (a *App) workspaceCommand() *cobra.Command {
 	root := &cobra.Command{Use: "workspace", Short: "Find accessible workspaces"}
 	var offset int
