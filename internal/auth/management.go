@@ -1,11 +1,13 @@
 package auth
 
 import (
-	"acta/internal/accounts"
 	"context"
 	"errors"
-	"github.com/google/uuid"
 	"time"
+
+	"github.com/google/uuid"
+
+	"acta/internal/accounts"
 )
 
 const AccountLinkLifetime = 24 * time.Hour
@@ -66,7 +68,10 @@ func (m *Management) List(ctx context.Context, token, status, query string, offs
 		return nil, false, e
 	}
 	if status != "" && status != "active" && status != "pending" && status != "disabled" {
-		return nil, false, &accounts.FieldError{Field: "status", Message: "Choose a valid account status."}
+		return nil, false, &accounts.FieldError{
+			Field:   "status",
+			Message: "Choose a valid account status.",
+		}
 	}
 	if offset < 0 || offset > 1000000 {
 		return nil, false, &accounts.FieldError{Field: "offset", Message: "Invalid page."}
@@ -75,13 +80,24 @@ func (m *Management) List(ctx context.Context, token, status, query string, offs
 }
 func profileError(e error) error {
 	if errors.Is(e, accounts.ErrNameUnavailable) {
-		return &accounts.FieldError{Field: "username", Message: "That username is in use or reserved. Choose another."}
+		return &accounts.FieldError{
+			Field:   "username",
+			Message: "That username is in use or reserved. Choose another.",
+		}
 	}
 	return e
 }
 func (m *Management) newLink(id, purpose string, version int64, disable, remove bool) (AccountLink, string, error) {
 	token, e := Token()
-	return AccountLink{AccountID: id, Digest: Digest(token), Purpose: purpose, Version: version, ExpiresAt: m.auth.now().Add(AccountLinkLifetime), DisableMFA: disable, RemovePasskeys: remove}, token, e
+	return AccountLink{
+		AccountID:      id,
+		Digest:         Digest(token),
+		Purpose:        purpose,
+		Version:        version,
+		ExpiresAt:      m.auth.now().Add(AccountLinkLifetime),
+		DisableMFA:     disable,
+		RemovePasskeys: remove,
+	}, token, e
 }
 func (m *Management) Create(ctx context.Context, token, username, display string) (accounts.Account, string, error) {
 	actor, e := m.actor(ctx, token, accounts.CreateUsers)
@@ -92,7 +108,13 @@ func (m *Management) Create(ctx context.Context, token, username, display string
 	if e != nil {
 		return accounts.Account{}, "", e
 	}
-	a := accounts.Account{ID: uuid.NewString(), Username: name, DisplayName: label, Pending: true, ProfileVersion: 1}
+	a := accounts.Account{
+		ID:             uuid.NewString(),
+		Username:       name,
+		DisplayName:    label,
+		Pending:        true,
+		ProfileVersion: 1,
+	}
 	grant, secret, e := m.newLink(a.ID, "invite", 1, false, false)
 	if e != nil {
 		return a, "", e
@@ -112,7 +134,13 @@ func (m *Management) manage(ctx context.Context, token, id, permission string, f
 }
 func (m *Management) Get(ctx context.Context, token, id string) (accounts.Account, error) {
 	var a accounts.Account
-	e := m.manage(ctx, token, id, accounts.ViewUsers, func(r *SecurityRecord, _ ManagedTx) error { a = r.Account; return nil })
+	e := m.manage(
+		ctx,
+		token,
+		id,
+		accounts.ViewUsers,
+		func(r *SecurityRecord, _ ManagedTx) error { a = r.Account; return nil },
+	)
 	return a, e
 }
 func (m *Management) Update(ctx context.Context, token, id string, version int64, username, display string) (accounts.Account, error) {
@@ -138,7 +166,10 @@ func (m *Management) Link(ctx context.Context, token, id string, disable, remove
 	var expires time.Time
 	e := m.manage(ctx, token, id, "link", func(r *SecurityRecord, tx ManagedTx) error {
 		if r.Account.DisabledAt != nil {
-			return &accounts.FieldError{Field: "account", Message: "Re-enable this account before creating a link."}
+			return &accounts.FieldError{
+				Field:   "account",
+				Message: "Re-enable this account before creating a link.",
+			}
 		}
 		purpose := "reset"
 		if r.Account.Pending {

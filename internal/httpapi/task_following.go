@@ -4,7 +4,11 @@ import "net/http"
 
 func (h *Handler) taskFollowRoutes(m *http.ServeMux) {
 	m.HandleFunc("GET /api/tasks/{task}/following", func(w http.ResponseWriter, r *http.Request) {
-		following, err := h.management.TaskFollowing(r.Context(), token(r, h.sessionCookie), r.PathValue("task"))
+		following, err := h.management.TaskFollowing(
+			r.Context(),
+			token(r, h.sessionCookie),
+			r.PathValue("task"),
+		)
 		if err != nil {
 			failure(w, err)
 			return
@@ -22,7 +26,12 @@ func (h *Handler) taskFollowRoutes(m *http.ServeMux) {
 			writeError(w, 400, "invalid_following", "Choose whether to follow this task.", nil)
 			return
 		}
-		if err := h.management.SetTaskFollowing(r.Context(), token(r, h.sessionCookie), r.PathValue("task"), *in.Following); err != nil {
+		if err := h.management.SetTaskFollowing(
+			r.Context(),
+			token(r, h.sessionCookie),
+			r.PathValue("task"),
+			*in.Following,
+		); err != nil {
 			failure(w, err)
 			return
 		}

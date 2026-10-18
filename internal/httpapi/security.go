@@ -52,7 +52,15 @@ func (h *Handler) securityBegin(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
-	result, err := h.security.Begin(r.Context(), in.Purpose, in.Target, in.Enabled, token(r, h.sessionCookie), binding, h.address(r))
+	result, err := h.security.Begin(
+		r.Context(),
+		in.Purpose,
+		in.Target,
+		in.Enabled,
+		token(r, h.sessionCookie),
+		binding,
+		h.address(r),
+	)
 	if err != nil {
 		failure(w, err)
 		return
@@ -64,7 +72,14 @@ func (h *Handler) securityAdvance(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	result, err := h.security.Advance(r.Context(), in, token(r, h.sessionCookie), token(r, h.bindingCookie), h.address(r), sessionDescription(r.UserAgent()))
+	result, err := h.security.Advance(
+		r.Context(),
+		in,
+		token(r, h.sessionCookie),
+		token(r, h.bindingCookie),
+		h.address(r),
+		sessionDescription(r.UserAgent()),
+	)
 	if err != nil {
 		failure(w, err)
 		return
@@ -99,14 +114,26 @@ func (h *Handler) securityRevoke(w http.ResponseWriter, r *http.Request) {
 }
 func sessionDescription(agent string) string {
 	browser := "Browser"
-	for _, item := range []struct{ match, name string }{{"Edg/", "Edge"}, {"Firefox/", "Firefox"}, {"Chrome/", "Chrome"}, {"Safari/", "Safari"}} {
+	for _, item := range []struct{ match, name string }{
+		{"Edg/", "Edge"},
+		{"Firefox/", "Firefox"},
+		{"Chrome/", "Chrome"},
+		{"Safari/", "Safari"},
+	} {
 		if strings.Contains(agent, item.match) {
 			browser = item.name
 			break
 		}
 	}
 	os := ""
-	for _, item := range []struct{ match, name string }{{"Android", "Android"}, {"iPhone", "iPhone"}, {"iPad", "iPad"}, {"Windows", "Windows"}, {"Macintosh", "macOS"}, {"Linux", "Linux"}} {
+	for _, item := range []struct{ match, name string }{
+		{"Android", "Android"},
+		{"iPhone", "iPhone"},
+		{"iPad", "iPad"},
+		{"Windows", "Windows"},
+		{"Macintosh", "macOS"},
+		{"Linux", "Linux"},
+	} {
 		if strings.Contains(agent, item.match) {
 			os = item.name
 			break

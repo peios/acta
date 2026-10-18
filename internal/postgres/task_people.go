@@ -1,11 +1,12 @@
 package postgres
 
 import (
-	"acta/internal/tasks"
 	"context"
 	"slices"
 	"strconv"
 	"strings"
+
+	"acta/internal/tasks"
 )
 
 // Load the assignment trees for a whole page in one query. Account/access
@@ -71,14 +72,24 @@ func (t workspaceTx) taskAssignments(ctx context.Context, workspace string, valu
 			d = p
 		}
 		prefix := strings.Split(values[i].Reference, "-")[0]
-		d.Sources = append(d.Sources, tasks.Source{ID: r.task, Title: r.title, Reference: prefix + "-" + strconv.FormatInt(r.number, 10)})
+		d.Sources = append(
+			d.Sources,
+			tasks.Source{
+				ID:        r.task,
+				Title:     r.title,
+				Reference: prefix + "-" + strconv.FormatInt(r.number, 10),
+			},
+		)
 		descendants[i][r.person] = d
 	}
 	for i := range values {
 		for _, p := range descendants[i] {
 			values[i].DescendantAssignees = append(values[i].DescendantAssignees, p)
 		}
-		slices.SortFunc(values[i].DescendantAssignees, func(a, b tasks.Person) int { return strings.Compare(a.Username, b.Username) })
+		slices.SortFunc(
+			values[i].DescendantAssignees,
+			func(a, b tasks.Person) int { return strings.Compare(a.Username, b.Username) },
+		)
 	}
 	return nil
 }
@@ -93,7 +104,15 @@ func (t workspaceTx) person(ctx context.Context, id, w string) (tasks.Person, er
 	if a.ParentID != nil {
 		owner = *a.ParentID
 	}
-	return tasks.Person{ID: id, OwnerID: owner, Username: a.Handle(), DisplayName: a.DisplayName, Agent: a.IsAgent(), Available: a.Available() && access.Allowed, Sources: []tasks.Source{}}, e
+	return tasks.Person{
+		ID:          id,
+		OwnerID:     owner,
+		Username:    a.Handle(),
+		DisplayName: a.DisplayName,
+		Agent:       a.IsAgent(),
+		Available:   a.Available() && access.Allowed,
+		Sources:     []tasks.Source{},
+	}, e
 }
 func (t workspaceTx) decorateTask(ctx context.Context, v *tasks.Task, detail bool) error {
 	values := []tasks.Task{*v}
@@ -105,7 +124,11 @@ func (t workspaceTx) decorateTask(ctx context.Context, v *tasks.Task, detail boo
 		return nil
 	}
 	prefix := strings.Split(v.Reference, "-")[0]
-	rows, e := t.tx.Query(ctx, `WITH RECURSIVE parents AS (SELECT id,parent_id,number,title,0 depth FROM tasks WHERE id::text=$1 UNION ALL SELECT t.id,t.parent_id,t.number,t.title,p.depth+1 FROM tasks t JOIN parents p ON p.parent_id=t.id) SELECT id::text,number,title FROM parents ORDER BY depth DESC`, v.ParentID)
+	rows, e := t.tx.Query(
+		ctx,
+		`WITH RECURSIVE parents AS (SELECT id,parent_id,number,title,0 depth FROM tasks WHERE id::text=$1 UNION ALL SELECT t.id,t.parent_id,t.number,t.title,p.depth+1 FROM tasks t JOIN parents p ON p.parent_id=t.id) SELECT id::text,number,title FROM parents ORDER BY depth DESC`,
+		v.ParentID,
+	)
 	if e != nil {
 		return e
 	}

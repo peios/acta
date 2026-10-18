@@ -1,12 +1,13 @@
 package auth
 
 import (
-	"acta/internal/accounts"
 	"context"
 	"errors"
 	"slices"
 
 	"github.com/google/uuid"
+
+	"acta/internal/accounts"
 )
 
 var ErrSessionGrantsChanged = errors.New("This connection’s access changed. Reload its current access before saving again.")
@@ -43,14 +44,23 @@ func (s *Security) AmendMCPGrants(ctx context.Context, token, subject, session s
 		return e
 	}
 	return s.store.WithSecurity(ctx, a.ID, func(r *SecurityRecord, tx SecurityTx) error {
-		if slices.Contains(grants, MCPMigration) && (r.Account.IsAgent() || !accounts.CheckPermission(r.Account, accounts.Superuser)) {
+		if slices.Contains(grants, MCPMigration) && (r.Account.IsAgent() || !accounts.CheckPermission(
+			r.Account,
+			accounts.Superuser,
+		)) {
 			return ErrForbidden
 		}
 		_, _, target, e := s.connectionIdentity(ctx, r, tx, token, subject)
 		if e != nil {
 			return e
 		}
-		if e = target.SetMCPGrants(ctx, session, canonicalGrants(previous), canonicalGrants(grants), s.now()); e != nil {
+		if e = target.SetMCPGrants(
+			ctx,
+			session,
+			canonicalGrants(previous),
+			canonicalGrants(grants),
+			s.now(),
+		); e != nil {
 			return e
 		}
 		return target.Event(ctx, "mcp_access_changed", s.now())

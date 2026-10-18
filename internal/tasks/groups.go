@@ -2,9 +2,10 @@ package tasks
 
 import (
 	"cmp"
-	"github.com/google/uuid"
 	"slices"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // Group identifies a query bucket and, separately, the direct assignment used

@@ -1,10 +1,11 @@
 package postgres
 
 import (
-	"acta/internal/memories"
-	"acta/internal/migration"
 	"context"
 	"time"
+
+	"acta/internal/memories"
+	"acta/internal/migration"
 )
 
 func (t workspaceTx) migrationMemory(ctx context.Context, op string, in migration.Request, now time.Time) (string, error) {
@@ -19,12 +20,25 @@ func (t workspaceTx) migrationMemory(ctx context.Context, op string, in migratio
 		if e != nil {
 			return "", e
 		}
-		s = memories.Save{ID: old.ID, Revision: old.Revision, Scope: old.Scope, Key: old.Key, Summary: old.Summary, Content: old.Content}
+		s = memories.Save{
+			ID:       old.ID,
+			Revision: old.Revision,
+			Scope:    old.Scope,
+			Key:      old.Key,
+			Summary:  old.Summary,
+			Content:  old.Content,
+		}
 		target = old.ScopeID
 		created = old.CreatedAt
 		creator = old.CreatedBy
 	}
-	for k, p := range map[string]*string{"scope": &s.Scope, "scope_id": &target, "key": &s.Key, "summary": &s.Summary, "content": &s.Content} {
+	for k, p := range map[string]*string{
+		"scope":    &s.Scope,
+		"scope_id": &target,
+		"key":      &s.Key,
+		"summary":  &s.Summary,
+		"content":  &s.Content,
+	} {
 		if *p, e = f.text(k, *p); e != nil {
 			return "", e
 		}
@@ -63,6 +77,13 @@ func (t workspaceTx) migrationMemory(ctx context.Context, op string, in migratio
 	if e != nil {
 		return "", e
 	}
-	_, e = t.tx.Exec(ctx, `UPDATE memories SET created_by=$2,created_at=$3,updated_at=$4 WHERE id=$1`, v.ID, creator, created, updated)
+	_, e = t.tx.Exec(
+		ctx,
+		`UPDATE memories SET created_by=$2,created_at=$3,updated_at=$4 WHERE id=$1`,
+		v.ID,
+		creator,
+		created,
+		updated,
+	)
 	return v.ID, e
 }

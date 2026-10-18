@@ -1,6 +1,16 @@
 package integration
 
 import (
+	"crypto/ecdh"
+	"crypto/rand"
+	"encoding/base64"
+	"errors"
+	"net/http"
+	"testing"
+
+	webpush "github.com/SherClockHolmes/webpush-go"
+	"github.com/google/uuid"
+
 	"acta/internal/auth"
 	"acta/internal/comments"
 	"acta/internal/config"
@@ -8,14 +18,6 @@ import (
 	"acta/internal/notifications"
 	"acta/internal/push"
 	"acta/internal/tasks"
-	"crypto/ecdh"
-	"crypto/rand"
-	"encoding/base64"
-	"errors"
-	webpush "github.com/SherClockHolmes/webpush-go"
-	"github.com/google/uuid"
-	"net/http"
-	"testing"
 )
 
 func TestPushQueueLifecycle(t *testing.T) {
@@ -27,7 +29,10 @@ func TestPushQueueLifecycle(t *testing.T) {
 	other, otherFixture := permissionMember(t, root, "other")
 	receiver, err := ecdh.P256().GenerateKey(rand.Reader)
 	must(t, err)
-	sub := push.Subscription{Endpoint: "https://push.example/unique", Keys: webpush.Keys{Auth: base64.RawURLEncoding.EncodeToString(make([]byte, 16)), P256dh: base64.RawURLEncoding.EncodeToString(receiver.PublicKey().Bytes())}}
+	sub := push.Subscription{Endpoint: "https://push.example/unique", Keys: webpush.Keys{
+		Auth:   base64.RawURLEncoding.EncodeToString(make([]byte, 16)),
+		P256dh: base64.RawURLEncoding.EncodeToString(receiver.PublicKey().Bytes()),
+	}}
 	subID, err := f.store.SavePushSubscription(ctx, owner.ID, auth.Digest(f.token), sub)
 	must(t, err)
 	again, err := f.store.SavePushSubscription(ctx, owner.ID, auth.Digest(f.token), sub)
@@ -35,12 +40,19 @@ func TestPushQueueLifecycle(t *testing.T) {
 	if again != subID {
 		t.Fatal("subscription duplicated")
 	}
-	if _, err = f.store.SavePushSubscription(ctx, other.ID, auth.Digest(otherFixture.token), sub); !errors.Is(err, push.ErrSubscription) {
+	if _, err = f.store.SavePushSubscription(ctx, other.ID, auth.Digest(otherFixture.token), sub); !errors.Is(
+		err,
+		push.ErrSubscription,
+	) {
 		t.Fatal("other owner stole subscription", err)
 	}
 	cfg, err := config.Parse("http://localhost:8081", "")
 	must(t, err)
-	c := client{t, httpapi.New(f.service, f.security, nil, nil, cfg, "public-key"), map[string]*http.Cookie{"acta_session": {Name: "acta_session", Value: f.token}}}
+	c := client{
+		t,
+		httpapi.New(f.service, f.security, nil, nil, cfg, "public-key"),
+		map[string]*http.Cookie{"acta_session": {Name: "acta_session", Value: f.token}},
+	}
 	c.request("POST", "push/subscribe", `{"endpoint":"http://localhost/","keys":{"auth":"invalid","p256dh":"invalid"}}`, 400)
 	task, err := manager(f).CreateTask(ctx, f.token, workspace.ID, tasks.Create{Title: "Push review"})
 	must(t, err)
@@ -53,7 +65,10 @@ func TestPushQueueLifecycle(t *testing.T) {
 	}
 	due := func() {
 		t.Helper()
-		_, err := f.conn.Exec(ctx, `UPDATE push_deliveries SET due_at=now()-interval '1 second' WHERE NOT done`)
+		_, err := f.conn.Exec(
+			ctx,
+			`UPDATE push_deliveries SET due_at=now()-interval '1 second' WHERE NOT done`,
+		)
 		must(t, err)
 	}
 	claim := func() *push.Delivery {
@@ -74,12 +89,29 @@ func TestPushQueueLifecycle(t *testing.T) {
 	if next, err := f.store.ClaimPush(ctx); err != nil || next != nil {
 		t.Fatal("lease claimed twice", err)
 	}
-	n, err := f.store.PushNotice(ctx, owner.ID, auth.Digest(f.token), subID, d.NotificationID, d.Revision)
+	n, err := f.store.PushNotice(
+		ctx,
+		owner.ID,
+		auth.Digest(f.token),
+		subID,
+		d.NotificationID,
+		d.Revision,
+	)
 	must(t, err)
 	if n.TaskTitle != "Push review" {
 		t.Fatal(n)
 	}
-	if _, err = f.store.PushNotice(ctx, other.ID, auth.Digest(otherFixture.token), subID, d.NotificationID, d.Revision); !errors.Is(err, auth.ErrNotFound) {
+	if _, err = f.store.PushNotice(
+		ctx,
+		other.ID,
+		auth.Digest(otherFixture.token),
+		subID,
+		d.NotificationID,
+		d.Revision,
+	); !errors.Is(
+		err,
+		auth.ErrNotFound,
+	) {
 		t.Fatal("notification leaked", err)
 	}
 	// Failed send retries; a crashed/expired lease can be reclaimed. A stale
@@ -118,7 +150,12 @@ func TestPushQueueLifecycle(t *testing.T) {
 		t.Fatal("read notice sent", err)
 	}
 	// The worker's authenticated fetch sees read and stale revisions as 404.
-	c.request("GET", "push/notification?subscription="+subID+"&id="+d.NotificationID+"&revision=1", "", 404)
+	c.request(
+		"GET",
+		"push/notification?subscription="+subID+"&id="+d.NotificationID+"&revision=1",
+		"",
+		404,
+	)
 	appendComment("third")
 	due()
 	gone := claim()

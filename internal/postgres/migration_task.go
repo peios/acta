@@ -1,15 +1,17 @@
 package postgres
 
 import (
-	"acta/internal/activity"
-	"acta/internal/migration"
-	"acta/internal/tasks"
 	"context"
-	"github.com/google/uuid"
 	"math"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
+
+	"acta/internal/activity"
+	"acta/internal/migration"
+	"acta/internal/tasks"
 )
 
 func (t workspaceTx) migrationTask(ctx context.Context, op string, in migration.Request, now time.Time) (string, error) {
@@ -26,7 +28,15 @@ func (t workspaceTx) migrationTask(ctx context.Context, op string, in migration.
 			return "", e
 		}
 	}
-	for k, p := range map[string]*string{"workspace_id": &v.WorkspaceID, "title": &v.Title, "description": &v.Description, "priority": &v.Priority, "type": &v.Type, "size": &v.Size, "status_id": &v.StatusID} {
+	for k, p := range map[string]*string{
+		"workspace_id": &v.WorkspaceID,
+		"title":        &v.Title,
+		"description":  &v.Description,
+		"priority":     &v.Priority,
+		"type":         &v.Type,
+		"size":         &v.Size,
+		"status_id":    &v.StatusID,
+	} {
 		if *p, e = f.text(k, *p); e != nil {
 			return "", e
 		}
@@ -130,14 +140,23 @@ func (t workspaceTx) migrationTask(ctx context.Context, op string, in migration.
 	if ref != "" {
 		parts := referencePattern.FindStringSubmatch(ref)
 		if parts == nil || strings.ToUpper(parts[1]) != c.Prefix {
-			return "", migration.Invalid("reference", "Use this workspace's current prefix and a positive number.")
+			return "", migration.Invalid(
+				"reference",
+				"Use this workspace's current prefix and a positive number.",
+			)
 		}
 		n, e = strconv.ParseInt(parts[2], 10, 64)
 		if e != nil || n >= math.MaxInt64 {
 			return "", migration.Invalid("reference", "Task number is too large.")
 		}
 		var exists bool
-		e = t.tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM tasks WHERE workspace_id=$1 AND number=$2 AND id::text<>$3)`, v.WorkspaceID, n, v.ID).Scan(&exists)
+		e = t.tx.QueryRow(
+			ctx,
+			`SELECT EXISTS(SELECT 1 FROM tasks WHERE workspace_id=$1 AND number=$2 AND id::text<>$3)`,
+			v.WorkspaceID,
+			n,
+			v.ID,
+		).Scan(&exists)
 		if e != nil {
 			return "", e
 		}
@@ -146,7 +165,20 @@ func (t workspaceTx) migrationTask(ctx context.Context, op string, in migration.
 		}
 	}
 	if op == "create" {
-		v, e = t.TaskCreate(ctx, v.WorkspaceID, tasks.Create{Title: v.Title, Description: v.Description, Priority: v.Priority, Type: v.Type, Size: v.Size, StatusID: v.StatusID, ParentID: v.ParentID, Assignees: ids})
+		v, e = t.TaskCreate(
+			ctx,
+			v.WorkspaceID,
+			tasks.Create{
+				Title:       v.Title,
+				Description: v.Description,
+				Priority:    v.Priority,
+				Type:        v.Type,
+				Size:        v.Size,
+				StatusID:    v.StatusID,
+				ParentID:    v.ParentID,
+				Assignees:   ids,
+			},
+		)
 		if e != nil {
 			return "", e
 		}
@@ -158,14 +190,36 @@ func (t workspaceTx) migrationTask(ctx context.Context, op string, in migration.
 	if archived != nil {
 		batch = uuid.NewString()
 	}
-	_, e = t.tx.Exec(ctx, `UPDATE tasks SET number=$2,title=$3,description=$4,priority=$5,type=$6,size=$7,status_id=$8,parent_id=NULLIF($9,'')::uuid,created_by=$10,created_at=$11,updated_at=$12,archived_at=$13,archive_batch=CASE WHEN $13::timestamptz IS NULL THEN NULL ELSE COALESCE(archive_batch,$14::uuid) END,title_version=title_version+1,description_version=description_version+1,priority_version=priority_version+1,type_version=type_version+1,size_version=size_version+1,status_version=status_version+1,parent_version=parent_version+1,assignees_version=assignees_version+1,archive_version=archive_version+1 WHERE id=$1`, v.ID, n, v.Title, v.Description, v.Priority, v.Type, v.Size, v.StatusID, v.ParentID, creator, created, updated, archived, batch)
+	_, e = t.tx.Exec(
+		ctx,
+		`UPDATE tasks SET number=$2,title=$3,description=$4,priority=$5,type=$6,size=$7,status_id=$8,parent_id=NULLIF($9,'')::uuid,created_by=$10,created_at=$11,updated_at=$12,archived_at=$13,archive_batch=CASE WHEN $13::timestamptz IS NULL THEN NULL ELSE COALESCE(archive_batch,$14::uuid) END,title_version=title_version+1,description_version=description_version+1,priority_version=priority_version+1,type_version=type_version+1,size_version=size_version+1,status_version=status_version+1,parent_version=parent_version+1,assignees_version=assignees_version+1,archive_version=archive_version+1 WHERE id=$1`,
+		v.ID,
+		n,
+		v.Title,
+		v.Description,
+		v.Priority,
+		v.Type,
+		v.Size,
+		v.StatusID,
+		v.ParentID,
+		creator,
+		created,
+		updated,
+		archived,
+		batch,
+	)
 	if e != nil {
 		return "", e
 	}
 	if e = t.setTaskAssignees(ctx, v.ID, ids); e != nil {
 		return "", e
 	}
-	_, e = t.tx.Exec(ctx, `UPDATE task_settings SET next_number=GREATEST(next_number,$2+1),revision=revision+1 WHERE workspace_id=$1`, v.WorkspaceID, n)
+	_, e = t.tx.Exec(
+		ctx,
+		`UPDATE task_settings SET next_number=GREATEST(next_number,$2+1),revision=revision+1 WHERE workspace_id=$1`,
+		v.WorkspaceID,
+		n,
+	)
 	if e != nil {
 		return "", e
 	}
@@ -180,7 +234,11 @@ func (t workspaceTx) migrationTask(ctx context.Context, op string, in migration.
 			}
 		}
 	}
-	change := activity.Change{Kind: "task.changed", Field: "migration", After: activity.Value{Text: v.Title}}
+	change := activity.Change{
+		Kind:  "task.changed",
+		Field: "migration",
+		After: activity.Value{Text: v.Title},
+	}
 	at := updated
 	if op == "create" {
 		change.Kind = "task.created"

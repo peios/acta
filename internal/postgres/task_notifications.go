@@ -1,30 +1,48 @@
 package postgres
 
 import (
-	"acta/internal/activity"
-	"acta/internal/auth"
-	"acta/internal/tasks"
 	"context"
 	"errors"
+	"strings"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
-	"strings"
+
+	"acta/internal/activity"
+	"acta/internal/auth"
+	"acta/internal/tasks"
 )
 
 func (t workspaceTx) TaskFollowing(ctx context.Context, task string) (bool, error) {
 	var v bool
-	e := t.tx.QueryRow(ctx, `SELECT COALESCE((SELECT following FROM task_followers WHERE task_id=$1 AND owner_id=$2),false)`, task, t.actor.ID).Scan(&v)
+	e := t.tx.QueryRow(
+		ctx,
+		`SELECT COALESCE((SELECT following FROM task_followers WHERE task_id=$1 AND owner_id=$2),false)`,
+		task,
+		t.actor.ID,
+	).Scan(&v)
 	return v, e
 }
 func (t workspaceTx) SetTaskFollowing(ctx context.Context, task string, v bool) error {
-	_, e := t.tx.Exec(ctx, `INSERT INTO task_followers(task_id,owner_id,following) VALUES($1,$2,$3) ON CONFLICT(task_id,owner_id) DO UPDATE SET following=EXCLUDED.following`, task, t.actor.ID, v)
+	_, e := t.tx.Exec(
+		ctx,
+		`INSERT INTO task_followers(task_id,owner_id,following) VALUES($1,$2,$3) ON CONFLICT(task_id,owner_id) DO UPDATE SET following=EXCLUDED.following`,
+		task,
+		t.actor.ID,
+		v,
+	)
 	return e
 }
 func (t workspaceTx) autoFollow(ctx context.Context, task, account string) error {
-	_, e := t.tx.Exec(ctx, `INSERT INTO task_followers(task_id,owner_id,following) SELECT $1,COALESCE(parent_id,id),true FROM accounts WHERE id=$2 ON CONFLICT DO NOTHING`, task, account)
+	_, e := t.tx.Exec(
+		ctx,
+		`INSERT INTO task_followers(task_id,owner_id,following) SELECT $1,COALESCE(parent_id,id),true FROM accounts WHERE id=$2 ON CONFLICT DO NOTHING`,
+		task,
+		account,
+	)
 	return e
 }
 
@@ -113,7 +131,11 @@ func (t workspaceTx) notifyTask(ctx context.Context, task tasks.Task, entry stri
 			}
 		}
 	}
-	rows, e := t.tx.Query(ctx, `SELECT owner_id::text FROM task_followers WHERE task_id=$1 AND following`, task.ID)
+	rows, e := t.tx.Query(
+		ctx,
+		`SELECT owner_id::text FROM task_followers WHERE task_id=$1 AND following`,
+		task.ID,
+	)
 	if e != nil {
 		return e
 	}
@@ -207,7 +229,11 @@ func notificationWorkspaces(ctx context.Context, tx pgx.Tx, owner string) ([]str
 	if !a.Available() || a.IsAgent() {
 		return nil, auth.ErrForbidden
 	}
-	rows, e := tx.Query(ctx, `SELECT DISTINCT task.workspace_id::text FROM notifications n JOIN tasks task ON task.id=n.task_id WHERE n.owner_id=$1 AND n.read_at IS NULL AND n.resolved_at IS NULL`, owner)
+	rows, e := tx.Query(
+		ctx,
+		`SELECT DISTINCT task.workspace_id::text FROM notifications n JOIN tasks task ON task.id=n.task_id WHERE n.owner_id=$1 AND n.read_at IS NULL AND n.resolved_at IS NULL`,
+		owner,
+	)
 	if e != nil {
 		return nil, e
 	}

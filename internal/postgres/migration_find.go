@@ -1,10 +1,11 @@
 package postgres
 
 import (
-	"acta/internal/migration"
 	"context"
 	"encoding/json"
 	"time"
+
+	"acta/internal/migration"
 )
 
 func (s *Store) MigrationFind(ctx context.Context, caller string, digest []byte, now time.Time, in migration.Find) (out migration.Page, err error) {
@@ -18,7 +19,12 @@ func (s *Store) MigrationFind(ctx context.Context, caller string, digest []byte,
 	}
 	defer tx.Rollback(ctx)
 	if in.Kind == "account" {
-		rows, e := tx.Query(ctx, `SELECT a.id::text,CASE WHEN p.id IS NULL THEN a.username ELSE p.username||'/'||a.username END,a.display_name,a.parent_id IS NOT NULL,a.pending,a.disabled_at IS NOT NULL FROM accounts a LEFT JOIN accounts p ON p.id=a.parent_id WHERE $1='' OR position(lower($1) in lower(COALESCE(p.username||'/','')||a.username||' '||COALESCE(a.display_name,'')))>0 ORDER BY a.id LIMIT 51 OFFSET $2`, in.Query, in.Offset)
+		rows, e := tx.Query(
+			ctx,
+			`SELECT a.id::text,CASE WHEN p.id IS NULL THEN a.username ELSE p.username||'/'||a.username END,a.display_name,a.parent_id IS NOT NULL,a.pending,a.disabled_at IS NOT NULL FROM accounts a LEFT JOIN accounts p ON p.id=a.parent_id WHERE $1='' OR position(lower($1) in lower(COALESCE(p.username||'/','')||a.username||' '||COALESCE(a.display_name,'')))>0 ORDER BY a.id LIMIT 51 OFFSET $2`,
+			in.Query,
+			in.Offset,
+		)
 		if e != nil {
 			return out, e
 		}
@@ -30,7 +36,14 @@ func (s *Store) MigrationFind(ctx context.Context, caller string, digest []byte,
 			if e = rows.Scan(&id, &handle, &display, &agent, &pending, &disabled); e != nil {
 				return out, e
 			}
-			raw, _ := json.Marshal(map[string]any{"id": id, "username": handle, "display_name": display, "agent": agent, "pending": pending, "disabled": disabled})
+			raw, _ := json.Marshal(map[string]any{
+				"id":           id,
+				"username":     handle,
+				"display_name": display,
+				"agent":        agent,
+				"pending":      pending,
+				"disabled":     disabled,
+			})
 			out.Records = append(out.Records, record("account", id, raw))
 		}
 		err = rows.Err()
@@ -55,7 +68,13 @@ func (s *Store) MigrationFind(ctx context.Context, caller string, digest []byte,
 		if in.Kind != "workspace" && in.Kind != "memory" && in.Parent == "" {
 			return out, migration.Invalid("parent", "Supply the parent UUID.")
 		}
-		rows, e := tx.Query(ctx, `SELECT id::text FROM `+table+` WHERE (`+filter+`) AND ($1::text IS NOT NULL) AND ($2='' OR position(lower($2) in lower(`+label+`))>0) ORDER BY id LIMIT 51 OFFSET $3`, in.Parent, in.Query, in.Offset)
+		rows, e := tx.Query(
+			ctx,
+			`SELECT id::text FROM `+table+` WHERE (`+filter+`) AND ($1::text IS NOT NULL) AND ($2='' OR position(lower($2) in lower(`+label+`))>0) ORDER BY id LIMIT 51 OFFSET $3`,
+			in.Parent,
+			in.Query,
+			in.Offset,
+		)
 		if e != nil {
 			return out, e
 		}

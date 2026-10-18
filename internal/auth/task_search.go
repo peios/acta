@@ -1,9 +1,11 @@
 package auth
 
 import (
-	"acta/internal/tasks"
 	"context"
+
 	"github.com/google/uuid"
+
+	"acta/internal/tasks"
 )
 
 func (m *Management) SearchTasks(ctx context.Context, token string, q tasks.SearchQuery) (tasks.SearchPage, error) {

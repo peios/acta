@@ -1,18 +1,20 @@
 package integration
 
 import (
-	"acta/internal/accounts"
-	"acta/internal/auth"
-	"acta/internal/config"
-	"acta/internal/httpapi"
 	"errors"
-	"github.com/pquerna/otp/totp"
 	"net/http"
 	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/pquerna/otp/totp"
+
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/config"
+	"acta/internal/httpapi"
 )
 
 func permissionMember(t *testing.T, f securityFixture, name string) (accounts.Account, securityFixture) {
@@ -39,7 +41,10 @@ func grantPermissions(t *testing.T, f securityFixture, id string, grants []strin
 	// These earlier tests exercise direct grants in isolation. New accounts now
 	// inherit defaults, so explicitly remove those memberships first.
 	for _, g := range a.Groups {
-		must(t, m.SetGroupMembership(t.Context(), f.token, g.ID, a.ID, g.Version, a.PermissionsVersion, false))
+		must(
+			t,
+			m.SetGroupMembership(t.Context(), f.token, g.ID, a.ID, g.Version, a.PermissionsVersion, false),
+		)
 		a, e = m.Get(t.Context(), f.token, id)
 		must(t, e)
 	}
@@ -52,7 +57,10 @@ func TestDirectPermissionBoundaries(t *testing.T) {
 	ctx := t.Context()
 	m := manager(f)
 	a, member := permissionMember(t, f, "reader")
-	if len(a.DirectPermissions) != 0 || !slices.Equal(accounts.ResolvePermissions(a), accounts.DefaultPermissions()) {
+	if len(a.DirectPermissions) != 0 || !slices.Equal(
+		accounts.ResolvePermissions(a),
+		accounts.DefaultPermissions(),
+	) {
 		t.Fatal("incorrect initial grants", a)
 	}
 	grantPermissions(t, f, a.ID, []string{accounts.ViewUsers}, false)
@@ -108,19 +116,45 @@ func TestPermissionDelegationAndCredentialAuthority(t *testing.T) {
 	m := manager(f)
 	admin, delegate := permissionMember(t, f, "delegate")
 	target, _ := permissionMember(t, f, "target")
-	login, e := f.security.PasswordLogin(ctx, admin.Username, testPassword, "delegate-session", "test", "Delegate")
+	login, e := f.security.PasswordLogin(
+		ctx,
+		admin.Username,
+		testPassword,
+		"delegate-session",
+		"test",
+		"Delegate",
+	)
 	must(t, e)
 	delegate.token = login.SessionToken
-	grants := []string{accounts.ViewUsers, accounts.ManagePermissions, accounts.ResetCredentials, accounts.CreateUsers}
+	grants := []string{
+		accounts.ViewUsers,
+		accounts.ManagePermissions,
+		accounts.ResetCredentials,
+		accounts.CreateUsers,
+	}
 	grantPermissions(t, f, admin.ID, grants, false)
 	target = grantPermissions(t, f, target.ID, []string{}, false)
 	for _, grant := range []string{accounts.Superuser, accounts.DisableUsers, accounts.EditUsers} {
-		_, e = m.UpdatePermissions(ctx, delegate.token, target.ID, target.PermissionsVersion, []string{grant}, false)
+		_, e = m.UpdatePermissions(
+			ctx,
+			delegate.token,
+			target.ID,
+			target.PermissionsVersion,
+			[]string{grant},
+			false,
+		)
 		if !errors.Is(e, auth.ErrForbidden) {
 			t.Fatalf("delegated unowned %s: %v", grant, e)
 		}
 	}
-	target, e = m.UpdatePermissions(ctx, delegate.token, target.ID, target.PermissionsVersion, []string{accounts.ViewUsers}, false)
+	target, e = m.UpdatePermissions(
+		ctx,
+		delegate.token,
+		target.ID,
+		target.PermissionsVersion,
+		[]string{accounts.ViewUsers},
+		false,
+	)
 	must(t, e)
 	_, _, e = m.Link(ctx, delegate.token, target.ID, false, false)
 	must(t, e)
@@ -160,7 +194,14 @@ func TestPermissionsRevisionAndLastSuperuser(t *testing.T) {
 	if !root.LastActiveSuperuser {
 		t.Fatal("missing last-superuser marker")
 	}
-	_, e = m.UpdatePermissions(ctx, f.token, root.ID, root.PermissionsVersion, accounts.DefaultPermissions(), false)
+	_, e = m.UpdatePermissions(
+		ctx,
+		f.token,
+		root.ID,
+		root.PermissionsVersion,
+		accounts.DefaultPermissions(),
+		false,
+	)
 	if e == nil {
 		t.Fatal("last superuser demoted")
 	}
@@ -175,7 +216,14 @@ func TestPermissionsRevisionAndLastSuperuser(t *testing.T) {
 		token string
 	}{{root, f.token}, {other, member.token}} {
 		wg.Go(func() {
-			_, err := m.UpdatePermissions(ctx, v.token, v.a.ID, v.a.PermissionsVersion, accounts.DefaultPermissions(), false)
+			_, err := m.UpdatePermissions(
+				ctx,
+				v.token,
+				v.a.ID,
+				v.a.PermissionsVersion,
+				accounts.DefaultPermissions(),
+				false,
+			)
 			if err == nil {
 				successes.Add(1)
 			}
@@ -186,7 +234,13 @@ func TestPermissionsRevisionAndLastSuperuser(t *testing.T) {
 		t.Fatal("concurrent demotions", successes.Load())
 	}
 	var count int
-	must(t, f.conn.QueryRow(ctx, `SELECT count(*) FROM accounts WHERE 'site.superuser'=ANY(direct_permissions) AND disabled_at IS NULL AND NOT pending`).Scan(&count))
+	must(
+		t,
+		f.conn.QueryRow(
+			ctx,
+			`SELECT count(*) FROM accounts WHERE 'site.superuser'=ANY(direct_permissions) AND disabled_at IS NULL AND NOT pending`,
+		).Scan(&count),
+	)
 	if count != 1 {
 		t.Fatal(count)
 	}
@@ -199,9 +253,23 @@ func TestPermissionsRevisionAndLastSuperuser(t *testing.T) {
 	}
 	target, e := m.Get(ctx, actor, root.ID)
 	must(t, e)
-	_, e = m.UpdatePermissions(ctx, actor, target.ID, target.PermissionsVersion, target.DirectPermissions, false)
+	_, e = m.UpdatePermissions(
+		ctx,
+		actor,
+		target.ID,
+		target.PermissionsVersion,
+		target.DirectPermissions,
+		false,
+	)
 	must(t, e)
-	_, e = m.UpdatePermissions(ctx, actor, target.ID, target.PermissionsVersion, target.DirectPermissions, true)
+	_, e = m.UpdatePermissions(
+		ctx,
+		actor,
+		target.ID,
+		target.PermissionsVersion,
+		target.DirectPermissions,
+		true,
+	)
 	if !errors.Is(e, auth.ErrPermissionsChanged) {
 		t.Fatal("stale permissions overwrote current", e)
 	}
@@ -251,7 +319,14 @@ func TestRequiredMFAEnrollmentAndRecovery(t *testing.T) {
 	if !errors.Is(e, auth.ErrMFARequired) {
 		t.Fatal("unrelated action permitted", e)
 	}
-	_, e = f.security.Advance(ctx, auth.FlowInput{ID: old.ID, Action: "registration_begin", Name: "bypass"}, member.token, member.binding, "test", "Test")
+	_, e = f.security.Advance(
+		ctx,
+		auth.FlowInput{ID: old.ID, Action: "registration_begin", Name: "bypass"},
+		member.token,
+		member.binding,
+		"test",
+		"Test",
+	)
 	if !errors.Is(e, auth.ErrMFARequired) {
 		t.Fatal("in-flight action bypass", e)
 	}
@@ -306,7 +381,14 @@ func TestRequiredMFAPasskeyAndExistingDisableFlow(t *testing.T) {
 	root, e := f.service.Current(ctx, f.token)
 	must(t, e)
 	grantPermissions(t, f, root.ID, root.DirectPermissions, true)
-	_, e = f.security.Advance(ctx, auth.FlowInput{ID: disabled.ID, Action: "confirm"}, f.token, f.binding, "test", "Test")
+	_, e = f.security.Advance(
+		ctx,
+		auth.FlowInput{ID: disabled.ID, Action: "confirm"},
+		f.token,
+		f.binding,
+		"test",
+		"Test",
+	)
 	if !errors.Is(e, auth.ErrForbidden) {
 		t.Fatal("pending disable bypassed required MFA", e)
 	}
@@ -338,7 +420,12 @@ func TestPermissionsHTTPEnforcement(t *testing.T) {
 	c := client{t, h, map[string]*http.Cookie{}}
 	c.cookies["acta_session"] = &http.Cookie{Name: "acta_session", Value: member.token}
 	c.request("GET", "permissions", "", 403)
-	c.request("POST", "users/"+a.ID+"/permissions", `{"permissions":["site.superuser"],"permissions_version":1}`, 403)
+	c.request(
+		"POST",
+		"users/"+a.ID+"/permissions",
+		`{"permissions":["site.superuser"],"permissions_version":1}`,
+		403,
+	)
 	grantPermissions(t, f, a.ID, accounts.DefaultPermissions(), true)
 	c.request("GET", "account", "", 200)
 	c.request("GET", "security", "", 403)

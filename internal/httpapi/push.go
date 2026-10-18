@@ -1,11 +1,13 @@
 package httpapi
 
 import (
-	"acta/internal/push"
 	"errors"
-	"github.com/google/uuid"
 	"net/http"
 	"strconv"
+
+	"github.com/google/uuid"
+
+	"acta/internal/push"
 )
 
 func (h *Handler) pushRoutes(m *http.ServeMux) {
@@ -34,12 +36,24 @@ func (h *Handler) pushSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := push.Validate(sub); err != nil {
-		writeError(w, 400, "invalid_subscription", "The browser supplied an invalid push subscription.", nil)
+		writeError(
+			w,
+			400,
+			"invalid_subscription",
+			"The browser supplied an invalid push subscription.",
+			nil,
+		)
 		return
 	}
 	id, err := h.auth.SavePush(r.Context(), owner, token(r, h.sessionCookie), sub)
 	if errors.Is(err, push.ErrSubscription) {
-		writeError(w, 409, "push_subscription_conflict", "Reset browser alerts and try again, or remove an unused subscription.", nil)
+		writeError(
+			w,
+			409,
+			"push_subscription_conflict",
+			"Reset browser alerts and try again, or remove an unused subscription.",
+			nil,
+		)
 		return
 	}
 	if err != nil {
@@ -82,7 +96,14 @@ func (h *Handler) pushNotification(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_notification", "Invalid push notification.", nil)
 		return
 	}
-	n, err := h.auth.PushNotice(r.Context(), owner, token(r, h.sessionCookie), q.Get("subscription"), q.Get("id"), revision)
+	n, err := h.auth.PushNotice(
+		r.Context(),
+		owner,
+		token(r, h.sessionCookie),
+		q.Get("subscription"),
+		q.Get("id"),
+		revision,
+	)
 	if err != nil {
 		failure(w, err)
 		return

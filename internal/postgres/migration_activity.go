@@ -1,14 +1,16 @@
 package postgres
 
 import (
-	"acta/internal/activity"
-	"acta/internal/comments"
-	"acta/internal/migration"
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/google/uuid"
 	"time"
+
+	"github.com/google/uuid"
+
+	"acta/internal/activity"
+	"acta/internal/comments"
+	"acta/internal/migration"
 )
 
 func (t workspaceTx) migrationEvent(ctx context.Context, id, w, task, thread, author string, change activity.Change, created, updated time.Time) (string, error) {
@@ -18,14 +20,44 @@ func (t workspaceTx) migrationEvent(ctx context.Context, id, w, task, thread, au
 	}
 	raw, _ := json.Marshal(change)
 	var event int64
-	e := t.tx.QueryRow(ctx, `INSERT INTO activity_events(entry_id,workspace_id,subject_type,subject_id,actor_id,occurred_at,change) VALUES($1,$2,'task',$3,$4,$5,$6) RETURNING id`, id, w, task, t.actor.ID, updated, raw).Scan(&event)
+	e := t.tx.QueryRow(
+		ctx,
+		`INSERT INTO activity_events(entry_id,workspace_id,subject_type,subject_id,actor_id,occurred_at,change) VALUES($1,$2,'task',$3,$4,$5,$6) RETURNING id`,
+		id,
+		w,
+		task,
+		t.actor.ID,
+		updated,
+		raw,
+	).Scan(&event)
 	if e != nil {
 		return "", e
 	}
 	if newEntry {
-		_, e = t.tx.Exec(ctx, `INSERT INTO activity_entries(id,workspace_id,subject_type,subject_id,actor_id,first_event,last_event,started_at,updated_at,event_count,change,thread_id) VALUES($1,$2,'task',$3,$4,$5,$5,$6,$7,1,$8,NULLIF($9,'')::uuid)`, id, w, task, author, event, created, updated, raw, thread)
+		_, e = t.tx.Exec(
+			ctx,
+			`INSERT INTO activity_entries(id,workspace_id,subject_type,subject_id,actor_id,first_event,last_event,started_at,updated_at,event_count,change,thread_id) VALUES($1,$2,'task',$3,$4,$5,$5,$6,$7,1,$8,NULLIF($9,'')::uuid)`,
+			id,
+			w,
+			task,
+			author,
+			event,
+			created,
+			updated,
+			raw,
+			thread,
+		)
 	} else {
-		_, e = t.tx.Exec(ctx, `UPDATE activity_entries SET actor_id=$2,last_event=$3,started_at=$4,updated_at=$5,event_count=event_count+1,change=$6 WHERE id=$1`, id, author, event, created, updated, raw)
+		_, e = t.tx.Exec(
+			ctx,
+			`UPDATE activity_entries SET actor_id=$2,last_event=$3,started_at=$4,updated_at=$5,event_count=event_count+1,change=$6 WHERE id=$1`,
+			id,
+			author,
+			event,
+			created,
+			updated,
+			raw,
+		)
 	}
 	if e != nil {
 		return "", e
@@ -39,13 +71,31 @@ func (t workspaceTx) migrationActivity(ctx context.Context, op string, in migrat
 	change := activity.Change{Kind: "comment.created"}
 	var e error
 	if op == "edit" {
-		e = t.tx.QueryRow(ctx, `SELECT subject_id::text,actor_id::text,started_at,change,COALESCE(thread_id::text,'') FROM activity_entries WHERE id=$1`, in.ID).Scan(&taskID, &author, &created, &change, &thread)
+		e = t.tx.QueryRow(
+			ctx,
+			`SELECT subject_id::text,actor_id::text,started_at,change,COALESCE(thread_id::text,'') FROM activity_entries WHERE id=$1`,
+			in.ID,
+		).Scan(
+			&taskID,
+			&author,
+			&created,
+			&change,
+			&thread,
+		)
 		if e != nil {
 			return "", e
 		}
 		if in.Kind == "comment" {
 			var deleted bool
-			e = t.tx.QueryRow(ctx, `SELECT body,author_id::text,deleted FROM task_comments WHERE id=$1`, in.ID).Scan(&body, &author, &deleted)
+			e = t.tx.QueryRow(
+				ctx,
+				`SELECT body,author_id::text,deleted FROM task_comments WHERE id=$1`,
+				in.ID,
+			).Scan(
+				&body,
+				&author,
+				&deleted,
+			)
 			if e != nil {
 				return "", e
 			}
@@ -114,15 +164,40 @@ func (t workspaceTx) migrationActivity(ctx context.Context, op string, in migrat
 		}
 		author = t.actor.ID
 	}
-	id, e := t.migrationEvent(ctx, in.ID, task.WorkspaceID, task.ID, thread, author, change, created, updated)
+	id, e := t.migrationEvent(
+		ctx,
+		in.ID,
+		task.WorkspaceID,
+		task.ID,
+		thread,
+		author,
+		change,
+		created,
+		updated,
+	)
 	if e != nil {
 		return "", e
 	}
 	if in.Kind == "comment" {
 		if op == "create" {
-			_, e = t.tx.Exec(ctx, `INSERT INTO task_comments(id,task_id,author_id,body,reply_to,request_id,request_hash) VALUES($1,$2,$3,$4,NULLIF($5,'')::uuid,$6,'migration')`, id, task.ID, author, body, reply, uuid.NewString())
+			_, e = t.tx.Exec(
+				ctx,
+				`INSERT INTO task_comments(id,task_id,author_id,body,reply_to,request_id,request_hash) VALUES($1,$2,$3,$4,NULLIF($5,'')::uuid,$6,'migration')`,
+				id,
+				task.ID,
+				author,
+				body,
+				reply,
+				uuid.NewString(),
+			)
 		} else {
-			_, e = t.tx.Exec(ctx, `UPDATE task_comments SET body=$2,author_id=$3,version=version+1,edited=true WHERE id=$1`, id, body, author)
+			_, e = t.tx.Exec(
+				ctx,
+				`UPDATE task_comments SET body=$2,author_id=$3,version=version+1,edited=true WHERE id=$1`,
+				id,
+				body,
+				author,
+			)
 		}
 	}
 	return id, e

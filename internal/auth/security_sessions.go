@@ -1,10 +1,11 @@
 package auth
 
 import (
-	"acta/internal/accounts"
 	"bytes"
 	"context"
 	"time"
+
+	"acta/internal/accounts"
 )
 
 type PasskeyView struct {

@@ -1,9 +1,10 @@
 package postgres
 
 import (
+	"context"
+
 	"acta/internal/activity"
 	"acta/internal/auth"
-	"context"
 )
 
 // The latest event actor determines unread state, including a moderator editing
@@ -13,13 +14,26 @@ const activityUnread = `(v.actor_id<>$2::uuid AND e.last_event>COALESCE(r.throug
 func (t workspaceTx) activityPage(ctx context.Context, task, thread string, before int64, replies bool, id string) (activity.Page, error) {
 	out := activity.Page{Entries: []activity.Entry{}}
 	if !replies && id == "" {
-		e := t.tx.QueryRow(ctx, `SELECT COALESCE((SELECT COALESCE(e.thread_id,e.id)::text FROM activity_entries e WHERE e.subject_type='task' AND e.subject_id=$1 ORDER BY e.last_event DESC LIMIT 1),''),COALESCE((SELECT max(last_event)::text FROM activity_entries WHERE subject_type='task' AND subject_id=$1),'')`, task).Scan(&out.LatestEntry, &out.LatestEvent)
+		e := t.tx.QueryRow(
+			ctx,
+			`SELECT COALESCE((SELECT COALESCE(e.thread_id,e.id)::text FROM activity_entries e WHERE e.subject_type='task' AND e.subject_id=$1 ORDER BY e.last_event DESC LIMIT 1),''),COALESCE((SELECT max(last_event)::text FROM activity_entries WHERE subject_type='task' AND subject_id=$1),'')`,
+			task,
+		).Scan(
+			&out.LatestEntry,
+			&out.LatestEvent,
+		)
 		if e != nil {
 			return out, e
 		}
 	}
 
-	e := t.tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM activity_entries e JOIN activity_events v ON v.id=e.last_event LEFT JOIN activity_reads r ON r.entry_id=e.id AND r.account_id=$2 WHERE e.subject_type='task' AND e.subject_id=$1 AND ($3::text='' OR e.thread_id::text=$3) AND `+activityUnread+`)`, task, t.actor.ID, thread).Scan(&out.Unread)
+	e := t.tx.QueryRow(
+		ctx,
+		`SELECT EXISTS(SELECT 1 FROM activity_entries e JOIN activity_events v ON v.id=e.last_event LEFT JOIN activity_reads r ON r.entry_id=e.id AND r.account_id=$2 WHERE e.subject_type='task' AND e.subject_id=$1 AND ($3::text='' OR e.thread_id::text=$3) AND `+activityUnread+`)`,
+		task,
+		t.actor.ID,
+		thread,
+	).Scan(&out.Unread)
 	if e != nil {
 		return out, e
 	}
@@ -35,7 +49,24 @@ func (t workspaceTx) activityPage(ctx context.Context, task, thread string, befo
 	defer rows.Close()
 	for rows.Next() {
 		var v activity.Entry
-		if e = rows.Scan(&v.ID, &v.First, &v.Last, &v.Actor.ID, &v.Actor.Username, &v.Actor.DisplayName, &v.Actor.OwnerID, &v.StartedAt, &v.UpdatedAt, &v.Count, &v.Change, &v.Unread, &v.Comment, &v.ReplyCount, &v.ThreadUnread, &v.ThreadLast); e != nil {
+		if e = rows.Scan(
+			&v.ID,
+			&v.First,
+			&v.Last,
+			&v.Actor.ID,
+			&v.Actor.Username,
+			&v.Actor.DisplayName,
+			&v.Actor.OwnerID,
+			&v.StartedAt,
+			&v.UpdatedAt,
+			&v.Count,
+			&v.Change,
+			&v.Unread,
+			&v.Comment,
+			&v.ReplyCount,
+			&v.ThreadUnread,
+			&v.ThreadLast,
+		); e != nil {
 			return out, e
 		}
 		out.Entries = append(out.Entries, v)

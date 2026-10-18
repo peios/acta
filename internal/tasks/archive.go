@@ -8,5 +8,8 @@ type Archive struct {
 }
 
 func ArchivedError() error {
-	return &accounts.FieldError{Field: "archived", Message: "Restore this archived task before changing it."}
+	return &accounts.FieldError{
+		Field:   "archived",
+		Message: "Restore this archived task before changing it.",
+	}
 }

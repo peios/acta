@@ -4,9 +4,9 @@ const key = Symbol("app navigation");
 type Navigation = { open: () => void };
 
 export function provideNavigation(navigation: Navigation) {
-  setContext(key, navigation);
+    setContext(key, navigation);
 }
 
 export function useNavigation(): Navigation {
-  return getContext(key);
+    return getContext(key);
 }

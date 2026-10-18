@@ -1,8 +1,9 @@
 package integration
 
 import (
-	"acta/internal/tasks"
 	"testing"
+
+	"acta/internal/tasks"
 )
 
 func TestTaskAssignmentPageIsolation(t *testing.T) {
@@ -12,14 +13,29 @@ func TestTaskAssignmentPageIsolation(t *testing.T) {
 	roots := []tasks.Task{}
 	children := []tasks.Task{}
 	for _, name := range []string{"First", "Second"} {
-		task, e := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: name, Assignees: []string{owner.ID}})
+		task, e := m.CreateTask(
+			ctx,
+			f.token,
+			w.ID,
+			tasks.Create{Title: name, Assignees: []string{owner.ID}},
+		)
 		must(t, e)
-		child, e := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: name + " child", ParentID: task.ID, Assignees: []string{owner.ID}})
+		child, e := m.CreateTask(
+			ctx,
+			f.token,
+			w.ID,
+			tasks.Create{Title: name + " child", ParentID: task.ID, Assignees: []string{owner.ID}},
+		)
 		must(t, e)
 		roots = append(roots, task)
 		children = append(children, child)
 	}
-	page, e := m.Tasks(ctx, f.token, w.ID, tasks.Filter{State: "all", Sort: "number", Direction: "asc"})
+	page, e := m.Tasks(
+		ctx,
+		f.token,
+		w.ID,
+		tasks.Filter{State: "all", Sort: "number", Direction: "asc"},
+	)
 	must(t, e)
 	if len(page.Tasks) != 2 {
 		t.Fatal(page)

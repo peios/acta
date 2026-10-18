@@ -22,12 +22,23 @@ func TestSlidingGrouping(t *testing.T) {
 	if !CanGroup(edit, edit, "a", "a", last.Add(60*time.Second), last) {
 		t.Fatal("boundary should merge")
 	}
-	for _, next := range []Change{{Kind: "comment.created"}, {Kind: "task.changed", Field: "description"}, {Kind: "task.changed", Field: "title", Reason: "other"}} {
+	for _, next := range []Change{
+		{Kind: "comment.created"},
+		{Kind: "task.changed", Field: "description"},
+		{Kind: "task.changed", Field: "title", Reason: "other"},
+	} {
 		if CanGroup(edit, next, "a", "a", last, last) {
 			t.Fatal("different change merged", next)
 		}
 	}
-	if CanGroup(edit, edit, "b", "a", last, last) || CanGroup(edit, edit, "a", "a", last.Add(-time.Second), last) {
+	if CanGroup(edit, edit, "b", "a", last, last) || CanGroup(
+		edit,
+		edit,
+		"a",
+		"a",
+		last.Add(-time.Second),
+		last,
+	) {
 		t.Fatal("actor or backwards time merged")
 	}
 }

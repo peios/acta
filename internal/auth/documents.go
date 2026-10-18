@@ -1,11 +1,13 @@
 package auth
 
 import (
+	"context"
+
+	"github.com/google/uuid"
+
 	"acta/internal/documents"
 	"acta/internal/tasks"
 	ws "acta/internal/workspaces"
-	"context"
-	"github.com/google/uuid"
 )
 
 // All methods run inside the authorized workspace transaction. File insertion,

@@ -8,7 +8,12 @@ func TestOrigins(t *testing.T) {
 		valid, secure bool
 	}{
 		{"http://localhost:8081", "", true, false}, {"http://127.0.0.1:8081", "http://localhost:5173", true, false}, {"https://acta.peios.org/", "", true, true},
-		{"http://acta.peios.org", "", false, false}, {"https://acta.peios.org/path", "", false, false}, {"https://user:pass@example.com", "", false, false}, {"https://acta.peios.org", "http://localhost:5173", false, false}, {"http://localhost:8081", "http://evil.test", false, false}, {"", "", false, false},
+		{"http://acta.peios.org", "", false, false}, {"https://acta.peios.org/path", "", false, false}, {"https://user:pass@example.com", "", false, false}, {"https://acta.peios.org", "http://localhost:5173", false, false}, {"http://localhost:8081", "http://evil.test", false, false}, {
+			"",
+			"",
+			false,
+			false,
+		},
 	} {
 		t.Run(tc.url+tc.dev, func(t *testing.T) {
 			got, err := Parse(tc.url, tc.dev)

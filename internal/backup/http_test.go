@@ -62,7 +62,12 @@ func TestLocalAPIAuthAndSocketOwnership(t *testing.T) {
 	}
 	bad := filepath.Join(c.StateDir, "bad-token")
 	os.WriteFile(bad, []byte(strings.Repeat("b", 64)), 0600)
-	status, _, err = (Client{Socket: c.Socket, TokenFile: bad}).Do(ctx, "POST", "/v1/jobs", map[string]string{"kind": "full"})
+	status, _, err = (Client{Socket: c.Socket, TokenFile: bad}).Do(
+		ctx,
+		"POST",
+		"/v1/jobs",
+		map[string]string{"kind": "full"},
+	)
 	if err != nil || status != 401 {
 		t.Fatal("unauthenticated mutation", status, err)
 	}
@@ -70,7 +75,12 @@ func TestLocalAPIAuthAndSocketOwnership(t *testing.T) {
 	if err != nil || status != 400 {
 		t.Fatal("arbitrary operation accepted", status, err)
 	}
-	status, _, err = cl.Do(ctx, "POST", "/v1/jobs", map[string]string{"kind": "full", "actor": "operator"})
+	status, _, err = cl.Do(
+		ctx,
+		"POST",
+		"/v1/jobs",
+		map[string]string{"kind": "full", "actor": "operator"},
+	)
 	if err != nil || status != 202 {
 		t.Fatal(status, err)
 	}

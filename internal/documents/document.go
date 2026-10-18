@@ -2,16 +2,18 @@
 package documents
 
 import (
-	"acta/internal/accounts"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"github.com/google/uuid"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/google/uuid"
+
+	"acta/internal/accounts"
 )
 
 const MaxBytes = 20 * 1024 * 1024
@@ -70,7 +72,10 @@ func Validate(s *Save) error {
 		s.ID = id.String()
 	}
 	if s.Revision < 0 {
-		return Invalid("revision", "Use revision 0 to create, or the latest revision to upload a new version.")
+		return Invalid(
+			"revision",
+			"Use revision 0 to create, or the latest revision to upload a new version.",
+		)
 	}
 	s.Title = strings.TrimSpace(s.Title)
 	if s.Title == "" {
@@ -80,7 +85,10 @@ func Validate(s *Save) error {
 		name, value string
 		max         int
 	}{{"title", s.Title, 200}, {"filename", s.Filename, 255}} {
-		if f.value == "" || len(f.value) > f.max || !utf8.ValidString(f.value) || strings.ContainsAny(f.value, "\x00\r\n") {
+		if f.value == "" || len(f.value) > f.max || !utf8.ValidString(f.value) || strings.ContainsAny(
+			f.value,
+			"\x00\r\n",
+		) {
 			return Invalid(f.name, "Supply a valid title (200 bytes) and filename (255 bytes).")
 		}
 	}

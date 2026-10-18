@@ -25,7 +25,11 @@ func TestValidateBoundariesAndDetectedContent(t *testing.T) {
 			t.Fatal("missing file identity")
 		}
 	}
-	in := Save{Filename: "photo.png", MediaType: "image/png", Content: []byte("<html>not an image</html>")}
+	in := Save{
+		Filename:  "photo.png",
+		MediaType: "image/png",
+		Content:   []byte("<html>not an image</html>"),
+	}
 	if e := Validate(&in); e != nil {
 		t.Fatal(e)
 	}

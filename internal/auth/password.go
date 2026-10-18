@@ -59,7 +59,11 @@ func ValidatePassword(raw string) (string, error) {
 	}
 	length := utf8.RuneCountInString(password)
 	if length < PasswordMin || length > PasswordMax {
-		return "", fmt.Errorf("Use between %d and %d characters for your password.", PasswordMin, PasswordMax)
+		return "", fmt.Errorf(
+			"Use between %d and %d characters for your password.",
+			PasswordMin,
+			PasswordMax,
+		)
 	}
 	// Do not trim or alter the accepted password. Trim only for the blocklist.
 	candidate := strings.ToLower(strings.TrimSpace(password))
@@ -85,7 +89,14 @@ func HashPassword(password string) (string, error) {
 		return "", err
 	}
 	key := argon2.IDKey([]byte(password), salt, iterations, memoryKiB, parallelism, 32)
-	return fmt.Sprintf("$argon2id$v=19$m=%d,t=%d,p=%d$%s$%s", memoryKiB, iterations, parallelism, base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(key)), nil
+	return fmt.Sprintf(
+		"$argon2id$v=19$m=%d,t=%d,p=%d$%s$%s",
+		memoryKiB,
+		iterations,
+		parallelism,
+		base64.RawStdEncoding.EncodeToString(salt),
+		base64.RawStdEncoding.EncodeToString(key),
+	), nil
 }
 
 func VerifyPassword(password, encoded string) bool {

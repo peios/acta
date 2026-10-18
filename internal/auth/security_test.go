@@ -31,7 +31,12 @@ func TestAuthenticationPolicyMatrix(t *testing.T) {
 			}
 		}
 	}
-	if proofValid(SecurityData{}, Proof{Method: "passkey", CredentialID: "removed", At: now, Version: 3}, 3, now) {
+	if proofValid(
+		SecurityData{},
+		Proof{Method: "passkey", CredentialID: "removed", At: now, Version: 3},
+		3,
+		now,
+	) {
 		t.Fatal("removed passkey still supplies fresh proof")
 	}
 }

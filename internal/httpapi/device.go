@@ -1,9 +1,10 @@
 package httpapi
 
 import (
-	"acta/internal/auth"
 	"errors"
 	"net/http"
+
+	"acta/internal/auth"
 )
 
 func (h *Handler) deviceStart(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +70,14 @@ func (h *Handler) deviceApprove(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if err := h.security.ApproveDevice(r.Context(), token(r, h.sessionCookie), in.Code, h.address(r), in.Approve, in.Subject); err != nil {
+	if err := h.security.ApproveDevice(
+		r.Context(),
+		token(r, h.sessionCookie),
+		in.Code,
+		h.address(r),
+		in.Approve,
+		in.Subject,
+	); err != nil {
 		failure(w, err)
 		return
 	}

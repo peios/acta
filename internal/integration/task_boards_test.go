@@ -1,10 +1,12 @@
 package integration
 
 import (
-	"acta/internal/tasks"
 	"encoding/json"
-	"github.com/google/uuid"
 	"testing"
+
+	"github.com/google/uuid"
+
+	"acta/internal/tasks"
 )
 
 func TestTaskBoardsLifecycleAndIsolation(t *testing.T) {
@@ -20,14 +22,24 @@ func TestTaskBoardsLifecycleAndIsolation(t *testing.T) {
 	if backlog.Slug != "backlog" || backlog.Completed != "" {
 		t.Fatal(backlog)
 	}
-	a, e := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Board lifecycle needle", Board: "backlog"})
+	a, e := m.CreateTask(
+		ctx,
+		f.token,
+		w.ID,
+		tasks.Create{Title: "Board lifecycle needle", Board: "backlog"},
+	)
 	must(t, e)
 	child, e := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Child", ParentID: a.ID})
 	must(t, e)
 	if a.Board != "backlog" || child.Board != "backlog" || a.StatusID != backlog.Creation {
 		t.Fatal(a, child)
 	}
-	if _, e = m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Mismatch", Board: "tasks", StatusID: backlog.Creation}); e == nil {
+	if _, e = m.CreateTask(
+		ctx,
+		f.token,
+		w.ID,
+		tasks.Create{Title: "Mismatch", Board: "tasks", StatusID: backlog.Creation},
+	); e == nil {
 		t.Fatal("mismatched board/status accepted")
 	}
 	if _, e = m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Invalid board", Board: "bogus"}); e == nil {
@@ -43,7 +55,11 @@ func TestTaskBoardsLifecycleAndIsolation(t *testing.T) {
 	if p.Total != 1 {
 		t.Fatal("backlog not unfinished", p)
 	}
-	found, e := m.SearchTasks(ctx, f.token, tasks.SearchQuery{Query: "lifecycle needle", Workspace: w.ID})
+	found, e := m.SearchTasks(
+		ctx,
+		f.token,
+		tasks.SearchQuery{Query: "lifecycle needle", Workspace: w.ID},
+	)
 	must(t, e)
 	if len(found.Tasks) != 1 || found.Tasks[0].ID != a.ID {
 		t.Fatal("global search missed backlog", found)
@@ -64,7 +80,12 @@ func TestTaskBoardsLifecycleAndIsolation(t *testing.T) {
 		t.Fatal("preset crossed board")
 	}
 	raw, _ := json.Marshal("tasks")
-	moved, e := m.PatchTask(ctx, f.token, a.ID, tasks.Patch{Field: "board", Version: a.Versions["status_id"], Value: raw})
+	moved, e := m.PatchTask(
+		ctx,
+		f.token,
+		a.ID,
+		tasks.Patch{Field: "board", Version: a.Versions["status_id"], Value: raw},
+	)
 	must(t, e)
 	if moved.ID != a.ID || moved.Reference != a.Reference || moved.Board != "tasks" || moved.StatusID != c.Creation {
 		t.Fatal("move changed identity", moved)
@@ -85,7 +106,12 @@ func TestTaskBoardsLifecycleAndIsolation(t *testing.T) {
 		t.Fatal("child absent from parent", p)
 	}
 	raw, _ = json.Marshal("backlog")
-	if _, e = m.PatchTask(ctx, f.token, a.ID, tasks.Patch{Field: "board", Version: a.Versions["status_id"], Value: raw}); e == nil {
+	if _, e = m.PatchTask(
+		ctx,
+		f.token,
+		a.ID,
+		tasks.Patch{Field: "board", Version: a.Versions["status_id"], Value: raw},
+	); e == nil {
 		t.Fatal("stale move accepted")
 	}
 	history, e := m.TaskActivity(ctx, f.token, a.ID, "")
@@ -97,12 +123,23 @@ func TestTaskBoardsLifecycleAndIsolation(t *testing.T) {
 	done := uuid.NewString()
 	c, e = m.TaskConfig(ctx, f.token, w.ID)
 	must(t, e)
-	change := tasks.StatusChange{Board: "backlog", Version: c.Version, Creation: backlog.Creation, Completed: done, Statuses: []tasks.Status{{ID: backlog.Creation, Name: "Backlog"}, {ID: done, Name: "Done"}}}
+	change := tasks.StatusChange{
+		Board:     "backlog",
+		Version:   c.Version,
+		Creation:  backlog.Creation,
+		Completed: done,
+		Statuses:  []tasks.Status{{ID: backlog.Creation, Name: "Backlog"}, {ID: done, Name: "Done"}},
+	}
 	must(t, m.TaskStatuses(ctx, f.token, w.ID, change))
 	child, e = patchTask(t, f, child, "status_id", done)
 	must(t, e)
 	sameBoard, _ := json.Marshal("backlog")
-	same, e := m.PatchTask(ctx, f.token, child.ID, tasks.Patch{Field: "board", Version: child.Versions["status_id"], Value: sameBoard})
+	same, e := m.PatchTask(
+		ctx,
+		f.token,
+		child.ID,
+		tasks.Patch{Field: "board", Version: child.Versions["status_id"], Value: sameBoard},
+	)
 	must(t, e)
 	if same.StatusID != done || same.Versions["status_id"] != child.Versions["status_id"] {
 		t.Fatal("same-board move reset status", same)

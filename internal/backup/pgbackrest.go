@@ -36,9 +36,18 @@ func (e PGBackRest) run(ctx context.Context, p Policy, op string, args ...string
 	if !ok {
 		return nil, errors.New("unknown destination")
 	}
-	base := []string{"--config=" + d.ConfigFile, "--stanza=" + e.Config.Stanza, "--repo=" + strconv.Itoa(d.Repo), "--log-level-console=error"}
+	base := []string{
+		"--config=" + d.ConfigFile,
+		"--stanza=" + e.Config.Stanza,
+		"--repo=" + strconv.Itoa(d.Repo),
+		"--log-level-console=error",
+	}
 	if op == "check" {
-		base = []string{"--config=" + d.ConfigFile, "--stanza=" + e.Config.Stanza, "--log-level-console=error"}
+		base = []string{
+			"--config=" + d.ConfigFile,
+			"--stanza=" + e.Config.Stanza,
+			"--log-level-console=error",
+		}
 	}
 	return command(ctx, e.Config.PGBackRest, append(append(base, args...), op), nil)
 }
@@ -73,7 +82,10 @@ func (e PGBackRest) recovery(ctx context.Context) (recovery, error) {
 	if err := ReadJSON(e.Config.ReleaseFile, &r.Release); err != nil {
 		return r, err
 	}
-	if r.Release.ID == "" || r.Release.Installation == "" || len(r.Release.SHA256) != 64 || !strings.HasPrefix(r.Release.PublicURL, "http") {
+	if r.Release.ID == "" || r.Release.Installation == "" || len(r.Release.SHA256) != 64 || !strings.HasPrefix(
+		r.Release.PublicURL,
+		"http",
+	) {
 		return r, errors.New("release record needs an ID, installation, executable SHA-256 and public URL")
 	}
 	if _, err := hex.DecodeString(r.Release.SHA256); err != nil {
@@ -96,7 +108,15 @@ func (e PGBackRest) recovery(ctx context.Context) (recovery, error) {
 		return r, err
 	}
 	defer c.Close(ctx)
-	if err = c.QueryRow(ctx, `SELECT current_database(),current_user,system_identifier::text,current_setting('server_version_num')::int FROM pg_control_system()`).Scan(&r.Database, &r.DatabaseUser, &r.SystemID, &r.PostgresVersion); err != nil {
+	if err = c.QueryRow(
+		ctx,
+		`SELECT current_database(),current_user,system_identifier::text,current_setting('server_version_num')::int FROM pg_control_system()`,
+	).Scan(
+		&r.Database,
+		&r.DatabaseUser,
+		&r.SystemID,
+		&r.PostgresVersion,
+	); err != nil {
 		return r, err
 	}
 	if r.Database != e.Config.DatabaseName || r.DatabaseUser != e.Config.DatabaseUser {
@@ -111,7 +131,10 @@ func (e PGBackRest) recovery(ctx context.Context) (recovery, error) {
 		return r, errors.New("security key does not match this database")
 	}
 	r.Settings = map[string]string{}
-	settings, err := c.Query(ctx, `SELECT name,setting FROM pg_settings WHERE name IN ('max_connections','max_worker_processes','max_wal_senders','max_prepared_transactions','max_locks_per_transaction')`)
+	settings, err := c.Query(
+		ctx,
+		`SELECT name,setting FROM pg_settings WHERE name IN ('max_connections','max_worker_processes','max_wal_senders','max_prepared_transactions','max_locks_per_transaction')`,
+	)
 	if err != nil {
 		return r, err
 	}
@@ -270,7 +293,15 @@ func parseInfoReader(reader io.Reader, stanza, selected string) (Repository, err
 			}
 		}
 		for _, b := range s.Backup {
-			p := Point{Label: b.Label, Type: b.Type, StartedAt: time.Unix(b.Timestamp.Start, 0).UTC(), FinishedAt: time.Unix(b.Timestamp.Stop, 0).UTC(), Release: b.Annotation["acta-release"], JobID: b.Annotation["acta-job"], SealedRecovery: b.Annotation["acta-recovery"]}
+			p := Point{
+				Label:          b.Label,
+				Type:           b.Type,
+				StartedAt:      time.Unix(b.Timestamp.Start, 0).UTC(),
+				FinishedAt:     time.Unix(b.Timestamp.Stop, 0).UTC(),
+				Release:        b.Annotation["acta-release"],
+				JobID:          b.Annotation["acta-job"],
+				SealedRecovery: b.Annotation["acta-recovery"],
+			}
 			p.RecoveryFingerprint = b.Annotation["acta-recovery-fingerprint"]
 			p.Complete = b.HasRecovery && p.Release != "" && b.Annotation["acta-complete"] == "1"
 			if t, err := time.Parse(time.RFC3339Nano, b.Annotation["acta-integrity"]); err == nil {
@@ -292,7 +323,10 @@ func parseInfoReader(reader io.Reader, stanza, selected string) (Repository, err
 			out.Points = append(out.Points, p)
 		}
 		out.PointCount = len(out.Points)
-		sort.Slice(out.Points, func(i, j int) bool { return out.Points[i].FinishedAt.After(out.Points[j].FinishedAt) })
+		sort.Slice(
+			out.Points,
+			func(i, j int) bool { return out.Points[i].FinishedAt.After(out.Points[j].FinishedAt) },
+		)
 		return out, nil
 	}
 	return out, errors.New("configured stanza is missing")
@@ -312,7 +346,21 @@ func (e PGBackRest) catalog(ctx context.Context, p Policy, selected string) (Rep
 	defer reader.Close()
 	done := make(chan error, 1)
 	go func() {
-		err := commandOutput(ctx, e.Config.PGBackRest, []string{"--config=" + dest.ConfigFile, "--stanza=" + e.Config.Stanza, "--repo=" + strconv.Itoa(dest.Repo), "--log-level-console=error", "--output=json", "info"}, nil, nil, writer)
+		err := commandOutput(
+			ctx,
+			e.Config.PGBackRest,
+			[]string{
+				"--config=" + dest.ConfigFile,
+				"--stanza=" + e.Config.Stanza,
+				"--repo=" + strconv.Itoa(dest.Repo),
+				"--log-level-console=error",
+				"--output=json",
+				"info",
+			},
+			nil,
+			nil,
+			writer,
+		)
 		writer.CloseWithError(err)
 		done <- err
 	}()
@@ -343,7 +391,15 @@ func (e PGBackRest) Inspect(ctx context.Context, p Policy) (Repository, error) {
 	if r.SystemID == "" || r.SystemID != sourceID {
 		return r, errors.New("repository and source PostgreSQL cluster identities differ")
 	}
-	err = c.QueryRow(ctx, `SELECT last_archived_time,last_failed_time,current_setting('archive_mode') IN ('on','always'),extract(epoch FROM current_setting('archive_timeout')::interval)::int FROM pg_stat_archiver`).Scan(&r.ArchiveLast, &r.ArchiveFailure, &r.ArchiveMode, &r.ArchiveTimeoutSeconds)
+	err = c.QueryRow(
+		ctx,
+		`SELECT last_archived_time,last_failed_time,current_setting('archive_mode') IN ('on','always'),extract(epoch FROM current_setting('archive_timeout')::interval)::int FROM pg_stat_archiver`,
+	).Scan(
+		&r.ArchiveLast,
+		&r.ArchiveFailure,
+		&r.ArchiveMode,
+		&r.ArchiveTimeoutSeconds,
+	)
 	return r, err
 }
 
@@ -374,7 +430,12 @@ func (e PGBackRest) Backup(ctx context.Context, p Policy, id string, full bool) 
 			return e.finalize(ctx, p, point)
 		}
 	}
-	sealed, err := command(ctx, e.Config.Age, []string{"--encrypt", "--recipient", e.Config.RecoveryRecipient}, raw)
+	sealed, err := command(
+		ctx,
+		e.Config.Age,
+		[]string{"--encrypt", "--recipient", e.Config.RecoveryRecipient},
+		raw,
+	)
 	if err != nil {
 		return Point{}, err
 	}
@@ -382,7 +443,18 @@ func (e PGBackRest) Backup(ctx context.Context, p Policy, id string, full bool) 
 	if full || len(r.Points) == 0 {
 		typ = "full"
 	}
-	_, err = e.run(ctx, p, "backup", "--type="+typ, "--start-fast", "--no-expire-auto", "--annotation=acta-job="+id, "--annotation=acta-recovery-fingerprint="+fingerprint, "--annotation=acta-release="+meta.Release.ID, "--annotation=acta-recovery="+base64.StdEncoding.EncodeToString(sealed))
+	_, err = e.run(
+		ctx,
+		p,
+		"backup",
+		"--type="+typ,
+		"--start-fast",
+		"--no-expire-auto",
+		"--annotation=acta-job="+id,
+		"--annotation=acta-recovery-fingerprint="+fingerprint,
+		"--annotation=acta-release="+meta.Release.ID,
+		"--annotation=acta-recovery="+base64.StdEncoding.EncodeToString(sealed),
+	)
 	if err != nil {
 		return Point{}, err
 	}
@@ -439,10 +511,23 @@ func (e PGBackRest) Verify(ctx context.Context, p Policy, label string) error {
 		verifyErr = verifyReport(raw, e.Config.Stanza, label)
 	}
 	if verifyErr != nil {
-		_, _ = e.run(ctx, p, "annotate", "--set="+label, "--annotation=acta-integrity=", "--annotation=acta-restored=")
+		_, _ = e.run(
+			ctx,
+			p,
+			"annotate",
+			"--set="+label,
+			"--annotation=acta-integrity=",
+			"--annotation=acta-restored=",
+		)
 		return verifyErr
 	}
-	_, err = e.run(ctx, p, "annotate", "--set="+label, "--annotation=acta-integrity="+time.Now().UTC().Format(time.RFC3339Nano))
+	_, err = e.run(
+		ctx,
+		p,
+		"annotate",
+		"--set="+label,
+		"--annotation=acta-integrity="+time.Now().UTC().Format(time.RFC3339Nano),
+	)
 	return err
 }
 
@@ -473,7 +558,15 @@ func (e PGBackRest) Expire(ctx context.Context, p Policy) error {
 		return nil
 	}
 	d, _ := e.Config.Destination(p.Destination)
-	_, err = e.run(ctx, p, "expire", fmt.Sprintf("--repo%d-retention-full=%d", d.Repo, keep), fmt.Sprintf("--repo%d-retention-full-type=count", d.Repo), fmt.Sprintf("--repo%d-retention-archive-type=full", d.Repo), fmt.Sprintf("--repo%d-retention-archive=%d", d.Repo, keep))
+	_, err = e.run(
+		ctx,
+		p,
+		"expire",
+		fmt.Sprintf("--repo%d-retention-full=%d", d.Repo, keep),
+		fmt.Sprintf("--repo%d-retention-full-type=count", d.Repo),
+		fmt.Sprintf("--repo%d-retention-archive-type=full", d.Repo),
+		fmt.Sprintf("--repo%d-retention-archive=%d", d.Repo, keep),
+	)
 	return err
 }
 

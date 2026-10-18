@@ -1,12 +1,14 @@
 package auth
 
 import (
-	"acta/internal/accounts"
 	"context"
-	"github.com/pquerna/otp/totp"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/pquerna/otp/totp"
+
+	"acta/internal/accounts"
 )
 
 func needsCode(d SecurityData, method string) bool {
@@ -19,7 +21,10 @@ func proofValid(d SecurityData, p Proof, version int64, now time.Time) bool {
 	if p.Method != "password" && p.Method != "passkey" {
 		return false
 	}
-	if p.Method == "passkey" && !slices.ContainsFunc(d.Passkeys, func(k Passkey) bool { return k.ID == p.CredentialID }) {
+	if p.Method == "passkey" && !slices.ContainsFunc(
+		d.Passkeys,
+		func(k Passkey) bool { return k.ID == p.CredentialID },
+	) {
 		return false
 	}
 	return !needsCode(d, p.Method) || p.MFA
@@ -33,7 +38,11 @@ func (s *Security) prepare(f *Flow, r *SecurityRecord, d SecurityData) error {
 	case "password":
 		f.Step = "commit"
 	case "mfa_setup":
-		key, err := totp.Generate(totp.GenerateOpts{Issuer: "Acta", AccountName: r.Account.Handle(), SecretSize: 20})
+		key, err := totp.Generate(totp.GenerateOpts{
+			Issuer:      "Acta",
+			AccountName: r.Account.Handle(),
+			SecretSize:  20,
+		})
 		if err != nil {
 			return err
 		}
@@ -74,14 +83,20 @@ func (s *Security) consumeCode(d *SecurityData, code string, recovery bool) erro
 		hash := recoveryDigest(code)
 		i := slices.Index(d.Recovery, hash)
 		if i < 0 {
-			return &accounts.FieldError{Field: "code", Message: "That recovery code is invalid or has already been used."}
+			return &accounts.FieldError{
+				Field:   "code",
+				Message: "That recovery code is invalid or has already been used.",
+			}
 		}
 		d.Recovery = append(d.Recovery[:i], d.Recovery[i+1:]...)
 		return nil
 	}
 	step, ok := validTOTPStep(d.Secret, strings.TrimSpace(code), s.now(), d.LastStep)
 	if !ok {
-		return &accounts.FieldError{Field: "code", Message: "That code is incorrect, expired or already used. Try a new code."}
+		return &accounts.FieldError{
+			Field:   "code",
+			Message: "That code is incorrect, expired or already used. Try a new code.",
+		}
 	}
 	d.LastStep = step
 	return nil

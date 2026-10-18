@@ -13,8 +13,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"acta/internal/accounts"
 	"github.com/google/uuid"
+
+	"acta/internal/accounts"
 )
 
 const SessionIdle = 7 * 24 * time.Hour
@@ -112,7 +113,10 @@ func (s *Service) Unlock(ctx context.Context, code, address string) (string, err
 	}
 	code = strings.ToUpper(strings.TrimSpace(code))
 	if !s.now().Before(s.setupExpires) || subtle.ConstantTimeCompare(s.setupDigest, Digest(code)) != 1 {
-		return "", &accounts.FieldError{Field: "code", Message: "That setup code is incorrect or has expired. Check the server terminal."}
+		return "", &accounts.FieldError{
+			Field:   "code",
+			Message: "That setup code is incorrect or has expired. Check the server terminal.",
+		}
 	}
 	token, err := Token()
 	if err != nil {
@@ -163,7 +167,12 @@ func (s *Service) Complete(ctx context.Context, grant, rawUsername, rawPassword,
 	if err != nil {
 		return empty, err
 	}
-	account := accounts.Account{ID: id.String(), Username: username, DisplayName: displayName, DirectPermissions: []string{accounts.Superuser}}
+	account := accounts.Account{
+		ID:                id.String(),
+		Username:          username,
+		DisplayName:       displayName,
+		DirectPermissions: []string{accounts.Superuser},
+	}
 	err = s.store.CompleteSetup(ctx, Digest(grant), account, hash, s.now())
 	return account, err
 }

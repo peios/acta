@@ -82,7 +82,10 @@ func Sign(r Release, seed []byte) (Signed, error) {
 	if err != nil {
 		return Signed{}, err
 	}
-	return Signed{base64.StdEncoding.EncodeToString(raw), base64.StdEncoding.EncodeToString(ed25519.Sign(ed25519.NewKeyFromSeed(seed), raw))}, nil
+	return Signed{
+		base64.StdEncoding.EncodeToString(raw),
+		base64.StdEncoding.EncodeToString(ed25519.Sign(ed25519.NewKeyFromSeed(seed), raw)),
+	}, nil
 }
 func Verify(s Signed, public []byte, repository string) (Release, error) {
 	var r Release

@@ -124,7 +124,11 @@ func recoveryCodes() ([]string, []string, error) {
 	return codes, hashes, nil
 }
 func recoveryDigest(code string) string {
-	return base64.RawURLEncoding.EncodeToString(Digest(strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(code), "-", ""))))
+	return base64.RawURLEncoding.EncodeToString(Digest(strings.ToUpper(strings.ReplaceAll(
+		strings.TrimSpace(code),
+		"-",
+		"",
+	))))
 }
 func validTOTPStep(secret, code string, now time.Time, last int64) (int64, bool) {
 	if len(code) != 6 {
@@ -135,7 +139,12 @@ func validTOTPStep(secret, code string, now time.Time, last int64) (int64, bool)
 		if step <= last {
 			continue
 		}
-		ok, err := totp.ValidateCustom(code, secret, time.Unix(step*30, 0), totp.ValidateOpts{Period: 30, Skew: 0, Digits: otp.DigitsSix, Algorithm: otp.AlgorithmSHA1})
+		ok, err := totp.ValidateCustom(
+			code,
+			secret,
+			time.Unix(step*30, 0),
+			totp.ValidateOpts{Period: 30, Skew: 0, Digits: otp.DigitsSix, Algorithm: otp.AlgorithmSHA1},
+		)
 		if err == nil && ok {
 			return step, true
 		}

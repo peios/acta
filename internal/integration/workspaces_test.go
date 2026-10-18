@@ -50,7 +50,10 @@ func TestWorkspaceIdentityVisibilityAndCreation(t *testing.T) {
 	if !ws.Subset(ws.All(), w.Permissions) {
 		t.Fatal("creator lacks management")
 	}
-	if _, e := manager(other).CreateWorkspace(ctx, other.token, "Denied", "denied", ""); !errors.Is(e, auth.ErrForbidden) {
+	if _, e := manager(other).CreateWorkspace(ctx, other.token, "Denied", "denied", ""); !errors.Is(
+		e,
+		auth.ErrForbidden,
+	) {
 		t.Fatal("creation permission", e)
 	}
 	for _, ref := range []string{w.ID, w.Slug} {
@@ -74,13 +77,19 @@ func TestWorkspaceIdentityVisibilityAndCreation(t *testing.T) {
 	if old.ID != w.ID || old.Slug != "renamed" || !slices.Contains(old.PreviousSlugs, "owner") {
 		t.Fatal("lost aliases")
 	}
-	if _, e = manager(other).Workspace(ctx, other.token, "owner", true); !errors.Is(e, auth.ErrNotFound) {
+	if _, e = manager(other).Workspace(ctx, other.token, "owner", true); !errors.Is(
+		e,
+		auth.ErrNotFound,
+	) {
 		t.Fatal("private alias revealed")
 	}
 	if _, e = manager(root).CreateWorkspace(ctx, root.token, "Collision", "OWNER", ""); e == nil {
 		t.Fatal("reserved slug reused")
 	}
-	if _, e = manager(f).EditWorkspace(ctx, f.token, w.ID, w.Version-1, "Stale", "stale", ""); !errors.Is(e, auth.ErrPermissionsChanged) {
+	if _, e = manager(f).EditWorkspace(ctx, f.token, w.ID, w.Version-1, "Stale", "stale", ""); !errors.Is(
+		e,
+		auth.ErrPermissionsChanged,
+	) {
 		t.Fatal("stale profile accepted", e)
 	}
 	second, e := manager(f).CreateWorkspace(ctx, f.token, "Second", "second", "")
@@ -93,7 +102,10 @@ func TestWorkspaceIdentityVisibilityAndCreation(t *testing.T) {
 	}
 	agent := agentAccount(t, f, "reviewer", nil)
 	secret := agentCLI(t, f, agent.ID)
-	if _, e = manager(f).CreateWorkspace(ctx, secret, "Agent", "agent", ""); !errors.Is(e, auth.ErrForbidden) {
+	if _, e = manager(f).CreateWorkspace(ctx, secret, "Agent", "agent", ""); !errors.Is(
+		e,
+		auth.ErrForbidden,
+	) {
 		t.Fatal("agent creation", e)
 	}
 }
@@ -105,30 +117,82 @@ func TestWorkspaceGroupsMembershipAndAuthority(t *testing.T) {
 	ctx := t.Context()
 	g, e := manager(root).CreateGroup(ctx, root.token, "Workspace maintainers", "")
 	must(t, e)
-	must(t, manager(root).SetGroupMembership(ctx, root.token, g.ID, user.ID, g.Version, user.PermissionsVersion, true))
+	must(
+		t,
+		manager(root).SetGroupMembership(
+			ctx,
+			root.token,
+			g.ID,
+			user.ID,
+			g.Version,
+			user.PermissionsVersion,
+			true,
+		),
+	)
 	w = workspaceGrants(t, f, w, g.ID, true, []string{ws.Edit, ws.Permissions})
-	if _, e = manager(member).Workspace(ctx, member.token, w.ID, false); !errors.Is(e, auth.ErrNotFound) {
+	if _, e = manager(member).Workspace(ctx, member.token, w.ID, false); !errors.Is(
+		e,
+		auth.ErrNotFound,
+	) {
 		t.Fatal("group auto-admitted member")
 	}
 	w = joinWorkspace(t, f, w, weak.ID)
 	w = workspaceGrants(t, f, w, weak.ID, false, []string{ws.Members})
 	// Membership management intentionally activates authority already granted to a site group.
-	must(t, manager(weakSession).WorkspaceMembership(ctx, weakSession.token, w.ID, user.ID, w.Version, true))
+	must(
+		t,
+		manager(weakSession).WorkspaceMembership(ctx, weakSession.token, w.ID, user.ID, w.Version, true),
+	)
 	w = readWorkspace(t, f, w.ID)
 	access := readWorkspace(t, member, w.ID)
 	if !ws.Subset([]string{ws.Edit, ws.Permissions}, access.Permissions) {
 		t.Fatal("group grants absent")
 	}
-	if e = manager(weakSession).WorkspaceMembership(ctx, weakSession.token, w.ID, user.ID, w.Version, false); !errors.Is(e, auth.ErrForbidden) {
+	if e = manager(weakSession).WorkspaceMembership(
+		ctx,
+		weakSession.token,
+		w.ID,
+		user.ID,
+		w.Version,
+		false,
+	); !errors.Is(
+		e,
+		auth.ErrForbidden,
+	) {
 		t.Fatal("removed stronger member", e)
 	}
-	if e = manager(member).WorkspaceGrants(ctx, member.token, w.ID, user.ID, w.Version, false, []string{ws.Members}); !errors.Is(e, auth.ErrForbidden) {
+	if e = manager(member).WorkspaceGrants(
+		ctx,
+		member.token,
+		w.ID,
+		user.ID,
+		w.Version,
+		false,
+		[]string{ws.Members},
+	); !errors.Is(
+		e,
+		auth.ErrForbidden,
+	) {
 		t.Fatal("unowned workspace grant", e)
 	}
-	if _, e = manager(weakSession).EditWorkspace(ctx, weakSession.token, w.ID, w.Version, "Changed", "changed", ""); !errors.Is(e, auth.ErrForbidden) {
+	if _, e = manager(weakSession).EditWorkspace(
+		ctx,
+		weakSession.token,
+		w.ID,
+		w.Version,
+		"Changed",
+		"changed",
+		"",
+	); !errors.Is(
+		e,
+		auth.ErrForbidden,
+	) {
 		t.Fatal("members permission edited details", e)
 	}
-	if _, _, e = manager(member).WorkspaceMembers(ctx, member.token, w.ID, "", 0, true); !errors.Is(e, auth.ErrForbidden) {
+	if _, _, e = manager(member).WorkspaceMembers(ctx, member.token, w.ID, "", 0, true); !errors.Is(
+		e,
+		auth.ErrForbidden,
+	) {
 		t.Fatal("permission manager enumerated candidates")
 	}
 	// Sources stay additive when a direct grant is removed.
@@ -144,7 +208,20 @@ func TestWorkspaceAgentInheritanceSelectionAndPruning(t *testing.T) {
 	ctx := t.Context()
 	a := agentAccount(t, f, "reviewer", nil)
 	secret := agentCLI(t, f, a.ID)
-	if !ws.Subset(ws.All(), readWorkspace(t, securityFixture{fixture: f.fixture, service: f.service, security: f.security, token: secret, binding: f.binding}, w.ID).Permissions) {
+	if !ws.Subset(
+		ws.All(),
+		readWorkspace(
+			t,
+			securityFixture{
+				fixture:  f.fixture,
+				service:  f.service,
+				security: f.security,
+				token:    secret,
+				binding:  f.binding,
+			},
+			w.ID,
+		).Permissions,
+	) {
 		t.Fatal("default inheritance")
 	}
 	settings, e := manager(f).AgentWorkspaces(ctx, f.token, a.ID)
@@ -152,7 +229,18 @@ func TestWorkspaceAgentInheritanceSelectionAndPruning(t *testing.T) {
 	if !settings.All || !settings.Workspaces[0].Inherit {
 		t.Fatal("wrong defaults")
 	}
-	must(t, manager(f).SetAgentWorkspacePolicy(ctx, f.token, a.ID, w.ID, settings.Version, false, []string{ws.Edit}))
+	must(
+		t,
+		manager(f).SetAgentWorkspacePolicy(
+			ctx,
+			f.token,
+			a.ID,
+			w.ID,
+			settings.Version,
+			false,
+			[]string{ws.Edit},
+		),
+	)
 	w = workspaceGrants(t, root, w, owner.ID, false, []string{ws.Members, ws.Permissions})
 	settings, e = manager(f).AgentWorkspaces(ctx, f.token, a.ID)
 	must(t, e)
@@ -177,12 +265,18 @@ func TestWorkspaceAgentInheritanceSelectionAndPruning(t *testing.T) {
 	settings, e = manager(f).AgentWorkspaces(ctx, f.token, a.ID)
 	must(t, e)
 	must(t, manager(f).SetAgentWorkspaces(ctx, f.token, a.ID, settings.Version, true, nil))
-	if v, e := manager(f).Workspace(ctx, secret, next.ID, false); e != nil || !ws.Subset(ws.All(), v.Permissions) {
+	if v, e := manager(f).Workspace(ctx, secret, next.ID, false); e != nil || !ws.Subset(
+		ws.All(),
+		v.Permissions,
+	) {
 		t.Fatal("all future workspaces", e)
 	}
 	settings, e = manager(f).AgentWorkspaces(ctx, f.token, a.ID)
 	must(t, e)
-	must(t, manager(f).SetAgentWorkspacePolicy(ctx, f.token, a.ID, w.ID, settings.Version, false, ws.All()))
+	must(
+		t,
+		manager(f).SetAgentWorkspacePolicy(ctx, f.token, a.ID, w.ID, settings.Version, false, ws.All()),
+	)
 	w = readWorkspace(t, root, w.ID)
 	must(t, manager(root).WorkspaceMembership(ctx, root.token, w.ID, owner.ID, w.Version, false))
 	if _, e = manager(f).Workspace(ctx, secret, w.ID, false); !errors.Is(e, auth.ErrNotFound) {
@@ -206,15 +300,48 @@ func TestWorkspaceAgentSiteGroupLossPrunes(t *testing.T) {
 	w = joinWorkspace(t, root, w, owner.ID)
 	g, e := manager(root).CreateGroup(t.Context(), root.token, "Editors", "")
 	must(t, e)
-	must(t, manager(root).SetGroupMembership(t.Context(), root.token, g.ID, owner.ID, g.Version, owner.PermissionsVersion, true))
+	must(
+		t,
+		manager(root).SetGroupMembership(
+			t.Context(),
+			root.token,
+			g.ID,
+			owner.ID,
+			g.Version,
+			owner.PermissionsVersion,
+			true,
+		),
+	)
 	w = workspaceGrants(t, root, w, g.ID, true, []string{ws.Edit})
 	a := agentAccount(t, f, "reviewer", nil)
 	settings, e := manager(f).AgentWorkspaces(t.Context(), f.token, a.ID)
 	must(t, e)
-	must(t, manager(f).SetAgentWorkspacePolicy(t.Context(), f.token, a.ID, w.ID, settings.Version, false, []string{ws.Edit}))
+	must(
+		t,
+		manager(f).SetAgentWorkspacePolicy(
+			t.Context(),
+			f.token,
+			a.ID,
+			w.ID,
+			settings.Version,
+			false,
+			[]string{ws.Edit},
+		),
+	)
 	owner, e = f.service.Current(t.Context(), f.token)
 	must(t, e)
-	must(t, manager(root).SetGroupMembership(t.Context(), root.token, g.ID, owner.ID, g.Version, owner.PermissionsVersion, false))
+	must(
+		t,
+		manager(root).SetGroupMembership(
+			t.Context(),
+			root.token,
+			g.ID,
+			owner.ID,
+			g.Version,
+			owner.PermissionsVersion,
+			false,
+		),
+	)
 	settings, e = manager(f).AgentWorkspaces(t.Context(), f.token, a.ID)
 	must(t, e)
 	if len(settings.Workspaces[0].Grants) != 0 {
@@ -250,7 +377,11 @@ func TestWorkspaceConcurrentEditsAndHTTP(t *testing.T) {
 	cfg, e := config.Parse("http://localhost:8081", "")
 	must(t, e)
 	h := httpapi.New(f.service, f.security, accounts.NewProfileService(f.store), manager(f), cfg)
-	for _, path := range []string{"/api/workspaces", "/api/workspace-slugs/owner", "/api/workspaces/" + w.ID + "/members"} {
+	for _, path := range []string{
+		"/api/workspaces",
+		"/api/workspace-slugs/owner",
+		"/api/workspaces/" + w.ID + "/members",
+	} {
 		r := httptest.NewRequest("GET", "http://localhost:8081"+path, nil)
 		r.AddCookie(&http.Cookie{Name: "acta_session", Value: f.token})
 		out := httptest.NewRecorder()

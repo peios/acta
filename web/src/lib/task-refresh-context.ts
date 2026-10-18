@@ -4,9 +4,9 @@ type TaskRefresh = { readonly error: string; readonly recovery: number };
 const key = Symbol("task-refresh");
 
 export function provideTaskRefresh(value: TaskRefresh) {
-  setContext(key, value);
+    setContext(key, value);
 }
 
 export function useTaskRefresh(): TaskRefresh {
-  return getContext<TaskRefresh>(key) ?? { error: "", recovery: 0 };
+    return getContext<TaskRefresh>(key) ?? { error: "", recovery: 0 };
 }

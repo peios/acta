@@ -1,21 +1,36 @@
 package auth
 
 import (
+	"context"
+	"errors"
+
 	"acta/internal/accounts"
 	"acta/internal/tasks"
 	ws "acta/internal/workspaces"
-	"context"
-	"errors"
 )
 
 func (m *Management) TaskReleases(ctx context.Context, token, w string) ([]tasks.Release, error) {
 	var out []tasks.Release
-	e := m.taskScope(ctx, token, w, false, "", func(tx WorkspaceTx, w string) error { var e error; out, e = tx.TaskReleases(ctx, w); return e })
+	e := m.taskScope(
+		ctx,
+		token,
+		w,
+		false,
+		"",
+		func(tx WorkspaceTx, w string) error { var e error; out, e = tx.TaskReleases(ctx, w); return e },
+	)
 	return out, e
 }
 func (m *Management) TaskRelease(ctx context.Context, token, w, id string) (tasks.Release, error) {
 	var out tasks.Release
-	e := m.taskScope(ctx, token, w, false, "", func(tx WorkspaceTx, w string) error { var e error; out, e = tx.TaskRelease(ctx, w, id); return e })
+	e := m.taskScope(
+		ctx,
+		token,
+		w,
+		false,
+		"",
+		func(tx WorkspaceTx, w string) error { var e error; out, e = tx.TaskRelease(ctx, w, id); return e },
+	)
 	return out, e
 }
 func (m *Management) CreateTaskRelease(ctx context.Context, token, w string, in tasks.ReleaseCreate) (tasks.Release, error) {
@@ -70,7 +85,10 @@ func taskReleaseID(ctx context.Context, tx WorkspaceTx, w, id string) (string, e
 	}
 	r, e := tx.TaskRelease(ctx, w, id)
 	if errors.Is(e, ErrNotFound) {
-		return "", &accounts.FieldError{Field: "release_id", Message: "Choose a release in this workspace."}
+		return "", &accounts.FieldError{
+			Field:   "release_id",
+			Message: "Choose a release in this workspace.",
+		}
 	}
 	return r.ID, e
 }

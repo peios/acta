@@ -1,18 +1,31 @@
 package integration
 
 import (
-	"acta/internal/tasks"
 	"cmp"
 	"slices"
 	"strings"
 	"testing"
+
+	"acta/internal/tasks"
 )
 
 func TestTaskDisplayPersistence(t *testing.T) {
 	root := securityDatabase(t)
 	_, f, w := workspaceOwner(t, root, "display")
 	ctx, m := t.Context(), manager(f)
-	v, e := m.CreateTaskView(ctx, f.token, w.ID, "Grouped", tasks.ViewSettings{Display: tasks.ViewDisplay{Columns: []string{}, Sort: "title", Direction: "asc", Group: "status", Density: "compact"}})
+	v, e := m.CreateTaskView(
+		ctx,
+		f.token,
+		w.ID,
+		"Grouped",
+		tasks.ViewSettings{Display: tasks.ViewDisplay{
+			Columns:   []string{},
+			Sort:      "title",
+			Direction: "asc",
+			Group:     "status",
+			Density:   "compact",
+		}},
+	)
 	must(t, e)
 	if len(v.Display.Columns) != 0 || v.Display.Group != "status" || v.Display.Sort != "title" {
 		t.Fatal(v)
@@ -26,7 +39,10 @@ func TestTaskDisplayPersistence(t *testing.T) {
 	changed.Display.Columns = []string{"assignees", "status"}
 	saved, e := m.SaveTaskView(ctx, f.token, w.ID, v.ID, v.Version, changed)
 	must(t, e)
-	if saved.Version != v.Version+1 || !slices.Equal(saved.Display.Columns, []string{"status", "assignees"}) {
+	if saved.Version != v.Version+1 || !slices.Equal(
+		saved.Display.Columns,
+		[]string{"status", "assignees"},
+	) {
 		t.Fatal(saved)
 	}
 	retry, e := m.SaveTaskView(ctx, f.token, w.ID, v.ID, v.Version, changed)
@@ -34,8 +50,21 @@ func TestTaskDisplayPersistence(t *testing.T) {
 	if retry.Version != saved.Version {
 		t.Fatal("non-idempotent display save")
 	}
-	for _, bad := range []tasks.ViewDisplay{{Sort: "injected"}, {Direction: "sideways"}, {Group: "assignees"}, {Density: "tiny"}, {Columns: []string{"secret"}}} {
-		if _, e = m.SaveTaskView(ctx, f.token, w.ID, v.ID, saved.Version, tasks.ViewSettings{Display: bad}); e == nil {
+	for _, bad := range []tasks.ViewDisplay{
+		{Sort: "injected"},
+		{Direction: "sideways"},
+		{Group: "assignees"},
+		{Density: "tiny"},
+		{Columns: []string{"secret"}},
+	} {
+		if _, e = m.SaveTaskView(
+			ctx,
+			f.token,
+			w.ID,
+			v.ID,
+			saved.Version,
+			tasks.ViewSettings{Display: bad},
+		); e == nil {
 			t.Fatal("invalid display accepted", bad)
 		}
 	}
@@ -53,14 +82,34 @@ func TestTasksSortedPagination(t *testing.T) {
 	}
 	all := []tasks.Task{}
 	for i := 0; i < 57; i++ {
-		v, e := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: []string{"Zulu", "alpha", "Beta"}[i%3], StatusID: config.Statuses[i%len(config.Statuses)].ID, Priority: tasks.PropertyOptions("priority")[i%5].Value, Type: tasks.PropertyOptions("type")[i%4].Value, Size: tasks.PropertyOptions("size")[i%6].Value})
+		v, e := m.CreateTask(
+			ctx,
+			f.token,
+			w.ID,
+			tasks.Create{
+				Title:    []string{"Zulu", "alpha", "Beta"}[i%3],
+				StatusID: config.Statuses[i%len(config.Statuses)].ID,
+				Priority: tasks.PropertyOptions("priority")[i%5].Value,
+				Type:     tasks.PropertyOptions("type")[i%4].Value,
+				Size:     tasks.PropertyOptions("size")[i%6].Value,
+			},
+		)
 		must(t, e)
 		all = append(all, v)
 	}
 	// A child sorts before the roots by title but must never leak into root results.
 	_, e = m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "AAAA child", ParentID: all[0].ID})
 	must(t, e)
-	for _, sort := range []string{"number", "title", "status", "created", "updated", "priority", "type", "size"} {
+	for _, sort := range []string{
+		"number",
+		"title",
+		"status",
+		"created",
+		"updated",
+		"priority",
+		"type",
+		"size",
+	} {
 		for _, direction := range []string{"asc", "desc"} {
 			t.Run(sort+"/"+direction, func(t *testing.T) {
 				expected := slices.Clone(all)
@@ -141,7 +190,16 @@ func TestTasksSortedPagination(t *testing.T) {
 			t.Fatalf("count for %+v: got %d want %d", filter, page.Total, expected)
 		}
 	}
-	for _, filter := range []tasks.Filter{{Sort: "invalid"}, {Direction: "invalid"}, {Cursor: "nonsense"}, {Sort: "title", Before: 1}, {Sort: "title", Cursor: tasks.Cursor{Sort: "number", Direction: "desc", Number: 1, Value: "1"}.Encode()}} {
+	for _, filter := range []tasks.Filter{
+		{Sort: "invalid"},
+		{Direction: "invalid"},
+		{Cursor: "nonsense"},
+		{Sort: "title", Before: 1},
+		{
+			Sort:   "title",
+			Cursor: tasks.Cursor{Sort: "number", Direction: "desc", Number: 1, Value: "1"}.Encode(),
+		},
+	} {
 		if _, e = m.Tasks(ctx, f.token, w.ID, filter); e == nil {
 			t.Fatal("invalid ordering accepted", filter)
 		}

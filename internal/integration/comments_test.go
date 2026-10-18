@@ -1,21 +1,28 @@
 package integration
 
 import (
+	"errors"
+	"fmt"
+	"sync"
+	"testing"
+
+	"github.com/google/uuid"
+
 	"acta/internal/activity"
 	"acta/internal/auth"
 	"acta/internal/comments"
 	"acta/internal/tasks"
 	ws "acta/internal/workspaces"
-	"errors"
-	"fmt"
-	"github.com/google/uuid"
-	"sync"
-	"testing"
 )
 
 func postComment(t *testing.T, f securityFixture, task, body, reply string) activity.Entry {
 	t.Helper()
-	v, e := manager(f).CreateComment(t.Context(), f.token, task, comments.Create{Body: body, ReplyTo: reply, RequestID: uuid.NewString()})
+	v, e := manager(f).CreateComment(
+		t.Context(),
+		f.token,
+		task,
+		comments.Create{Body: body, ReplyTo: reply, RequestID: uuid.NewString()},
+	)
 	must(t, e)
 	return v
 }
@@ -39,7 +46,15 @@ func TestCommentsThreadsEditsAndSparseReads(t *testing.T) {
 	if len(p.Entries) != 2 || p.Entries[0].ID != c.ID || p.Entries[0].ReplyCount != 2 || !p.Entries[0].ThreadUnread {
 		t.Fatal(p)
 	}
-	must(t, manager(root).ReadTaskActivity(ctx, root.token, task.ID, []activity.Seen{{ID: c.ID, Through: c.Last}}))
+	must(
+		t,
+		manager(root).ReadTaskActivity(
+			ctx,
+			root.token,
+			task.ID,
+			[]activity.Seen{{ID: c.ID, Through: c.Last}},
+		),
+	)
 	if !history(t, root, task.ID).Unread {
 		t.Fatal("parent ack cleared collapsed replies")
 	}
@@ -48,12 +63,26 @@ func TestCommentsThreadsEditsAndSparseReads(t *testing.T) {
 	if len(replies.Entries) != 2 || replies.Entries[0].ID != nested.ID || !replies.Entries[0].Unread || replies.Entries[1].Unread {
 		t.Fatal(replies)
 	}
-	must(t, manager(root).ReadTaskActivity(ctx, root.token, task.ID, []activity.Seen{{ID: nested.ID, Through: nested.Last}}))
+	must(
+		t,
+		manager(root).ReadTaskActivity(
+			ctx,
+			root.token,
+			task.ID,
+			[]activity.Seen{{ID: nested.ID, Through: nested.Last}},
+		),
+	)
 	if history(t, root, task.ID).Entries[0].ThreadUnread {
 		t.Fatal("reply read not applied")
 	}
 	// A moderator editing the author's own comment becomes unread for that author.
-	edited, e := manager(root).UpdateComment(ctx, root.token, task.ID, c.ID, comments.Update{Body: "Moderated", Version: 1})
+	edited, e := manager(root).UpdateComment(
+		ctx,
+		root.token,
+		task.ID,
+		c.ID,
+		comments.Update{Body: "Moderated", Version: 1},
+	)
 	must(t, e)
 	if edited.First != c.First || !edited.Comment.Edited || edited.Comment.Version != 2 || edited.Actor.ID != c.Actor.ID {
 		t.Fatal(edited)
@@ -68,17 +97,35 @@ func TestCommentsThreadsEditsAndSparseReads(t *testing.T) {
 	if !errors.As(e, &conflict) || conflict.Version != 2 {
 		t.Fatal(e)
 	}
-	deleted, e := m.UpdateComment(ctx, f.token, task.ID, c.ID, comments.Update{Delete: true, Version: 2})
+	deleted, e := m.UpdateComment(
+		ctx,
+		f.token,
+		task.ID,
+		c.ID,
+		comments.Update{Delete: true, Version: 2},
+	)
 	must(t, e)
 	if !deleted.Comment.Deleted || deleted.Comment.Body != "" || deleted.ReplyCount != 2 || deleted.Comment.CanEdit {
 		t.Fatal(deleted)
 	}
-	if _, e = m.UpdateComment(ctx, f.token, task.ID, c.ID, comments.Update{Body: "resurrect", Version: 3}); e == nil {
+	if _, e = m.UpdateComment(
+		ctx,
+		f.token,
+		task.ID,
+		c.ID,
+		comments.Update{Body: "resurrect", Version: 3},
+	); e == nil {
 		t.Fatal("deleted comment resurrected")
 	}
 	postComment(t, f, task.ID, "Still reply to placeholder", c.ID)
 	var leaked bool
-	must(t, root.conn.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM activity_events WHERE change::text LIKE '%Moderated%' OR change::text LIKE '%Original%')`).Scan(&leaked))
+	must(
+		t,
+		root.conn.QueryRow(
+			ctx,
+			`SELECT EXISTS(SELECT 1 FROM activity_events WHERE change::text LIKE '%Moderated%' OR change::text LIKE '%Original%')`,
+		).Scan(&leaked),
+	)
 	if leaked {
 		t.Fatal("comment text retained in immutable event")
 	}
@@ -104,15 +151,31 @@ func TestCommentsIdempotencyPermissionsAndAtomicity(t *testing.T) {
 	}
 	other, e := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Other"})
 	must(t, e)
-	if _, e = m.CreateComment(ctx, f.token, other.ID, comments.Create{Body: "Wrong task", ReplyTo: first.ID, RequestID: uuid.NewString()}); !errors.Is(e, auth.ErrNotFound) {
+	if _, e = m.CreateComment(
+		ctx,
+		f.token,
+		other.ID,
+		comments.Create{Body: "Wrong task", ReplyTo: first.ID, RequestID: uuid.NewString()},
+	); !errors.Is(
+		e,
+		auth.ErrNotFound,
+	) {
 		t.Fatal(e)
 	}
 	_, outsiderF := permissionMember(t, root, "outsider-comment")
-	if _, e = manager(outsiderF).Comment(ctx, outsiderF.token, task.ID, first.ID); !errors.Is(e, auth.ErrNotFound) {
+	if _, e = manager(outsiderF).Comment(ctx, outsiderF.token, task.ID, first.ID); !errors.Is(
+		e,
+		auth.ErrNotFound,
+	) {
 		t.Fatal("outsider read", e)
 	}
 	w = workspaceGrants(t, root, w, owner.ID, false, []string{ws.EditTasks})
-	_, e = m.CreateComment(ctx, f.token, task.ID, comments.Create{Body: "No permission", RequestID: uuid.NewString()})
+	_, e = m.CreateComment(
+		ctx,
+		f.token,
+		task.ID,
+		comments.Create{Body: "No permission", RequestID: uuid.NewString()},
+	)
 	if !errors.Is(e, auth.ErrForbidden) {
 		t.Fatal(e)
 	}
@@ -132,16 +195,37 @@ func TestCommentsIdempotencyPermissionsAndAtomicity(t *testing.T) {
 		t.Fatal(e)
 	}
 	w = workspaceGrants(t, root, w, owner.ID, false, []string{ws.ManageComments})
-	_, e = m.UpdateComment(ctx, f.token, task.ID, theirs.ID, comments.Update{Body: "Allowed", Version: 1})
+	_, e = m.UpdateComment(
+		ctx,
+		f.token,
+		task.ID,
+		theirs.ID,
+		comments.Update{Body: "Allowed", Version: 1},
+	)
 	must(t, e)
-	_, e = m.UpdateComment(ctx, f.token, task.ID, first.ID, comments.Update{Body: "Own still needs commenting", Version: 1})
+	_, e = m.UpdateComment(
+		ctx,
+		f.token,
+		task.ID,
+		first.ID,
+		comments.Update{Body: "Own still needs commenting", Version: 1},
+	)
 	if !errors.Is(e, auth.ErrForbidden) {
 		t.Fatal(e)
 	}
 	// Rejecting event persistence also rolls back a content update.
-	_, e = root.conn.Exec(ctx, `CREATE FUNCTION fail_comment_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END; $$; CREATE TRIGGER fail_comment_event BEFORE INSERT ON activity_events FOR EACH ROW EXECUTE FUNCTION fail_comment_event()`)
+	_, e = root.conn.Exec(
+		ctx,
+		`CREATE FUNCTION fail_comment_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected'; END; $$; CREATE TRIGGER fail_comment_event BEFORE INSERT ON activity_events FOR EACH ROW EXECUTE FUNCTION fail_comment_event()`,
+	)
 	must(t, e)
-	_, e = manager(root).UpdateComment(ctx, root.token, task.ID, first.ID, comments.Update{Body: "Must rollback", Version: 1})
+	_, e = manager(root).UpdateComment(
+		ctx,
+		root.token,
+		task.ID,
+		first.ID,
+		comments.Update{Body: "Must rollback", Version: 1},
+	)
 	if e == nil {
 		t.Fatal("injection ignored")
 	}
@@ -163,7 +247,13 @@ func TestCommentRepliesPaginationAndGroupingBarrier(t *testing.T) {
 	task, e = patchTask(t, f, task, "title", "First")
 	must(t, e)
 	prior := history(t, f, task.ID).Entries[0]
-	_, e = m.UpdateComment(ctx, f.token, task.ID, root.ID, comments.Update{Body: "Updated older comment", Version: 1})
+	_, e = m.UpdateComment(
+		ctx,
+		f.token,
+		task.ID,
+		root.ID,
+		comments.Update{Body: "Updated older comment", Version: 1},
+	)
 	must(t, e)
 	task, e = patchTask(t, f, task, "title", "Second")
 	must(t, e)
@@ -212,7 +302,13 @@ func TestConcurrentCommentRetriesAndVersions(t *testing.T) {
 	}
 	for i := range 2 {
 		wg.Go(func() {
-			_, errs[i] = m.UpdateComment(ctx, f.token, task.ID, results[0].ID, comments.Update{Body: fmt.Sprintf("Edit %d", i), Version: 1})
+			_, errs[i] = m.UpdateComment(
+				ctx,
+				f.token,
+				task.ID,
+				results[0].ID,
+				comments.Update{Body: fmt.Sprintf("Edit %d", i), Version: 1},
+			)
 		})
 	}
 	wg.Wait()
@@ -261,7 +357,12 @@ func TestLatestReplyFindsAnOlderThread(t *testing.T) {
 	}
 	agent := agentAccount(t, f, "commenter", nil)
 	token := agentCLI(t, f, agent.ID)
-	agentComment, e := m.CreateComment(ctx, token, task.ID, comments.Create{Body: "Agent is a distinct author", ReplyTo: root.ID, RequestID: uuid.NewString()})
+	agentComment, e := m.CreateComment(
+		ctx,
+		token,
+		task.ID,
+		comments.Create{Body: "Agent is a distinct author", ReplyTo: root.ID, RequestID: uuid.NewString()},
+	)
 	must(t, e)
 	read, e := m.Comment(ctx, f.token, task.ID, agentComment.ID)
 	must(t, e)

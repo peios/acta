@@ -14,12 +14,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"acta/internal/accounts"
 	"acta/internal/auth"
 	"acta/internal/config"
 	"acta/internal/httpapi"
 	"acta/learn"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const mcpResource = "http://localhost:8081/mcp"
@@ -36,11 +37,23 @@ func oauthRequest(t *testing.T, resource string) oauthFixture {
 }
 func oauthFromAccount(t *testing.T, f securityFixture, resource string) oauthFixture {
 	t.Helper()
-	client, e := f.security.RegisterOAuthClient(t.Context(), auth.OAuthClient{Name: "Test client", Redirects: []string{"http://127.0.0.1:1234/callback"}, GrantTypes: []string{"authorization_code", "refresh_token"}}, "test")
+	client, e := f.security.RegisterOAuthClient(t.Context(), auth.OAuthClient{Name: "Test client", Redirects: []string{"http://127.0.0.1:1234/callback"}, GrantTypes: []string{
+		"authorization_code",
+		"refresh_token",
+	}}, "test")
 	must(t, e)
 	verifier, e := auth.Token()
 	must(t, e)
-	in := url.Values{"client_id": {client.ID}, "redirect_uri": {client.Redirects[0]}, "response_type": {"code"}, "resource": {resource}, "scope": {auth.OAuthScope}, "state": {"test-state"}, "code_challenge_method": {"S256"}, "code_challenge": {base64.RawURLEncoding.EncodeToString(auth.Digest(verifier))}}
+	in := url.Values{
+		"client_id":             {client.ID},
+		"redirect_uri":          {client.Redirects[0]},
+		"response_type":         {"code"},
+		"resource":              {resource},
+		"scope":                 {auth.OAuthScope},
+		"state":                 {"test-state"},
+		"code_challenge_method": {"S256"},
+		"code_challenge":        {base64.RawURLEncoding.EncodeToString(auth.Digest(verifier))},
+	}
 	request, e := f.security.BeginOAuth(t.Context(), in, f.binding, "test", resource)
 	must(t, e)
 	return oauthFixture{f, client, request, verifier, "", resource}
@@ -57,7 +70,14 @@ func (f *oauthFixture) approve(t *testing.T) {
 	f.code = u.Query().Get("code")
 }
 func (f oauthFixture) exchangeValues() url.Values {
-	return url.Values{"grant_type": {"authorization_code"}, "client_id": {f.client.ID}, "code": {f.code}, "code_verifier": {f.verifier}, "redirect_uri": {f.client.Redirects[0]}, "resource": {f.resource}}
+	return url.Values{
+		"grant_type":    {"authorization_code"},
+		"client_id":     {f.client.ID},
+		"code":          {f.code},
+		"code_verifier": {f.verifier},
+		"redirect_uri":  {f.client.Redirects[0]},
+		"resource":      {f.resource},
+	}
 }
 func (f oauthFixture) exchange(t *testing.T) auth.OAuthTokens {
 	t.Helper()
@@ -66,7 +86,17 @@ func (f oauthFixture) exchange(t *testing.T) auth.OAuthTokens {
 	return out
 }
 func (f oauthFixture) refresh(raw string) (auth.OAuthTokens, error) {
-	return f.security.ExchangeOAuth(context.Background(), url.Values{"grant_type": {"refresh_token"}, "client_id": {f.client.ID}, "refresh_token": {raw}, "resource": {f.resource}}, f.resource, "test")
+	return f.security.ExchangeOAuth(
+		context.Background(),
+		url.Values{
+			"grant_type":    {"refresh_token"},
+			"client_id":     {f.client.ID},
+			"refresh_token": {raw},
+			"resource":      {f.resource},
+		},
+		f.resource,
+		"test",
+	)
 }
 func invalidOAuth(t *testing.T, e error) {
 	t.Helper()
@@ -120,14 +150,20 @@ func TestOAuthRefreshRotationAndRevocation(t *testing.T) {
 	old, e := f.store.ReadOAuthToken(ctx, auth.Digest(tokens.RefreshToken))
 	must(t, e)
 	var before time.Time
-	must(t, f.conn.QueryRow(ctx, `SELECT last_seen_at FROM browser_sessions WHERE id=$1`, old.SessionID).Scan(&before))
+	must(
+		t,
+		f.conn.QueryRow(ctx, `SELECT last_seen_at FROM browser_sessions WHERE id=$1`, old.SessionID).Scan(&before),
+	)
 	next, e := f.refresh(tokens.RefreshToken)
 	must(t, e)
 	if next.AccessToken == tokens.AccessToken || next.RefreshToken == tokens.RefreshToken {
 		t.Fatal("tokens not rotated")
 	}
 	var after time.Time
-	must(t, f.conn.QueryRow(ctx, `SELECT last_seen_at FROM browser_sessions WHERE id=$1`, old.SessionID).Scan(&after))
+	must(
+		t,
+		f.conn.QueryRow(ctx, `SELECT last_seen_at FROM browser_sessions WHERE id=$1`, old.SessionID).Scan(&after),
+	)
 	if !before.Equal(after) {
 		t.Fatal("refresh extended session activity")
 	}
@@ -144,7 +180,15 @@ func TestOAuthRefreshRotationAndRevocation(t *testing.T) {
 	}
 }
 func TestOAuthExpiryAndSessionRevocation(t *testing.T) {
-	for _, scenario := range []string{"access-expired", "idle", "absolute", "sign-out", "password-change", "mfa-required", "disabled"} {
+	for _, scenario := range []string{
+		"access-expired",
+		"idle",
+		"absolute",
+		"sign-out",
+		"password-change",
+		"mfa-required",
+		"disabled",
+	} {
 		t.Run(scenario, func(t *testing.T) {
 			f := oauthRequest(t, mcpResource)
 			f.approve(t)
@@ -156,20 +200,47 @@ func TestOAuthExpiryAndSessionRevocation(t *testing.T) {
 			case "disabled":
 				_, e = f.conn.Exec(ctx, `UPDATE accounts SET disabled_at=now() WHERE id=$1`, record.AccountID)
 			case "access-expired":
-				_, e = f.conn.Exec(ctx, `UPDATE oauth_tokens SET expires_at=now()-interval '1 second' WHERE token_hash=$1`, auth.Digest(tokens.AccessToken))
+				_, e = f.conn.Exec(
+					ctx,
+					`UPDATE oauth_tokens SET expires_at=now()-interval '1 second' WHERE token_hash=$1`,
+					auth.Digest(tokens.AccessToken),
+				)
 			case "idle":
-				_, e = f.conn.Exec(ctx, `UPDATE browser_sessions SET created_at=now()-interval '10 days',last_seen_at=now()-interval '8 days' WHERE id=$1`, record.SessionID)
+				_, e = f.conn.Exec(
+					ctx,
+					`UPDATE browser_sessions SET created_at=now()-interval '10 days',last_seen_at=now()-interval '8 days' WHERE id=$1`,
+					record.SessionID,
+				)
 			case "absolute":
-				_, e = f.conn.Exec(ctx, `UPDATE browser_sessions SET created_at=now()-interval '31 days',expires_at=now()-interval '1 second' WHERE id=$1`, record.SessionID)
+				_, e = f.conn.Exec(
+					ctx,
+					`UPDATE browser_sessions SET created_at=now()-interval '31 days',expires_at=now()-interval '1 second' WHERE id=$1`,
+					record.SessionID,
+				)
 			case "sign-out":
 				e = f.security.Revoke(ctx, f.token, record.SessionID)
 			case "password-change":
 				flow := f.begin(t, "password")
-				f.step(t, flow, auth.FlowInput{Action: "password", Password: testPassword, NewPassword: "another long meadow password"})
+				f.step(
+					t,
+					flow,
+					auth.FlowInput{
+						Action:      "password",
+						Password:    testPassword,
+						NewPassword: "another long meadow password",
+					},
+				)
 			case "mfa-required":
 				a, err := f.service.Current(ctx, f.token)
 				must(t, err)
-				_, e = manager(f.securityFixture).UpdatePermissions(ctx, f.token, a.ID, a.PermissionsVersion, a.DirectPermissions, true)
+				_, e = manager(f.securityFixture).UpdatePermissions(
+					ctx,
+					f.token,
+					a.ID,
+					a.PermissionsVersion,
+					a.DirectPermissions,
+					true,
+				)
 			}
 			must(t, e)
 			if _, _, e = f.security.MCPAccount(ctx, tokens.AccessToken, mcpResource); e == nil {
@@ -224,21 +295,38 @@ func (b bearerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 func TestMCPHTTPDiscoveryAndTools(t *testing.T) {
 	account := securityDatabase(t)
 	var handler http.Handler
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { handler.ServeHTTP(w, r) }))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler.ServeHTTP(
+			w,
+			r,
+		)
+	}))
 	defer server.Close()
 	f := oauthFromAccount(t, account, server.URL+"/mcp")
 	f.approve(t)
 	tokens := f.exchange(t)
 	cfg, e := config.Parse(server.URL, "")
 	must(t, e)
-	handler = httpapi.New(f.service, f.security, accounts.NewProfileService(f.store), manager(f.securityFixture), cfg)
+	handler = httpapi.New(
+		f.service,
+		f.security,
+		accounts.NewProfileService(f.store),
+		manager(f.securityFixture),
+		cfg,
+	)
 	response, e := http.Get(server.URL + "/mcp")
 	must(t, e)
 	response.Body.Close()
-	if response.StatusCode != 401 || !strings.Contains(response.Header.Get("WWW-Authenticate"), "resource_metadata=") {
+	if response.StatusCode != 401 || !strings.Contains(
+		response.Header.Get("WWW-Authenticate"),
+		"resource_metadata=",
+	) {
 		t.Fatal("missing discovery challenge")
 	}
-	for _, path := range []string{"/.well-known/oauth-protected-resource/mcp", "/.well-known/oauth-authorization-server"} {
+	for _, path := range []string{
+		"/.well-known/oauth-protected-resource/mcp",
+		"/.well-known/oauth-authorization-server",
+	} {
 		response, e = http.Get(server.URL + path)
 		must(t, e)
 		response.Body.Close()
@@ -247,7 +335,14 @@ func TestMCPHTTPDiscoveryAndTools(t *testing.T) {
 		}
 	}
 	client := mcp.NewClient(&mcp.Implementation{Name: "Acta integration test", Version: "1"}, nil)
-	session, e := client.Connect(t.Context(), &mcp.StreamableClientTransport{Endpoint: server.URL + "/mcp", HTTPClient: &http.Client{Transport: bearerTransport{tokens.AccessToken}}}, nil)
+	session, e := client.Connect(
+		t.Context(),
+		&mcp.StreamableClientTransport{
+			Endpoint:   server.URL + "/mcp",
+			HTTPClient: &http.Client{Transport: bearerTransport{tokens.AccessToken}},
+		},
+		nil,
+	)
 	must(t, e)
 	defer session.Close()
 	list, e := session.ListTools(t.Context(), nil)
@@ -255,7 +350,10 @@ func TestMCPHTTPDiscoveryAndTools(t *testing.T) {
 	if len(list.Tools) != 2 || list.Tools[0].Name != "acta_guide" || list.Tools[1].Name != "whoami" {
 		t.Fatalf("unexpected tools: %+v", list.Tools)
 	}
-	result, e := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "whoami", Arguments: map[string]any{}})
+	result, e := session.CallTool(
+		t.Context(),
+		&mcp.CallToolParams{Name: "whoami", Arguments: map[string]any{}},
+	)
 	must(t, e)
 	encoded, e := json.Marshal(result.StructuredContent)
 	must(t, e)
@@ -264,12 +362,21 @@ func TestMCPHTTPDiscoveryAndTools(t *testing.T) {
 	if result.IsError || identity["username"] != "jack" || len(identity) != 3 {
 		t.Fatal("unexpected identity", string(encoded))
 	}
-	if instructions := session.InitializeResult().Instructions; !strings.Contains(instructions, "acta_guide") || !strings.Contains(instructions, "does not grant access") {
+	if instructions := session.InitializeResult().Instructions; !strings.Contains(
+		instructions,
+		"acta_guide",
+	) || !strings.Contains(
+		instructions,
+		"does not grant access",
+	) {
 		t.Fatal("missing agent orientation", instructions)
 	}
 	assertGuide := func() {
 		t.Helper()
-		guide, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "acta_guide", Arguments: map[string]any{}})
+		guide, err := session.CallTool(
+			t.Context(),
+			&mcp.CallToolParams{Name: "acta_guide", Arguments: map[string]any{}},
+		)
 		must(t, err)
 		if guide.IsError || len(guide.Content) != 1 {
 			t.Fatal("invalid guide result", guide)
@@ -283,7 +390,11 @@ func TestMCPHTTPDiscoveryAndTools(t *testing.T) {
 	// An unchanged protocol session must use the latest persisted grants.
 	record, e := f.store.ReadOAuthToken(t.Context(), auth.Digest(tokens.AccessToken))
 	must(t, e)
-	_, e = f.conn.Exec(t.Context(), `UPDATE browser_sessions SET tool_grants='{}' WHERE id=$1`, record.SessionID)
+	_, e = f.conn.Exec(
+		t.Context(),
+		`UPDATE browser_sessions SET tool_grants='{}' WHERE id=$1`,
+		record.SessionID,
+	)
 	must(t, e)
 	list, e = session.ListTools(t.Context(), nil)
 	must(t, e)
@@ -292,7 +403,11 @@ func TestMCPHTTPDiscoveryAndTools(t *testing.T) {
 	}
 	assertGuide() // A guide-only connection still returns the guide without requiring identity grants.
 	for _, name := range []string{"whoami", "create_user"} {
-		req, err := http.NewRequest("POST", server.URL+"/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":123,"method":"tools/call","params":{"name":"`+name+`","arguments":{}}}`))
+		req, err := http.NewRequest(
+			"POST",
+			server.URL+"/mcp",
+			strings.NewReader(`{"jsonrpc":"2.0","id":123,"method":"tools/call","params":{"name":"`+name+`","arguments":{}}}`),
+		)
 		must(t, err)
 		req.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
 		req.Header.Set("Content-Type", "application/json")
@@ -312,7 +427,10 @@ func TestMCPHTTPDiscoveryAndTools(t *testing.T) {
 		resp.Body.Close()
 	}
 	must(t, f.security.Revoke(t.Context(), f.token, record.SessionID))
-	if result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "acta_guide", Arguments: map[string]any{}}); err == nil && !result.IsError {
+	if result, err := session.CallTool(
+		t.Context(),
+		&mcp.CallToolParams{Name: "acta_guide", Arguments: map[string]any{}},
+	); err == nil && !result.IsError {
 		t.Fatal("revoked connection could still read guide")
 	}
 
@@ -338,7 +456,13 @@ func TestOAuthHTTPApprovalCSRFAndForms(t *testing.T) {
 	f := oauthRequest(t, mcpResource)
 	cfg, e := config.Parse("http://localhost:8081", "")
 	must(t, e)
-	h := httpapi.New(f.service, f.security, accounts.NewProfileService(f.store), manager(f.securityFixture), cfg)
+	h := httpapi.New(
+		f.service,
+		f.security,
+		accounts.NewProfileService(f.store),
+		manager(f.securityFixture),
+		cfg,
+	)
 	for _, origin := range []string{"", "http://evil.invalid"} {
 		req := httptest.NewRequest("POST", "http://localhost:8081/api/oauth/approve", strings.NewReader(`{"request":"`+f.request+`","approve":true}`))
 		req.Header.Set("Origin", origin)
@@ -368,7 +492,10 @@ func TestOAuthHTTPApprovalCSRFAndForms(t *testing.T) {
 	}
 	var tokens auth.OAuthTokens
 	must(t, json.NewDecoder(w.Body).Decode(&tokens))
-	req = httptest.NewRequest("POST", "http://localhost:8081/oauth/revoke", strings.NewReader(url.Values{"token": {tokens.RefreshToken}, "client_id": {f.client.ID}}.Encode()))
+	req = httptest.NewRequest("POST", "http://localhost:8081/oauth/revoke", strings.NewReader(url.Values{
+		"token":     {tokens.RefreshToken},
+		"client_id": {f.client.ID},
+	}.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, req)
@@ -381,14 +508,26 @@ func TestOAuthHTTPApprovalCSRFAndForms(t *testing.T) {
 }
 
 func TestOAuthAuthorizationCannotOutliveAuthority(t *testing.T) {
-	for _, scenario := range []string{"request-expired", "code-expired", "revoked-before-exchange", "mfa-before-approval"} {
+	for _, scenario := range []string{
+		"request-expired",
+		"code-expired",
+		"revoked-before-exchange",
+		"mfa-before-approval",
+	} {
 		t.Run(scenario, func(t *testing.T) {
 			f := oauthRequest(t, mcpResource)
 			ctx := t.Context()
 			if scenario == "mfa-before-approval" {
 				a, e := f.service.Current(ctx, f.token)
 				must(t, e)
-				_, e = manager(f.securityFixture).UpdatePermissions(ctx, f.token, a.ID, a.PermissionsVersion, a.DirectPermissions, true)
+				_, e = manager(f.securityFixture).UpdatePermissions(
+					ctx,
+					f.token,
+					a.ID,
+					a.PermissionsVersion,
+					a.DirectPermissions,
+					true,
+				)
 				must(t, e)
 				_, e = f.security.ApproveOAuth(ctx, f.token, f.request, f.binding, true, "http://localhost:8081", "")
 				if !errors.Is(e, auth.ErrMFARequired) {
@@ -402,7 +541,12 @@ func TestOAuthAuthorizationCannotOutliveAuthority(t *testing.T) {
 			if scenario == "revoked-before-exchange" {
 				must(t, f.security.Revoke(ctx, f.token, ""))
 			} else {
-				_, e := f.conn.Exec(ctx, `UPDATE oauth_requests SET data=jsonb_set(data,'{ExpiresAt}',to_jsonb($2::text)),expires_at=$2::timestamptz WHERE request_hash=$1`, auth.Digest(f.request), time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano))
+				_, e := f.conn.Exec(
+					ctx,
+					`UPDATE oauth_requests SET data=jsonb_set(data,'{ExpiresAt}',to_jsonb($2::text)),expires_at=$2::timestamptz WHERE request_hash=$1`,
+					auth.Digest(f.request),
+					time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano),
+				)
 				must(t, e)
 			}
 			if scenario == "request-expired" {

@@ -1,13 +1,14 @@
 package integration
 
 import (
-	"acta/internal/auth"
-	"acta/internal/config"
-	"acta/internal/httpapi"
 	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"acta/internal/auth"
+	"acta/internal/config"
+	"acta/internal/httpapi"
 )
 
 func TestTrustedProxySeparatesClientRateLimits(t *testing.T) {

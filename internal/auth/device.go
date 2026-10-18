@@ -7,8 +7,9 @@ import (
 	"time"
 	"unicode"
 
-	"acta/internal/accounts"
 	"github.com/google/uuid"
+
+	"acta/internal/accounts"
 )
 
 var ErrDevice = errors.New("This device code is invalid, expired or already used. Start login again in the CLI.")
@@ -50,7 +51,10 @@ func (s *Security) StartDevice(ctx context.Context, address, machine string) (De
 	}
 	machine = strings.TrimSpace(machine)
 	if len(machine) > 100 || strings.IndexFunc(machine, unicode.IsControl) >= 0 {
-		return out, &accounts.FieldError{Field: "machine", Message: "Use a machine name of at most 100 characters."}
+		return out, &accounts.FieldError{
+			Field:   "machine",
+			Message: "Use a machine name of at most 100 characters.",
+		}
 	}
 	secret, err := Token()
 	if err != nil {
@@ -64,7 +68,16 @@ func (s *Security) StartDevice(ctx context.Context, address, machine string) (De
 	if machine != "" {
 		description += " · " + machine
 	}
-	err = s.store.CreateDevice(ctx, DeviceRequest{Digest: Digest(secret), CodeDigest: Digest(code), Description: description, State: "pending", ExpiresAt: s.now().Add(DeviceLifetime)})
+	err = s.store.CreateDevice(
+		ctx,
+		DeviceRequest{
+			Digest:      Digest(secret),
+			CodeDigest:  Digest(code),
+			Description: description,
+			State:       "pending",
+			ExpiresAt:   s.now().Add(DeviceLifetime),
+		},
+	)
 	if err != nil {
 		return out, err
 	}
@@ -122,7 +135,18 @@ func (s *Security) ApproveDevice(ctx context.Context, token, code, address strin
 			return err
 		}
 		now := s.now()
-		session := SecuritySession{ID: uuid.NewString(), Digest: Digest(secret), AccountID: identity.ID, AuthorizedBy: a.ID, Description: d.Description, Kind: "cli", CreatedAt: now, LastSeenAt: now, ExpiresAt: now.Add(SessionLifetime), Proof: parent.Proof}
+		session := SecuritySession{
+			ID:           uuid.NewString(),
+			Digest:       Digest(secret),
+			AccountID:    identity.ID,
+			AuthorizedBy: a.ID,
+			Description:  d.Description,
+			Kind:         "cli",
+			CreatedAt:    now,
+			LastSeenAt:   now,
+			ExpiresAt:    now.Add(SessionLifetime),
+			Proof:        parent.Proof,
+		}
 		if err = targetTx.PutSession(ctx, session); err != nil {
 			return err
 		}

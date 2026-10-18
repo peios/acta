@@ -15,8 +15,14 @@ func TestTaskEditsRequireExplicitValues(t *testing.T) {
 		{[]string{"--field", "assignees", "--version", "1"}, "Supply --assignee"},
 		{[]string{"--field", "title", "--version", "1", "--clear"}, "Only description"},
 		{[]string{"--field", "title", "--version", "0", "--value", "Hello"}, "Supply --version"},
-		{[]string{"--field", "description", "--version", "1", "--value", "", "--clear"}, "none of the others can be"},
-		{[]string{"--field", "assignees", "--version", "1", "--assignee", "someone", "--clear"}, "none of the others can be"},
+		{
+			[]string{"--field", "description", "--version", "1", "--value", "", "--clear"},
+			"none of the others can be",
+		},
+		{
+			[]string{"--field", "assignees", "--version", "1", "--assignee", "someone", "--clear"},
+			"none of the others can be",
+		},
 		// Valid explicit clears reach profile resolution; missing values never do.
 		{[]string{"--field", "description", "--version", "1", "--clear"}, "No server configured"},
 		{[]string{"--field", "description", "--version", "1", "--value", ""}, "No server configured"},

@@ -25,7 +25,16 @@ type Handler struct {
 }
 
 func New(service *auth.Service, security *auth.Security, profiles *accounts.ProfileService, management *auth.Management, c config.Config, pushKey ...string) http.Handler {
-	h := &Handler{management: management, auth: service, security: security, bindingCookie: "acta_flow_browser", profiles: profiles, config: c, sessionCookie: "acta_session", setupCookie: "acta_setup"}
+	h := &Handler{
+		management:    management,
+		auth:          service,
+		security:      security,
+		bindingCookie: "acta_flow_browser",
+		profiles:      profiles,
+		config:        c,
+		sessionCookie: "acta_session",
+		setupCookie:   "acta_setup",
+	}
 	if c.SecureCookies {
 		h.sessionCookie = "__Host-acta_session"
 		h.setupCookie = "__Host-acta_setup"
@@ -101,8 +110,23 @@ func New(service *auth.Service, security *auth.Security, profiles *accounts.Prof
 		writeError(w, 404, "not_found", "This endpoint does not exist.", nil)
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if c.RecoveryMode && (r.URL.Path == "/mcp" || strings.HasPrefix(r.URL.Path, "/oauth/") || strings.HasPrefix(r.URL.Path, "/.well-known/") || strings.HasPrefix(r.URL.Path, "/api/backups") || (r.Method != "GET" && r.Method != "HEAD" && strings.HasPrefix(r.URL.Path, "/api/push"))) {
-			writeError(w, 503, "recovery_mode", "External integrations are disabled in this recovery verification instance.", nil)
+		if c.RecoveryMode && (r.URL.Path == "/mcp" || strings.HasPrefix(r.URL.Path, "/oauth/") || strings.HasPrefix(
+			r.URL.Path,
+			"/.well-known/",
+		) || strings.HasPrefix(
+			r.URL.Path,
+			"/api/backups",
+		) || (r.Method != "GET" && r.Method != "HEAD" && strings.HasPrefix(
+			r.URL.Path,
+			"/api/push",
+		))) {
+			writeError(
+				w,
+				503,
+				"recovery_mode",
+				"External integrations are disabled in this recovery verification instance.",
+				nil,
+			)
 			return
 		}
 		timeout := 15 * time.Second
@@ -125,9 +149,18 @@ func New(service *auth.Service, security *auth.Security, profiles *accounts.Prof
 		if r.Method != "GET" && r.Method != "HEAD" {
 			// Browser mutations require an exact Origin. Native protocol endpoints
 			// authenticate independently and never accept browser-cookie authority.
-			native := r.Header.Get("Origin") == "" && (strings.HasPrefix(r.Header.Get("Authorization"), "Bearer cli_") || r.URL.Path == "/api/device/start" || r.URL.Path == "/api/device/poll" || r.URL.Path == "/oauth/register" || r.URL.Path == "/oauth/token" || r.URL.Path == "/oauth/revoke" || r.URL.Path == "/mcp")
+			native := r.Header.Get("Origin") == "" && (strings.HasPrefix(
+				r.Header.Get("Authorization"),
+				"Bearer cli_",
+			) || r.URL.Path == "/api/device/start" || r.URL.Path == "/api/device/poll" || r.URL.Path == "/oauth/register" || r.URL.Path == "/oauth/token" || r.URL.Path == "/oauth/revoke" || r.URL.Path == "/mcp")
 			if !native && !c.Origins[r.Header.Get("Origin")] {
-				writeError(w, 403, "invalid_origin", "This request did not come from this Acta installation.", nil)
+				writeError(
+					w,
+					403,
+					"invalid_origin",
+					"This request did not come from this Acta installation.",
+					nil,
+				)
 				return
 			}
 			contentType := "application/json"
@@ -166,7 +199,19 @@ func (h *Handler) cookie(w http.ResponseWriter, name, value string, lifetime tim
 		maxAge = -1
 		expires = time.Unix(1, 0)
 	}
-	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: "/", HttpOnly: true, Secure: h.config.SecureCookies, SameSite: http.SameSiteStrictMode, MaxAge: maxAge, Expires: expires})
+	http.SetCookie(
+		w,
+		&http.Cookie{
+			Name:     name,
+			Value:    value,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   h.config.SecureCookies,
+			SameSite: http.SameSiteStrictMode,
+			MaxAge:   maxAge,
+			Expires:  expires,
+		},
+	)
 }
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
 	limit := int64(64 * 1024)
@@ -192,7 +237,11 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 func writeError(w http.ResponseWriter, status int, code, message string, fields map[string]string) {
-	writeJSON(w, status, map[string]any{"error": map[string]any{"code": code, "message": message, "fields": fields}})
+	writeJSON(
+		w,
+		status,
+		map[string]any{"error": map[string]any{"code": code, "message": message, "fields": fields}},
+	)
 }
 
 func (h *Handler) state(w http.ResponseWriter, r *http.Request) {
@@ -201,7 +250,16 @@ func (h *Handler) state(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"complete": complete, "unlocked": unlocked, "password_min": auth.PasswordMin, "password_max": auth.PasswordMax})
+	writeJSON(
+		w,
+		200,
+		map[string]any{
+			"complete":     complete,
+			"unlocked":     unlocked,
+			"password_min": auth.PasswordMin,
+			"password_max": auth.PasswordMax,
+		},
+	)
 }
 func (h *Handler) unlock(w http.ResponseWriter, r *http.Request) {
 	var input struct {
@@ -227,7 +285,13 @@ func (h *Handler) complete(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &input) {
 		return
 	}
-	_, err := h.auth.Complete(r.Context(), token(r, h.setupCookie), input.Username, input.Password, input.DisplayName)
+	_, err := h.auth.Complete(
+		r.Context(),
+		token(r, h.setupCookie),
+		input.Username,
+		input.Password,
+		input.DisplayName,
+	)
 	if err != nil {
 		failure(w, err)
 		return
@@ -248,7 +312,14 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
-	result, err := h.security.PasswordLogin(r.Context(), input.Username, input.Password, binding, h.address(r), sessionDescription(r.UserAgent()))
+	result, err := h.security.PasswordLogin(
+		r.Context(),
+		input.Username,
+		input.Password,
+		binding,
+		h.address(r),
+		sessionDescription(r.UserAgent()),
+	)
 	if err != nil {
 		failure(w, err)
 		return
@@ -302,5 +373,26 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func accountData(a accounts.Account) map[string]any {
-	return map[string]any{"id": a.ID, "username": a.Handle(), "username_segment": a.Username, "owner_id": a.ParentID, "owner_username": a.ParentUsername, "display_name": a.DisplayName, "last_active_superuser": a.LastActiveSuperuser, "permissions": accounts.ResolvePermissions(a), "direct_permissions": a.DirectPermissions, "require_mfa": accounts.RequiresMFA(a), "direct_require_mfa": a.RequireMFA, "groups": a.Groups, "can_create_users": accounts.CanCreateUser(a), "mfa_setup_required": accounts.RequiresMFASetup(a), "permissions_version": a.PermissionsVersion, "profile_version": a.ProfileVersion, "previous_usernames": a.PreviousUsernames, "status": a.Status(), "pending": a.Pending, "created_at": a.CreatedAt}
+	return map[string]any{
+		"id":                    a.ID,
+		"username":              a.Handle(),
+		"username_segment":      a.Username,
+		"owner_id":              a.ParentID,
+		"owner_username":        a.ParentUsername,
+		"display_name":          a.DisplayName,
+		"last_active_superuser": a.LastActiveSuperuser,
+		"permissions":           accounts.ResolvePermissions(a),
+		"direct_permissions":    a.DirectPermissions,
+		"require_mfa":           accounts.RequiresMFA(a),
+		"direct_require_mfa":    a.RequireMFA,
+		"groups":                a.Groups,
+		"can_create_users":      accounts.CanCreateUser(a),
+		"mfa_setup_required":    accounts.RequiresMFASetup(a),
+		"permissions_version":   a.PermissionsVersion,
+		"profile_version":       a.ProfileVersion,
+		"previous_usernames":    a.PreviousUsernames,
+		"status":                a.Status(),
+		"pending":               a.Pending,
+		"created_at":            a.CreatedAt,
+	}
 }

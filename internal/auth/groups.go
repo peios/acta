@@ -1,10 +1,12 @@
 package auth
 
 import (
-	"acta/internal/accounts"
 	"context"
-	"github.com/google/uuid"
 	"time"
+
+	"github.com/google/uuid"
+
+	"acta/internal/accounts"
 )
 
 type GroupTx interface {
@@ -33,7 +35,19 @@ func (m *Management) CreateGroup(ctx context.Context, token, name, description s
 	if e != nil {
 		return accounts.Group{}, e
 	}
-	return m.store.CreateGroup(ctx, actor.ID, Digest(token), accounts.Group{ID: uuid.NewString(), Name: name, Description: description, Permissions: []string{}, Version: 1}, m.auth.now())
+	return m.store.CreateGroup(
+		ctx,
+		actor.ID,
+		Digest(token),
+		accounts.Group{
+			ID:          uuid.NewString(),
+			Name:        name,
+			Description: description,
+			Permissions: []string{},
+			Version:     1,
+		},
+		m.auth.now(),
+	)
 }
 func validOffset(offset int) error {
 	if offset < 0 || offset > 1000000 {

@@ -22,7 +22,17 @@ func testRelease(seq int64) Release {
 	}
 	images["app"] = "ghcr.io/peios/acta-server@sha256:" + strings.Repeat("a", 64)
 	images["caddy"] = "caddy@sha256:" + strings.Repeat("b", 64)
-	return Release{Version: "v0.1.0-test", Sequence: seq, Repository: "peios/acta", Protocol: Protocol, Layout: Layout, Postgres: 17, Schema: 40, MinimumSchema: 40, Images: images}
+	return Release{
+		Version:       "v0.1.0-test",
+		Sequence:      seq,
+		Repository:    "peios/acta",
+		Protocol:      Protocol,
+		Layout:        Layout,
+		Postgres:      17,
+		Schema:        40,
+		MinimumSchema: 40,
+		Images:        images,
+	}
 }
 
 type fakeEngine struct {
@@ -68,7 +78,10 @@ func openTest(t *testing.T, f Engine) *Service {
 	c := Config{StateDir: dir, PublicKeyFile: key, Repository: "peios/acta", TimeoutMinutes: 5}
 	current, _ := Sign(testRelease(1), priv.Seed())
 	next, _ := Sign(testRelease(2), priv.Seed())
-	if err := localstate.Write(filepath.Join(dir, "state.json"), State{Version: 1, Current: current, Available: &next, Jobs: []Job{}}); err != nil {
+	if err := localstate.Write(
+		filepath.Join(dir, "state.json"),
+		State{Version: 1, Current: current, Available: &next, Jobs: []Job{}},
+	); err != nil {
 		t.Fatal(err)
 	}
 	s, err := Open(c, f)
@@ -85,7 +98,17 @@ func installTest(t *testing.T, s *Service) {
 	}
 }
 func TestUpdateFailureBoundaries(t *testing.T) {
-	for _, failure := range []string{"", "prepare", "quiesce", "snapshot", "apply", "validate", "publish-new", "restore", "publish-old"} {
+	for _, failure := range []string{
+		"",
+		"prepare",
+		"quiesce",
+		"snapshot",
+		"apply",
+		"validate",
+		"publish-new",
+		"restore",
+		"publish-old",
+	} {
 		t.Run(failure, func(t *testing.T) {
 			f := &fakeEngine{fail: failure}
 			s := openTest(t, f)
@@ -131,7 +154,16 @@ func TestUpdateFailureBoundaries(t *testing.T) {
 	}
 }
 func TestCrashAtEveryBoundary(t *testing.T) {
-	for _, crash := range []string{"prepare", "quiesce", "snapshot", "apply", "validate", "publish-new", "restore", "publish-old"} {
+	for _, crash := range []string{
+		"prepare",
+		"quiesce",
+		"snapshot",
+		"apply",
+		"validate",
+		"publish-new",
+		"restore",
+		"publish-old",
+	} {
 		t.Run(crash, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()

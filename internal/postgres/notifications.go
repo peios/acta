@@ -1,14 +1,22 @@
 package postgres
 
 import (
-	"acta/internal/notifications"
 	"context"
+
 	"github.com/jackc/pgx/v5"
+
+	"acta/internal/notifications"
 )
 
 func (s *Store) Notifications(ctx context.Context, owner string) (notifications.NotificationPage, error) {
-	out := notifications.NotificationPage{Items: []notifications.Notification{}, Counts: map[string]int{}}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	out := notifications.NotificationPage{
+		Items:  []notifications.Notification{},
+		Counts: map[string]int{},
+	}
+	tx, err := s.pool.BeginTx(
+		ctx,
+		pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly},
+	)
 	if err != nil {
 		return out, err
 	}
@@ -17,7 +25,12 @@ func (s *Store) Notifications(ctx context.Context, owner string) (notifications.
 	if err != nil {
 		return out, err
 	}
-	rows, err := tx.Query(ctx, `SELECT n.task_id::text,count(*) FROM notifications n LEFT JOIN tasks task ON task.id=n.task_id WHERE n.owner_id=$1 AND n.read_at IS NULL AND n.resolved_at IS NULL AND task.workspace_id::text=ANY($2) GROUP BY n.task_id`, owner, allowed)
+	rows, err := tx.Query(
+		ctx,
+		`SELECT n.task_id::text,count(*) FROM notifications n LEFT JOIN tasks task ON task.id=n.task_id WHERE n.owner_id=$1 AND n.read_at IS NULL AND n.resolved_at IS NULL AND task.workspace_id::text=ANY($2) GROUP BY n.task_id`,
+		owner,
+		allowed,
+	)
 	if err != nil {
 		return out, err
 	}
@@ -36,7 +49,12 @@ func (s *Store) Notifications(ctx context.Context, owner string) (notifications.
 	if err != nil {
 		return out, err
 	}
-	rows, err = tx.Query(ctx, `SELECT `+noticeColumns+noticeJoins+` WHERE n.owner_id=$1 AND n.read_at IS NULL AND n.resolved_at IS NULL AND task.workspace_id::text=ANY($2) ORDER BY n.revision DESC LIMIT 200`, owner, allowed)
+	rows, err = tx.Query(
+		ctx,
+		`SELECT `+noticeColumns+noticeJoins+` WHERE n.owner_id=$1 AND n.read_at IS NULL AND n.resolved_at IS NULL AND task.workspace_id::text=ANY($2) ORDER BY n.revision DESC LIMIT 200`,
+		owner,
+		allowed,
+	)
 	if err != nil {
 		return out, err
 	}
@@ -82,6 +100,18 @@ const noticeJoins = ` FROM notifications n JOIN tasks task ON task.id=n.task_id 
 
 func scanNotice(row pgx.Row) (notifications.Notification, error) {
 	var n notifications.Notification
-	err := row.Scan(&n.ID, &n.Revision, &n.Sequence, &n.Kind, &n.Title, &n.CreatedAt, &n.TaskID, &n.WorkspaceSlug, &n.TaskReference, &n.TaskTitle, &n.ActivityID)
+	err := row.Scan(
+		&n.ID,
+		&n.Revision,
+		&n.Sequence,
+		&n.Kind,
+		&n.Title,
+		&n.CreatedAt,
+		&n.TaskID,
+		&n.WorkspaceSlug,
+		&n.TaskReference,
+		&n.TaskTitle,
+		&n.ActivityID,
+	)
 	return n, err
 }

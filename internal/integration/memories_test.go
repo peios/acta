@@ -1,18 +1,24 @@
 package integration
 
 import (
-	"acta/internal/accounts"
-	"acta/internal/auth"
-	"acta/internal/memories"
-	ws "acta/internal/workspaces"
 	"errors"
 	"fmt"
 	"sync"
 	"testing"
+
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/memories"
+	ws "acta/internal/workspaces"
 )
 
 func memoryInput(scope, key string) memories.Save {
-	return memories.Save{Scope: scope, Key: key, Summary: "Durable convention", Content: "# Knowledge\nUseful detail"}
+	return memories.Save{
+		Scope:   scope,
+		Key:     key,
+		Summary: "Durable convention",
+		Content: "# Knowledge\nUseful detail",
+	}
 }
 func TestMemoriesScopesAndConcurrentUpdates(t *testing.T) {
 	root := securityDatabase(t)
@@ -101,7 +107,10 @@ func TestMemoriesScopesAndConcurrentUpdates(t *testing.T) {
 	can, e := manager(outsider).SaveMemory(ctx, outsider.token, in)
 	must(t, e)
 	w = workspaceGrants(t, f, w, other.ID, false, nil)
-	if e = manager(outsider).DeleteMemory(ctx, outsider.token, can.ID, can.Revision); !errors.Is(e, auth.ErrForbidden) {
+	if e = manager(outsider).DeleteMemory(ctx, outsider.token, can.ID, can.Revision); !errors.Is(
+		e,
+		auth.ErrForbidden,
+	) {
 		t.Fatal("revoked write survived", e)
 	}
 }
@@ -138,13 +147,22 @@ func TestMemoriesAgentOwnershipAndRecallPagination(t *testing.T) {
 	if len(page.Memories) != 2 {
 		t.Fatal(page)
 	}
-	a, e = m.AgentPermissions(ctx, f.token, a.ID, a.PermissionsVersion, []string{accounts.WriteUserMemories})
+	a, e = m.AgentPermissions(
+		ctx,
+		f.token,
+		a.ID,
+		a.PermissionsVersion,
+		[]string{accounts.WriteUserMemories},
+	)
 	must(t, e)
 	_, e = m.SaveMemory(ctx, token, memoryInput("user", "delegated"))
 	must(t, e)
 	a, e = m.AgentPermissions(ctx, f.token, a.ID, a.PermissionsVersion, nil)
 	must(t, e)
-	if _, e = m.SaveMemory(ctx, token, memoryInput("user", "revoked")); !errors.Is(e, auth.ErrForbidden) {
+	if _, e = m.SaveMemory(ctx, token, memoryInput("user", "revoked")); !errors.Is(
+		e,
+		auth.ErrForbidden,
+	) {
 		t.Fatal("delegation revocation ignored", e)
 	}
 	for i := range 54 {

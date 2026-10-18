@@ -11,8 +11,9 @@ import (
 	"errors"
 	"testing"
 
-	"acta/internal/auth"
 	"github.com/fxamacker/cbor/v2"
+
+	"acta/internal/auth"
 )
 
 // protocolAuthenticator exercises server verification with signed WebAuthn
@@ -59,15 +60,38 @@ func (f securityFixture) register(t *testing.T) *protocolAuthenticator {
 	must(t, json.Unmarshal(flow.Options, &options))
 	a.handle = options.PublicKey.User.ID
 	client := jsonBytes(t, map[string]any{"type": "webauthn.create", "challenge": challenge(t, flow), "origin": "http://localhost:8081"})
-	publicKey, err := cbor.Marshal(map[int]any{1: 2, 3: -7, -1: 1, -2: a.key.X.FillBytes(make([]byte, 32)), -3: a.key.Y.FillBytes(make([]byte, 32))})
+	publicKey, err := cbor.Marshal(map[int]any{
+		1:  2,
+		3:  -7,
+		-1: 1,
+		-2: a.key.X.FillBytes(make([]byte, 32)),
+		-3: a.key.Y.FillBytes(make([]byte, 32)),
+	})
 	must(t, err)
 	data := append(a.data(0x45), make([]byte, 16)...)
 	data = binary.BigEndian.AppendUint16(data, uint16(len(a.id)))
 	data = append(data, a.id...)
 	data = append(data, publicKey...)
-	attestation, err := cbor.Marshal(map[string]any{"fmt": "none", "attStmt": map[string]any{}, "authData": data})
+	attestation, err := cbor.Marshal(map[string]any{
+		"fmt":      "none",
+		"attStmt":  map[string]any{},
+		"authData": data,
+	})
 	must(t, err)
-	response := jsonBytes(t, map[string]any{"id": b64(a.id), "rawId": b64(a.id), "type": "public-key", "response": map[string]any{"clientDataJSON": b64(client), "attestationObject": b64(attestation), "transports": []string{"internal"}}, "clientExtensionResults": map[string]any{}})
+	response := jsonBytes(
+		t,
+		map[string]any{
+			"id":    b64(a.id),
+			"rawId": b64(a.id),
+			"type":  "public-key",
+			"response": map[string]any{
+				"clientDataJSON":    b64(client),
+				"attestationObject": b64(attestation),
+				"transports":        []string{"internal"},
+			},
+			"clientExtensionResults": map[string]any{},
+		},
+	)
 	done := f.step(t, flow, auth.FlowInput{Action: "registration_finish", Credential: response})
 	if done.Step != "done" {
 		t.Fatal(done)
@@ -82,12 +106,29 @@ func (a *protocolAuthenticator) assertion(t *testing.T, flow auth.FlowResult, uv
 		flags |= 4
 	}
 	data := a.data(flags)
-	client := jsonBytes(t, map[string]any{"type": "webauthn.get", "challenge": challenge(t, flow), "origin": origin})
+	client := jsonBytes(
+		t,
+		map[string]any{"type": "webauthn.get", "challenge": challenge(t, flow), "origin": origin},
+	)
 	clientHash := sha256.Sum256(client)
 	signed := sha256.Sum256(append(append([]byte{}, data...), clientHash[:]...))
 	signature, err := ecdsa.SignASN1(rand.Reader, a.key, signed[:])
 	must(t, err)
-	return jsonBytes(t, map[string]any{"id": b64(a.id), "rawId": b64(a.id), "type": "public-key", "response": map[string]any{"clientDataJSON": b64(client), "authenticatorData": b64(data), "signature": b64(signature), "userHandle": a.handle}, "clientExtensionResults": map[string]any{}})
+	return jsonBytes(
+		t,
+		map[string]any{
+			"id":    b64(a.id),
+			"rawId": b64(a.id),
+			"type":  "public-key",
+			"response": map[string]any{
+				"clientDataJSON":    b64(client),
+				"authenticatorData": b64(data),
+				"signature":         b64(signature),
+				"userHandle":        a.handle,
+			},
+			"clientExtensionResults": map[string]any{},
+		},
+	)
 }
 func TestPasskeyRegistrationAndVerifiedLogin(t *testing.T) {
 	f := securityDatabase(t)
@@ -109,17 +150,38 @@ func TestPasskeyRegistrationAndVerifiedLogin(t *testing.T) {
 		t.Fatal("wrong origin accepted")
 	}
 	assertion := a.assertion(t, flow, true, "http://localhost:8081")
-	done, err := f.security.Advance(ctx, auth.FlowInput{ID: flow.ID, Action: "passkey_finish", Credential: assertion}, "", f.binding, "test", "Test passkey browser")
+	done, err := f.security.Advance(
+		ctx,
+		auth.FlowInput{ID: flow.ID, Action: "passkey_finish", Credential: assertion},
+		"",
+		f.binding,
+		"test",
+		"Test passkey browser",
+	)
 	must(t, err)
 	if done.Method != "passkey" || done.SessionToken == "" {
 		t.Fatal(done)
 	}
-	_, err = f.security.Advance(ctx, auth.FlowInput{ID: flow.ID, Action: "passkey_finish", Credential: assertion}, "", f.binding, "test", "Test passkey browser")
+	_, err = f.security.Advance(
+		ctx,
+		auth.FlowInput{ID: flow.ID, Action: "passkey_finish", Credential: assertion},
+		"",
+		f.binding,
+		"test",
+		"Test passkey browser",
+	)
 	if !errors.Is(err, auth.ErrFlow) {
 		t.Fatal("consumed challenge replayed", err)
 	}
 	another := f.begin(t, "login")
-	_, err = f.security.Advance(ctx, auth.FlowInput{ID: another.ID, Action: "passkey_finish", Credential: assertion}, "", f.binding, "test", "Test passkey browser")
+	_, err = f.security.Advance(
+		ctx,
+		auth.FlowInput{ID: another.ID, Action: "passkey_finish", Credential: assertion},
+		"",
+		f.binding,
+		"test",
+		"Test passkey browser",
+	)
 	if err == nil {
 		t.Fatal("assertion crossed challenges")
 	}
@@ -129,7 +191,15 @@ func TestPasskeyRegistrationAndVerifiedLogin(t *testing.T) {
 		t.Fatal(view)
 	}
 	// A verified passkey also satisfies the shared sensitive-action policy.
-	remove, err := f.security.Begin(ctx, "passkey_remove", view.Passkeys[0].ID, false, done.SessionToken, f.binding, "test")
+	remove, err := f.security.Begin(
+		ctx,
+		"passkey_remove",
+		view.Passkeys[0].ID,
+		false,
+		done.SessionToken,
+		f.binding,
+		"test",
+	)
 	must(t, err)
 	if remove.Step != "confirm" {
 		t.Fatal("fresh passkey proof was not reusable", remove.Step)

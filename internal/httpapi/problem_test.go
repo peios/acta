@@ -22,9 +22,19 @@ func TestConflictPreservesTypedCurrentValue(t *testing.T) {
 		if err := json.Unmarshal([]byte(raw), &value); err != nil {
 			t.Fatal(err)
 		}
-		status, p := classifyError(&tasks.Conflict{Field: "description", Version: 9007199254740993, Value: value})
+		status, p := classifyError(&tasks.Conflict{
+			Field:   "description",
+			Version: 9007199254740993,
+			Value:   value,
+		})
 		data, err := json.Marshal(p)
-		if err != nil || status != 409 || p.Code != "conflict" || !strings.Contains(string(data), `9007199254740993`) || !strings.Contains(string(data), raw) {
+		if err != nil || status != 409 || p.Code != "conflict" || !strings.Contains(
+			string(data),
+			`9007199254740993`,
+		) || !strings.Contains(
+			string(data),
+			raw,
+		) {
 			t.Fatal(string(data), err)
 		}
 	}

@@ -1,14 +1,15 @@
 package integration
 
 import (
-	"acta/internal/activity"
-	"acta/internal/auth"
-	"acta/internal/tasks"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
+
+	"acta/internal/activity"
+	"acta/internal/auth"
+	"acta/internal/tasks"
 )
 
 func history(t *testing.T, f securityFixture, ref string) activity.Page {
@@ -77,7 +78,13 @@ func TestTaskActivityAtomicGroupingAndReadTracking(t *testing.T) {
 		t.Fatal("description revision retained")
 	}
 	var leaked bool
-	must(t, root.conn.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM activity_events WHERE change::text LIKE '%secret description%')`).Scan(&leaked))
+	must(
+		t,
+		root.conn.QueryRow(
+			ctx,
+			`SELECT EXISTS(SELECT 1 FROM activity_events WHERE change::text LIKE '%secret description%')`,
+		).Scan(&leaked),
+	)
 	if leaked {
 		t.Fatal("raw description retained")
 	}
@@ -88,21 +95,35 @@ func TestTaskActivityAtomicGroupingAndReadTracking(t *testing.T) {
 		t.Fatal("intervening event didn't break group")
 	}
 	var count int
-	must(t, root.conn.QueryRow(ctx, `SELECT count(*) FROM activity_events WHERE subject_id=$1`, task.ID).Scan(&count))
+	must(
+		t,
+		root.conn.QueryRow(ctx, `SELECT count(*) FROM activity_events WHERE subject_id=$1`, task.ID).Scan(&count),
+	)
 	// Saved-value retries and rejected stale writes do not record activity.
 	_, e = patchTask(t, f, task, "title", task.Title)
 	must(t, e)
-	_, e = m.PatchTask(ctx, f.token, task.ID, tasks.Patch{Field: "title", Version: 1, Value: json.RawMessage(`"stale"`)})
+	_, e = m.PatchTask(
+		ctx,
+		f.token,
+		task.ID,
+		tasks.Patch{Field: "title", Version: 1, Value: json.RawMessage(`"stale"`)},
+	)
 	if e == nil {
 		t.Fatal("stale accepted")
 	}
 	var after int
-	must(t, root.conn.QueryRow(ctx, `SELECT count(*) FROM activity_events WHERE subject_id=$1`, task.ID).Scan(&after))
+	must(
+		t,
+		root.conn.QueryRow(ctx, `SELECT count(*) FROM activity_events WHERE subject_id=$1`, task.ID).Scan(&after),
+	)
 	if after != count {
 		t.Fatal("no-op emitted event")
 	}
 	// An event-store failure rolls back the task mutation too.
-	_, e = root.conn.Exec(ctx, `CREATE FUNCTION fail_activity_insert() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test failure'; END; $$; CREATE TRIGGER fail_activity BEFORE INSERT ON activity_events FOR EACH ROW EXECUTE FUNCTION fail_activity_insert()`)
+	_, e = root.conn.Exec(
+		ctx,
+		`CREATE FUNCTION fail_activity_insert() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test failure'; END; $$; CREATE TRIGGER fail_activity BEFORE INSERT ON activity_events FOR EACH ROW EXECUTE FUNCTION fail_activity_insert()`,
+	)
 	must(t, e)
 	_, e = patchTask(t, f, task, "title", "Must roll back")
 	if e == nil {
@@ -115,22 +136,35 @@ func TestTaskActivityAtomicGroupingAndReadTracking(t *testing.T) {
 	}
 	_, e = root.conn.Exec(ctx, `DROP TRIGGER fail_activity ON activity_events`)
 	must(t, e)
-	if _, e = root.conn.Exec(ctx, `UPDATE activity_events SET occurred_at=now() WHERE subject_id=$1`, task.ID); e == nil {
+	if _, e = root.conn.Exec(
+		ctx,
+		`UPDATE activity_events SET occurred_at=now() WHERE subject_id=$1`,
+		task.ID,
+	); e == nil {
 		t.Fatal("raw event mutable")
 	}
 	if _, e = root.conn.Exec(ctx, `DELETE FROM activity_events WHERE subject_id=$1`, task.ID); e == nil {
 		t.Fatal("raw event deletable")
 	}
 	_, outsider := permissionMember(t, root, "outsideactivity")
-	if _, e = manager(outsider).TaskActivity(ctx, outsider.token, task.ID, ""); !errors.Is(e, auth.ErrNotFound) {
+	if _, e = manager(outsider).TaskActivity(ctx, outsider.token, task.ID, ""); !errors.Is(
+		e,
+		auth.ErrNotFound,
+	) {
 		t.Fatal("activity access leak", e)
 	}
-	if e = manager(outsider).ReadTaskActivity(ctx, outsider.token, task.ID, []activity.Seen{seen}); !errors.Is(e, auth.ErrNotFound) {
+	if e = manager(outsider).ReadTaskActivity(ctx, outsider.token, task.ID, []activity.Seen{seen}); !errors.Is(
+		e,
+		auth.ErrNotFound,
+	) {
 		t.Fatal("read access leak", e)
 	}
 	other, e := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Other"})
 	must(t, e)
-	if e = manager(root).ReadTaskActivity(ctx, root.token, other.ID, []activity.Seen{seen}); !errors.Is(e, auth.ErrNotFound) {
+	if e = manager(root).ReadTaskActivity(ctx, root.token, other.ID, []activity.Seen{seen}); !errors.Is(
+		e,
+		auth.ErrNotFound,
+	) {
 		t.Fatal("cross-task ack accepted", e)
 	}
 }
@@ -163,7 +197,21 @@ func TestTaskActivityPagingAndStatusReplacement(t *testing.T) {
 	must(t, e)
 	task, e = patchTask(t, f, task, "status_id", c.Statuses[1].ID)
 	must(t, e)
-	must(t, m.TaskStatuses(ctx, f.token, w.ID, tasks.StatusChange{Statuses: []tasks.Status{c.Statuses[0], c.Statuses[2]}, Creation: c.Creation, Completed: c.Completed, Version: c.Version, Replacements: map[string]string{c.Statuses[1].ID: c.Completed}}))
+	must(
+		t,
+		m.TaskStatuses(
+			ctx,
+			f.token,
+			w.ID,
+			tasks.StatusChange{
+				Statuses:     []tasks.Status{c.Statuses[0], c.Statuses[2]},
+				Creation:     c.Creation,
+				Completed:    c.Completed,
+				Version:      c.Version,
+				Replacements: map[string]string{c.Statuses[1].ID: c.Completed},
+			},
+		),
+	)
 	p = history(t, f, task.ID)
 	if p.Entries[0].Reason != "status_replaced" || p.Entries[0].Before.Items[0].Label != "In progress" || p.Entries[0].After.Items[0].Label != "Done" {
 		t.Fatal(p.Entries[0])
@@ -174,7 +222,11 @@ func TestTaskActivityPagingAndStatusReplacement(t *testing.T) {
 	task, e = patchTask(t, f, task, "title", "First")
 	must(t, e)
 	first := history(t, f, task.ID).Entries[0]
-	_, e = f.conn.Exec(ctx, `UPDATE activity_entries SET updated_at=clock_timestamp()-interval '61 seconds' WHERE id=$1`, first.ID)
+	_, e = f.conn.Exec(
+		ctx,
+		`UPDATE activity_entries SET updated_at=clock_timestamp()-interval '61 seconds' WHERE id=$1`,
+		first.ID,
+	)
 	must(t, e)
 	task, e = patchTask(t, f, task, "title", "Second")
 	must(t, e)

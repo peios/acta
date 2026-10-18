@@ -1,8 +1,9 @@
 package integration
 
 import (
-	"acta/internal/tasks"
 	"testing"
+
+	"acta/internal/tasks"
 )
 
 func TestTaskAssignmentGroups(t *testing.T) {
@@ -14,12 +15,22 @@ func TestTaskAssignmentGroups(t *testing.T) {
 	w = joinWorkspace(t, f, w, other.ID)
 	otherAgent := agentAccount(t, otherSession, "builder", nil)
 	for i := 0; i < 57; i++ {
-		_, e := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Shared", Assignees: []string{owner.ID, agent.ID, otherAgent.ID}})
+		_, e := m.CreateTask(
+			ctx,
+			f.token,
+			w.ID,
+			tasks.Create{Title: "Shared", Assignees: []string{owner.ID, agent.ID, otherAgent.ID}},
+		)
 		must(t, e)
 	}
 	_, e := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Empty"})
 	must(t, e)
-	_, e = m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Other only", Assignees: []string{other.ID}})
+	_, e = m.CreateTask(
+		ctx,
+		f.token,
+		w.ID,
+		tasks.Create{Title: "Other only", Assignees: []string{other.ID}},
+	)
 	must(t, e)
 	for _, tc := range []struct {
 		mode, id string
@@ -49,12 +60,22 @@ func TestTaskAssignmentGroups(t *testing.T) {
 		}
 	}
 	// Lane membership intersects rather than replaces the current filters.
-	page, e := m.Tasks(ctx, f.token, w.ID, tasks.Filter{State: "all", Group: "agents", GroupID: owner.ID, Assignees: []string{agent.ID}})
+	page, e := m.Tasks(
+		ctx,
+		f.token,
+		w.ID,
+		tasks.Filter{State: "all", Group: "agents", GroupID: owner.ID, Assignees: []string{agent.ID}},
+	)
 	must(t, e)
 	if page.Total != 57 {
 		t.Fatal(page)
 	}
-	page, e = m.Tasks(ctx, f.token, w.ID, tasks.Filter{State: "all", Group: "agents", GroupID: owner.ID, Unassigned: true})
+	page, e = m.Tasks(
+		ctx,
+		f.token,
+		w.ID,
+		tasks.Filter{State: "all", Group: "agents", GroupID: owner.ID, Unassigned: true},
+	)
 	must(t, e)
 	if page.Total != 0 {
 		t.Fatal(page)
@@ -99,7 +120,13 @@ func TestTaskAssignmentGroups(t *testing.T) {
 	}
 	// Both modes persist as personal view display settings.
 	for _, mode := range []string{"assignee", "agents"} {
-		view, e := m.CreateTaskView(ctx, f.token, w.ID, mode, tasks.ViewSettings{Display: tasks.ViewDisplay{Group: mode}})
+		view, e := m.CreateTaskView(
+			ctx,
+			f.token,
+			w.ID,
+			mode,
+			tasks.ViewSettings{Display: tasks.ViewDisplay{Group: mode}},
+		)
 		must(t, e)
 		if view.Display.Group != mode {
 			t.Fatal(view)

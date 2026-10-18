@@ -9,10 +9,11 @@ import (
 	"os"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"acta/internal/activity"
 	"acta/internal/client"
 	"acta/internal/tasks"
-	"github.com/spf13/cobra"
 )
 
 func runTask[T any](a *App, cmd *cobra.Command, run func(context.Context, *client.Client) (T, error), render func(T) string) error {
@@ -49,7 +50,13 @@ func (a *App) taskCommand() *cobra.Command {
 	root := &cobra.Command{Use: "task", Short: "Find, inspect, create and edit workspace tasks"}
 	root.AddCommand(a.commentCommand())
 	var workspace string
-	root.PersistentFlags().StringVarP(&workspace, "workspace", "w", "", "Workspace UUID or slug (see acta workspace list)")
+	root.PersistentFlags().StringVarP(
+		&workspace,
+		"workspace",
+		"w",
+		"",
+		"Workspace UUID or slug (see acta workspace list)",
+	)
 	requireWorkspace := func() error {
 		if strings.TrimSpace(workspace) == "" {
 			return errors.New("Supply --workspace <UUID-or-slug>; use acta workspace list")
@@ -59,14 +66,39 @@ func (a *App) taskCommand() *cobra.Command {
 	var searchArchived bool
 	var searchCursor string
 	search := &cobra.Command{Use: "search <query>", Short: "Find tasks across workspaces, including nested tasks and comments", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		q, _, e := tasks.NormalizeSearch(tasks.SearchQuery{IncludeArchived: searchArchived, Query: args[0], Workspace: workspace, Cursor: searchCursor})
+		q, _, e := tasks.NormalizeSearch(tasks.SearchQuery{
+			IncludeArchived: searchArchived,
+			Query:           args[0],
+			Workspace:       workspace,
+			Cursor:          searchCursor,
+		})
 		if e != nil {
 			return e
 		}
-		return runTask(a, cmd, func(ctx context.Context, c *client.Client) (tasks.SearchPage, error) { return c.SearchTasks(ctx, q) }, renderTaskSearch)
+		return runTask(
+			a,
+			cmd,
+			func(ctx context.Context, c *client.Client) (tasks.SearchPage, error) {
+				return c.SearchTasks(
+					ctx,
+					q,
+				)
+			},
+			renderTaskSearch,
+		)
 	}}
-	search.Flags().StringVar(&searchCursor, "cursor", "", "Returned search cursor; keep query and workspace unchanged")
-	search.Flags().BoolVar(&searchArchived, "include-archived", false, "Include archived tasks in search")
+	search.Flags().StringVar(
+		&searchCursor,
+		"cursor",
+		"",
+		"Returned search cursor; keep query and workspace unchanged",
+	)
+	search.Flags().BoolVar(
+		&searchArchived,
+		"include-archived",
+		false,
+		"Include archived tasks in search",
+	)
 	root.AddCommand(search)
 	for _, archived := range []bool{true, false} {
 		name := "archive"
@@ -98,31 +130,91 @@ func (a *App) taskCommand() *cobra.Command {
 			return c.Tasks(ctx, workspace, normalized)
 		}, renderTaskPage)
 	}}
-	list.Flags().StringVar(&f.Board, "board", "tasks", "tasks, backlog, or * for both; ignored for direct children")
-	list.Flags().StringSliceVar(&f.Priorities, "priority", nil, "none, low, medium, high, urgent; match any")
+	list.Flags().StringVar(
+		&f.Board,
+		"board",
+		"tasks",
+		"tasks, backlog, or * for both; ignored for direct children",
+	)
+	list.Flags().StringSliceVar(
+		&f.Priorities,
+		"priority",
+		nil,
+		"none, low, medium, high, urgent; match any",
+	)
 	list.Flags().StringSliceVar(&f.Types, "type", nil, "none, bug, chore, feature; match any")
 	list.Flags().StringSliceVar(&f.Sizes, "size", nil, "none, xs, s, m, l, xl; relative effort")
-	list.Flags().StringSliceVar(&f.Releases, "release", nil, "Release UUIDs (see acta release list), or none; match any")
-	list.Flags().BoolVar(&f.AllDepths, "all-depths", false, "Match tasks at every depth instead of one level; omit --parent")
+	list.Flags().StringSliceVar(
+		&f.Releases,
+		"release",
+		nil,
+		"Release UUIDs (see acta release list), or none; match any",
+	)
+	list.Flags().BoolVar(
+		&f.AllDepths,
+		"all-depths",
+		false,
+		"Match tasks at every depth instead of one level; omit --parent",
+	)
 	list.Flags().BoolVar(&f.Archived, "archived", false, "List only archived tasks")
 	list.Flags().StringVar(&f.State, "state", "all", "all, unfinished or completed")
-	list.Flags().StringVar(&f.Parent, "parent", "", "Parent UUID or reference; omitted lists roots only")
+	list.Flags().StringVar(
+		&f.Parent,
+		"parent",
+		"",
+		"Parent UUID or reference; omitted lists roots only",
+	)
 	list.Flags().StringVar(&f.Query, "query", "", "Title or reference search")
 	list.Flags().StringSliceVar(&f.Statuses, "status", nil, "Status UUIDs; match any selected status")
-	list.Flags().StringSliceVar(&f.Assignees, "assignee", nil, "Direct account UUIDs; match any selected assignee")
-	list.Flags().BoolVar(&f.Unassigned, "unassigned", false, "Include unassigned tasks (OR with selected assignees)")
-	list.Flags().StringVar(&f.Sort, "sort", "number", "number, title, status, priority, type, size, created or updated")
+	list.Flags().StringSliceVar(
+		&f.Assignees,
+		"assignee",
+		nil,
+		"Direct account UUIDs; match any selected assignee",
+	)
+	list.Flags().BoolVar(
+		&f.Unassigned,
+		"unassigned",
+		false,
+		"Include unassigned tasks (OR with selected assignees)",
+	)
+	list.Flags().StringVar(
+		&f.Sort,
+		"sort",
+		"number",
+		"number, title, status, priority, type, size, created or updated",
+	)
 	list.Flags().StringVar(&f.Direction, "direction", "desc", "asc or desc")
-	list.Flags().StringVar(&f.Cursor, "cursor", "", "Returned cursor; keep all other query options unchanged")
-	list.Flags().StringVar(&f.Group, "group", "", "Group: assignee, agents, priority, type, size or release; requires --group-id")
-	list.Flags().StringVar(&f.GroupID, "group-id", "", "Group ID from task groups, including unassigned")
+	list.Flags().StringVar(
+		&f.Cursor,
+		"cursor",
+		"",
+		"Returned cursor; keep all other query options unchanged",
+	)
+	list.Flags().StringVar(
+		&f.Group,
+		"group",
+		"",
+		"Group: assignee, agents, priority, type, size or release; requires --group-id",
+	)
+	list.Flags().StringVar(
+		&f.GroupID,
+		"group-id",
+		"",
+		"Group ID from task groups, including unassigned",
+	)
 	var childCursor string
 	get := &cobra.Command{Use: "get <reference-or-uuid>", Short: "Inspect Markdown, assignments, field versions and direct subtasks", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		return runTask(a, cmd, func(ctx context.Context, c *client.Client) (tasks.Detail, error) {
 			return c.Task(ctx, args[0], childCursor)
 		}, renderTaskDetail)
 	}}
-	get.Flags().StringVar(&childCursor, "subtask-cursor", "", "Continue the direct-subtask summary page")
+	get.Flags().StringVar(
+		&childCursor,
+		"subtask-cursor",
+		"",
+		"Continue the direct-subtask summary page",
+	)
 	var createIn tasks.Create
 	var descriptionFile string
 	create := &cobra.Command{Use: "create", Short: "Create a task or subtask", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
@@ -144,18 +236,53 @@ func (a *App) taskCommand() *cobra.Command {
 			return c.CreateTask(ctx, workspace, in)
 		}, renderTask)
 	}}
-	create.Flags().StringVar(&createIn.Priority, "priority", "none", "none, low, medium, high or urgent")
+	create.Flags().StringVar(
+		&createIn.Priority,
+		"priority",
+		"none",
+		"none, low, medium, high or urgent",
+	)
 	create.Flags().StringVar(&createIn.Type, "type", "none", "none, bug, chore or feature")
-	create.Flags().StringVar(&createIn.Size, "size", "none", "none, xs, s, m, l or xl; relative effort")
-	create.Flags().StringVar(&createIn.ReleaseID, "release", "", "Target release UUID (see acta release list); not inherited by subtasks")
+	create.Flags().StringVar(
+		&createIn.Size,
+		"size",
+		"none",
+		"none, xs, s, m, l or xl; relative effort",
+	)
+	create.Flags().StringVar(
+		&createIn.ReleaseID,
+		"release",
+		"",
+		"Target release UUID (see acta release list); not inherited by subtasks",
+	)
 	create.Flags().StringVar(&createIn.Title, "title", "", "Task title")
 	create.Flags().StringVar(&createIn.Description, "description", "", "Markdown description")
-	create.Flags().StringVar(&descriptionFile, "description-file", "", "Read Markdown from a file, or - for stdin")
+	create.Flags().StringVar(
+		&descriptionFile,
+		"description-file",
+		"",
+		"Read Markdown from a file, or - for stdin",
+	)
 	create.MarkFlagsMutuallyExclusive("description", "description-file")
-	create.Flags().StringVar(&createIn.Board, "board", "", "tasks or backlog; defaults to Tasks or the parent board")
-	create.Flags().StringVar(&createIn.StatusID, "status", "", "Status UUID; defaults to the board entry status")
+	create.Flags().StringVar(
+		&createIn.Board,
+		"board",
+		"",
+		"tasks or backlog; defaults to Tasks or the parent board",
+	)
+	create.Flags().StringVar(
+		&createIn.StatusID,
+		"status",
+		"",
+		"Status UUID; defaults to the board entry status",
+	)
 	create.Flags().StringVar(&createIn.ParentID, "parent", "", "Parent UUID or reference")
-	create.Flags().StringSliceVar(&createIn.Assignees, "assignee", nil, "Account UUIDs; repeated or comma separated")
+	create.Flags().StringSliceVar(
+		&createIn.Assignees,
+		"assignee",
+		nil,
+		"Account UUIDs; repeated or comma separated",
+	)
 	var field, value, valueFile string
 	var version int64
 	var ids []string
@@ -207,10 +334,20 @@ func (a *App) taskCommand() *cobra.Command {
 			return c.UpdateTask(ctx, args[0], tasks.Patch{Field: field, Version: version, Value: raw})
 		}, renderTask)
 	}}
-	edit.Flags().StringVar(&field, "field", "", "title, description, status_id, board, parent_id, assignees, priority, type, size or release_id")
+	edit.Flags().StringVar(
+		&field,
+		"field",
+		"",
+		"title, description, status_id, board, parent_id, assignees, priority, type, size or release_id",
+	)
 	edit.Flags().StringVar(&value, "value", "", "Explicit new text; empty clears optional fields")
 	edit.Flags().StringVar(&valueFile, "value-file", "", "Read new text from a file, or - for stdin")
-	edit.Flags().BoolVar(&clear, "clear", false, "Explicitly clear description, parent_id, release_id, assignees, priority, type or size")
+	edit.Flags().BoolVar(
+		&clear,
+		"clear",
+		false,
+		"Explicitly clear description, parent_id, release_id, assignees, priority, type or size",
+	)
 	edit.MarkFlagsMutuallyExclusive("value", "value-file", "clear")
 	edit.Flags().Int64Var(&version, "version", 0, "Expected field version")
 	edit.Flags().StringSliceVar(&ids, "assignee", nil, "Complete replacement set of account UUIDs")
@@ -219,7 +356,17 @@ func (a *App) taskCommand() *cobra.Command {
 		if e := requireWorkspace(); e != nil {
 			return e
 		}
-		return runTask(a, cmd, func(ctx context.Context, c *client.Client) (tasks.Config, error) { return c.TaskConfig(ctx, workspace) }, renderTaskConfig)
+		return runTask(
+			a,
+			cmd,
+			func(ctx context.Context, c *client.Client) (tasks.Config, error) {
+				return c.TaskConfig(
+					ctx,
+					workspace,
+				)
+			},
+			renderTaskConfig,
+		)
 	}}
 	var peopleQuery string
 	people := &cobra.Command{Use: "people", Short: "Find assignable people and agents; narrow the query to resolve similar names", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
@@ -230,7 +377,12 @@ func (a *App) taskCommand() *cobra.Command {
 			return c.TaskPeople(ctx, workspace, peopleQuery)
 		}, renderTaskPeople)
 	}}
-	people.Flags().StringVar(&peopleQuery, "query", "", "Username or display name search; returns at most 50 candidates")
+	people.Flags().StringVar(
+		&peopleQuery,
+		"query",
+		"",
+		"Username or display name search; returns at most 50 candidates",
+	)
 	var group string
 	groups := &cobra.Command{Use: "groups", Short: "Find assignment groups for task list", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if e := requireWorkspace(); e != nil {
@@ -243,14 +395,24 @@ func (a *App) taskCommand() *cobra.Command {
 			return c.TaskGroups(ctx, workspace, group)
 		}, renderTaskGroups)
 	}}
-	groups.Flags().StringVar(&group, "group", "assignee", "assignee (humans), agents (your assignments), priority, type, size or release")
+	groups.Flags().StringVar(
+		&group,
+		"group",
+		"assignee",
+		"assignee (humans), agents (your assignments), priority, type, size or release",
+	)
 	var activityCursor string
 	history := &cobra.Command{Use: "activity <reference-or-uuid>", Short: "Read grouped activity, newest first; does not mark it read", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		return runTask(a, cmd, func(ctx context.Context, c *client.Client) (activity.Page, error) {
 			return c.TaskActivity(ctx, args[0], activityCursor)
 		}, renderActivity)
 	}}
-	history.Flags().StringVar(&activityCursor, "cursor", "", "Load older activity using the returned cursor")
+	history.Flags().StringVar(
+		&activityCursor,
+		"cursor",
+		"",
+		"Load older activity using the returned cursor",
+	)
 	root.AddCommand(list, get, create, edit, statuses, people, groups, history)
 	return root
 }

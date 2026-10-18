@@ -1,13 +1,15 @@
 package postgres
 
 import (
-	"acta/internal/tasks"
 	"context"
 	"encoding/json"
-	"github.com/google/uuid"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/google/uuid"
+
+	"acta/internal/tasks"
 )
 
 var searchReference = regexp.MustCompile(`^([A-Za-z]{2,10})-([1-9][0-9]*)$`)
@@ -70,7 +72,24 @@ func (t workspaceTx) SearchTasks(ctx context.Context, allowed []string, q tasks.
 		var ancestors, release []byte
 		var snippet string
 		var score int
-		if e = rows.Scan(&r.Archived, &r.ID, &r.Reference, &r.Title, &r.Status.ID, &r.Status.Name, &r.Status.Board, &release, &r.WorkspaceID, &r.WorkspaceSlug, &r.WorkspaceName, &r.Source, &r.CommentID, &score, &ancestors, &snippet); e != nil {
+		if e = rows.Scan(
+			&r.Archived,
+			&r.ID,
+			&r.Reference,
+			&r.Title,
+			&r.Status.ID,
+			&r.Status.Name,
+			&r.Status.Board,
+			&release,
+			&r.WorkspaceID,
+			&r.WorkspaceSlug,
+			&r.WorkspaceName,
+			&r.Source,
+			&r.CommentID,
+			&score,
+			&ancestors,
+			&snippet,
+		); e != nil {
 			return out, e
 		}
 		if release != nil {

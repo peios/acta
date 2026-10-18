@@ -1,6 +1,20 @@
 package integration
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"acta/internal/accounts"
 	"acta/internal/activity"
 	"acta/internal/auth"
@@ -9,18 +23,6 @@ import (
 	"acta/internal/config"
 	"acta/internal/httpapi"
 	"acta/internal/tasks"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"github.com/google/uuid"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
-	"os"
-	"path/filepath"
-	"strings"
-	"testing"
 )
 
 func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
@@ -30,7 +32,12 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 	must(t, e)
 	agent := agentAccount(t, f, "worker", nil)
 	var handler http.Handler
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { handler.ServeHTTP(w, r) }))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler.ServeHTTP(
+			w,
+			r,
+		)
+	}))
 	defer srv.Close()
 	cfg, e := config.Parse(srv.URL, "")
 	must(t, e)
@@ -44,7 +51,32 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 	}
 	// Exercise actual Cobra parsing, profile selection, stdin and JSON rendering.
 	var cliCreated tasks.Task
-	must(t, json.Unmarshal(runTaskCLI(t, srv.URL, cliToken, "# From stdin\n", "task", "create", "-w", "interfaces", "--title", "Terminal task", "--priority", "high", "--type", "bug", "--size", "s", "--description-file", "-"), &cliCreated))
+	must(
+		t,
+		json.Unmarshal(
+			runTaskCLI(
+				t,
+				srv.URL,
+				cliToken,
+				"# From stdin\n",
+				"task",
+				"create",
+				"-w",
+				"interfaces",
+				"--title",
+				"Terminal task",
+				"--priority",
+				"high",
+				"--type",
+				"bug",
+				"--size",
+				"s",
+				"--description-file",
+				"-",
+			),
+			&cliCreated,
+		),
+	)
 	if cliCreated.Priority != "high" || cliCreated.Type != "bug" || cliCreated.Size != "s" {
 		t.Fatal("CLI metadata lost", cliCreated)
 	}
@@ -52,12 +84,37 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 		t.Fatal(cliCreated)
 	}
 	var cliCleared tasks.Task
-	must(t, json.Unmarshal(runTaskCLI(t, srv.URL, cliToken, "", "task", "edit", cliCreated.Reference, "--field", "description", "--version", "1", "--clear"), &cliCleared))
+	must(
+		t,
+		json.Unmarshal(
+			runTaskCLI(
+				t,
+				srv.URL,
+				cliToken,
+				"",
+				"task",
+				"edit",
+				cliCreated.Reference,
+				"--field",
+				"description",
+				"--version",
+				"1",
+				"--clear",
+			),
+			&cliCleared,
+		),
+	)
 	if cliCleared.Description != "" || cliCleared.Versions["description"] != 2 {
 		t.Fatal(cliCleared)
 	}
 	var cliHistory activity.Page
-	must(t, json.Unmarshal(runTaskCLI(t, srv.URL, cliToken, "", "task", "activity", cliCreated.Reference), &cliHistory))
+	must(
+		t,
+		json.Unmarshal(
+			runTaskCLI(t, srv.URL, cliToken, "", "task", "activity", cliCreated.Reference),
+			&cliHistory,
+		),
+	)
 	if len(cliHistory.Entries) != 2 {
 		t.Fatal("CLI activity missing", cliHistory)
 	}
@@ -68,19 +125,38 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 	}
 
 	o := oauthFromAccount(t, f, srv.URL+"/mcp")
-	redirect, e := f.security.ApproveOAuthTools(ctx, f.token, o.request, f.binding, true, srv.URL, agent.ID, []string{auth.MCPIdentityGrant, auth.MCPTasksRead, auth.MCPTasksWrite})
+	redirect, e := f.security.ApproveOAuthTools(
+		ctx,
+		f.token,
+		o.request,
+		f.binding,
+		true,
+		srv.URL,
+		agent.ID,
+		[]string{auth.MCPIdentityGrant, auth.MCPTasksRead, auth.MCPTasksWrite},
+	)
 	must(t, e)
 	u, e := url.Parse(redirect)
 	must(t, e)
 	o.code = u.Query().Get("code")
 	tokens := o.exchange(t)
-	session, e := mcp.NewClient(&mcp.Implementation{Name: "Task test", Version: "1"}, nil).Connect(ctx, &mcp.StreamableClientTransport{Endpoint: srv.URL + "/mcp", HTTPClient: &http.Client{Transport: bearerTransport{tokens.AccessToken}}}, nil)
+	session, e := mcp.NewClient(&mcp.Implementation{Name: "Task test", Version: "1"}, nil).Connect(
+		ctx,
+		&mcp.StreamableClientTransport{
+			Endpoint:   srv.URL + "/mcp",
+			HTTPClient: &http.Client{Transport: bearerTransport{tokens.AccessToken}},
+		},
+		nil,
+	)
 	must(t, e)
 	defer session.Close()
 	catalogue, e := session.ListTools(ctx, nil)
 	must(t, e)
 	if len(catalogue.Tools) != 29 {
-		t.Fatalf("expected guide, identity, twenty-one task tools and six document tools: %d", len(catalogue.Tools))
+		t.Fatalf(
+			"expected guide, identity, twenty-one task tools and six document tools: %d",
+			len(catalogue.Tools),
+		)
 	}
 	for _, tool := range catalogue.Tools {
 		// The guide deliberately returns Markdown text, not a JSON output envelope.
@@ -88,7 +164,13 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 			t.Fatalf("missing contract for %s", tool.Name)
 		}
 	}
-	searchResult, e := session.CallTool(ctx, &mcp.CallToolParams{Name: "task_search", Arguments: map[string]any{"query": "Terminal", "workspace": w.ID}})
+	searchResult, e := session.CallTool(
+		ctx,
+		&mcp.CallToolParams{
+			Name:      "task_search",
+			Arguments: map[string]any{"query": "Terminal", "workspace": w.ID},
+		},
+	)
 	must(t, e)
 	if searchResult.IsError {
 		t.Fatal(searchResult)
@@ -102,40 +184,113 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 	}
 
 	var archivedTask tasks.Task
-	must(t, json.Unmarshal(runTaskCLI(t, srv.URL, cliToken, "", "task", "archive", cliCreated.Reference, "--version", "1"), &archivedTask))
+	must(
+		t,
+		json.Unmarshal(
+			runTaskCLI(t, srv.URL, cliToken, "", "task", "archive", cliCreated.Reference, "--version", "1"),
+			&archivedTask,
+		),
+	)
 	if !archivedTask.Archived {
 		t.Fatal(archivedTask)
 	}
 	var archivedList tasks.SummaryPage
-	must(t, json.Unmarshal(runTaskCLI(t, srv.URL, cliToken, "", "task", "list", "-w", w.ID, "--archived"), &archivedList))
+	must(
+		t,
+		json.Unmarshal(
+			runTaskCLI(t, srv.URL, cliToken, "", "task", "list", "-w", w.ID, "--archived"),
+			&archivedList,
+		),
+	)
 	if len(archivedList.Tasks) != 1 || archivedList.Tasks[0].ID != cliCreated.ID {
 		t.Fatal(archivedList)
 	}
-	archiveSearch, e := session.CallTool(ctx, &mcp.CallToolParams{Name: "task_search", Arguments: map[string]any{"query": "Terminal", "include_archived": true}})
+	archiveSearch, e := session.CallTool(
+		ctx,
+		&mcp.CallToolParams{
+			Name:      "task_search",
+			Arguments: map[string]any{"query": "Terminal", "include_archived": true},
+		},
+	)
 	must(t, e)
 	decodeTool(t, archiveSearch, &searchEnvelope)
 	if len(searchEnvelope.Data.Tasks) != 1 || !searchEnvelope.Data.Tasks[0].Archived {
 		t.Fatal(searchEnvelope)
 	}
-	restored, e := session.CallTool(ctx, &mcp.CallToolParams{Name: "task_restore", Arguments: map[string]any{"task": cliCreated.ID, "version": 2}})
+	restored, e := session.CallTool(
+		ctx,
+		&mcp.CallToolParams{
+			Name:      "task_restore",
+			Arguments: map[string]any{"task": cliCreated.ID, "version": 2},
+		},
+	)
 	must(t, e)
 	if restored.IsError {
 		t.Fatal(restored)
 	}
-	archived, e := session.CallTool(ctx, &mcp.CallToolParams{Name: "task_archive", Arguments: map[string]any{"task": cliCreated.ID, "version": 3}})
+	archived, e := session.CallTool(
+		ctx,
+		&mcp.CallToolParams{
+			Name:      "task_archive",
+			Arguments: map[string]any{"task": cliCreated.ID, "version": 3},
+		},
+	)
 	must(t, e)
 	if archived.IsError {
 		t.Fatal(archived)
 	}
-	must(t, json.Unmarshal(runTaskCLI(t, srv.URL, cliToken, "", "task", "restore", cliCreated.Reference, "--version", "4"), &archivedTask))
+	must(
+		t,
+		json.Unmarshal(
+			runTaskCLI(t, srv.URL, cliToken, "", "task", "restore", cliCreated.Reference, "--version", "4"),
+			&archivedTask,
+		),
+	)
 	if archivedTask.Archived {
 		t.Fatal(archivedTask)
 	}
 	// Comments use the same actual CLI parser, HTTP routes and MCP authority.
 	var cliComment activity.Entry
-	must(t, json.Unmarshal(runTaskCLI(t, srv.URL, cliToken, "Comment from stdin", "task", "comment", "add", cliCreated.Reference, "--body-file", "-"), &cliComment))
+	must(
+		t,
+		json.Unmarshal(
+			runTaskCLI(
+				t,
+				srv.URL,
+				cliToken,
+				"Comment from stdin",
+				"task",
+				"comment",
+				"add",
+				cliCreated.Reference,
+				"--body-file",
+				"-",
+			),
+			&cliComment,
+		),
+	)
 	var editedComment activity.Entry
-	must(t, json.Unmarshal(runTaskCLI(t, srv.URL, cliToken, "", "task", "comment", "edit", cliCreated.Reference, cliComment.ID, "--body", "Edited from CLI", "--version", "1"), &editedComment))
+	must(
+		t,
+		json.Unmarshal(
+			runTaskCLI(
+				t,
+				srv.URL,
+				cliToken,
+				"",
+				"task",
+				"comment",
+				"edit",
+				cliCreated.Reference,
+				cliComment.ID,
+				"--body",
+				"Edited from CLI",
+				"--version",
+				"1",
+			),
+			&editedComment,
+		),
+	)
 	if editedComment.Comment.Version != 2 || editedComment.Actor.ID != agent.ID {
 		t.Fatal(editedComment)
 	}
@@ -152,16 +307,35 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 		decodeTool(t, result, &out)
 		return out.Data
 	}
-	postArgs := map[string]any{"task": cliCreated.ID, "reply_to": cliComment.ID, "body": "MCP reply", "request_id": uuid.NewString()}
+	postArgs := map[string]any{
+		"task":       cliCreated.ID,
+		"reply_to":   cliComment.ID,
+		"body":       "MCP reply",
+		"request_id": uuid.NewString(),
+	}
 	mcpReply := callComment("comment_create", postArgs)
 	if callComment("comment_create", postArgs).ID != mcpReply.ID {
 		t.Fatal("MCP duplicate retry")
 	}
-	callComment("comment_update", map[string]any{"task": cliCreated.ID, "comment": mcpReply.ID, "body": "MCP edited reply", "version": 1})
+	callComment(
+		"comment_update",
+		map[string]any{
+			"task":    cliCreated.ID,
+			"comment": mcpReply.ID,
+			"body":    "MCP edited reply",
+			"version": 1,
+		},
+	)
 	if callComment("comment_get", map[string]any{"task": cliCreated.ID, "comment": mcpReply.ID}).Comment.Version != 2 {
 		t.Fatal("MCP edit missing")
 	}
-	threadResult, e := session.CallTool(ctx, &mcp.CallToolParams{Name: "comment_replies", Arguments: map[string]any{"task": cliCreated.ID, "comment": cliComment.ID}})
+	threadResult, e := session.CallTool(
+		ctx,
+		&mcp.CallToolParams{
+			Name:      "comment_replies",
+			Arguments: map[string]any{"task": cliCreated.ID, "comment": cliComment.ID},
+		},
+	)
 	must(t, e)
 	var threadEnvelope struct {
 		Data activity.Page `json:"data"`
@@ -170,11 +344,32 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 	if len(threadEnvelope.Data.Entries) != 1 || threadEnvelope.Data.Entries[0].ID != mcpReply.ID {
 		t.Fatal(threadEnvelope)
 	}
-	if !callComment("comment_delete", map[string]any{"task": cliCreated.ID, "comment": mcpReply.ID, "version": 2}).Comment.Deleted {
+	if !callComment(
+		"comment_delete",
+		map[string]any{"task": cliCreated.ID, "comment": mcpReply.ID, "version": 2},
+	).Comment.Deleted {
 		t.Fatal("MCP deletion missing")
 	}
 	var cliDeleted activity.Entry
-	must(t, json.Unmarshal(runTaskCLI(t, srv.URL, cliToken, "", "task", "comment", "delete", cliCreated.Reference, cliComment.ID, "--version", "2"), &cliDeleted))
+	must(
+		t,
+		json.Unmarshal(
+			runTaskCLI(
+				t,
+				srv.URL,
+				cliToken,
+				"",
+				"task",
+				"comment",
+				"delete",
+				cliCreated.Reference,
+				cliComment.ID,
+				"--version",
+				"2",
+			),
+			&cliDeleted,
+		),
+	)
 	if !cliDeleted.Comment.Deleted || cliDeleted.ReplyCount != 1 {
 		t.Fatal(cliDeleted)
 	}
@@ -183,7 +378,20 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 		t.Fatal("CLI/MCP comment retrieval marked read")
 	}
 
-	result, e := session.CallTool(ctx, &mcp.CallToolParams{Name: "task_create", Arguments: map[string]any{"workspace": w.ID, "title": "MCP child", "priority": "urgent", "type": "feature", "size": "xl", "parent": v.Reference}})
+	result, e := session.CallTool(
+		ctx,
+		&mcp.CallToolParams{
+			Name: "task_create",
+			Arguments: map[string]any{
+				"workspace": w.ID,
+				"title":     "MCP child",
+				"priority":  "urgent",
+				"type":      "feature",
+				"size":      "xl",
+				"parent":    v.Reference,
+			},
+		},
+	)
 	must(t, e)
 	if result.IsError {
 		t.Fatal(result)
@@ -198,22 +406,67 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 	if child.Priority != "urgent" || child.Type != "feature" || child.Size != "xl" {
 		t.Fatal("MCP metadata lost", child)
 	}
-	metadataResult, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "task_update", Arguments: map[string]any{"task": child.ID, "field": "size", "version": 1, "text": "m"}})
+	metadataResult, err := session.CallTool(
+		ctx,
+		&mcp.CallToolParams{
+			Name:      "task_update",
+			Arguments: map[string]any{"task": child.ID, "field": "size", "version": 1, "text": "m"},
+		},
+	)
 	must(t, err)
 	if metadataResult.IsError {
 		t.Fatal(metadataResult)
 	}
 	var propertyGroups []tasks.Group
-	must(t, json.Unmarshal(runTaskCLI(t, srv.URL, cliToken, "", "task", "groups", "-w", w.ID, "--group", "priority"), &propertyGroups))
+	must(
+		t,
+		json.Unmarshal(
+			runTaskCLI(t, srv.URL, cliToken, "", "task", "groups", "-w", w.ID, "--group", "priority"),
+			&propertyGroups,
+		),
+	)
 	if len(propertyGroups) != 5 {
 		t.Fatal(propertyGroups)
 	}
 	var metadataPage tasks.SummaryPage
-	must(t, json.Unmarshal(runTaskCLI(t, srv.URL, cliToken, "", "task", "list", "-w", w.ID, "--priority", "high", "--type", "bug", "--size", "s"), &metadataPage))
+	must(
+		t,
+		json.Unmarshal(
+			runTaskCLI(
+				t,
+				srv.URL,
+				cliToken,
+				"",
+				"task",
+				"list",
+				"-w",
+				w.ID,
+				"--priority",
+				"high",
+				"--type",
+				"bug",
+				"--size",
+				"s",
+			),
+			&metadataPage,
+		),
+	)
 	if metadataPage.Total != 1 || metadataPage.Tasks[0].ID != cliCreated.ID {
 		t.Fatal("CLI filters", metadataPage)
 	}
-	metadataResult, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "tasks_list", Arguments: map[string]any{"workspace": w.ID, "parent": v.ID, "priorities": []string{"urgent"}, "types": []string{"feature"}, "sizes": []string{"m"}}})
+	metadataResult, err = session.CallTool(
+		ctx,
+		&mcp.CallToolParams{
+			Name: "tasks_list",
+			Arguments: map[string]any{
+				"workspace":  w.ID,
+				"parent":     v.ID,
+				"priorities": []string{"urgent"},
+				"types":      []string{"feature"},
+				"sizes":      []string{"m"},
+			},
+		},
+	)
 	must(t, err)
 	var metadataEnvelope struct {
 		Data tasks.SummaryPage `json:"data"`
@@ -225,13 +478,35 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 	if child.ParentID != v.ID {
 		t.Fatal(child)
 	}
-	result, e = session.CallTool(ctx, &mcp.CallToolParams{Name: "task_update", Arguments: map[string]any{"task": child.ID, "field": "title", "version": 1, "text": "Updated through MCP"}})
+	result, e = session.CallTool(
+		ctx,
+		&mcp.CallToolParams{
+			Name: "task_update",
+			Arguments: map[string]any{
+				"task":    child.ID,
+				"field":   "title",
+				"version": 1,
+				"text":    "Updated through MCP",
+			},
+		},
+	)
 	must(t, e)
 	if result.IsError {
 		t.Fatal(result)
 	}
 	// A stale edit is structured, carries the current field and can be reconciled.
-	result, e = session.CallTool(ctx, &mcp.CallToolParams{Name: "task_update", Arguments: map[string]any{"task": child.Reference, "field": "title", "version": 1, "text": "Stale title"}})
+	result, e = session.CallTool(
+		ctx,
+		&mcp.CallToolParams{
+			Name: "task_update",
+			Arguments: map[string]any{
+				"task":    child.Reference,
+				"field":   "title",
+				"version": 1,
+				"text":    "Stale title",
+			},
+		},
+	)
 	must(t, e)
 	var problem struct {
 		Error httpapi.Problem `json:"error"`
@@ -265,12 +540,25 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 			t.Fatal("HTTP accepted implicit clear", e)
 		}
 	}
-	_, e = c.UpdateTask(ctx, child.ID, tasks.Patch{Field: "title", Version: 1, Value: json.RawMessage(`"Stale CLI title"`)})
+	_, e = c.UpdateTask(
+		ctx,
+		child.ID,
+		tasks.Patch{Field: "title", Version: 1, Value: json.RawMessage(`"Stale CLI title"`)},
+	)
 	var ce *apiclient.Error
-	if !errors.As(e, &ce) || ce.Status != 409 || ce.Code != "conflict" || !strings.Contains(string(ce.Current), `"Updated through MCP"`) {
+	if !errors.As(e, &ce) || ce.Status != 409 || ce.Code != "conflict" || !strings.Contains(
+		string(ce.Current),
+		`"Updated through MCP"`,
+	) {
 		t.Fatal("CLI lost conflict details", e)
 	}
-	result, e = session.CallTool(ctx, &mcp.CallToolParams{Name: "task_update", Arguments: map[string]any{"task": child.ID, "field": "title", "version": 2, "text": "Reconciled"}})
+	result, e = session.CallTool(
+		ctx,
+		&mcp.CallToolParams{
+			Name:      "task_update",
+			Arguments: map[string]any{"task": child.ID, "field": "title", "version": 2, "text": "Reconciled"},
+		},
+	)
 	must(t, e)
 	if result.IsError {
 		t.Fatal(result)
@@ -278,14 +566,25 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 	// Inspect children, even completed ones, while root search never promotes them.
 	config, e := c.TaskConfig(ctx, "interfaces")
 	must(t, e)
-	_, e = c.UpdateTask(ctx, child.ID, tasks.Patch{Field: "status_id", Version: 1, Value: json.RawMessage(fmt.Sprintf("%q", config.Completed))})
+	_, e = c.UpdateTask(
+		ctx,
+		child.ID,
+		tasks.Patch{
+			Field:   "status_id",
+			Version: 1,
+			Value:   json.RawMessage(fmt.Sprintf("%q", config.Completed)),
+		},
+	)
 	must(t, e)
 	detail, e := c.Task(ctx, v.Reference, "")
 	must(t, e)
 	if detail.Subtasks.Total != 1 || detail.Subtasks.Tasks[0].Status.ID != config.Completed {
 		t.Fatal("inspection omitted completed child", detail)
 	}
-	result, e = session.CallTool(ctx, &mcp.CallToolParams{Name: "task_get", Arguments: map[string]any{"task": v.Reference}})
+	result, e = session.CallTool(
+		ctx,
+		&mcp.CallToolParams{Name: "task_get", Arguments: map[string]any{"task": v.Reference}},
+	)
 	must(t, e)
 	var inspected struct {
 		Data tasks.Detail `json:"data"`
@@ -299,17 +598,30 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 	if page.Total != 0 {
 		t.Fatal("child promoted into root search", page)
 	}
-	page, e = c.Tasks(ctx, "interfaces", tasks.Filter{State: "all", Parent: v.Reference, Query: "Reconciled"})
+	page, e = c.Tasks(
+		ctx,
+		"interfaces",
+		tasks.Filter{State: "all", Parent: v.Reference, Query: "Reconciled"},
+	)
 	must(t, e)
 	if page.Total != 1 {
 		t.Fatal("reference parent lookup failed", page)
 	}
 	// Lists have predictable bounded pages and exclude the large description body.
 	for i := 0; i < 52; i++ {
-		_, e = c.CreateTask(ctx, "interfaces", tasks.Create{Title: fmt.Sprintf("Page %02d", i), Description: "private long description"})
+		_, e = c.CreateTask(
+			ctx,
+			"interfaces",
+			tasks.Create{Title: fmt.Sprintf("Page %02d", i), Description: "private long description"},
+		)
 		must(t, e)
 	}
-	filter := map[string]any{"workspace": "interfaces", "query": "Page ", "sort": "title", "direction": "asc"}
+	filter := map[string]any{
+		"workspace": "interfaces",
+		"query":     "Page ",
+		"sort":      "title",
+		"direction": "asc",
+	}
 	result, e = session.CallTool(ctx, &mcp.CallToolParams{Name: "tasks_list", Arguments: filter})
 	must(t, e)
 	var listed struct {
@@ -317,7 +629,10 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 	}
 	decodeTool(t, result, &listed)
 	data, _ := json.Marshal(result.StructuredContent)
-	if result.IsError || len(listed.Data.Tasks) != 50 || listed.Data.Total != 52 || !listed.Data.More || listed.Data.Cursor == "" || strings.Contains(string(data), "description") {
+	if result.IsError || len(listed.Data.Tasks) != 50 || listed.Data.Total != 52 || !listed.Data.More || listed.Data.Cursor == "" || strings.Contains(
+		string(data),
+		"description",
+	) {
 		t.Fatal("invalid summary", string(data))
 	}
 	filter["cursor"] = listed.Data.Cursor
@@ -341,7 +656,17 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 		}
 	}
 	// Board selection survives the real MCP schema and CLI parser, not just the domain API.
-	boardResult, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "task_create", Arguments: map[string]any{"workspace": w.ID, "title": "Board interface review", "board": "backlog"}})
+	boardResult, err := session.CallTool(
+		ctx,
+		&mcp.CallToolParams{
+			Name: "task_create",
+			Arguments: map[string]any{
+				"workspace": w.ID,
+				"title":     "Board interface review",
+				"board":     "backlog",
+			},
+		},
+	)
 	must(t, err)
 	var boardEnvelope struct {
 		Data tasks.Task `json:"data"`
@@ -351,23 +676,66 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 		t.Fatal(boardResult)
 	}
 	var backlogPage tasks.SummaryPage
-	must(t, json.Unmarshal(runTaskCLI(t, srv.URL, cliToken, "", "task", "list", "-w", w.ID, "--board", "backlog"), &backlogPage))
+	must(
+		t,
+		json.Unmarshal(
+			runTaskCLI(t, srv.URL, cliToken, "", "task", "list", "-w", w.ID, "--board", "backlog"),
+			&backlogPage,
+		),
+	)
 	if backlogPage.Total != 1 || backlogPage.Tasks[0].ID != boardEnvelope.Data.ID {
 		t.Fatal(backlogPage)
 	}
 	var promoted tasks.Task
-	must(t, json.Unmarshal(runTaskCLI(t, srv.URL, cliToken, "", "task", "edit", boardEnvelope.Data.ID, "--field", "board", "--version", "1", "--value", "tasks"), &promoted))
+	must(
+		t,
+		json.Unmarshal(
+			runTaskCLI(
+				t,
+				srv.URL,
+				cliToken,
+				"",
+				"task",
+				"edit",
+				boardEnvelope.Data.ID,
+				"--field",
+				"board",
+				"--version",
+				"1",
+				"--value",
+				"tasks",
+			),
+			&promoted,
+		),
+	)
 	if promoted.Board != "tasks" || promoted.ID != boardEnvelope.Data.ID {
 		t.Fatal(promoted)
 	}
-	boardResult, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "task_update", Arguments: map[string]any{"task": promoted.ID, "field": "board", "text": "backlog", "version": 2}})
+	boardResult, err = session.CallTool(
+		ctx,
+		&mcp.CallToolParams{
+			Name:      "task_update",
+			Arguments: map[string]any{"task": promoted.ID, "field": "board", "text": "backlog", "version": 2},
+		},
+	)
 	must(t, err)
 	decodeTool(t, boardResult, &boardEnvelope)
 	if boardResult.IsError || boardEnvelope.Data.Board != "backlog" {
 		t.Fatal(boardResult)
 	}
 	// Releases round-trip through the MCP schema and the CLI parser.
-	releaseResult, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "release_create", Arguments: map[string]any{"workspace": "interfaces", "name": "2026.9", "state": "open", "description": "Notes"}})
+	releaseResult, err := session.CallTool(
+		ctx,
+		&mcp.CallToolParams{
+			Name: "release_create",
+			Arguments: map[string]any{
+				"workspace":   "interfaces",
+				"name":        "2026.9",
+				"state":       "open",
+				"description": "Notes",
+			},
+		},
+	)
 	must(t, err)
 	var releaseEnvelope struct {
 		Data tasks.Release `json:"data"`
@@ -377,44 +745,117 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 		t.Fatal(releaseResult)
 	}
 	release := releaseEnvelope.Data
-	boardResult, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "task_update", Arguments: map[string]any{"task": promoted.ID, "field": "release_id", "text": release.ID, "version": 1}})
+	boardResult, err = session.CallTool(
+		ctx,
+		&mcp.CallToolParams{
+			Name: "task_update",
+			Arguments: map[string]any{
+				"task":    promoted.ID,
+				"field":   "release_id",
+				"text":    release.ID,
+				"version": 1,
+			},
+		},
+	)
 	must(t, err)
 	decodeTool(t, boardResult, &boardEnvelope)
 	if boardResult.IsError || boardEnvelope.Data.Release == nil || boardEnvelope.Data.Release.State != "open" {
 		t.Fatal(boardResult)
 	}
-	result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "tasks_list", Arguments: map[string]any{"workspace": "interfaces", "board": "*", "releases": []string{release.ID}, "all_depths": true}})
+	result, err = session.CallTool(
+		ctx,
+		&mcp.CallToolParams{
+			Name: "tasks_list",
+			Arguments: map[string]any{
+				"workspace":  "interfaces",
+				"board":      "*",
+				"releases":   []string{release.ID},
+				"all_depths": true,
+			},
+		},
+	)
 	must(t, err)
 	decodeTool(t, result, &listed)
 	if result.IsError || listed.Data.Total != 1 || listed.Data.Tasks[0].Release == nil {
 		t.Fatal(result)
 	}
-	result, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "releases_list", Arguments: map[string]any{"workspace": "interfaces"}})
+	result, err = session.CallTool(
+		ctx,
+		&mcp.CallToolParams{Name: "releases_list", Arguments: map[string]any{"workspace": "interfaces"}},
+	)
 	must(t, err)
 	data, _ = json.Marshal(result.StructuredContent)
-	if result.IsError || !strings.Contains(string(data), `"total":1`) || strings.Contains(string(data), "Notes") {
+	if result.IsError || !strings.Contains(string(data), `"total":1`) || strings.Contains(
+		string(data),
+		"Notes",
+	) {
 		t.Fatal("releases_list", string(data))
 	}
 	var frozen tasks.Release
-	must(t, json.Unmarshal(runTaskCLI(t, srv.URL, cliToken, "", "release", "edit", release.ID, "-w", "interfaces", "--state", "frozen", "--version", "1"), &frozen))
+	must(
+		t,
+		json.Unmarshal(
+			runTaskCLI(
+				t,
+				srv.URL,
+				cliToken,
+				"",
+				"release",
+				"edit",
+				release.ID,
+				"-w",
+				"interfaces",
+				"--state",
+				"frozen",
+				"--version",
+				"1",
+			),
+			&frozen,
+		),
+	)
 	if frozen.State != "frozen" || frozen.Description != "Notes" || frozen.Version != 2 {
 		t.Fatal(frozen)
 	}
 	var releases []tasks.Release
-	must(t, json.Unmarshal(runTaskCLI(t, srv.URL, cliToken, "", "release", "list", "-w", "interfaces"), &releases))
+	must(
+		t,
+		json.Unmarshal(
+			runTaskCLI(t, srv.URL, cliToken, "", "release", "list", "-w", "interfaces"),
+			&releases,
+		),
+	)
 	if len(releases) != 1 || releases[0].State != "frozen" {
 		t.Fatal(releases)
 	}
 	// Explicit assignment replacement and clearing work through the same tool.
 	for i, ids := range [][]string{{agent.ID}, {}} {
-		r, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "task_update", Arguments: map[string]any{"task": v.ID, "field": "assignees", "version": i + 1, "assignees": ids}})
+		r, err := session.CallTool(
+			ctx,
+			&mcp.CallToolParams{
+				Name: "task_update",
+				Arguments: map[string]any{
+					"task":      v.ID,
+					"field":     "assignees",
+					"version":   i + 1,
+					"assignees": ids,
+				},
+			},
+		)
 		must(t, err)
 		if r.IsError {
 			t.Fatal(r)
 		}
 	}
 	// Slug aliases resolve to the same UUID and cannot change the target workspace.
-	_, e = manager(f).EditWorkspace(ctx, f.token, w.ID, w.Version, "Interfaces renamed", "interfaces-renamed", "")
+	_, e = manager(f).EditWorkspace(
+		ctx,
+		f.token,
+		w.ID,
+		w.Version,
+		"Interfaces renamed",
+		"interfaces-renamed",
+		"",
+	)
 	must(t, e)
 	for _, slug := range []string{"interfaces", "interfaces-renamed", "INTERFACES-RENAMED"} {
 		p, err := c.Tasks(ctx, slug, tasks.Filter{State: "all", Query: "CLI task"})
@@ -425,15 +866,35 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 	}
 	policy, e := manager(f).AgentWorkspaces(ctx, f.token, agent.ID)
 	must(t, e)
-	must(t, manager(f).SetAgentWorkspacePolicy(ctx, f.token, agent.ID, w.ID, policy.Version, false, nil))
-	result, e = session.CallTool(ctx, &mcp.CallToolParams{Name: "task_create", Arguments: map[string]any{"workspace": w.ID, "title": "Denied"}})
+	must(
+		t,
+		manager(f).SetAgentWorkspacePolicy(ctx, f.token, agent.ID, w.ID, policy.Version, false, nil),
+	)
+	result, e = session.CallTool(
+		ctx,
+		&mcp.CallToolParams{
+			Name:      "task_create",
+			Arguments: map[string]any{"workspace": w.ID, "title": "Denied"},
+		},
+	)
 	if e == nil && !result.IsError {
 		t.Fatal("MCP bypassed permission change")
 	}
 	if e = c.Call(ctx, "POST", "workspaces/"+w.ID+"/tasks", tasks.Create{Title: "Denied"}, &v); e == nil {
 		t.Fatal("CLI bypassed permission change")
 	}
-	result, e = session.CallTool(ctx, &mcp.CallToolParams{Name: "task_update", Arguments: map[string]any{"task": child.ID, "field": "title", "version": 1, "text": "Denied stale edit"}})
+	result, e = session.CallTool(
+		ctx,
+		&mcp.CallToolParams{
+			Name: "task_update",
+			Arguments: map[string]any{
+				"task":    child.ID,
+				"field":   "title",
+				"version": 1,
+				"text":    "Denied stale edit",
+			},
+		},
+	)
 	must(t, e)
 	var denied struct {
 		Error httpapi.Problem `json:"error"`
@@ -444,7 +905,11 @@ func TestTaskCLIAndMCPShareAuthority(t *testing.T) {
 	}
 	record, e := f.store.ReadOAuthToken(ctx, auth.Digest(tokens.AccessToken))
 	must(t, e)
-	_, e = f.conn.Exec(ctx, `UPDATE browser_sessions SET tool_grants=ARRAY['identity.read'] WHERE id=$1`, record.SessionID)
+	_, e = f.conn.Exec(
+		ctx,
+		`UPDATE browser_sessions SET tool_grants=ARRAY['identity.read'] WHERE id=$1`,
+		record.SessionID,
+	)
 	must(t, e)
 	list, e := session.ListTools(ctx, nil)
 	must(t, e)
@@ -465,7 +930,10 @@ func runTaskCLI(t *testing.T, server, token, input string, args ...string) []byt
 	dir := t.TempDir()
 	t.Setenv("ACTA_CONFIG_DIR", dir)
 	t.Setenv("ACTA_TOKEN", token)
-	config, err := json.Marshal(map[string]any{"active": "default", "profiles": map[string]any{"default": map[string]string{"url": server}}})
+	config, err := json.Marshal(map[string]any{
+		"active":   "default",
+		"profiles": map[string]any{"default": map[string]string{"url": server}},
+	})
 	must(t, err)
 	must(t, os.WriteFile(filepath.Join(dir, "config.json"), config, 0600))
 	in, err := os.CreateTemp(dir, "input")

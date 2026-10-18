@@ -1,14 +1,20 @@
 package auth
 
 import (
-	"acta/internal/tasks"
 	"context"
+
+	"acta/internal/tasks"
 )
 
 // Inspection includes a bounded direct-child page in the same authorized snapshot.
 func (m *Management) InspectTask(ctx context.Context, token, ref, cursor string) (tasks.Detail, error) {
 	var out tasks.Detail
-	f, e := tasks.NormalizeTaskSort(tasks.Filter{State: "all", Sort: "number", Direction: "asc", Cursor: cursor})
+	f, e := tasks.NormalizeTaskSort(tasks.Filter{
+		State:     "all",
+		Sort:      "number",
+		Direction: "asc",
+		Cursor:    cursor,
+	})
 	if e != nil {
 		return out, e
 	}

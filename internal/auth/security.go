@@ -1,16 +1,18 @@
 package auth
 
 import (
-	"acta/internal/accounts"
 	"context"
 	"crypto/cipher"
 	"encoding/json"
 	"errors"
+	"net/url"
+	"time"
+
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
-	"net/url"
-	"time"
+
+	"acta/internal/accounts"
 )
 
 var ErrFlow = errors.New("this security flow has expired or your security settings changed; start again")
@@ -84,7 +86,15 @@ func NewSecurity(ctx context.Context, a *Service, store SecurityStore, publicURL
 	if err != nil {
 		return nil, err
 	}
-	w, err := webauthn.New(&webauthn.Config{RPDisplayName: "Acta", RPID: u.Hostname(), RPOrigins: origins, AuthenticatorSelection: protocol.AuthenticatorSelection{UserVerification: protocol.VerificationRequired, ResidentKey: protocol.ResidentKeyRequirementRequired}})
+	w, err := webauthn.New(&webauthn.Config{
+		RPDisplayName: "Acta",
+		RPID:          u.Hostname(),
+		RPOrigins:     origins,
+		AuthenticatorSelection: protocol.AuthenticatorSelection{
+			UserVerification: protocol.VerificationRequired,
+			ResidentKey:      protocol.ResidentKeyRequirementRequired,
+		},
+	})
 	if err != nil {
 		return nil, err
 	}

@@ -1,22 +1,26 @@
 package auth
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+
 	"acta/internal/accounts"
 	"acta/internal/activity"
 	"acta/internal/comments"
 	"acta/internal/tasks"
 	ws "acta/internal/workspaces"
-	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 )
 
 func commentAbilities(v *activity.Entry, actor string, permissions []string) {
 	if v.Comment == nil {
 		return
 	}
-	allowed := v.Actor.ID == actor && ws.Contains(permissions, ws.CommentTasks) || v.Actor.ID != actor && ws.Contains(permissions, ws.ManageComments)
+	allowed := v.Actor.ID == actor && ws.Contains(permissions, ws.CommentTasks) || v.Actor.ID != actor && ws.Contains(
+		permissions,
+		ws.ManageComments,
+	)
 	v.Comment.CanEdit = allowed && !v.Comment.Deleted
 	v.Comment.CanDelete = allowed && !v.Comment.Deleted
 }
@@ -60,7 +64,10 @@ func (m *Management) CommentReplies(ctx context.Context, token, ref, id, cursor 
 			return e
 		}
 		if root.Comment.ThreadID != "" {
-			return &accounts.FieldError{Field: "comment", Message: "Use the root comment UUID to read a thread."}
+			return &accounts.FieldError{
+				Field:   "comment",
+				Message: "Use the root comment UUID to read a thread.",
+			}
 		}
 		v, e = tx.CommentReplies(ctx, t.ID, id, before)
 		for i := range v.Entries {
@@ -111,7 +118,10 @@ func (m *Management) CreateComment(ctx context.Context, token, ref string, in co
 func (m *Management) UpdateComment(ctx context.Context, token, ref, id string, in comments.Update) (activity.Entry, error) {
 	var v activity.Entry
 	if in.Version < 1 {
-		return v, &accounts.FieldError{Field: "version", Message: "Supply the comment’s current version."}
+		return v, &accounts.FieldError{
+			Field:   "version",
+			Message: "Supply the comment’s current version.",
+		}
 	}
 	if !in.Delete {
 		var e error
@@ -129,7 +139,10 @@ func (m *Management) UpdateComment(ctx context.Context, token, ref, id string, i
 			return e
 		}
 		own := old.Actor.ID == tx.Actor().ID
-		if own && !ws.Contains(a.Permissions, ws.CommentTasks) || !own && !ws.Contains(a.Permissions, ws.ManageComments) {
+		if own && !ws.Contains(a.Permissions, ws.CommentTasks) || !own && !ws.Contains(
+			a.Permissions,
+			ws.ManageComments,
+		) {
 			return ErrForbidden
 		}
 		if !in.Delete {

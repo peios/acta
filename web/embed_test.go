@@ -57,8 +57,15 @@ func TestFrontendRouting(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/"+strings.TrimPrefix(paths[0], "build/"), nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
-	if w.Code != http.StatusOK || w.Body.Len() == 0 || !strings.Contains(w.Header().Get("Content-Type"), "javascript") {
-		t.Fatalf("compiled script not served correctly: status %d, type %q", w.Code, w.Header().Get("Content-Type"))
+	if w.Code != http.StatusOK || w.Body.Len() == 0 || !strings.Contains(
+		w.Header().Get("Content-Type"),
+		"javascript",
+	) {
+		t.Fatalf(
+			"compiled script not served correctly: status %d, type %q",
+			w.Code,
+			w.Header().Get("Content-Type"),
+		)
 	}
 	if w.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
 		t.Fatal("hashed assets should be cached as immutable")
@@ -70,7 +77,14 @@ func TestPWAAssets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for path, kind := range map[string]string{"/manifest.webmanifest": "application/manifest+json", "/service-worker.js": "javascript", "/icons/acta-192.png": "image/png", "/icons/acta-512.png": "image/png", "/icons/acta-maskable.png": "image/png", "/icons/apple-touch-icon.png": "image/png"} {
+	for path, kind := range map[string]string{
+		"/manifest.webmanifest":       "application/manifest+json",
+		"/service-worker.js":          "javascript",
+		"/icons/acta-192.png":         "image/png",
+		"/icons/acta-512.png":         "image/png",
+		"/icons/acta-maskable.png":    "image/png",
+		"/icons/apple-touch-icon.png": "image/png",
+	} {
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		if w.Code != 200 || !strings.Contains(w.Header().Get("Content-Type"), kind) || w.Body.Len() == 0 {

@@ -1,15 +1,16 @@
 package integration
 
 import (
-	"acta/internal/accounts"
-	"acta/internal/auth"
-	"acta/internal/config"
-	"acta/internal/httpapi"
 	"errors"
 	"net/http"
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/config"
+	"acta/internal/httpapi"
 )
 
 func newGroup(t *testing.T, f securityFixture, name string, grants []string, required bool) accounts.Group {
@@ -28,7 +29,10 @@ func membership(t *testing.T, f securityFixture, g accounts.Group, id string, me
 	must(t, e)
 	g, e = m.GetGroup(t.Context(), f.token, g.ID)
 	must(t, e)
-	must(t, m.SetGroupMembership(t.Context(), f.token, g.ID, id, g.Version, a.PermissionsVersion, member))
+	must(
+		t,
+		m.SetGroupMembership(t.Context(), f.token, g.ID, id, g.Version, a.PermissionsVersion, member),
+	)
 	a, e = m.Get(t.Context(), f.token, id)
 	must(t, e)
 	return a
@@ -43,7 +47,10 @@ func TestGroupsDefaultAndAdditiveSources(t *testing.T) {
 		t.Fatal("fresh installation bootstrap account missing Default")
 	}
 	a, member := permissionMember(t, f, "member")
-	if len(a.Groups) != 1 || !a.Groups[0].Default || len(a.DirectPermissions) != 0 || !accounts.CheckPermission(a, accounts.ChangeUsername) {
+	if len(a.Groups) != 1 || !a.Groups[0].Default || len(a.DirectPermissions) != 0 || !accounts.CheckPermission(
+		a,
+		accounts.ChangeUsername,
+	) {
 		t.Fatal("new account defaults", a)
 	}
 	defaults := a.Groups[0]
@@ -53,7 +60,14 @@ func TestGroupsDefaultAndAdditiveSources(t *testing.T) {
 	a = membership(t, f, reviewers, a.ID, true)
 	_, _, e = m.List(ctx, member.token, "", "", 0)
 	must(t, e)
-	a, e = m.UpdatePermissions(ctx, f.token, a.ID, a.PermissionsVersion, []string{accounts.ViewUsers}, false)
+	a, e = m.UpdatePermissions(
+		ctx,
+		f.token,
+		a.ID,
+		a.PermissionsVersion,
+		[]string{accounts.ViewUsers},
+		false,
+	)
 	must(t, e)
 	a = membership(t, f, readers, a.ID, false)
 	a = membership(t, f, reviewers, a.ID, false)
@@ -81,26 +95,62 @@ func TestGroupDelegationAndElevatedDefault(t *testing.T) {
 	ctx := t.Context()
 	m := manager(f)
 	delegate, session := permissionMember(t, f, "delegate")
-	delegate = grantPermissions(t, f, delegate.ID, []string{accounts.ManagePermissions, accounts.ViewUsers, accounts.CreateUsers}, false)
+	delegate = grantPermissions(
+		t,
+		f,
+		delegate.ID,
+		[]string{accounts.ManagePermissions, accounts.ViewUsers, accounts.CreateUsers},
+		false,
+	)
 	privileged := newGroup(t, f, "Privileged", []string{accounts.Superuser}, false)
 	_, e := m.UpdateGroupPermissions(ctx, session.token, privileged.ID, privileged.Version, nil, false)
 	if !errors.Is(e, auth.ErrForbidden) {
 		t.Fatal("removed unowned Superuser", e)
 	}
-	e = m.SetGroupMembership(ctx, session.token, privileged.ID, delegate.ID, privileged.Version, delegate.PermissionsVersion, true)
+	e = m.SetGroupMembership(
+		ctx,
+		session.token,
+		privileged.ID,
+		delegate.ID,
+		privileged.Version,
+		delegate.PermissionsVersion,
+		true,
+	)
 	if !errors.Is(e, auth.ErrForbidden) {
 		t.Fatal("joined Superuser group", e)
 	}
 	ordinary := newGroup(t, f, "Read access", []string{accounts.ViewUsers}, false)
-	e = m.SetGroupMembership(ctx, session.token, ordinary.ID, delegate.ID, ordinary.Version, delegate.PermissionsVersion, true)
+	e = m.SetGroupMembership(
+		ctx,
+		session.token,
+		ordinary.ID,
+		delegate.ID,
+		ordinary.Version,
+		delegate.PermissionsVersion,
+		true,
+	)
 	must(t, e)
-	_, e = m.UpdateGroupPermissions(ctx, session.token, ordinary.ID, ordinary.Version, []string{accounts.ViewUsers, accounts.EditUsers}, false)
+	_, e = m.UpdateGroupPermissions(
+		ctx,
+		session.token,
+		ordinary.ID,
+		ordinary.Version,
+		[]string{accounts.ViewUsers, accounts.EditUsers},
+		false,
+	)
 	if !errors.Is(e, auth.ErrForbidden) {
 		t.Fatal("group edit escalated", e)
 	}
 	delegated, e := m.CreateGroup(ctx, session.token, "Delegated group", "")
 	must(t, e)
-	_, e = m.UpdateGroupPermissions(ctx, session.token, delegated.ID, delegated.Version, []string{accounts.ViewUsers}, false)
+	_, e = m.UpdateGroupPermissions(
+		ctx,
+		session.token,
+		delegated.ID,
+		delegated.Version,
+		[]string{accounts.ViewUsers},
+		false,
+	)
 	must(t, e)
 	groups, _, e := m.ListGroups(ctx, f.token, "", 0)
 	must(t, e)
@@ -110,7 +160,14 @@ func TestGroupDelegationAndElevatedDefault(t *testing.T) {
 			defaults = g
 		}
 	}
-	_, e = m.UpdateGroupPermissions(ctx, f.token, defaults.ID, defaults.Version, []string{accounts.Superuser}, false)
+	_, e = m.UpdateGroupPermissions(
+		ctx,
+		f.token,
+		defaults.ID,
+		defaults.Version,
+		[]string{accounts.Superuser},
+		false,
+	)
 	must(t, e)
 	current, e := f.service.Current(ctx, session.token)
 	must(t, e)
@@ -140,7 +197,14 @@ func TestGroupMFAAndCredentialLinks(t *testing.T) {
 	link, _, e := m.Link(ctx, f.token, a.ID, false, false)
 	must(t, e)
 	before := member.begin(t, "passkey_add")
-	group, e = m.UpdateGroupPermissions(ctx, f.token, group.ID, group.Version, []string{accounts.ManagePermissions}, true)
+	group, e = m.UpdateGroupPermissions(
+		ctx,
+		f.token,
+		group.ID,
+		group.Version,
+		[]string{accounts.ManagePermissions},
+		true,
+	)
 	must(t, e)
 	_, e = f.service.Current(ctx, member.token)
 	if !errors.Is(e, auth.ErrMFARequired) {
@@ -152,7 +216,14 @@ func TestGroupMFAAndCredentialLinks(t *testing.T) {
 	if !errors.Is(e, auth.ErrAccountLink) {
 		t.Fatal("pre-promotion reset survived group change", e)
 	}
-	_, e = f.security.Advance(ctx, auth.FlowInput{ID: before.ID, Action: "registration_begin", Name: "bypass"}, member.token, member.binding, "test", "Test")
+	_, e = f.security.Advance(
+		ctx,
+		auth.FlowInput{ID: before.ID, Action: "registration_begin", Name: "bypass"},
+		member.token,
+		member.binding,
+		"test",
+		"Test",
+	)
 	if !errors.Is(e, auth.ErrMFARequired) {
 		t.Fatal("old flow bypassed group MFA", e)
 	}
@@ -195,7 +266,15 @@ func TestGroupSuperuserInvariantAndConcurrentRemoval(t *testing.T) {
 	if e == nil {
 		t.Fatal("last Superuser removed through group edit")
 	}
-	e = m.SetGroupMembership(ctx, f.token, group.ID, root.ID, group.Version, root.PermissionsVersion, false)
+	e = m.SetGroupMembership(
+		ctx,
+		f.token,
+		group.ID,
+		root.ID,
+		group.Version,
+		root.PermissionsVersion,
+		false,
+	)
 	if e == nil {
 		t.Fatal("last Superuser membership removed")
 	}
@@ -214,7 +293,15 @@ func TestGroupSuperuserInvariantAndConcurrentRemoval(t *testing.T) {
 		token string
 	}{{root, f.token}, {second, session.token}} {
 		wg.Go(func() {
-			if m.SetGroupMembership(ctx, v.token, group.ID, v.a.ID, group.Version, v.a.PermissionsVersion, false) == nil {
+			if m.SetGroupMembership(
+				ctx,
+				v.token,
+				group.ID,
+				v.a.ID,
+				group.Version,
+				v.a.PermissionsVersion,
+				false,
+			) == nil {
 				wins.Add(1)
 			}
 		})
@@ -224,7 +311,13 @@ func TestGroupSuperuserInvariantAndConcurrentRemoval(t *testing.T) {
 		t.Fatal("concurrent Superuser membership removals", wins.Load())
 	}
 	var count int
-	must(t, f.conn.QueryRow(ctx, `SELECT count(*) FROM superuser_accounts su JOIN accounts a ON a.id=su.id WHERE a.disabled_at IS NULL AND NOT a.pending`).Scan(&count))
+	must(
+		t,
+		f.conn.QueryRow(
+			ctx,
+			`SELECT count(*) FROM superuser_accounts su JOIN accounts a ON a.id=su.id WHERE a.disabled_at IS NULL AND NOT a.pending`,
+		).Scan(&count),
+	)
 	if count != 1 {
 		t.Fatal(count)
 	}
@@ -242,19 +335,41 @@ func TestGroupVersionsAndHTTPAuthorization(t *testing.T) {
 		t.Fatal("stale group accepted", e)
 	}
 	membership(t, f, updated, a.ID, true)
-	e = m.SetGroupMembership(ctx, f.token, group.ID, a.ID, updated.Version, a.PermissionsVersion, false)
+	e = m.SetGroupMembership(
+		ctx,
+		f.token,
+		group.ID,
+		a.ID,
+		updated.Version,
+		a.PermissionsVersion,
+		false,
+	)
 	if !errors.Is(e, auth.ErrPermissionsChanged) {
 		t.Fatal("stale account accepted", e)
 	}
 	cfg, e := config.Parse("http://localhost:8081", "")
 	must(t, e)
-	c := client{t, httpapi.New(f.service, f.security, accounts.NewProfileService(f.store), m, cfg), map[string]*http.Cookie{"acta_session": {Name: "acta_session", Value: session.token}}}
+	c := client{
+		t,
+		httpapi.New(f.service, f.security, accounts.NewProfileService(f.store), m, cfg),
+		map[string]*http.Cookie{"acta_session": {Name: "acta_session", Value: session.token}},
+	}
 	c.request("GET", "groups", "", 403)
 	c.request("POST", "groups", `{"name":"denied"}`, 403)
 	c.request("GET", "groups/"+group.ID+"/members", "", 403)
-	c.request("POST", "groups/"+group.ID+"/permissions", `{"permissions":["site.superuser"],"permissions_version":2}`, 403)
+	c.request(
+		"POST",
+		"groups/"+group.ID+"/permissions",
+		`{"permissions":["site.superuser"],"permissions_version":2}`,
+		403,
+	)
 	c.cookies["acta_session"].Value = f.token
 	c.request("GET", "groups", "", 200)
 	c.request("GET", "groups/"+group.ID+"/members", "", 200)
-	c.request("POST", "groups/"+group.ID+"/profile", `{"name":"renamed","description":"Changed","permissions_version":1}`, 409)
+	c.request(
+		"POST",
+		"groups/"+group.ID+"/profile",
+		`{"name":"renamed","description":"Changed","permissions_version":1}`,
+		409,
+	)
 }

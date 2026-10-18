@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"acta/internal/documents"
 	"bytes"
 	"io"
 	"mime"
@@ -9,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"acta/internal/documents"
 )
 
 func documentUpload(r *http.Request) bool {
@@ -27,7 +28,12 @@ func documentNumber(value, field string) (int64, error) {
 }
 func (h *Handler) documentRoutes(m *http.ServeMux) {
 	m.HandleFunc("GET /api/tasks/{task}/documents", func(w http.ResponseWriter, r *http.Request) {
-		v, e := h.management.Documents(r.Context(), token(r, h.sessionCookie), r.PathValue("task"), r.URL.Query().Get("cursor"))
+		v, e := h.management.Documents(
+			r.Context(),
+			token(r, h.sessionCookie),
+			r.PathValue("task"),
+			r.URL.Query().Get("cursor"),
+		)
 		if e != nil {
 			failure(w, e)
 			return
@@ -65,7 +71,18 @@ func (h *Handler) documentRoutes(m *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		v, e := h.management.SaveDocument(r.Context(), token(r, h.sessionCookie), documents.Save{ID: r.FormValue("id"), Task: r.PathValue("task"), Title: r.FormValue("title"), Filename: header.Filename, Revision: rev, Content: b})
+		v, e := h.management.SaveDocument(
+			r.Context(),
+			token(r, h.sessionCookie),
+			documents.Save{
+				ID:       r.FormValue("id"),
+				Task:     r.PathValue("task"),
+				Title:    r.FormValue("title"),
+				Filename: header.Filename,
+				Revision: rev,
+				Content:  b,
+			},
+		)
 		if e != nil {
 			failure(w, e)
 			return
@@ -86,7 +103,12 @@ func (h *Handler) documentRoutes(m *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		v, e := h.management.DocumentVersions(r.Context(), token(r, h.sessionCookie), r.PathValue("document"), before)
+		v, e := h.management.DocumentVersions(
+			r.Context(),
+			token(r, h.sessionCookie),
+			r.PathValue("document"),
+			before,
+		)
 		if e != nil {
 			failure(w, e)
 			return
@@ -99,13 +121,21 @@ func (h *Handler) documentRoutes(m *http.ServeMux) {
 			failure(w, documents.Invalid("revision", "Download an explicit positive revision."))
 			return
 		}
-		v, b, e := h.management.DocumentFile(r.Context(), token(r, h.sessionCookie), r.PathValue("document"), rev)
+		v, b, e := h.management.DocumentFile(
+			r.Context(),
+			token(r, h.sessionCookie),
+			r.PathValue("document"),
+			rev,
+		)
 		if e != nil {
 			failure(w, e)
 			return
 		}
 		w.Header().Set("Content-Type", v.MediaType)
-		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": v.Filename}))
+		w.Header().Set(
+			"Content-Disposition",
+			mime.FormatMediaType("attachment", map[string]string{"filename": v.Filename}),
+		)
 		w.Header().Set("Cache-Control", "private, no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'")
@@ -119,7 +149,12 @@ func (h *Handler) documentRoutes(m *http.ServeMux) {
 		if !decode(w, r, &in) {
 			return
 		}
-		if e := h.management.DeleteDocument(r.Context(), token(r, h.sessionCookie), r.PathValue("document"), in.Revision); e != nil {
+		if e := h.management.DeleteDocument(
+			r.Context(),
+			token(r, h.sessionCookie),
+			r.PathValue("document"),
+			in.Revision,
+		); e != nil {
 			failure(w, e)
 			return
 		}

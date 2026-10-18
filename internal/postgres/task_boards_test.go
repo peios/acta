@@ -55,14 +55,29 @@ func TestTaskBoardsUpgradePreservesExistingWorkspace(t *testing.T) {
 	mustExec(`INSERT INTO accounts(id,username) VALUES($1,'board-upgrade')`, owner)
 	mustExec(`INSERT INTO workspaces(id,name,slug) VALUES($1,'Board upgrade','board-upgrade')`, w)
 	var status string
-	if e = conn.QueryRow(ctx, `SELECT creation_status::text FROM task_settings WHERE workspace_id=$1`, w).Scan(&status); e != nil {
+	if e = conn.QueryRow(
+		ctx,
+		`SELECT creation_status::text FROM task_settings WHERE workspace_id=$1`,
+		w,
+	).Scan(&status); e != nil {
 		t.Fatal(e)
 	}
 	// Existing users may already have a primary-board status named Backlog.
 	mustExec(`UPDATE task_statuses SET name='Backlog' WHERE id=$1`, status)
-	mustExec(`INSERT INTO tasks(id,workspace_id,number,title,status_id,created_by,created_at,updated_at) VALUES($1,$2,1,'Keep me',$3,$4,now(),now())`, task, w, status, owner)
+	mustExec(
+		`INSERT INTO tasks(id,workspace_id,number,title,status_id,created_by,created_at,updated_at) VALUES($1,$2,1,'Keep me',$3,$4,now(),now())`,
+		task,
+		w,
+		status,
+		owner,
+	)
 	mustExec(`INSERT INTO task_view_collections(account_id,workspace_id) VALUES($1,$2)`, owner, w)
-	mustExec(`INSERT INTO task_views(id,account_id,workspace_id,name,filters,position) VALUES($1,$2,$3,'Original','{}',0)`, view, owner, w)
+	mustExec(
+		`INSERT INTO task_views(id,account_id,workspace_id,name,filters,position) VALUES($1,$2,$3,'Original','{}',0)`,
+		view,
+		owner,
+		w,
+	)
 	mustExec("COMMIT")
 	sql, e := migrations.ReadFile("migrations/040_task_boards.sql")
 	if e != nil {
@@ -72,7 +87,14 @@ func TestTaskBoardsUpgradePreservesExistingWorkspace(t *testing.T) {
 	mustExec(string(sql))
 	mustExec("COMMIT")
 	var savedStatus, board string
-	if e = conn.QueryRow(ctx, `SELECT t.status_id::text,s.board FROM tasks t JOIN task_statuses s ON s.id=t.status_id WHERE t.id=$1`, task).Scan(&savedStatus, &board); e != nil {
+	if e = conn.QueryRow(
+		ctx,
+		`SELECT t.status_id::text,s.board FROM tasks t JOIN task_statuses s ON s.id=t.status_id WHERE t.id=$1`,
+		task,
+	).Scan(
+		&savedStatus,
+		&board,
+	); e != nil {
 		t.Fatal(e)
 	}
 	if savedStatus != status || board != "tasks" {
@@ -85,7 +107,11 @@ func TestTaskBoardsUpgradePreservesExistingWorkspace(t *testing.T) {
 		t.Fatal("preset moved")
 	}
 	var n int
-	if e = conn.QueryRow(ctx, `SELECT count(*) FROM task_statuses WHERE workspace_id=$1 AND name='Backlog'`, w).Scan(&n); e != nil {
+	if e = conn.QueryRow(
+		ctx,
+		`SELECT count(*) FROM task_statuses WHERE workspace_id=$1 AND name='Backlog'`,
+		w,
+	).Scan(&n); e != nil {
 		t.Fatal(e)
 	}
 	if n != 2 {

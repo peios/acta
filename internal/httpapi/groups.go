@@ -1,9 +1,10 @@
 package httpapi
 
 import (
-	"acta/internal/accounts"
 	"net/http"
 	"strconv"
+
+	"acta/internal/accounts"
 )
 
 func pageOffset(w http.ResponseWriter, r *http.Request) (int, bool) {
@@ -19,7 +20,17 @@ func pageOffset(w http.ResponseWriter, r *http.Request) (int, bool) {
 	return n, true
 }
 func groupData(g accounts.Group, actor accounts.Account) map[string]any {
-	return map[string]any{"id": g.ID, "name": g.Name, "description": g.Description, "is_default": g.Default, "direct_permissions": g.Permissions, "direct_require_mfa": g.RequireMFA, "permissions_version": g.Version, "member_count": g.MemberCount, "assignable": accounts.CanAssignGroup(actor, g)}
+	return map[string]any{
+		"id":                  g.ID,
+		"name":                g.Name,
+		"description":         g.Description,
+		"is_default":          g.Default,
+		"direct_permissions":  g.Permissions,
+		"direct_require_mfa":  g.RequireMFA,
+		"permissions_version": g.Version,
+		"member_count":        g.MemberCount,
+		"assignable":          accounts.CanAssignGroup(actor, g),
+	}
 }
 func (h *Handler) writeGroup(w http.ResponseWriter, r *http.Request, g accounts.Group, status int) {
 	a, e := h.auth.Authenticated(r.Context(), token(r, h.sessionCookie))
@@ -34,7 +45,12 @@ func (h *Handler) groups(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	list, more, e := h.management.ListGroups(r.Context(), token(r, h.sessionCookie), r.URL.Query().Get("q"), offset)
+	list, more, e := h.management.ListGroups(
+		r.Context(),
+		token(r, h.sessionCookie),
+		r.URL.Query().Get("q"),
+		offset,
+	)
 	if e != nil {
 		failure(w, e)
 		return
@@ -82,7 +98,14 @@ func (h *Handler) groupProfile(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	g, e := h.management.UpdateGroup(r.Context(), token(r, h.sessionCookie), r.PathValue("id"), in.Version, in.Name, in.Description)
+	g, e := h.management.UpdateGroup(
+		r.Context(),
+		token(r, h.sessionCookie),
+		r.PathValue("id"),
+		in.Version,
+		in.Name,
+		in.Description,
+	)
 	if e != nil {
 		failure(w, e)
 		return
@@ -98,7 +121,14 @@ func (h *Handler) groupPermissions(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	g, e := h.management.UpdateGroupPermissions(r.Context(), token(r, h.sessionCookie), r.PathValue("id"), in.Version, in.Grants, in.Require)
+	g, e := h.management.UpdateGroupPermissions(
+		r.Context(),
+		token(r, h.sessionCookie),
+		r.PathValue("id"),
+		in.Version,
+		in.Grants,
+		in.Require,
+	)
 	if e != nil {
 		failure(w, e)
 		return
@@ -110,7 +140,13 @@ func (h *Handler) groupMembers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	members, more, e := h.management.GroupMembers(r.Context(), token(r, h.sessionCookie), r.PathValue("id"), r.URL.Query().Get("q"), offset)
+	members, more, e := h.management.GroupMembers(
+		r.Context(),
+		token(r, h.sessionCookie),
+		r.PathValue("id"),
+		r.URL.Query().Get("q"),
+		offset,
+	)
 	if e != nil {
 		failure(w, e)
 		return
@@ -130,7 +166,15 @@ func (h *Handler) groupMembership(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	e := h.management.SetGroupMembership(r.Context(), token(r, h.sessionCookie), r.PathValue("id"), r.PathValue("account"), in.GroupVersion, in.AccountVersion, in.Member)
+	e := h.management.SetGroupMembership(
+		r.Context(),
+		token(r, h.sessionCookie),
+		r.PathValue("id"),
+		r.PathValue("account"),
+		in.GroupVersion,
+		in.AccountVersion,
+		in.Member,
+	)
 	if e != nil {
 		failure(w, e)
 		return

@@ -9,7 +9,11 @@ import (
 )
 
 func (h *Handler) backupRoutes(m *http.ServeMux) {
-	for _, pattern := range []string{"GET /api/backups", "POST /api/backups/policy", "POST /api/backups/jobs"} {
+	for _, pattern := range []string{
+		"GET /api/backups",
+		"POST /api/backups/policy",
+		"POST /api/backups/jobs",
+	} {
 		m.HandleFunc(pattern, h.backups)
 	}
 }
@@ -28,7 +32,13 @@ func (h *Handler) backups(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, map[string]any{"configured": false})
 			return
 		}
-		writeError(w, 503, "unavailable", "The deployment operator has not connected a backup service.", nil)
+		writeError(
+			w,
+			503,
+			"unavailable",
+			"The deployment operator has not connected a backup service.",
+			nil,
+		)
 		return
 	}
 	path := "/v1/status"
@@ -53,7 +63,15 @@ func (h *Handler) backups(w http.ResponseWriter, r *http.Request) {
 			path = "/v1/jobs"
 		}
 	}
-	status, raw, err := (backup.Client{Socket: h.config.BackupSocket, TokenFile: h.config.BackupTokenFile}).Do(r.Context(), r.Method, path, in)
+	status, raw, err := (backup.Client{
+		Socket:    h.config.BackupSocket,
+		TokenFile: h.config.BackupTokenFile,
+	}).Do(
+		r.Context(),
+		r.Method,
+		path,
+		in,
+	)
 	if err != nil {
 		writeError(w, status, "unavailable", err.Error(), nil)
 		return

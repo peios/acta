@@ -42,7 +42,15 @@ func (d Docker) base() []string {
 	for _, p := range d.Config.ComposeFiles {
 		a = append(a, "-f", p)
 	}
-	return append(a, "-f", filepath.Join(d.Config.StateDir, "active.json"), "--profile", "backups", "--profile", "updates")
+	return append(
+		a,
+		"-f",
+		filepath.Join(d.Config.StateDir, "active.json"),
+		"--profile",
+		"backups",
+		"--profile",
+		"updates",
+	)
 }
 func (d Docker) compose(ctx context.Context, args ...string) ([]byte, error) {
 	return command(ctx, append(d.base(), args...)...)
@@ -64,9 +72,21 @@ func (d Docker) override(r Release, candidate bool) error {
 	for k, v := range r.Images {
 		services[k] = map[string]any{"image": v}
 	}
-	services["app"] = map[string]any{"image": r.Images["app"], "environment": map[string]string{"ACTA_RECOVERY_MODE": fmt.Sprint(candidate), "ACTA_UPDATE_CANDIDATE": fmt.Sprint(candidate)}}
-	services["backup"] = map[string]any{"image": r.Images["backup"], "environment": map[string]string{"ACTA_RELEASE": r.Version}}
-	return localstate.Write(filepath.Join(d.Config.StateDir, "active.json"), map[string]any{"services": services})
+	services["app"] = map[string]any{
+		"image": r.Images["app"],
+		"environment": map[string]string{
+			"ACTA_RECOVERY_MODE":    fmt.Sprint(candidate),
+			"ACTA_UPDATE_CANDIDATE": fmt.Sprint(candidate),
+		},
+	}
+	services["backup"] = map[string]any{
+		"image":       r.Images["backup"],
+		"environment": map[string]string{"ACTA_RELEASE": r.Version},
+	}
+	return localstate.Write(
+		filepath.Join(d.Config.StateDir, "active.json"),
+		map[string]any{"services": services},
+	)
 }
 func (d Docker) Prepare(ctx context.Context, j Job) error {
 	a, b, err := d.releases(j)
@@ -115,7 +135,12 @@ func (d Docker) backup(ctx context.Context, j Job, kind string) error {
 	}
 	err := localstate.Read(path, &saved)
 	if errors.Is(err, os.ErrNotExist) {
-		status, raw, e := c.Do(ctx, "POST", "/v1/jobs", map[string]string{"kind": kind, "actor": "updater:" + j.Actor})
+		status, raw, e := c.Do(
+			ctx,
+			"POST",
+			"/v1/jobs",
+			map[string]string{"kind": kind, "actor": "updater:" + j.Actor},
+		)
 		if e != nil {
 			return e
 		}
@@ -172,7 +197,10 @@ func (d Docker) backup(ctx context.Context, j Job, kind string) error {
 func (d Docker) Quiesce(ctx context.Context, j Job) error {
 	// Public marker contains no credentials; Caddy can read it. File data is
 	// immaterial: presence is the gate, so JSON encoding is fine.
-	if err := localstate.Write(filepath.Join(d.Config.StateDir, "maintenance.json"), map[string]string{"job": j.ID}); err != nil {
+	if err := localstate.Write(
+		filepath.Join(d.Config.StateDir, "maintenance.json"),
+		map[string]string{"job": j.ID},
+	); err != nil {
 		return err
 	}
 	if err := os.Chmod(filepath.Join(d.Config.StateDir, "maintenance.json"), 0644); err != nil {
@@ -231,7 +259,16 @@ func (d Docker) Snapshot(ctx context.Context, j Job) error {
 		return err
 	}
 	name := d.snapshotName(j)
-	if _, err = command(ctx, "volume", "create", "--label", "acta.update.installation="+d.Config.Installation, "--label", "acta.update.job="+j.ID, name); err != nil {
+	if _, err = command(
+		ctx,
+		"volume",
+		"create",
+		"--label",
+		"acta.update.installation="+d.Config.Installation,
+		"--label",
+		"acta.update.job="+j.ID,
+		name,
+	); err != nil {
 		return err
 	}
 	if err = d.ownedSnapshot(ctx, j); err != nil {
@@ -259,7 +296,13 @@ func (d Docker) stopCopy(ctx context.Context, j Job) error {
 		return e
 	}
 	if len(bytes.TrimSpace(raw)) > 0 {
-		label, e := command(ctx, "inspect", "--format", "{{index .Config.Labels \"acta.update.job\"}}", name)
+		label, e := command(
+			ctx,
+			"inspect",
+			"--format",
+			"{{index .Config.Labels \"acta.update.job\"}}",
+			name,
+		)
 		if e != nil || stringTrim(label) != j.ID {
 			return errors.New("copy helper ownership mismatch")
 		}
@@ -289,15 +332,49 @@ func (d Docker) Apply(ctx context.Context, j Job) error {
 	if err = d.override(b, true); err != nil {
 		return err
 	}
-	_, err = d.compose(ctx, "up", "-d", "--no-build", "--pull", "never", "--no-deps", "--wait", "--wait-timeout", "180", "db")
+	_, err = d.compose(
+		ctx,
+		"up",
+		"-d",
+		"--no-build",
+		"--pull",
+		"never",
+		"--no-deps",
+		"--wait",
+		"--wait-timeout",
+		"180",
+		"db",
+	)
 	if err != nil {
 		return err
 	}
-	_, err = d.compose(ctx, "up", "-d", "--no-build", "--pull", "never", "--no-deps", "--wait", "--wait-timeout", "300", "app")
+	_, err = d.compose(
+		ctx,
+		"up",
+		"-d",
+		"--no-build",
+		"--pull",
+		"never",
+		"--no-deps",
+		"--wait",
+		"--wait-timeout",
+		"300",
+		"app",
+	)
 	return err
 }
 func (d Docker) Validate(ctx context.Context, j Job) error {
-	_, err := d.compose(ctx, "exec", "-T", "-u", "10001:10001", "app", "/bin/sh", "-ec", `export ACTA_DATABASE_URL="$(cat /run/acta/database-url)" ACTA_SECURITY_KEY_FILE=/run/acta/security-key; exec /usr/local/bin/acta-server -verify-recovery`)
+	_, err := d.compose(
+		ctx,
+		"exec",
+		"-T",
+		"-u",
+		"10001:10001",
+		"app",
+		"/bin/sh",
+		"-ec",
+		`export ACTA_DATABASE_URL="$(cat /run/acta/database-url)" ACTA_SECURITY_KEY_FILE=/run/acta/security-key; exec /usr/local/bin/acta-server -verify-recovery`,
+	)
 	return err
 }
 func (d Docker) Restore(ctx context.Context, j Job) error {
@@ -326,7 +403,19 @@ func (d Docker) Restore(ctx context.Context, j Job) error {
 	if err = d.override(a, true); err != nil {
 		return err
 	}
-	if _, err = d.compose(ctx, "up", "-d", "--no-build", "--pull", "never", "--no-deps", "--wait", "--wait-timeout", "180", "db"); err != nil {
+	if _, err = d.compose(
+		ctx,
+		"up",
+		"-d",
+		"--no-build",
+		"--pull",
+		"never",
+		"--no-deps",
+		"--wait",
+		"--wait-timeout",
+		"180",
+		"db",
+	); err != nil {
 		return err
 	}
 	if j.RestoreData {
@@ -334,18 +423,57 @@ func (d Docker) Restore(ctx context.Context, j Job) error {
 			return err
 		}
 	}
-	if _, err = d.compose(ctx, "up", "-d", "--no-build", "--pull", "never", "--no-deps", "--wait", "--wait-timeout", "300", "app"); err != nil {
+	if _, err = d.compose(
+		ctx,
+		"up",
+		"-d",
+		"--no-build",
+		"--pull",
+		"never",
+		"--no-deps",
+		"--wait",
+		"--wait-timeout",
+		"300",
+		"app",
+	); err != nil {
 		return err
 	}
 	if err = d.Validate(ctx, j); err != nil {
 		return err
 	}
 	if j.RestoreData {
-		_, err = d.compose(ctx, "exec", "-T", "-u", "postgres", "db", "psql", "-U", "postgres", "-d", "acta", "-v", "ON_ERROR_STOP=1", "-c", recovery.RevokeSQL)
+		_, err = d.compose(
+			ctx,
+			"exec",
+			"-T",
+			"-u",
+			"postgres",
+			"db",
+			"psql",
+			"-U",
+			"postgres",
+			"-d",
+			"acta",
+			"-v",
+			"ON_ERROR_STOP=1",
+			"-c",
+			recovery.RevokeSQL,
+		)
 		if err != nil {
 			return err
 		}
-		_, err = d.compose(ctx, "exec", "-T", "-u", "postgres", "db", "pgbackrest", "--config=/var/lib/acta-backup/config/pgbackrest.conf", "--stanza=acta", "check")
+		_, err = d.compose(
+			ctx,
+			"exec",
+			"-T",
+			"-u",
+			"postgres",
+			"db",
+			"pgbackrest",
+			"--config=/var/lib/acta-backup/config/pgbackrest.conf",
+			"--stanza=acta",
+			"check",
+		)
 	}
 	return err
 }
@@ -363,7 +491,18 @@ func (d Docker) Publish(ctx context.Context, j Job, rollback bool) error {
 	}
 	// This phase is a forward-only boundary: it must never restore data again.
 	// A restarted final app waits for the maintenance marker to be removed.
-	if _, err = d.compose(ctx, "up", "-d", "--no-build", "--pull", "never", "--no-deps", "db", "app", "backup"); err != nil {
+	if _, err = d.compose(
+		ctx,
+		"up",
+		"-d",
+		"--no-build",
+		"--pull",
+		"never",
+		"--no-deps",
+		"db",
+		"app",
+		"backup",
+	); err != nil {
 		return err
 	}
 	marker := filepath.Join(d.Config.StateDir, "maintenance.json")
@@ -379,7 +518,22 @@ func (d Docker) Publish(ctx context.Context, j Job, rollback bool) error {
 	if err != nil {
 		return err
 	}
-	_, err = d.compose(ctx, "up", "-d", "--no-build", "--pull", "never", "--no-deps", "--wait", "--wait-timeout", "300", "db", "app", "backup", "caddy")
+	_, err = d.compose(
+		ctx,
+		"up",
+		"-d",
+		"--no-build",
+		"--pull",
+		"never",
+		"--no-deps",
+		"--wait",
+		"--wait-timeout",
+		"300",
+		"db",
+		"app",
+		"backup",
+		"caddy",
+	)
 	return err
 }
 
@@ -417,7 +571,13 @@ func (d Docker) ReconcileUpdater(ctx context.Context) error {
 		return err
 	}
 	if stringTrim(existing) != "" {
-		label, e := command(ctx, "inspect", "--format", "{{index .Config.Labels \"acta.update.installation\"}}", name)
+		label, e := command(
+			ctx,
+			"inspect",
+			"--format",
+			"{{index .Config.Labels \"acta.update.installation\"}}",
+			name,
+		)
 		if e != nil || stringTrim(label) != d.Config.Installation {
 			return errors.New("replacement helper ownership mismatch")
 		}
@@ -432,7 +592,23 @@ func (d Docker) ReconcileUpdater(ctx context.Context) error {
 			return e
 		}
 	}
-	args := []string{"run", "-d", "--name", name, "--label", "acta.update.installation=" + d.Config.Installation, "--restart", "on-failure:3", "--network", "none", "--volumes-from", id, "--entrypoint", "docker", r.Images["updater"]}
+	args := []string{
+		"run",
+		"-d",
+		"--name",
+		name,
+		"--label",
+		"acta.update.installation=" + d.Config.Installation,
+		"--restart",
+		"on-failure:3",
+		"--network",
+		"none",
+		"--volumes-from",
+		id,
+		"--entrypoint",
+		"docker",
+		r.Images["updater"],
+	}
 	args = append(args, d.base()...)
 	args = append(args, "up", "-d", "--no-build", "--pull", "never", "--no-deps", "updater")
 	_, err = command(ctx, args...)

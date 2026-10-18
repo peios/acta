@@ -39,7 +39,12 @@ func DecodeCursor(f Filter) (Cursor, error) {
 	if f.Cursor == "" {
 		return c, nil
 	}
-	invalid := func() (Cursor, error) { return c, field("cursor", "This page cursor is invalid. Reload the list.") }
+	invalid := func() (Cursor, error) {
+		return c, field(
+			"cursor",
+			"This page cursor is invalid. Reload the list.",
+		)
+	}
 	if len(f.Cursor) > 16384 {
 		return invalid()
 	}

@@ -1,9 +1,10 @@
 package auth
 
 import (
+	"context"
+
 	"acta/internal/accounts"
 	"acta/internal/guide"
-	"context"
 )
 
 type GuideTx interface {

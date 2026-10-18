@@ -1,13 +1,15 @@
 package postgres
 
 import (
-	"acta/internal/accounts"
-	"acta/internal/auth"
 	"context"
 	"errors"
+	"time"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"time"
+
+	"acta/internal/accounts"
+	"acta/internal/auth"
 )
 
 var _ auth.ManagementStore = (*Store)(nil)
@@ -42,7 +44,11 @@ func (s *Store) managementTx(ctx context.Context, actor string, token []byte, pe
 	if e = lockAccountFamily(ctx, tx, actor); e != nil {
 		return fail(e)
 	}
-	account, e := scanAccount(tx.QueryRow(ctx, `SELECT `+accountColumns+` FROM accounts a LEFT JOIN accounts p ON p.id=a.parent_id WHERE a.id=$1`, actor))
+	account, e := scanAccount(tx.QueryRow(
+		ctx,
+		`SELECT `+accountColumns+` FROM accounts a LEFT JOIN accounts p ON p.id=a.parent_id WHERE a.id=$1`,
+		actor,
+	))
 	if e != nil {
 		return fail(e)
 	}
@@ -55,7 +61,10 @@ func (s *Store) managementTx(ctx context.Context, actor string, token []byte, pe
 	if permission == "agents" && account.IsAgent() {
 		return fail(auth.ErrForbidden)
 	}
-	if permission != "link" && permission != "agents" && permission != "workspace" && !accounts.CheckPermission(account, permission) {
+	if permission != "link" && permission != "agents" && permission != "workspace" && !accounts.CheckPermission(
+		account,
+		permission,
+	) {
 		return fail(auth.ErrForbidden)
 	}
 	if _, e = (securityTx{tx, actor}).Session(ctx, token, now); e != nil {
@@ -78,7 +87,10 @@ func (s *Store) WithManaged(ctx context.Context, actor string, token []byte, id,
 			if r.Account.Pending {
 				capability = accounts.CreateUsers
 			}
-			if !accounts.CheckPermission(actorAccount, capability) || (accounts.Privileged(r.Account) && !accounts.CheckPermission(actorAccount, accounts.Superuser)) {
+			if !accounts.CheckPermission(actorAccount, capability) || (accounts.Privileged(r.Account) && !accounts.CheckPermission(
+				actorAccount,
+				accounts.Superuser,
+			)) {
 				return auth.ErrForbidden
 			}
 		}
@@ -98,7 +110,14 @@ func (s *Store) CreatePending(ctx context.Context, actor string, token []byte, a
 	if !accounts.CanCreateUser(actorAccount) {
 		return a, auth.ErrForbidden
 	}
-	_, e = tx.Exec(ctx, `INSERT INTO accounts(id,username,display_name,pending,created_at) VALUES($1,$2,$3,true,$4)`, a.ID, a.Username, a.DisplayName, now)
+	_, e = tx.Exec(
+		ctx,
+		`INSERT INTO accounts(id,username,display_name,pending,created_at) VALUES($1,$2,$3,true,$4)`,
+		a.ID,
+		a.Username,
+		a.DisplayName,
+		now,
+	)
 	if e != nil {
 		return a, nameError(e)
 	}
@@ -112,7 +131,11 @@ func (s *Store) CreatePending(ctx context.Context, actor string, token []byte, a
 	if e = mt.Event(ctx, "account_created", now); e != nil {
 		return a, e
 	}
-	a, e = scanAccount(tx.QueryRow(ctx, `SELECT `+accountColumns+` FROM accounts a LEFT JOIN accounts p ON p.id=a.parent_id WHERE a.id=$1`, a.ID))
+	a, e = scanAccount(tx.QueryRow(
+		ctx,
+		`SELECT `+accountColumns+` FROM accounts a LEFT JOIN accounts p ON p.id=a.parent_id WHERE a.id=$1`,
+		a.ID,
+	))
 	if e != nil {
 		return a, e
 	}
@@ -150,7 +173,14 @@ func (s *Store) ListManaged(ctx context.Context, actor string, token []byte, sta
 	return out, more, tx.Commit(ctx)
 }
 func (t managedTx) SetProfile(ctx context.Context, version int64, username string, display *string) (accounts.Account, error) {
-	result, e := t.tx.Exec(ctx, `UPDATE accounts SET username=$2,display_name=$3,profile_version=profile_version+1 WHERE id=$1 AND profile_version=$4`, t.accountID, username, display, version)
+	result, e := t.tx.Exec(
+		ctx,
+		`UPDATE accounts SET username=$2,display_name=$3,profile_version=profile_version+1 WHERE id=$1 AND profile_version=$4`,
+		t.accountID,
+		username,
+		display,
+		version,
+	)
 	if e != nil {
 		return accounts.Account{}, nameError(e)
 	}
@@ -160,26 +190,45 @@ func (t managedTx) SetProfile(ctx context.Context, version int64, username strin
 	if e = t.Event(ctx, "profile_updated", time.Now()); e != nil {
 		return accounts.Account{}, e
 	}
-	return scanAccount(t.tx.QueryRow(ctx, `SELECT `+accountColumns+` FROM accounts a LEFT JOIN accounts p ON p.id=a.parent_id WHERE a.id=$1`, t.accountID))
+	return scanAccount(t.tx.QueryRow(
+		ctx,
+		`SELECT `+accountColumns+` FROM accounts a LEFT JOIN accounts p ON p.id=a.parent_id WHERE a.id=$1`,
+		t.accountID,
+	))
 }
 func (t managedTx) Event(ctx context.Context, kind string, now time.Time) error {
 	var actor *string
 	if t.actorID != "" {
 		actor = &t.actorID
 	}
-	_, e := t.tx.Exec(ctx, `INSERT INTO account_events(account_id,actor_id,kind,occurred_at) VALUES($1,$2,$3,$4)`, t.accountID, actor, kind, now)
+	_, e := t.tx.Exec(
+		ctx,
+		`INSERT INTO account_events(account_id,actor_id,kind,occurred_at) VALUES($1,$2,$3,$4)`,
+		t.accountID,
+		actor,
+		kind,
+		now,
+	)
 	return e
 }
 func (t managedTx) SetDisabled(ctx context.Context, disabled bool, now time.Time) error {
 	if disabled {
 		var e error
-		if _, e = t.tx.Exec(ctx, `INSERT INTO disabled_session_notices(token_hash,account_id,expires_at) SELECT token_hash,account_id,expires_at FROM browser_sessions WHERE account_id=$1 ON CONFLICT(token_hash) DO NOTHING`, t.accountID); e != nil {
+		if _, e = t.tx.Exec(
+			ctx,
+			`INSERT INTO disabled_session_notices(token_hash,account_id,expires_at) SELECT token_hash,account_id,expires_at FROM browser_sessions WHERE account_id=$1 ON CONFLICT(token_hash) DO NOTHING`,
+			t.accountID,
+		); e != nil {
 			return e
 		}
 		if e = t.RevokeSessions(ctx, []byte{}, ""); e != nil {
 			return e
 		}
-		if _, e = t.tx.Exec(ctx, `DELETE FROM browser_sessions WHERE account_id IN (SELECT id FROM accounts WHERE parent_id=$1)`, t.accountID); e != nil {
+		if _, e = t.tx.Exec(
+			ctx,
+			`DELETE FROM browser_sessions WHERE account_id IN (SELECT id FROM accounts WHERE parent_id=$1)`,
+			t.accountID,
+		); e != nil {
 			return e
 		}
 		if _, e = t.tx.Exec(ctx, `DELETE FROM account_links WHERE account_id=$1`, t.accountID); e != nil {
@@ -209,7 +258,15 @@ func (t managedTx) SaveAccountLink(ctx context.Context, g auth.AccountLink) erro
 }
 func scanLink(row pgx.Row) (auth.AccountLink, error) {
 	var g auth.AccountLink
-	e := row.Scan(&g.AccountID, &g.Digest, &g.Purpose, &g.ExpiresAt, &g.Version, &g.DisableMFA, &g.RemovePasskeys)
+	e := row.Scan(
+		&g.AccountID,
+		&g.Digest,
+		&g.Purpose,
+		&g.ExpiresAt,
+		&g.Version,
+		&g.DisableMFA,
+		&g.RemovePasskeys,
+	)
 	if errors.Is(e, pgx.ErrNoRows) {
 		e = auth.ErrAccountLink
 	}
@@ -219,11 +276,20 @@ func scanLink(row pgx.Row) (auth.AccountLink, error) {
 const linkColumns = `g.account_id::text,g.token_hash,g.purpose,g.expires_at,g.security_version,g.disable_mfa,g.remove_passkeys`
 
 func (s *Store) ReadAccountLink(ctx context.Context, hash []byte, now time.Time) (auth.AccountLink, accounts.Account, error) {
-	g, e := scanLink(s.pool.QueryRow(ctx, `SELECT `+linkColumns+` FROM account_links g JOIN accounts a ON a.id=g.account_id WHERE g.token_hash=$1 AND g.expires_at>$2 AND g.security_version=a.security_version AND a.disabled_at IS NULL AND a.pending=(g.purpose='invite')`, hash, now))
+	g, e := scanLink(s.pool.QueryRow(
+		ctx,
+		`SELECT `+linkColumns+` FROM account_links g JOIN accounts a ON a.id=g.account_id WHERE g.token_hash=$1 AND g.expires_at>$2 AND g.security_version=a.security_version AND a.disabled_at IS NULL AND a.pending=(g.purpose='invite')`,
+		hash,
+		now,
+	))
 	if e != nil {
 		return g, accounts.Account{}, e
 	}
-	a, e := scanAccount(s.pool.QueryRow(ctx, `SELECT `+accountColumns+` FROM accounts a LEFT JOIN accounts p ON p.id=a.parent_id WHERE a.id=$1`, g.AccountID))
+	a, e := scanAccount(s.pool.QueryRow(
+		ctx,
+		`SELECT `+accountColumns+` FROM accounts a LEFT JOIN accounts p ON p.id=a.parent_id WHERE a.id=$1`,
+		g.AccountID,
+	))
 	return g, a, e
 }
 func (s *Store) RedeemAccountLink(ctx context.Context, hash []byte, now time.Time, fn func(*auth.SecurityRecord, auth.AccountLink, auth.ManagedTx) error) error {
@@ -237,7 +303,13 @@ func (s *Store) RedeemAccountLink(ctx context.Context, hash []byte, now time.Tim
 	}
 	defer tx.Rollback(ctx)
 	return s.securityRecord(ctx, tx, g.AccountID, true, func(r *auth.SecurityRecord, _ auth.SecurityTx) error {
-		current, e := scanLink(tx.QueryRow(ctx, `SELECT `+linkColumns+` FROM account_links g WHERE g.token_hash=$1 AND g.account_id=$2 AND g.expires_at>$3 FOR UPDATE`, hash, g.AccountID, now))
+		current, e := scanLink(tx.QueryRow(
+			ctx,
+			`SELECT `+linkColumns+` FROM account_links g WHERE g.token_hash=$1 AND g.account_id=$2 AND g.expires_at>$3 FOR UPDATE`,
+			hash,
+			g.AccountID,
+			now,
+		))
 		if e != nil {
 			return e
 		}
@@ -267,7 +339,13 @@ func (t managedTx) SetPermissions(ctx context.Context, version int64, grants []s
 	if grants == nil {
 		grants = []string{}
 	}
-	if _, e := t.tx.Exec(ctx, `UPDATE accounts SET direct_permissions=$2,require_mfa=$3,permissions_version=permissions_version+1 WHERE id=$1`, t.accountID, grants, requireMFA); e != nil {
+	if _, e := t.tx.Exec(
+		ctx,
+		`UPDATE accounts SET direct_permissions=$2,require_mfa=$3,permissions_version=permissions_version+1 WHERE id=$1`,
+		t.accountID,
+		grants,
+		requireMFA,
+	); e != nil {
 		return e
 	}
 	if e := ensureSuperuser(ctx, t.tx); e != nil {

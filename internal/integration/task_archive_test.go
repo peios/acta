@@ -1,14 +1,15 @@
 package integration
 
 import (
+	"errors"
+	"sync"
+	"testing"
+
 	"acta/internal/accounts"
 	"acta/internal/auth"
 	"acta/internal/comments"
 	"acta/internal/documents"
 	"acta/internal/tasks"
-	"errors"
-	"sync"
-	"testing"
 )
 
 func TestTaskArchiveSubtreesSearchAndMutationBoundaries(t *testing.T) {
@@ -17,13 +18,23 @@ func TestTaskArchiveSubtreesSearchAndMutationBoundaries(t *testing.T) {
 	ctx := t.Context()
 	m := manager(f)
 	create := func(title, parent string) tasks.Task {
-		v, e := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: title, ParentID: parent, Assignees: []string{owner.ID}})
+		v, e := m.CreateTask(
+			ctx,
+			f.token,
+			w.ID,
+			tasks.Create{Title: title, ParentID: parent, Assignees: []string{owner.ID}},
+		)
 		must(t, e)
 		return v
 	}
 	get := func(id string) tasks.Task { v, e := m.Task(ctx, f.token, id); must(t, e); return v }
 	toggle := func(v tasks.Task, state bool) tasks.Task {
-		v, e := m.ArchiveTask(ctx, f.token, v.ID, tasks.Archive{Archived: state, Version: v.Versions["archived"]})
+		v, e := m.ArchiveTask(
+			ctx,
+			f.token,
+			v.ID,
+			tasks.Archive{Archived: state, Version: v.Versions["archived"]},
+		)
 		must(t, e)
 		return v
 	}
@@ -32,7 +43,16 @@ func TestTaskArchiveSubtreesSearchAndMutationBoundaries(t *testing.T) {
 	grand := create("Archive quarry grandchild", child.ID)
 	separate := create("Archive quarry separate", parent.ID)
 	comment := postComment(t, f, child.ID, "Keep this discussion", "")
-	doc, e := m.SaveDocument(ctx, f.token, documents.Save{Task: child.ID, Title: "Keep document", Filename: "keep.md", Content: []byte("Document content")})
+	doc, e := m.SaveDocument(
+		ctx,
+		f.token,
+		documents.Save{
+			Task:     child.ID,
+			Title:    "Keep document",
+			Filename: "keep.md",
+			Content:  []byte("Document content"),
+		},
+	)
 	must(t, e)
 	must(t, m.SetTaskFollowing(ctx, f.token, child.ID, true))
 	separate = toggle(separate, true)
@@ -79,16 +99,31 @@ func TestTaskArchiveSubtreesSearchAndMutationBoundaries(t *testing.T) {
 			t.Fatalf("expected archive validation, got %v", e)
 		}
 	}
-	_, e = m.ArchiveTask(ctx, f.token, child.ID, tasks.Archive{Version: get(child.ID).Versions["archived"]})
+	_, e = m.ArchiveTask(
+		ctx,
+		f.token,
+		child.ID,
+		tasks.Archive{Version: get(child.ID).Versions["archived"]},
+	)
 	blocked(e)
 	_, e = patchTask(t, f, get(child.ID), "title", "Forbidden edit")
 	blocked(e)
-	_, e = m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Forbidden child", ParentID: parent.ID})
+	_, e = m.CreateTask(
+		ctx,
+		f.token,
+		w.ID,
+		tasks.Create{Title: "Forbidden child", ParentID: parent.ID},
+	)
 	blocked(e)
 	active := create("Active", "")
 	_, e = patchTask(t, f, active, "parent_id", parent.ID)
 	blocked(e)
-	_, e = m.CreateComment(ctx, f.token, child.ID, comments.Create{Body: "Forbidden comment", RequestID: "c9cc4976-d66e-4717-bf6a-86a669bf42ab"})
+	_, e = m.CreateComment(
+		ctx,
+		f.token,
+		child.ID,
+		comments.Create{Body: "Forbidden comment", RequestID: "c9cc4976-d66e-4717-bf6a-86a669bf42ab"},
+	)
 	blocked(e)
 	_, e = m.UpdateComment(ctx, f.token, child.ID, comment.ID, comments.Update{Version: 1, Body: "No"})
 	blocked(e)
@@ -97,7 +132,11 @@ func TestTaskArchiveSubtreesSearchAndMutationBoundaries(t *testing.T) {
 	if c.Comment.CanEdit || c.Comment.CanDelete {
 		t.Fatal(c)
 	}
-	_, e = m.SaveDocument(ctx, f.token, documents.Save{Task: child.ID, Title: "No", Filename: "no.md", Content: []byte("No")})
+	_, e = m.SaveDocument(
+		ctx,
+		f.token,
+		documents.Save{Task: child.ID, Title: "No", Filename: "no.md", Content: []byte("No")},
+	)
 	blocked(e)
 	d, e := m.Document(ctx, f.token, doc.ID)
 	must(t, e)
@@ -138,7 +177,12 @@ func TestTaskArchiveSubtreesSearchAndMutationBoundaries(t *testing.T) {
 	must(t, e)
 	reader, rf := permissionMember(t, root, "archive_reader")
 	joinWorkspace(t, f, w, reader.ID)
-	_, e = manager(rf).ArchiveTask(ctx, rf.token, parent.ID, tasks.Archive{Archived: true, Version: parent.Versions["archived"]})
+	_, e = manager(rf).ArchiveTask(
+		ctx,
+		rf.token,
+		parent.ID,
+		tasks.Archive{Archived: true, Version: parent.Versions["archived"]},
+	)
 	if !errors.Is(e, auth.ErrForbidden) {
 		t.Fatal(e)
 	}
@@ -157,7 +201,14 @@ func TestTaskArchiveConcurrentChildCreation(t *testing.T) {
 	wg.Go(func() {
 		child, createErr = m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Child", ParentID: p.ID})
 	})
-	wg.Go(func() { _, archiveErr = m.ArchiveTask(ctx, f.token, p.ID, tasks.Archive{Archived: true, Version: 1}) })
+	wg.Go(func() {
+		_, archiveErr = m.ArchiveTask(
+			ctx,
+			f.token,
+			p.ID,
+			tasks.Archive{Archived: true, Version: 1},
+		)
+	})
 	wg.Wait()
 	must(t, archiveErr)
 	if createErr == nil {

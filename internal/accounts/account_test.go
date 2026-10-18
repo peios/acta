@@ -7,8 +7,20 @@ import (
 
 func TestUsername(t *testing.T) {
 	for _, tc := range []struct{ raw, want string }{
-		{"JACK.Reviewer-2_ok", "jack.reviewer-2_ok"}, {"a", "a"}, {strings.Repeat("a", 32), strings.Repeat("a", 32)},
-		{"", ""}, {" jack", ""}, {"jack ", ""}, {"jack/reviewer", ""}, {".jack", ""}, {"jack-", ""}, {"JäCK", ""}, {"Kate", ""}, {strings.Repeat("a", 33), ""},
+		{"JACK.Reviewer-2_ok", "jack.reviewer-2_ok"}, {"a", "a"}, {
+			strings.Repeat("a", 32),
+			strings.Repeat("a", 32),
+		},
+		{"", ""}, {" jack", ""}, {"jack ", ""}, {"jack/reviewer", ""}, {".jack", ""}, {"jack-", ""}, {
+			"JäCK",
+			"",
+		}, {
+			"Kate",
+			"",
+		}, {
+			strings.Repeat("a", 33),
+			"",
+		},
 	} {
 		t.Run(tc.raw, func(t *testing.T) {
 			got, err := Username(tc.raw)
@@ -28,8 +40,20 @@ func TestDisplayName(t *testing.T) {
 		invalid   bool
 	}{
 		{"  Jack · Peios  ", "Jack · Peios", false}, {" \t ", "", false}, {"Cafe\u0301", "Café", false},
-		{strings.Repeat("👩‍💻", 100), strings.Repeat("👩‍💻", 100), false}, {strings.Repeat("👩‍💻", 101), "", true},
-		{"two\nlines", "", true}, {"hidden\u202ename", "", true}, {"a\x00b", "", true}, {"a\u2028b", "", true}, {"\xff", "", true},
+		{strings.Repeat("👩‍💻", 100), strings.Repeat("👩‍💻", 100), false}, {
+			strings.Repeat("👩‍💻", 101),
+			"",
+			true,
+		},
+		{"two\nlines", "", true}, {"hidden\u202ename", "", true}, {"a\x00b", "", true}, {
+			"a\u2028b",
+			"",
+			true,
+		}, {
+			"\xff",
+			"",
+			true,
+		},
 	} {
 		t.Run(tc.raw, func(t *testing.T) {
 			got, err := DisplayName(tc.raw)

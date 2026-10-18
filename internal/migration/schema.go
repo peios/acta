@@ -2,12 +2,46 @@ package migration
 
 // Also exposed to agents; keep accepted fields and semantics here.
 var Fields = map[string][]string{
-	"workspace": {"name", "slug", "description", "prefix", "status_board", "statuses", "creation_status", "completed_status", "created_at"},
-	"task":      {"workspace_id", "reference", "title", "description", "priority", "type", "size", "status_id", "parent_id", "assignees", "archived_at", "created_by", "created_at", "updated_at"},
-	"comment":   {"task_id", "body", "reply_to", "author_id", "created_at", "updated_at"},
-	"memory":    {"scope", "scope_id", "key", "summary", "content", "created_by", "created_at", "updated_at"},
-	"document":  {"task_id", "title", "filename", "content_base64", "created_at"},
-	"activity":  {"task_id", "change", "created_at", "updated_at"},
+	"workspace": {
+		"name",
+		"slug",
+		"description",
+		"prefix",
+		"status_board",
+		"statuses",
+		"creation_status",
+		"completed_status",
+		"created_at",
+	},
+	"task": {
+		"workspace_id",
+		"reference",
+		"title",
+		"description",
+		"priority",
+		"type",
+		"size",
+		"status_id",
+		"parent_id",
+		"assignees",
+		"archived_at",
+		"created_by",
+		"created_at",
+		"updated_at",
+	},
+	"comment": {"task_id", "body", "reply_to", "author_id", "created_at", "updated_at"},
+	"memory": {
+		"scope",
+		"scope_id",
+		"key",
+		"summary",
+		"content",
+		"created_by",
+		"created_at",
+		"updated_at",
+	},
+	"document": {"task_id", "title", "filename", "content_base64", "created_at"},
+	"activity": {"task_id", "change", "created_at", "updated_at"},
 }
 
 const Instructions = `Migration Assistant is superuser-delegated content authority, independent of any source system. Writes require acting_as: an existing human or agent UUID (historical authors may be disabled/pending). Discover accounts using migration_find. Inspect before editing and supply the opaque revision returned. UUIDs are generated. Create is not idempotent: inspect before retrying an uncertain response. Writes are atomic and suppress notifications; the actual operator/session/time and before/after data are retained separately.

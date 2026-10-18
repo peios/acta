@@ -20,10 +20,16 @@ func (s *Store) migrate(ctx context.Context) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext(current_schema() || ':acta:migrations'))`); err != nil {
+	if _, err = tx.Exec(
+		ctx,
+		`SELECT pg_advisory_xact_lock(hashtext(current_schema() || ':acta:migrations'))`,
+	); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY, checksum text NOT NULL)`); err != nil {
+	if _, err = tx.Exec(
+		ctx,
+		`CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY, checksum text NOT NULL)`,
+	); err != nil {
 		return err
 	}
 	names, err := fs.Glob(migrations, "migrations/*.sql")
@@ -65,7 +71,12 @@ func (s *Store) migrate(ctx context.Context) error {
 		if _, err = tx.Exec(ctx, string(sql)); err != nil {
 			return fmt.Errorf("migration %s: %w", name, err)
 		}
-		if _, err = tx.Exec(ctx, `INSERT INTO schema_migrations (name,checksum) VALUES ($1,$2)`, name, sum); err != nil {
+		if _, err = tx.Exec(
+			ctx,
+			`INSERT INTO schema_migrations (name,checksum) VALUES ($1,$2)`,
+			name,
+			sum,
+		); err != nil {
 			return err
 		}
 	}

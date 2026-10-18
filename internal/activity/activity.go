@@ -2,9 +2,10 @@
 package activity
 
 import (
-	"acta/internal/accounts"
 	"strconv"
 	"time"
+
+	"acta/internal/accounts"
 )
 
 const GroupWindow = 60 * time.Second
@@ -76,7 +77,10 @@ func Cursor(s string) (int64, error) {
 	}
 	n, e := strconv.ParseInt(s, 10, 64)
 	if e != nil || n < 1 {
-		return 0, &accounts.FieldError{Field: "cursor", Message: "Use the activity cursor returned by the previous page."}
+		return 0, &accounts.FieldError{
+			Field:   "cursor",
+			Message: "Use the activity cursor returned by the previous page.",
+		}
 	}
 	return n, nil
 }

@@ -1,13 +1,18 @@
 package httpapi
 
 import (
-	"acta/internal/memories"
 	"net/http"
+
+	"acta/internal/memories"
 )
 
 func (h *Handler) memoryRoutes(m *http.ServeMux) {
 	m.HandleFunc("GET /api/memories", func(w http.ResponseWriter, r *http.Request) {
-		in := memories.Recall{Query: r.URL.Query().Get("query"), Cursor: r.URL.Query().Get("cursor"), AgentID: r.URL.Query().Get("agent_id")}
+		in := memories.Recall{
+			Query:   r.URL.Query().Get("query"),
+			Cursor:  r.URL.Query().Get("cursor"),
+			AgentID: r.URL.Query().Get("agent_id"),
+		}
 		if v := r.URL.Query().Get("workspace"); v != "" {
 			in.Workspace = &v
 		}
@@ -45,7 +50,12 @@ func (h *Handler) memoryRoutes(m *http.ServeMux) {
 		if !decode(w, r, &in) {
 			return
 		}
-		if e := h.management.DeleteMemory(r.Context(), token(r, h.sessionCookie), r.PathValue("id"), in.Revision); e != nil {
+		if e := h.management.DeleteMemory(
+			r.Context(),
+			token(r, h.sessionCookie),
+			r.PathValue("id"),
+			in.Revision,
+		); e != nil {
 			failure(w, e)
 			return
 		}

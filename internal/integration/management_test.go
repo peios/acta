@@ -1,10 +1,6 @@
 package integration
 
 import (
-	"acta/internal/accounts"
-	"acta/internal/auth"
-	"acta/internal/config"
-	"acta/internal/httpapi"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -13,6 +9,11 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/config"
+	"acta/internal/httpapi"
 )
 
 func manager(f securityFixture) *auth.Management {
@@ -58,7 +59,14 @@ func TestManagedInvitationAndProfile(t *testing.T) {
 	if a.Status() != "active" || *a.DisplayName != "Chosen name" {
 		t.Fatal(a)
 	}
-	login, e := f.security.PasswordLogin(ctx, a.Username, testPassword, "other-browser", "test", "Other browser")
+	login, e := f.security.PasswordLogin(
+		ctx,
+		a.Username,
+		testPassword,
+		"other-browser",
+		"test",
+		"Other browser",
+	)
 	must(t, e)
 	_, _, e = m.List(ctx, login.SessionToken, "", "", 0)
 	if !errors.Is(e, auth.ErrForbidden) {
@@ -80,7 +88,14 @@ func TestRecoveryScopesAndSessionRevocation(t *testing.T) {
 	a, invite, e := m.Create(ctx, f.token, "member", "")
 	must(t, e)
 	must(t, m.Redeem(ctx, invite, testPassword, "", "test", a.ProfileVersion))
-	login, e := f.security.PasswordLogin(ctx, "member", testPassword, "member-binding", "test", "Member browser")
+	login, e := f.security.PasswordLogin(
+		ctx,
+		"member",
+		testPassword,
+		"member-binding",
+		"test",
+		"Member browser",
+	)
 	must(t, e)
 	member := f
 	member.token = login.SessionToken
@@ -94,12 +109,23 @@ func TestRecoveryScopesAndSessionRevocation(t *testing.T) {
 	if !errors.Is(e, auth.ErrUnauthenticated) {
 		t.Fatal("reset preserved session", e)
 	}
-	pending, e := f.security.PasswordLogin(ctx, "member", "another meadow lamp orchard", member.binding, "test", "Member browser")
+	pending, e := f.security.PasswordLogin(
+		ctx,
+		"member",
+		"another meadow lamp orchard",
+		member.binding,
+		"test",
+		"Member browser",
+	)
 	must(t, e)
 	if pending.Step != "code" {
 		t.Fatal("normal reset disabled MFA")
 	}
-	completed := member.step(t, pending, auth.FlowInput{Action: "code", Recovery: true, Code: codes[0]})
+	completed := member.step(
+		t,
+		pending,
+		auth.FlowInput{Action: "code", Recovery: true, Code: codes[0]},
+	)
 	member.token = completed.SessionToken
 	view, e := f.security.View(ctx, member.token)
 	must(t, e)
@@ -114,7 +140,14 @@ func TestRecoveryScopesAndSessionRevocation(t *testing.T) {
 		t.Fatal("issuing link changed factors")
 	}
 	must(t, m.Redeem(ctx, clear, testPassword, "", "test", 0))
-	fresh, e := f.security.PasswordLogin(ctx, "member", testPassword, member.binding, "test", "Member browser")
+	fresh, e := f.security.PasswordLogin(
+		ctx,
+		"member",
+		testPassword,
+		member.binding,
+		"test",
+		"Member browser",
+	)
 	must(t, e)
 	after, e := f.security.View(ctx, fresh.SessionToken)
 	must(t, e)
@@ -129,7 +162,14 @@ func TestDisableAndEnableDoNotResurrectSessionsOrLinks(t *testing.T) {
 	a, invite, e := m.Create(ctx, f.token, "member", "")
 	must(t, e)
 	must(t, m.Redeem(ctx, invite, testPassword, "", "test", 1))
-	login, e := f.security.PasswordLogin(ctx, "member", testPassword, "member", "test", "Member browser")
+	login, e := f.security.PasswordLogin(
+		ctx,
+		"member",
+		testPassword,
+		"member",
+		"test",
+		"Member browser",
+	)
 	must(t, e)
 	reset, _, e := m.Link(ctx, f.token, a.ID, false, false)
 	must(t, e)
@@ -201,7 +241,12 @@ func TestAccountLinksReplaceExpireAndRedeemOnce(t *testing.T) {
 	}
 	expiry, _, e := m.Link(ctx, f.token, a.ID, false, false)
 	must(t, e)
-	_, e = f.conn.Exec(ctx, `UPDATE account_links SET expires_at=$1 WHERE account_id=$2`, time.Now().Add(-time.Minute), a.ID)
+	_, e = f.conn.Exec(
+		ctx,
+		`UPDATE account_links SET expires_at=$1 WHERE account_id=$2`,
+		time.Now().Add(-time.Minute),
+		a.ID,
+	)
 	must(t, e)
 	_, _, e = m.InspectLink(ctx, expiry, "test")
 	if !errors.Is(e, auth.ErrAccountLink) {
@@ -256,9 +301,26 @@ func TestAdminResetRacesWithPendingLogin(t *testing.T) {
 	var loginError, resetError error
 	wg.Go(func() {
 		<-start
-		completed, loginError = f.security.Advance(ctx, auth.FlowInput{ID: pending.ID, Action: "code", Recovery: true, Code: codes[0]}, "", member.binding, "test", "Member")
+		completed, loginError = f.security.Advance(
+			ctx,
+			auth.FlowInput{ID: pending.ID, Action: "code", Recovery: true, Code: codes[0]},
+			"",
+			member.binding,
+			"test",
+			"Member",
+		)
 	})
-	wg.Go(func() { <-start; resetError = m.Redeem(ctx, reset, "replacement quiet meadow lantern", "", "test", 0) })
+	wg.Go(func() {
+		<-start
+		resetError = m.Redeem(
+			ctx,
+			reset,
+			"replacement quiet meadow lantern",
+			"",
+			"test",
+			0,
+		)
+	})
 	close(start)
 	wg.Wait()
 	must(t, resetError)
@@ -278,7 +340,11 @@ func TestManagementHTTPAuthorizationAndDisabledPageSignal(t *testing.T) {
 	cfg, e := config.Parse("http://localhost:8081", "")
 	must(t, e)
 	handler := httpapi.New(f.service, f.security, accounts.NewProfileService(f.store), manager(f), cfg)
-	admin := client{t, handler, map[string]*http.Cookie{"acta_session": {Name: "acta_session", Value: f.token}}}
+	admin := client{
+		t,
+		handler,
+		map[string]*http.Cookie{"acta_session": {Name: "acta_session", Value: f.token}},
+	}
 	anonymous := client{t, handler, map[string]*http.Cookie{}}
 	anonymous.request("GET", "users", "", 401)
 	var created struct {
@@ -288,7 +354,12 @@ func TestManagementHTTPAuthorizationAndDisabledPageSignal(t *testing.T) {
 		}
 		URL string `json:"url"`
 	}
-	response := admin.request("POST", "users", `{"username":"http.member","display_name":"HTTP Member"}`, 201)
+	response := admin.request(
+		"POST",
+		"users",
+		`{"username":"http.member","display_name":"HTTP Member"}`,
+		201,
+	)
 	must(t, json.Unmarshal(response.Body.Bytes(), &created))
 	if response.Header().Get("Cache-Control") != "no-store" {
 		t.Fatal("invitation response cacheable")
@@ -299,8 +370,23 @@ func TestManagementHTTPAuthorizationAndDisabledPageSignal(t *testing.T) {
 	must(t, e)
 	grant := fragment.Get("token")
 	anonymous.request("POST", "account-link/open", body(map[string]any{"token": grant}), 200)
-	anonymous.request("POST", "account-link/redeem", body(map[string]any{"token": grant, "new_password": testPassword, "display_name": "Chosen", "profile_version": created.Account.Version}), 200)
-	anonymous.request("POST", "login", `{"username":"http.member","password":"silver meadow orbit lamp"}`, 200)
+	anonymous.request(
+		"POST",
+		"account-link/redeem",
+		body(map[string]any{
+			"token":           grant,
+			"new_password":    testPassword,
+			"display_name":    "Chosen",
+			"profile_version": created.Account.Version,
+		}),
+		200,
+	)
+	anonymous.request(
+		"POST",
+		"login",
+		`{"username":"http.member","password":"silver meadow orbit lamp"}`,
+		200,
+	)
 	anonymous.request("GET", "users", "", 403)
 	anonymous.request("POST", "users/"+created.Account.ID+"/link", `{}`, 403)
 	admin.request("POST", "users/"+created.Account.ID+"/disabled", `{"disabled":true}`, 200)
@@ -315,7 +401,12 @@ func TestManagementHTTPAuthorizationAndDisabledPageSignal(t *testing.T) {
 		t.Fatal("missing disabled-page signal", payload)
 	}
 	anonymous.request("POST", "login", `{"username":"http.member","password":"wrong"}`, 401)
-	anonymous.request("POST", "login", `{"username":"http.member","password":"silver meadow orbit lamp"}`, 403)
+	anonymous.request(
+		"POST",
+		"login",
+		`{"username":"http.member","password":"silver meadow orbit lamp"}`,
+		403,
+	)
 	admin.request("POST", "users/"+created.Account.ID+"/disabled", `{"disabled":false}`, 200)
 	anonymous.request("GET", "account", "", 401)
 	admin.request("GET", "users/00000000-0000-0000-0000-000000000000", "", 404)

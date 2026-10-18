@@ -36,7 +36,25 @@ func Summarize(p Page, c Config) SummaryPage {
 		names[s.ID] = s.Name
 	}
 	for _, t := range p.Tasks {
-		out.Tasks = append(out.Tasks, Summary{Board: t.Board, Archived: t.Archived, ID: t.ID, WorkspaceID: t.WorkspaceID, Reference: t.Reference, Title: t.Title, Priority: t.Priority, Type: t.Type, Size: t.Size, Release: t.Release, Status: Status{ID: t.StatusID, Name: names[t.StatusID], Board: t.Board}, ParentID: t.ParentID, Assignees: t.Assignees, Children: t.Children})
+		out.Tasks = append(
+			out.Tasks,
+			Summary{
+				Board:       t.Board,
+				Archived:    t.Archived,
+				ID:          t.ID,
+				WorkspaceID: t.WorkspaceID,
+				Reference:   t.Reference,
+				Title:       t.Title,
+				Priority:    t.Priority,
+				Type:        t.Type,
+				Size:        t.Size,
+				Release:     t.Release,
+				Status:      Status{ID: t.StatusID, Name: names[t.StatusID], Board: t.Board},
+				ParentID:    t.ParentID,
+				Assignees:   t.Assignees,
+				Children:    t.Children,
+			},
+		)
 	}
 	return out
 }

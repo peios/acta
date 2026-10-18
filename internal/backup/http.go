@@ -6,13 +6,14 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
-	"github.com/gofrs/flock"
 	"io"
 	"net"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/gofrs/flock"
 )
 
 // The Unix socket is a local operator trust boundary; it is not exposed to the
@@ -60,7 +61,10 @@ func (s *Service) Serve(ctx context.Context) error {
 		return err
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, r *http.Request) { reply(w, 200, s.View()) })
+	mux.HandleFunc(
+		"GET /v1/status",
+		func(w http.ResponseWriter, r *http.Request) { reply(w, 200, s.View()) },
+	)
 	mux.HandleFunc("POST /v1/policy", func(w http.ResponseWriter, r *http.Request) {
 		var p Policy
 		if err := body(r, &p); err != nil {

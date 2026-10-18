@@ -1,21 +1,28 @@
 package integration
 
 import (
-	"acta/internal/auth"
-	"acta/internal/tasks"
-	ws "acta/internal/workspaces"
 	"encoding/json"
 	"errors"
-	"github.com/google/uuid"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/google/uuid"
+
+	"acta/internal/auth"
+	"acta/internal/tasks"
+	ws "acta/internal/workspaces"
 )
 
 func patchTask(t *testing.T, f securityFixture, v tasks.Task, field string, value any) (tasks.Task, error) {
 	t.Helper()
 	raw, _ := json.Marshal(value)
-	return manager(f).PatchTask(t.Context(), f.token, v.ID, tasks.Patch{Field: field, Version: v.Versions[field], Value: raw})
+	return manager(f).PatchTask(
+		t.Context(),
+		f.token,
+		v.ID,
+		tasks.Patch{Field: field, Version: v.Versions[field], Value: raw},
+	)
 }
 func TestTasksIdentityHierarchyAndConflicts(t *testing.T) {
 	root := securityDatabase(t)
@@ -29,7 +36,12 @@ func TestTasksIdentityHierarchyAndConflicts(t *testing.T) {
 	}
 	a, e := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Parent"})
 	must(t, e)
-	b, e := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Child", ParentID: a.Reference, Assignees: []string{owner.ID}})
+	b, e := m.CreateTask(
+		ctx,
+		f.token,
+		w.ID,
+		tasks.Create{Title: "Child", ParentID: a.Reference, Assignees: []string{owner.ID}},
+	)
 	must(t, e)
 	a, e = m.Task(ctx, f.token, a.ID)
 	must(t, e)
@@ -89,14 +101,31 @@ func TestTasksStatusesAssignmentAndReferences(t *testing.T) {
 	v, e := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Target"})
 	must(t, e)
 	text := "Hello @" + owner.Username + " and " + v.Reference + ". `" + v.Reference + "`"
-	a, e := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "References", Description: text, Assignees: []string{owner.ID}})
+	a, e := m.CreateTask(
+		ctx,
+		f.token,
+		w.ID,
+		tasks.Create{Title: "References", Description: text, Assignees: []string{owner.ID}},
+	)
 	must(t, e)
-	if !strings.Contains(a.Description, "/tasks/"+v.ID) || !strings.Contains(a.Description, "/references/accounts/"+owner.ID) || !strings.Contains(a.Description, "`"+v.Reference+"`") {
+	if !strings.Contains(a.Description, "/tasks/"+v.ID) || !strings.Contains(
+		a.Description,
+		"/references/accounts/"+owner.ID,
+	) || !strings.Contains(
+		a.Description,
+		"`"+v.Reference+"`",
+	) {
 		t.Fatal(a.Description)
 	}
 	a, e = patchTask(t, f, a, "status_id", c.Statuses[1].ID)
 	must(t, e)
-	next := tasks.StatusChange{Statuses: []tasks.Status{c.Statuses[0], c.Statuses[2], {ID: uuid.NewString(), Name: "Review"}}, Creation: c.Creation, Completed: c.Completed, Version: c.Version, Replacements: map[string]string{c.Statuses[1].ID: c.Creation}}
+	next := tasks.StatusChange{
+		Statuses:     []tasks.Status{c.Statuses[0], c.Statuses[2], {ID: uuid.NewString(), Name: "Review"}},
+		Creation:     c.Creation,
+		Completed:    c.Completed,
+		Version:      c.Version,
+		Replacements: map[string]string{c.Statuses[1].ID: c.Creation},
+	}
 	must(t, m.TaskStatuses(ctx, f.token, w.ID, next))
 	a, e = m.Task(ctx, f.token, a.ID)
 	must(t, e)
@@ -138,7 +167,10 @@ func TestTasksStatusesAssignmentAndReferences(t *testing.T) {
 	access, e := m.AgentWorkspaces(ctx, f.token, agent.ID)
 	must(t, e)
 	must(t, m.SetAgentWorkspacePolicy(ctx, f.token, agent.ID, w.ID, access.Version, false, []string{}))
-	if _, e = m.CreateTask(ctx, secret, w.ID, tasks.Create{Title: "Denied agent"}); !errors.Is(e, auth.ErrForbidden) {
+	if _, e = m.CreateTask(ctx, secret, w.ID, tasks.Create{Title: "Denied agent"}); !errors.Is(
+		e,
+		auth.ErrForbidden,
+	) {
 		t.Fatal("agent ceiling", e)
 	}
 }
@@ -209,14 +241,33 @@ func TestTasksStatusValidationAndConfigurationPermissions(t *testing.T) {
 	a, member := permissionMember(t, root, "member")
 	w = joinWorkspace(t, f, w, a.ID)
 	w = workspaceGrants(t, f, w, a.ID, false, []string{ws.ManageStatuses})
-	if _, e = manager(member).CreateTask(ctx, member.token, w.ID, tasks.Create{Title: "Denied"}); !errors.Is(e, auth.ErrForbidden) {
+	if _, e = manager(member).CreateTask(ctx, member.token, w.ID, tasks.Create{Title: "Denied"}); !errors.Is(
+		e,
+		auth.ErrForbidden,
+	) {
 		t.Fatal("status manager created task", e)
 	}
-	if e = manager(member).TaskPrefix(ctx, member.token, w.ID, "DENIED", c.Version); !errors.Is(e, auth.ErrForbidden) {
+	if e = manager(member).TaskPrefix(ctx, member.token, w.ID, "DENIED", c.Version); !errors.Is(
+		e,
+		auth.ErrForbidden,
+	) {
 		t.Fatal("status manager edited prefix", e)
 	}
 	c.Statuses[1].Name = "Review"
-	must(t, manager(member).TaskStatuses(ctx, member.token, w.ID, tasks.StatusChange{Statuses: c.Statuses[:3], Creation: c.Creation, Completed: c.Completed, Version: c.Version}))
+	must(
+		t,
+		manager(member).TaskStatuses(
+			ctx,
+			member.token,
+			w.ID,
+			tasks.StatusChange{
+				Statuses:  c.Statuses[:3],
+				Creation:  c.Creation,
+				Completed: c.Completed,
+				Version:   c.Version,
+			},
+		),
+	)
 	people, e := m.TaskPeople(ctx, f.token, w.ID, "member")
 	must(t, e)
 	if len(people) != 1 || people[0].ID != a.ID {
@@ -230,9 +281,19 @@ func TestTasksStatusAndAssigneeFilters(t *testing.T) {
 	ctx, m := t.Context(), manager(f)
 	c, e := m.TaskConfig(ctx, f.token, w.ID)
 	must(t, e)
-	parent, e := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Completed parent", StatusID: c.Completed})
+	parent, e := m.CreateTask(
+		ctx,
+		f.token,
+		w.ID,
+		tasks.Create{Title: "Completed parent", StatusID: c.Completed},
+	)
 	must(t, e)
-	child, e := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Assigned child", ParentID: parent.ID, Assignees: []string{owner.ID}})
+	child, e := m.CreateTask(
+		ctx,
+		f.token,
+		w.ID,
+		tasks.Create{Title: "Assigned child", ParentID: parent.ID, Assignees: []string{owner.ID}},
+	)
 	must(t, e)
 	unassigned, e := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Unassigned root"})
 	must(t, e)
@@ -242,13 +303,41 @@ func TestTasksStatusAndAssigneeFilters(t *testing.T) {
 		ids    []string
 	}{
 		{"assignee excludes nested work", tasks.Filter{State: "all", Assignees: []string{owner.ID}}, nil},
-		{"status excludes children", tasks.Filter{State: "all", Statuses: []string{c.Creation}}, []string{unassigned.ID}},
-		{"categories intersect", tasks.Filter{State: "all", Statuses: []string{c.Completed}, Assignees: []string{owner.ID}}, nil},
-		{"unassigned direct only", tasks.Filter{State: "all", Unassigned: true}, []string{unassigned.ID, parent.ID}},
-		{"unassigned or chosen person", tasks.Filter{State: "all", Assignees: []string{owner.ID}, Unassigned: true}, []string{unassigned.ID, parent.ID}},
-		{"multiple statuses", tasks.Filter{State: "all", Statuses: []string{c.Creation, c.Completed}}, []string{unassigned.ID, parent.ID}},
-		{"explicit parent remains scoped", tasks.Filter{State: "all", Parent: parent.ID, Assignees: []string{owner.ID}}, []string{child.ID}},
-		{"query intersects filters", tasks.Filter{State: "all", Query: "Unassigned", Assignees: []string{owner.ID}}, nil},
+		{
+			"status excludes children",
+			tasks.Filter{State: "all", Statuses: []string{c.Creation}},
+			[]string{unassigned.ID},
+		},
+		{
+			"categories intersect",
+			tasks.Filter{State: "all", Statuses: []string{c.Completed}, Assignees: []string{owner.ID}},
+			nil,
+		},
+		{
+			"unassigned direct only",
+			tasks.Filter{State: "all", Unassigned: true},
+			[]string{unassigned.ID, parent.ID},
+		},
+		{
+			"unassigned or chosen person",
+			tasks.Filter{State: "all", Assignees: []string{owner.ID}, Unassigned: true},
+			[]string{unassigned.ID, parent.ID},
+		},
+		{
+			"multiple statuses",
+			tasks.Filter{State: "all", Statuses: []string{c.Creation, c.Completed}},
+			[]string{unassigned.ID, parent.ID},
+		},
+		{
+			"explicit parent remains scoped",
+			tasks.Filter{State: "all", Parent: parent.ID, Assignees: []string{owner.ID}},
+			[]string{child.ID},
+		},
+		{
+			"query intersects filters",
+			tasks.Filter{State: "all", Query: "Unassigned", Assignees: []string{owner.ID}},
+			nil,
+		},
 	}
 	for _, check := range checks {
 		t.Run(check.name, func(t *testing.T) {
@@ -269,7 +358,12 @@ func TestTasksStatusAndAssigneeFilters(t *testing.T) {
 	}
 	// Filtering must occur before pagination; matching children never enter root pages.
 	for i := 0; i < 51; i++ {
-		_, e = m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Pagination root", Assignees: []string{owner.ID}})
+		_, e = m.CreateTask(
+			ctx,
+			f.token,
+			w.ID,
+			tasks.Create{Title: "Pagination root", Assignees: []string{owner.ID}},
+		)
 		must(t, e)
 	}
 	filter := tasks.Filter{State: "all", Assignees: []string{owner.ID}}

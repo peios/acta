@@ -1,13 +1,15 @@
 package postgres
 
 import (
-	"acta/internal/accounts"
-	"acta/internal/auth"
 	"context"
 	"errors"
-	"github.com/jackc/pgx/v5"
 	"slices"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+
+	"acta/internal/accounts"
+	"acta/internal/auth"
 )
 
 // Parentage is immutable. Lock the human owner first on every account mutation,
@@ -30,14 +32,23 @@ func lockAccountFamily(ctx context.Context, tx pgx.Tx, id string) error {
 func (t securityTx) OwnedAgent(ctx context.Context, id string) (accounts.Account, auth.SecurityTx, error) {
 	var a accounts.Account
 	var found string
-	e := t.tx.QueryRow(ctx, `SELECT id::text FROM accounts WHERE id=$1 AND parent_id=$2 FOR UPDATE`, id, t.accountID).Scan(&found)
+	e := t.tx.QueryRow(
+		ctx,
+		`SELECT id::text FROM accounts WHERE id=$1 AND parent_id=$2 FOR UPDATE`,
+		id,
+		t.accountID,
+	).Scan(&found)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return a, nil, auth.ErrNotFound
 	}
 	if e != nil {
 		return a, nil, e
 	}
-	a, e = scanAccount(t.tx.QueryRow(ctx, `SELECT `+accountColumns+` FROM accounts a LEFT JOIN accounts p ON p.id=a.parent_id WHERE a.id=$1`, id))
+	a, e = scanAccount(t.tx.QueryRow(
+		ctx,
+		`SELECT `+accountColumns+` FROM accounts a LEFT JOIN accounts p ON p.id=a.parent_id WHERE a.id=$1`,
+		id,
+	))
 	return a, securityTx{t.tx, id}, e
 }
 func (s *Store) CreateAgent(ctx context.Context, owner string, token []byte, a accounts.Account, now time.Time) (accounts.Account, error) {
@@ -46,14 +57,26 @@ func (s *Store) CreateAgent(ctx context.Context, owner string, token []byte, a a
 		return a, e
 	}
 	defer tx.Rollback(ctx)
-	_, e = tx.Exec(ctx, `INSERT INTO accounts(id,parent_id,username,display_name,created_at) VALUES($1,$2,$3,$4,$5)`, a.ID, owner, a.Username, a.DisplayName, now)
+	_, e = tx.Exec(
+		ctx,
+		`INSERT INTO accounts(id,parent_id,username,display_name,created_at) VALUES($1,$2,$3,$4,$5)`,
+		a.ID,
+		owner,
+		a.Username,
+		a.DisplayName,
+		now,
+	)
 	if e != nil {
 		return a, nameError(e)
 	}
 	if e = (managedTx{securityTx{tx, a.ID}, owner, actor}).Event(ctx, "agent_created", now); e != nil {
 		return a, e
 	}
-	a, e = scanAccount(tx.QueryRow(ctx, `SELECT `+accountColumns+` FROM accounts a LEFT JOIN accounts p ON p.id=a.parent_id WHERE a.id=$1`, a.ID))
+	a, e = scanAccount(tx.QueryRow(
+		ctx,
+		`SELECT `+accountColumns+` FROM accounts a LEFT JOIN accounts p ON p.id=a.parent_id WHERE a.id=$1`,
+		a.ID,
+	))
 	if e != nil {
 		return a, e
 	}
@@ -65,7 +88,11 @@ func (s *Store) ListAgents(ctx context.Context, owner string, token []byte, now 
 		return nil, e
 	}
 	defer tx.Rollback(ctx)
-	rows, e := tx.Query(ctx, `SELECT `+accountColumns+` FROM accounts a LEFT JOIN accounts p ON p.id=a.parent_id WHERE a.parent_id=$1 ORDER BY a.username,a.id`, owner)
+	rows, e := tx.Query(
+		ctx,
+		`SELECT `+accountColumns+` FROM accounts a LEFT JOIN accounts p ON p.id=a.parent_id WHERE a.parent_id=$1 ORDER BY a.username,a.id`,
+		owner,
+	)
 	if e != nil {
 		return nil, e
 	}
@@ -104,14 +131,22 @@ func (s *Store) WithAgent(ctx context.Context, owner string, token []byte, id st
 // Prune stored grants, rather than merely masking them, so later restoration of
 // owner access cannot resurrect an old delegation.
 func pruneAgentGrants(ctx context.Context, tx pgx.Tx, owner string) error {
-	a, e := scanAccount(tx.QueryRow(ctx, `SELECT `+accountColumns+` FROM accounts a LEFT JOIN accounts p ON p.id=a.parent_id WHERE a.id=$1`, owner))
+	a, e := scanAccount(tx.QueryRow(
+		ctx,
+		`SELECT `+accountColumns+` FROM accounts a LEFT JOIN accounts p ON p.id=a.parent_id WHERE a.id=$1`,
+		owner,
+	))
 	if e != nil {
 		return e
 	}
 	if a.IsAgent() {
 		return nil
 	}
-	rows, e := tx.Query(ctx, `SELECT id::text,direct_permissions FROM accounts WHERE parent_id=$1 ORDER BY id FOR UPDATE`, owner)
+	rows, e := tx.Query(
+		ctx,
+		`SELECT id::text,direct_permissions FROM accounts WHERE parent_id=$1 ORDER BY id FOR UPDATE`,
+		owner,
+	)
 	if e != nil {
 		return e
 	}
@@ -144,10 +179,19 @@ func pruneAgentGrants(ctx context.Context, tx pgx.Tx, owner string) error {
 		return e
 	}
 	for _, item := range changed {
-		if _, e = tx.Exec(ctx, `UPDATE accounts SET direct_permissions=$2,permissions_version=permissions_version+1 WHERE id=$1`, item.id, item.grants); e != nil {
+		if _, e = tx.Exec(
+			ctx,
+			`UPDATE accounts SET direct_permissions=$2,permissions_version=permissions_version+1 WHERE id=$1`,
+			item.id,
+			item.grants,
+		); e != nil {
 			return e
 		}
-		if _, e = tx.Exec(ctx, `INSERT INTO account_events(account_id,kind,occurred_at) VALUES($1,'agent_grants_pruned',now())`, item.id); e != nil {
+		if _, e = tx.Exec(
+			ctx,
+			`INSERT INTO account_events(account_id,kind,occurred_at) VALUES($1,'agent_grants_pruned',now())`,
+			item.id,
+		); e != nil {
 			return e
 		}
 	}

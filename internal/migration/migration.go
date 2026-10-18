@@ -2,9 +2,10 @@
 package migration
 
 import (
-	"acta/internal/accounts"
 	"encoding/json"
 	"errors"
+
+	"acta/internal/accounts"
 )
 
 type Request struct {

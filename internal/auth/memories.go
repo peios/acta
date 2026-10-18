@@ -1,17 +1,19 @@
 package auth
 
 import (
-	"acta/internal/accounts"
-	"acta/internal/memories"
-	ws "acta/internal/workspaces"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"github.com/google/uuid"
 	"reflect"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/google/uuid"
+
+	"acta/internal/accounts"
+	"acta/internal/memories"
+	ws "acta/internal/workspaces"
 )
 
 type MemoryTx interface {
@@ -26,10 +28,16 @@ func memoryScope(ctx context.Context, tx WorkspaceTx, scope, ref, agent string, 
 	switch scope {
 	case "site":
 		if ref != "" {
-			return "", &accounts.FieldError{Field: "workspace", Message: "Supply workspace only for workspace-scoped memories."}
+			return "", &accounts.FieldError{
+				Field:   "workspace",
+				Message: "Supply workspace only for workspace-scoped memories.",
+			}
 		}
 		if agent != "" {
-			return "", &accounts.FieldError{Field: "agent_id", Message: "Supply agent_id only for agent-scoped memories."}
+			return "", &accounts.FieldError{
+				Field:   "agent_id",
+				Message: "Supply agent_id only for agent-scoped memories.",
+			}
 		}
 		if !accounts.CheckPermission(a, accounts.ReadSiteMemories) {
 			if write {
@@ -43,7 +51,10 @@ func memoryScope(ctx context.Context, tx WorkspaceTx, scope, ref, agent string, 
 		return "", nil
 	case "workspace":
 		if agent != "" {
-			return "", &accounts.FieldError{Field: "agent_id", Message: "Supply agent_id only for agent-scoped memories."}
+			return "", &accounts.FieldError{
+				Field:   "agent_id",
+				Message: "Supply agent_id only for agent-scoped memories.",
+			}
 		}
 		if strings.TrimSpace(ref) == "" {
 			return "", &accounts.FieldError{Field: "workspace", Message: "Supply a workspace UUID or slug."}
@@ -59,10 +70,16 @@ func memoryScope(ctx context.Context, tx WorkspaceTx, scope, ref, agent string, 
 		return w.ID, nil
 	case "user":
 		if ref != "" {
-			return "", &accounts.FieldError{Field: "workspace", Message: "Supply workspace only for workspace-scoped memories."}
+			return "", &accounts.FieldError{
+				Field:   "workspace",
+				Message: "Supply workspace only for workspace-scoped memories.",
+			}
 		}
 		if agent != "" {
-			return "", &accounts.FieldError{Field: "agent_id", Message: "Supply agent_id only for agent-scoped memories."}
+			return "", &accounts.FieldError{
+				Field:   "agent_id",
+				Message: "Supply agent_id only for agent-scoped memories.",
+			}
 		}
 		if a.IsAgent() {
 			if write && !accounts.CheckPermission(a, accounts.WriteUserMemories) {
@@ -73,7 +90,10 @@ func memoryScope(ctx context.Context, tx WorkspaceTx, scope, ref, agent string, 
 		return a.ID, nil
 	case "agent":
 		if ref != "" {
-			return "", &accounts.FieldError{Field: "workspace", Message: "Supply workspace only for workspace-scoped memories."}
+			return "", &accounts.FieldError{
+				Field:   "workspace",
+				Message: "Supply workspace only for workspace-scoped memories.",
+			}
 		}
 		if a.IsAgent() {
 			if agent != "" && agent != a.ID {
@@ -179,7 +199,10 @@ type memoryCursor struct {
 
 func (m *Management) RecallMemories(ctx context.Context, token string, in memories.Recall) (memories.Page, error) {
 	out := memories.Page{Memories: []memories.Memory{}}
-	if len(in.Query) > 500 || len(in.Cursor) > 4096 || !utf8.ValidString(in.Query) || strings.ContainsRune(in.Query, 0) {
+	if len(in.Query) > 500 || len(in.Cursor) > 4096 || !utf8.ValidString(in.Query) || strings.ContainsRune(
+		in.Query,
+		0,
+	) {
 		return out, &accounts.FieldError{Field: "query", Message: "Query or cursor is too long."}
 	}
 	e := m.workspaceTx(ctx, token, false, func(tx WorkspaceTx) error {
@@ -213,7 +236,10 @@ func (m *Management) RecallMemories(ctx context.Context, token string, in memori
 			raw, e := base64.RawURLEncoding.DecodeString(in.Cursor)
 			var prior memoryCursor
 			if e != nil || json.Unmarshal(raw, &prior) != nil || !reflect.DeepEqual(prior.Targets, c.Targets) || prior.Query != c.Query {
-				return &accounts.FieldError{Field: "cursor", Message: "Use the cursor with the same workspace, agent and query."}
+				return &accounts.FieldError{
+					Field:   "cursor",
+					Message: "Use the cursor with the same workspace, agent and query.",
+				}
 			}
 			c = prior
 		}

@@ -120,7 +120,12 @@ func run() error {
 		if flag.Arg(0) == "install" {
 			body = map[string]string{"id": *selection, "actor": "deployment-operator"}
 		}
-		status, raw, err := (backup.Client{Socket: c.Socket, TokenFile: c.TokenFile}).Do(context.Background(), method, path, body)
+		status, raw, err := (backup.Client{Socket: c.Socket, TokenFile: c.TokenFile}).Do(
+			context.Background(),
+			method,
+			path,
+			body,
+		)
 		if err != nil {
 			return err
 		}
@@ -153,11 +158,20 @@ func run() error {
 		for k, v := range r.Images {
 			services[k] = map[string]string{"image": v}
 		}
-		services["backup"] = map[string]any{"image": r.Images["backup"], "environment": map[string]string{"ACTA_RELEASE": r.Version}}
-		if err = localstate.Write(filepath.Join(c.StateDir, "active.json"), map[string]any{"services": services}); err != nil {
+		services["backup"] = map[string]any{
+			"image":       r.Images["backup"],
+			"environment": map[string]string{"ACTA_RELEASE": r.Version},
+		}
+		if err = localstate.Write(
+			filepath.Join(c.StateDir, "active.json"),
+			map[string]any{"services": services},
+		); err != nil {
 			return err
 		}
-		return localstate.Write(filepath.Join(c.StateDir, "state.json"), update.State{Version: 1, Current: signed, Jobs: []update.Job{}})
+		return localstate.Write(
+			filepath.Join(c.StateDir, "state.json"),
+			update.State{Version: 1, Current: signed, Jobs: []update.Job{}},
+		)
 	case "serve":
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()

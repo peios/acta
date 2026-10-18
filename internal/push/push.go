@@ -19,8 +19,9 @@ import (
 	"strings"
 	"time"
 
-	"acta/internal/notifications"
 	webpush "github.com/SherClockHolmes/webpush-go"
+
+	"acta/internal/notifications"
 )
 
 type Subscription = webpush.Subscription
@@ -81,7 +82,22 @@ func publicIP(ip netip.Addr) bool {
 	if !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
 		return false
 	}
-	for _, raw := range []string{"0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "192.0.2.0/24", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "240.0.0.0/4", "2001:db8::/32", "64:ff9b::/96", "64:ff9b:1::/48", "fec0::/10", "2002::/16", "2001::/32"} {
+	for _, raw := range []string{
+		"0.0.0.0/8",
+		"100.64.0.0/10",
+		"192.0.0.0/24",
+		"192.0.2.0/24",
+		"198.18.0.0/15",
+		"198.51.100.0/24",
+		"203.0.113.0/24",
+		"240.0.0.0/4",
+		"2001:db8::/32",
+		"64:ff9b::/96",
+		"64:ff9b:1::/48",
+		"fec0::/10",
+		"2002::/16",
+		"2001::/32",
+	} {
 		if netip.MustParsePrefix(raw).Contains(ip) {
 			return false
 		}
@@ -113,7 +129,11 @@ func HTTPClient() *http.Client {
 		}
 		var last error
 		for _, ip := range ips {
-			c, e := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+			c, e := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(
+				ctx,
+				network,
+				net.JoinHostPort(ip.String(), port),
+			)
 			if e == nil {
 				return c, nil
 			}
@@ -121,7 +141,11 @@ func HTTPClient() *http.Client {
 		}
 		return nil, last
 	}
-	return &http.Client{Transport: transport, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	return &http.Client{
+		Transport:     transport,
+		Timeout:       15 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 }
 
 type Sender struct {
@@ -133,12 +157,29 @@ func (s Sender) Send(ctx context.Context, d Delivery) (int, error) {
 	if err := Validate(d.Subscription); err != nil {
 		return 410, err
 	}
-	payload, _ := json.Marshal(map[string]any{"subscription": d.SubscriptionID, "id": d.NotificationID, "revision": d.Revision})
+	payload, _ := json.Marshal(map[string]any{
+		"subscription": d.SubscriptionID,
+		"id":           d.NotificationID,
+		"revision":     d.Revision,
+	})
 	sum := sha256.Sum256([]byte(d.NotificationID))
 	// Config permits HTTP only for loopback development. VAPID subjects must be
 	// HTTPS URLs (or mailto); never let the library interpret an HTTP URL as email.
 	contact := strings.Replace(s.Contact, "http://", "https://", 1)
-	response, err := webpush.SendNotificationWithContext(ctx, payload, &d.Subscription, &webpush.Options{HTTPClient: s.Client, Subscriber: contact, VAPIDPrivateKey: s.Private, VAPIDPublicKey: s.Public, TTL: 3600, Urgency: webpush.UrgencyNormal, Topic: base64.RawURLEncoding.EncodeToString(sum[:18])})
+	response, err := webpush.SendNotificationWithContext(
+		ctx,
+		payload,
+		&d.Subscription,
+		&webpush.Options{
+			HTTPClient:      s.Client,
+			Subscriber:      contact,
+			VAPIDPrivateKey: s.Private,
+			VAPIDPublicKey:  s.Public,
+			TTL:             3600,
+			Urgency:         webpush.UrgencyNormal,
+			Topic:           base64.RawURLEncoding.EncodeToString(sum[:18]),
+		},
+	)
 	if err != nil {
 		return 0, err
 	}

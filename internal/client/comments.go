@@ -1,10 +1,11 @@
 package client
 
 import (
-	"acta/internal/activity"
-	"acta/internal/comments"
 	"context"
 	"net/url"
+
+	"acta/internal/activity"
+	"acta/internal/comments"
 )
 
 func (c *Client) Comment(ctx context.Context, task, id string) (activity.Entry, error) {
@@ -14,7 +15,13 @@ func (c *Client) Comment(ctx context.Context, task, id string) (activity.Entry, 
 }
 func (c *Client) CommentReplies(ctx context.Context, task, id, cursor string) (activity.Page, error) {
 	var out activity.Page
-	e := c.Call(ctx, "GET", "tasks/"+url.PathEscape(task)+"/comments/"+url.PathEscape(id)+"/replies?cursor="+url.QueryEscape(cursor), nil, &out)
+	e := c.Call(
+		ctx,
+		"GET",
+		"tasks/"+url.PathEscape(task)+"/comments/"+url.PathEscape(id)+"/replies?cursor="+url.QueryEscape(cursor),
+		nil,
+		&out,
+	)
 	return out, e
 }
 func (c *Client) CreateComment(ctx context.Context, task string, in comments.Create) (activity.Entry, error) {

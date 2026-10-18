@@ -1,9 +1,10 @@
 package memories
 
 import (
-	"acta/internal/accounts"
 	"errors"
 	"testing"
+
+	"acta/internal/accounts"
 )
 
 func TestSaveScopeShapeValidation(t *testing.T) {
@@ -21,7 +22,14 @@ func TestSaveScopeShapeValidation(t *testing.T) {
 		{"workspace", &empty, "", "workspace"},
 		{"workspace", &workspace, "other-agent", "agent_id"},
 	} {
-		in := Save{Scope: test.scope, Workspace: test.workspace, AgentID: test.agent, Key: "test", Summary: "Summary", Content: "Content"}
+		in := Save{
+			Scope:     test.scope,
+			Workspace: test.workspace,
+			AgentID:   test.agent,
+			Key:       "test",
+			Summary:   "Summary",
+			Content:   "Content",
+		}
 		var field *accounts.FieldError
 		if e := Validate(&in); !errors.As(e, &field) || field.Field != test.field {
 			t.Fatalf("%+v: %v", test, e)

@@ -1,13 +1,7 @@
 package integration
 
 import (
-	"acta/internal/accounts"
-	"acta/internal/auth"
-	actaclient "acta/internal/client"
-	"acta/internal/config"
-	"acta/internal/httpapi"
 	"errors"
-	"github.com/pquerna/otp/totp"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,6 +9,14 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/pquerna/otp/totp"
+
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	actaclient "acta/internal/client"
+	"acta/internal/config"
+	"acta/internal/httpapi"
 )
 
 func startDevice(t *testing.T, f securityFixture) auth.DeviceStart {
@@ -25,7 +27,11 @@ func startDevice(t *testing.T, f securityFixture) auth.DeviceStart {
 }
 func clearPoll(t *testing.T, f securityFixture, d auth.DeviceStart) {
 	t.Helper()
-	_, e := f.conn.Exec(t.Context(), `DELETE FROM authentication_attempts WHERE bucket_hash=$1`, auth.Digest("device-poll:"+d.DeviceCode))
+	_, e := f.conn.Exec(
+		t.Context(),
+		`DELETE FROM authentication_attempts WHERE bucket_hash=$1`,
+		auth.Digest("device-poll:"+d.DeviceCode),
+	)
 	must(t, e)
 }
 func TestDeviceApprovalLifecycle(t *testing.T) {
@@ -43,7 +49,17 @@ func TestDeviceApprovalLifecycle(t *testing.T) {
 	if _, e = f.security.PollDevice(ctx, d.DeviceCode); !errors.Is(e, auth.ErrRateLimited) {
 		t.Fatal("poll not throttled", e)
 	}
-	must(t, f.security.ApproveDevice(ctx, f.token, strings.ToLower(strings.ReplaceAll(d.UserCode, "-", "")), "test", true, ""))
+	must(
+		t,
+		f.security.ApproveDevice(
+			ctx,
+			f.token,
+			strings.ToLower(strings.ReplaceAll(d.UserCode, "-", "")),
+			"test",
+			true,
+			"",
+		),
+	)
 	clearPoll(t, f, d)
 	r, e = f.security.PollDevice(ctx, d.DeviceCode)
 	must(t, e)
@@ -89,9 +105,16 @@ func TestDeviceDenialExpiryAndRevocationBeforeCollection(t *testing.T) {
 		t.Fatal(r)
 	}
 	d = startDevice(t, f)
-	_, e = f.conn.Exec(ctx, `UPDATE device_requests SET expires_at=now()-interval '1 second' WHERE token_hash=$1`, auth.Digest(d.DeviceCode))
+	_, e = f.conn.Exec(
+		ctx,
+		`UPDATE device_requests SET expires_at=now()-interval '1 second' WHERE token_hash=$1`,
+		auth.Digest(d.DeviceCode),
+	)
 	must(t, e)
-	if e = f.security.ApproveDevice(ctx, f.token, d.UserCode, "test", true, ""); !errors.Is(e, auth.ErrDevice) {
+	if e = f.security.ApproveDevice(ctx, f.token, d.UserCode, "test", true, ""); !errors.Is(
+		e,
+		auth.ErrDevice,
+	) {
 		t.Fatal("expired code accepted", e)
 	}
 	d = startDevice(t, f)
@@ -121,9 +144,19 @@ func TestDeviceConcurrentApprovalAndMFA(t *testing.T) {
 	d = startDevice(t, f)
 	root, e := f.service.Current(ctx, f.token)
 	must(t, e)
-	_, e = manager(f).UpdatePermissions(ctx, f.token, root.ID, root.PermissionsVersion, root.DirectPermissions, true)
+	_, e = manager(f).UpdatePermissions(
+		ctx,
+		f.token,
+		root.ID,
+		root.PermissionsVersion,
+		root.DirectPermissions,
+		true,
+	)
 	must(t, e)
-	if e = f.security.ApproveDevice(ctx, f.token, d.UserCode, "test", true, ""); !errors.Is(e, auth.ErrMFARequired) {
+	if e = f.security.ApproveDevice(ctx, f.token, d.UserCode, "test", true, ""); !errors.Is(
+		e,
+		auth.ErrMFARequired,
+	) {
 		t.Fatal("MFA requirement bypassed", e)
 	}
 	flow := f.begin(t, "mfa_setup")
@@ -146,7 +179,12 @@ func TestDeviceHTTPAndClient(t *testing.T) {
 	cfg, e := config.Parse("http://localhost:8081", "")
 	must(t, e)
 	var h http.Handler
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { h.ServeHTTP(w, r) }))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.ServeHTTP(
+			w,
+			r,
+		)
+	}))
 	defer server.Close()
 	cfg, e = config.Parse(server.URL, "")
 	must(t, e)
@@ -154,7 +192,11 @@ func TestDeviceHTTPAndClient(t *testing.T) {
 	c := actaclient.New(server.URL, "")
 	d, e := c.Start(t.Context(), "integration")
 	must(t, e)
-	req := httptest.NewRequest("POST", server.URL+"/api/device/approve", strings.NewReader(`{"code":"`+d.UserCode+`","approve":true}`))
+	req := httptest.NewRequest(
+		"POST",
+		server.URL+"/api/device/approve",
+		strings.NewReader(`{"code":"`+d.UserCode+`","approve":true}`),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: "acta_session", Value: f.token})
 	recorder := httptest.NewRecorder()
@@ -185,7 +227,13 @@ func TestDeviceHTTPAndClient(t *testing.T) {
 	c.Token = secret
 	next, e := actaclient.New(server.URL, "").Start(t.Context(), "second")
 	must(t, e)
-	e = c.Call(t.Context(), "POST", "device/approve", map[string]any{"code": next.UserCode, "approve": true}, nil)
+	e = c.Call(
+		t.Context(),
+		"POST",
+		"device/approve",
+		map[string]any{"code": next.UserCode, "approve": true},
+		nil,
+	)
 	if e == nil {
 		t.Fatal("CLI authorized another CLI")
 	}
@@ -201,7 +249,13 @@ func TestDeviceIdleExpiry(t *testing.T) {
 	r, e := f.security.PollDevice(t.Context(), d.DeviceCode)
 	must(t, e)
 	now := time.Now()
-	_, e = f.conn.Exec(t.Context(), `UPDATE browser_sessions SET created_at=$2,last_seen_at=$3 WHERE token_hash=$1`, auth.Digest(r.Token), now.Add(-10*24*time.Hour), now.Add(-8*24*time.Hour))
+	_, e = f.conn.Exec(
+		t.Context(),
+		`UPDATE browser_sessions SET created_at=$2,last_seen_at=$3 WHERE token_hash=$1`,
+		auth.Digest(r.Token),
+		now.Add(-10*24*time.Hour),
+		now.Add(-8*24*time.Hour),
+	)
 	must(t, e)
 	if _, e = f.service.Current(t.Context(), r.Token); !errors.Is(e, auth.ErrUnauthenticated) {
 		t.Fatal("idle CLI accepted", e)

@@ -31,7 +31,10 @@ func TestProfilesAndAtomicUpdates(t *testing.T) {
 	}
 }
 func TestCredentialFallbackAndEnvironment(t *testing.T) {
-	v := Vault{Dir: t.TempDir(), Set: func(string, string, string) error { return errors.New("no keyring") }}
+	v := Vault{
+		Dir: t.TempDir(),
+		Set: func(string, string, string) error { return errors.New("no keyring") },
+	}
 	p, notice, e := v.Save("cli_private", false)
 	if e != nil || p.Storage != "file" || notice == "" {
 		t.Fatal(p, e)
@@ -54,7 +57,11 @@ func TestCredentialFallbackAndEnvironment(t *testing.T) {
 	}
 }
 func TestNoninteractiveLoginDoesNotMutateProfiles(t *testing.T) {
-	for _, args := range [][]string{{"login"}, {"-p", "missing", "login", "localhost:8081"}, {"login", "localhost:8081"}} {
+	for _, args := range [][]string{
+		{"login"},
+		{"-p", "missing", "login", "localhost:8081"},
+		{"login", "localhost:8081"},
+	} {
 		dir := t.TempDir()
 		r := Repository{dir}
 		if len(args) == 2 {

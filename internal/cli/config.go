@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/gofrs/flock"
 	"os"
 	"path/filepath"
 	"regexp"
+
+	"github.com/gofrs/flock"
 )
 
 type Profile struct {

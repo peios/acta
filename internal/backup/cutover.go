@@ -9,9 +9,10 @@ import (
 	"regexp"
 	"time"
 
-	"acta/internal/localstate"
 	"github.com/gofrs/flock"
 	"github.com/jackc/pgx/v5"
+
+	"acta/internal/localstate"
 )
 
 type CutoverReport struct {
@@ -61,10 +62,35 @@ func (e PGBackRest) PrepareCutover(ctx context.Context, target string) (CutoverR
 			_, _ = command(cleanup, pgctl, []string{"-D", data, "-m", "immediate", "-w", "stop"}, nil)
 		}
 	}()
-	if _, err = command(ctx, pgctl, []string{"-D", data, "-l", filepath.Join(target, "prepare.log"), "-o", options, "-w", "-t", "120", "start"}, nil); err != nil {
+	if _, err = command(
+		ctx,
+		pgctl,
+		[]string{
+			"-D",
+			data,
+			"-l",
+			filepath.Join(target, "prepare.log"),
+			"-o",
+			options,
+			"-w",
+			"-t",
+			"120",
+			"start",
+		},
+		nil,
+	); err != nil {
 		return out, err
 	}
-	u := url.URL{Scheme: "postgres", User: url.User(meta.DatabaseUser), Path: "/" + meta.Database, RawQuery: url.Values{"host": {filepath.Join(target, "socket")}, "port": {"5432"}, "sslmode": {"disable"}}.Encode()}
+	u := url.URL{
+		Scheme: "postgres",
+		User:   url.User(meta.DatabaseUser),
+		Path:   "/" + meta.Database,
+		RawQuery: url.Values{
+			"host":    {filepath.Join(target, "socket")},
+			"port":    {"5432"},
+			"sslmode": {"disable"},
+		}.Encode(),
+	}
 	c, err := pgx.Connect(ctx, u.String())
 	if err != nil {
 		return out, err
@@ -80,7 +106,13 @@ func (e PGBackRest) PrepareCutover(ctx context.Context, target string) (CutoverR
 	defer tx.Rollback(ctx)
 	// Browser sessions own CLI/MCP credentials and push subscriptions through
 	// foreign keys. Clear every in-flight authentication grant as well.
-	for _, table := range []string{"security_flows", "oauth_requests", "device_requests", "setup_grants", "account_links"} {
+	for _, table := range []string{
+		"security_flows",
+		"oauth_requests",
+		"device_requests",
+		"setup_grants",
+		"account_links",
+	} {
 		if _, err = tx.Exec(ctx, "DELETE FROM "+pgx.Identifier{table}.Sanitize()); err != nil {
 			return out, err
 		}
@@ -93,7 +125,10 @@ func (e PGBackRest) PrepareCutover(ctx context.Context, target string) (CutoverR
 	if _, err = tx.Exec(ctx, `DELETE FROM push_deliveries`); err != nil {
 		return out, err
 	}
-	r, err = tx.Exec(ctx, `UPDATE notifications SET read_at=clock_timestamp(),resolved_at=clock_timestamp() WHERE read_at IS NULL OR resolved_at IS NULL`)
+	r, err = tx.Exec(
+		ctx,
+		`UPDATE notifications SET read_at=clock_timestamp(),resolved_at=clock_timestamp() WHERE read_at IS NULL OR resolved_at IS NULL`,
+	)
 	if err != nil {
 		return out, err
 	}
@@ -116,5 +151,14 @@ func (e PGBackRest) PrepareCutover(ctx context.Context, target string) (CutoverR
 }
 
 func isolatedOptions(target string) string {
-	return "-c config_file=" + filepath.Join(target, "postgresql.conf") + " -c data_directory=" + filepath.Join(target, "pgdata") + " -c hba_file=" + filepath.Join(target, "pg_hba.conf") + " -c unix_socket_directories=" + filepath.Join(target, "socket") + " -c listen_addresses= -c port=5432 -c external_pid_file= -c archive_mode=off -c archive_command= -c archive_cleanup_command= -c recovery_end_command= -c primary_conninfo= -c primary_slot_name= -c shared_preload_libraries= -c max_logical_replication_workers=0"
+	return "-c config_file=" + filepath.Join(target, "postgresql.conf") + " -c data_directory=" + filepath.Join(
+		target,
+		"pgdata",
+	) + " -c hba_file=" + filepath.Join(
+		target,
+		"pg_hba.conf",
+	) + " -c unix_socket_directories=" + filepath.Join(
+		target,
+		"socket",
+	) + " -c listen_addresses= -c port=5432 -c external_pid_file= -c archive_mode=off -c archive_command= -c archive_cleanup_command= -c recovery_end_command= -c primary_conninfo= -c primary_slot_name= -c shared_preload_libraries= -c max_logical_replication_workers=0"
 }

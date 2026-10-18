@@ -11,9 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"acta/internal/localstate"
 	"github.com/gofrs/flock"
 	"github.com/google/uuid"
+
+	"acta/internal/localstate"
 )
 
 type Service struct {
@@ -40,7 +41,22 @@ func Open(c Config, engine Engine) (*Service, error) {
 	s := &Service{c: c, engine: engine, lock: l, wake: make(chan struct{}, 1)}
 	err = ReadJSON(filepath.Join(c.StateDir, "state.json"), &s.state)
 	if errors.Is(err, os.ErrNotExist) {
-		s.state = State{Version: 1, Jobs: []Job{}, Policy: Policy{Revision: 1, Destination: c.Destinations[0].ID, Mode: "snapshot", Anchor: time.Now().UTC().Truncate(time.Minute), BackupMinutes: 1440, FullMinutes: 10080, DrillMinutes: 0, MaxAgeMinutes: 2880, ArchiveAgeMinutes: 10, RetainFull: max(2, c.MinRetainFull)}}
+		s.state = State{
+			Version: 1,
+			Jobs:    []Job{},
+			Policy: Policy{
+				Revision:          1,
+				Destination:       c.Destinations[0].ID,
+				Mode:              "snapshot",
+				Anchor:            time.Now().UTC().Truncate(time.Minute),
+				BackupMinutes:     1440,
+				FullMinutes:       10080,
+				DrillMinutes:      0,
+				MaxAgeMinutes:     2880,
+				ArchiveAgeMinutes: 10,
+				RetainFull:        max(2, c.MinRetainFull),
+			},
+		}
 		err = s.save()
 	} else if err == nil && s.state.Version != 1 {
 		err = errors.New("unsupported backup state version")
@@ -117,7 +133,14 @@ func (s *Service) enqueue(kind, actor string, now time.Time) (Job, error) {
 	if kind == "drill" && s.c.RecoveryIdentityFile == "" {
 		return Job{}, errors.New("the operator has not enabled restore drills")
 	}
-	j := Job{ID: uuid.NewString(), Kind: kind, State: "queued", Actor: actor, Policy: s.state.Policy, RequestedAt: now}
+	j := Job{
+		ID:          uuid.NewString(),
+		Kind:        kind,
+		State:       "queued",
+		Actor:       actor,
+		Policy:      s.state.Policy,
+		RequestedAt: now,
+	}
 	old := s.state.Jobs
 	s.state.Jobs = append([]Job{j}, s.state.Jobs...)
 	if len(s.state.Jobs) > 100 {
@@ -136,7 +159,18 @@ func (s *Service) View() View {
 	defer s.mu.Unlock()
 	// JSON clone excludes engine-only sealed recovery payloads and avoids
 	// races with later state updates after releasing the lock.
-	v := View{MinRetainFull: s.c.MinRetainFull, MaxRetainFull: s.c.MaxRetainFull, Configured: true, Driver: "pgbackrest", Policy: s.state.Policy, CanDrill: s.c.RecoveryIdentityFile != "", Jobs: s.state.Jobs, Repository: s.state.Repository, Warnings: s.warnings(time.Now().UTC()), AlertError: s.state.AlertError}
+	v := View{
+		MinRetainFull: s.c.MinRetainFull,
+		MaxRetainFull: s.c.MaxRetainFull,
+		Configured:    true,
+		Driver:        "pgbackrest",
+		Policy:        s.state.Policy,
+		CanDrill:      s.c.RecoveryIdentityFile != "",
+		Jobs:          s.state.Jobs,
+		Repository:    s.state.Repository,
+		Warnings:      s.warnings(time.Now().UTC()),
+		AlertError:    s.state.AlertError,
+	}
 	for _, d := range s.c.Destinations {
 		v.Destinations = append(v.Destinations, Choice{d.ID, d.Name})
 	}
@@ -185,7 +219,10 @@ func (s *Service) warnings(now time.Time) []string {
 			out = append(out, "PostgreSQL archive settings do not satisfy the configured recovery policy.")
 		}
 		if r.ArchiveLast == nil || now.Sub(*r.ArchiveLast) > time.Duration(p.ArchiveAgeMinutes)*time.Minute {
-			out = append(out, "Transaction-log archive evidence is overdue; the current recovery gap is unknown.")
+			out = append(
+				out,
+				"Transaction-log archive evidence is overdue; the current recovery gap is unknown.",
+			)
 		}
 		if r.ArchiveFailure != nil && (r.ArchiveLast == nil || r.ArchiveFailure.After(*r.ArchiveLast)) {
 			out = append(out, "The latest PostgreSQL archive attempt failed.")
@@ -400,7 +437,11 @@ func (s *Service) alert(ctx context.Context) error {
 		return nil
 	}
 	s.mu.Unlock()
-	raw, _ := json.Marshal(map[string]any{"kind": "acta.backup.health", "warnings": warnings, "at": time.Now().UTC()})
+	raw, _ := json.Marshal(map[string]any{
+		"kind":     "acta.backup.health",
+		"warnings": warnings,
+		"at":       time.Now().UTC(),
+	})
 	alert, cancel := context.WithTimeout(ctx, 30*time.Second)
 	_, err := command(alert, s.c.AlertCommand, nil, raw)
 	cancel()

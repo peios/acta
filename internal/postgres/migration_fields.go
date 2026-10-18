@@ -1,13 +1,14 @@
 package postgres
 
 import (
-	"acta/internal/migration"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"slices"
 	"time"
+
+	"acta/internal/migration"
 )
 
 type migrationFields map[string]json.RawMessage
@@ -81,7 +82,13 @@ func checkMigrationFields(op string, in migration.Request) error {
 		}
 	}
 	if op == "edit" {
-		for _, k := range map[string][]string{"task": {"workspace_id"}, "comment": {"task_id", "reply_to"}, "memory": {"scope", "scope_id"}, "document": {"task_id"}, "activity": {"task_id"}}[in.Kind] {
+		for _, k := range map[string][]string{
+			"task":     {"workspace_id"},
+			"comment":  {"task_id", "reply_to"},
+			"memory":   {"scope", "scope_id"},
+			"document": {"task_id"},
+			"activity": {"task_id"},
+		}[in.Kind] {
 			if _, ok := in.Fields[k]; ok {
 				return migration.Invalid(k, "This relationship is immutable; omit it when editing.")
 			}

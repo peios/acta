@@ -1,9 +1,10 @@
 package httpapi
 
 import (
+	"net/http"
+
 	"acta/internal/accounts"
 	"acta/internal/auth"
-	"net/http"
 )
 
 func (h *Handler) agents(w http.ResponseWriter, r *http.Request) {
@@ -26,7 +27,12 @@ func (h *Handler) createAgent(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	a, e := h.management.CreateAgent(r.Context(), token(r, h.sessionCookie), in.Username, in.DisplayName)
+	a, e := h.management.CreateAgent(
+		r.Context(),
+		token(r, h.sessionCookie),
+		in.Username,
+		in.DisplayName,
+	)
 	if e != nil {
 		failure(w, e)
 		return
@@ -50,7 +56,14 @@ func (h *Handler) agentProfile(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	a, e := h.management.UpdateAgent(r.Context(), token(r, h.sessionCookie), r.PathValue("id"), in.Version, in.Username, in.DisplayName)
+	a, e := h.management.UpdateAgent(
+		r.Context(),
+		token(r, h.sessionCookie),
+		r.PathValue("id"),
+		in.Version,
+		in.Username,
+		in.DisplayName,
+	)
 	if e != nil {
 		failure(w, e)
 		return
@@ -65,7 +78,13 @@ func (h *Handler) agentPermissions(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	a, e := h.management.AgentPermissions(r.Context(), token(r, h.sessionCookie), r.PathValue("id"), in.Version, in.Permissions)
+	a, e := h.management.AgentPermissions(
+		r.Context(),
+		token(r, h.sessionCookie),
+		r.PathValue("id"),
+		in.Version,
+		in.Permissions,
+	)
 	if e != nil {
 		failure(w, e)
 		return
@@ -91,14 +110,23 @@ func (h *Handler) agentDisabled(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if e := h.management.DisableAgent(r.Context(), token(r, h.sessionCookie), r.PathValue("id"), in.Disabled); e != nil {
+	if e := h.management.DisableAgent(
+		r.Context(),
+		token(r, h.sessionCookie),
+		r.PathValue("id"),
+		in.Disabled,
+	); e != nil {
 		failure(w, e)
 		return
 	}
 	writeJSON(w, 200, map[string]bool{"updated": true})
 }
 func (h *Handler) agentSessions(w http.ResponseWriter, r *http.Request) {
-	sessions, e := h.management.AgentSessions(r.Context(), token(r, h.sessionCookie), r.PathValue("id"))
+	sessions, e := h.management.AgentSessions(
+		r.Context(),
+		token(r, h.sessionCookie),
+		r.PathValue("id"),
+	)
 	if e != nil {
 		failure(w, e)
 		return

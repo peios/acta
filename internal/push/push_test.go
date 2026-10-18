@@ -10,13 +10,14 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	webpush "github.com/SherClockHolmes/webpush-go"
-	"golang.org/x/crypto/hkdf"
 	"io"
 	"net/http"
 	"net/netip"
 	"strings"
 	"testing"
+
+	webpush "github.com/SherClockHolmes/webpush-go"
+	"golang.org/x/crypto/hkdf"
 )
 
 type transportFunc func(*http.Request) (*http.Response, error)
@@ -44,7 +45,10 @@ func TestEncryptedPushEnvelope(t *testing.T) {
 		return out
 	}
 	sender := Sender{Private: private, Public: public, Contact: "https://acta.example", Client: transportFunc(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Scheme != "https" || r.Header.Get("Content-Encoding") != "aes128gcm" || !strings.Contains(r.Header.Get("Authorization"), "vapid ") || r.Header.Get("Topic") == "" {
+		if r.URL.Scheme != "https" || r.Header.Get("Content-Encoding") != "aes128gcm" || !strings.Contains(
+			r.Header.Get("Authorization"),
+			"vapid ",
+		) || r.Header.Get("Topic") == "" {
 			t.Fatal("missing encrypted push headers")
 		}
 		body, _ := io.ReadAll(r.Body)
@@ -67,7 +71,12 @@ func TestEncryptedPushEnvelope(t *testing.T) {
 			t.Fatal(err)
 		}
 		gcm, _ := cipher.NewGCM(block)
-		plain, err := gcm.Open(nil, derive(ikm, salt, []byte("Content-Encoding: nonce\x00"), 12), encrypted, nil)
+		plain, err := gcm.Open(
+			nil,
+			derive(ikm, salt, []byte("Content-Encoding: nonce\x00"), 12),
+			encrypted,
+			nil,
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -82,13 +91,29 @@ func TestEncryptedPushEnvelope(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 201, Body: io.NopCloser(strings.NewReader(""))}, nil
 	})}
-	status, err := sender.Send(context.Background(), Delivery{NotificationID: "notification", SubscriptionID: "subscription", Revision: 4, Subscription: Subscription{Endpoint: "https://push.example/endpoint", Keys: webpush.Keys{Auth: base64.RawURLEncoding.EncodeToString(auth), P256dh: base64.RawURLEncoding.EncodeToString(receiver.PublicKey().Bytes())}}})
+	status, err := sender.Send(context.Background(), Delivery{NotificationID: "notification", SubscriptionID: "subscription", Revision: 4, Subscription: Subscription{Endpoint: "https://push.example/endpoint", Keys: webpush.Keys{
+		Auth:   base64.RawURLEncoding.EncodeToString(auth),
+		P256dh: base64.RawURLEncoding.EncodeToString(receiver.PublicKey().Bytes()),
+	}}})
 	if err != nil || status != 201 {
 		t.Fatal(status, err)
 	}
 }
 func TestPushRejectsPrivateAddresses(t *testing.T) {
-	for _, ip := range []string{"127.0.0.1", "::1", "::ffff:127.0.0.1", "10.0.0.1", "192.168.1.4", "169.254.169.254", "100.64.0.1", "0.0.0.0", "224.0.0.1", "fc00::1", "fe80::1", "2001:db8::1"} {
+	for _, ip := range []string{
+		"127.0.0.1",
+		"::1",
+		"::ffff:127.0.0.1",
+		"10.0.0.1",
+		"192.168.1.4",
+		"169.254.169.254",
+		"100.64.0.1",
+		"0.0.0.0",
+		"224.0.0.1",
+		"fc00::1",
+		"fe80::1",
+		"2001:db8::1",
+	} {
 		if publicIP(netip.MustParseAddr(ip)) {
 			t.Errorf("accepted %s", ip)
 		}

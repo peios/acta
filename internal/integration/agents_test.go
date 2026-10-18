@@ -1,10 +1,6 @@
 package integration
 
 import (
-	"acta/internal/accounts"
-	"acta/internal/auth"
-	"acta/internal/config"
-	"acta/internal/httpapi"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -18,16 +14,34 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/pquerna/otp/totp"
+
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/config"
+	"acta/internal/httpapi"
 )
 
 func TestAgentMCPWhoamiOverStreamableHTTP(t *testing.T) {
 	f := securityDatabase(t)
 	a := agentAccount(t, f, "reviewer", nil)
 	var handler http.Handler
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { handler.ServeHTTP(w, r) }))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler.ServeHTTP(
+			w,
+			r,
+		)
+	}))
 	defer server.Close()
 	o := oauthFromAccount(t, f, server.URL+"/mcp")
-	redirect, e := f.security.ApproveOAuth(t.Context(), f.token, o.request, f.binding, true, server.URL, a.ID)
+	redirect, e := f.security.ApproveOAuth(
+		t.Context(),
+		f.token,
+		o.request,
+		f.binding,
+		true,
+		server.URL,
+		a.ID,
+	)
 	must(t, e)
 	u, e := url.Parse(redirect)
 	must(t, e)
@@ -37,10 +51,20 @@ func TestAgentMCPWhoamiOverStreamableHTTP(t *testing.T) {
 	must(t, e)
 	handler = httpapi.New(f.service, f.security, accounts.NewProfileService(f.store), manager(f), cfg)
 	client := mcp.NewClient(&mcp.Implementation{Name: "Agent identity test", Version: "1"}, nil)
-	session, e := client.Connect(t.Context(), &mcp.StreamableClientTransport{Endpoint: server.URL + "/mcp", HTTPClient: &http.Client{Transport: bearerTransport{tokens.AccessToken}}}, nil)
+	session, e := client.Connect(
+		t.Context(),
+		&mcp.StreamableClientTransport{
+			Endpoint:   server.URL + "/mcp",
+			HTTPClient: &http.Client{Transport: bearerTransport{tokens.AccessToken}},
+		},
+		nil,
+	)
 	must(t, e)
 	defer session.Close()
-	result, e := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "whoami", Arguments: map[string]any{}})
+	result, e := session.CallTool(
+		t.Context(),
+		&mcp.CallToolParams{Name: "whoami", Arguments: map[string]any{}},
+	)
 	must(t, e)
 	encoded, e := json.Marshal(result.StructuredContent)
 	must(t, e)
@@ -50,7 +74,10 @@ func TestAgentMCPWhoamiOverStreamableHTTP(t *testing.T) {
 		t.Fatal("MCP did not expose only the selected agent identity", string(encoded))
 	}
 	must(t, manager(f).DisableAgent(t.Context(), f.token, a.ID, true))
-	if _, e = session.CallTool(t.Context(), &mcp.CallToolParams{Name: "whoami", Arguments: map[string]any{}}); e == nil {
+	if _, e = session.CallTool(
+		t.Context(),
+		&mcp.CallToolParams{Name: "whoami", Arguments: map[string]any{}},
+	); e == nil {
 		t.Fatal("existing MCP transport survived agent disable")
 	}
 }
@@ -109,7 +136,13 @@ func TestAgentOwnershipAndCredentialBoundaries(t *testing.T) {
 	if !errors.Is(e, auth.ErrForbidden) {
 		t.Fatal("agent superuser", e)
 	}
-	_, e = m.AgentPermissions(ctx, f.token, a.ID, a.PermissionsVersion, []string{accounts.ManagePermissions})
+	_, e = m.AgentPermissions(
+		ctx,
+		f.token,
+		a.ID,
+		a.PermissionsVersion,
+		[]string{accounts.ManagePermissions},
+	)
 	if !errors.Is(e, auth.ErrForbidden) {
 		t.Fatal("unowned grant", e)
 	}
@@ -127,19 +160,33 @@ func TestAgentOwnershipAndCredentialBoundaries(t *testing.T) {
 		t.Fatal("nested ownership", e)
 	}
 	for _, purpose := range []string{"passkey_add", "mfa_setup", "password", "recovery"} {
-		if _, e = f.security.Begin(ctx, purpose, "", false, secret, "binding", "test"); !errors.Is(e, auth.ErrForbidden) {
+		if _, e = f.security.Begin(ctx, purpose, "", false, secret, "binding", "test"); !errors.Is(
+			e,
+			auth.ErrForbidden,
+		) {
 			t.Fatal("agent credential flow", purpose, e)
 		}
 	}
 	d := startDevice(t, f)
-	if e = f.security.ApproveDevice(ctx, secret, d.UserCode, "test", true, ""); !errors.Is(e, auth.ErrForbidden) {
+	if e = f.security.ApproveDevice(ctx, secret, d.UserCode, "test", true, ""); !errors.Is(
+		e,
+		auth.ErrForbidden,
+	) {
 		t.Fatal("agent authorized another session", e)
 	}
-	if _, e = f.security.PasswordLogin(ctx, current.Handle(), testPassword, "binding", "test", "test"); !errors.Is(e, auth.ErrCredentials) {
+	if _, e = f.security.PasswordLogin(ctx, current.Handle(), testPassword, "binding", "test", "test"); !errors.Is(
+		e,
+		auth.ErrCredentials,
+	) {
 		t.Fatal("agent password login", e)
 	}
 	// Store invariants reject unsupported agent credentials and groups, even if a new caller forgets a guard.
-	for _, query := range []string{`INSERT INTO password_credentials(account_id,password_hash) VALUES($1,'invalid')`, `INSERT INTO group_memberships(group_id,account_id) SELECT id,$1 FROM permission_groups WHERE is_default`, `UPDATE accounts SET require_mfa=true WHERE id=$1`, `UPDATE accounts SET direct_permissions=ARRAY['site.superuser'] WHERE id=$1`} {
+	for _, query := range []string{
+		`INSERT INTO password_credentials(account_id,password_hash) VALUES($1,'invalid')`,
+		`INSERT INTO group_memberships(group_id,account_id) SELECT id,$1 FROM permission_groups WHERE is_default`,
+		`UPDATE accounts SET require_mfa=true WHERE id=$1`,
+		`UPDATE accounts SET direct_permissions=ARRAY['site.superuser'] WHERE id=$1`,
+	} {
 		if _, e = f.conn.Exec(ctx, query, a.ID); e == nil {
 			t.Fatal("agent database boundary", query)
 		}
@@ -170,7 +217,14 @@ func TestAgentGrantLossIsPermanentAndSourceAware(t *testing.T) {
 	if accounts.CheckPermission(current, accounts.ViewUsers) || len(current.DirectPermissions) != 0 {
 		t.Fatal("group loss not pruned")
 	}
-	g, e = m.UpdateGroupPermissions(ctx, root.token, g.ID, g.Version, []string{accounts.ViewUsers}, false)
+	g, e = m.UpdateGroupPermissions(
+		ctx,
+		root.token,
+		g.ID,
+		g.Version,
+		[]string{accounts.ViewUsers},
+		false,
+	)
 	must(t, e)
 	current, e = f.service.Current(ctx, secret)
 	must(t, e)
@@ -188,7 +242,11 @@ func TestAgentGrantLossIsPermanentAndSourceAware(t *testing.T) {
 		t.Fatal("membership loss not pruned")
 	}
 	// The live ceiling is also fail-closed when stored grants are stale.
-	_, e = f.conn.Exec(ctx, `UPDATE accounts SET direct_permissions=ARRAY['site.users.view'] WHERE id=$1`, a.ID)
+	_, e = f.conn.Exec(
+		ctx,
+		`UPDATE accounts SET direct_permissions=ARRAY['site.users.view'] WHERE id=$1`,
+		a.ID,
+	)
 	must(t, e)
 	current, e = f.service.Current(ctx, secret)
 	must(t, e)
@@ -273,7 +331,13 @@ func TestAgentRenamesReserveFullHandlesAndPreserveIdentity(t *testing.T) {
 	must(t, e)
 	updated, e := m.Agent(ctx, f.token, a.ID)
 	must(t, e)
-	if updated.Handle() != "john/writer" || !slices.Contains(updated.PreviousUsernames, "jack/reviewer") || !slices.Contains(updated.PreviousUsernames, "jack/writer") {
+	if updated.Handle() != "john/writer" || !slices.Contains(
+		updated.PreviousUsernames,
+		"jack/reviewer",
+	) || !slices.Contains(
+		updated.PreviousUsernames,
+		"jack/writer",
+	) {
 		t.Fatal("lost historical handles", updated.PreviousUsernames)
 	}
 	_, e = m.UpdateAgent(ctx, f.token, a.ID, a.ProfileVersion, "stale", "")
@@ -307,7 +371,10 @@ func TestAgentAuthorizationRejectsForeignAndEnforcesOwnerMFA(t *testing.T) {
 	a := agentAccount(t, f, "reviewer", nil)
 	ctx := t.Context()
 	d := startDevice(t, root)
-	if e := root.security.ApproveDevice(ctx, root.token, d.UserCode, "test", true, a.ID); !errors.Is(e, auth.ErrNotFound) {
+	if e := root.security.ApproveDevice(ctx, root.token, d.UserCode, "test", true, a.ID); !errors.Is(
+		e,
+		auth.ErrNotFound,
+	) {
 		t.Fatal("foreign CLI subject", e)
 	}
 	o := oauthFromAccount(t, root, mcpResource)
@@ -321,11 +388,17 @@ func TestAgentAuthorizationRejectsForeignAndEnforcesOwnerMFA(t *testing.T) {
 	if _, e = f.service.Current(ctx, cli); !errors.Is(e, auth.ErrMFARequired) {
 		t.Fatal("CLI ignored owner's MFA policy", e)
 	}
-	if _, _, e = f.security.MCPAccount(ctx, tokens.AccessToken, mcpResource); !errors.Is(e, auth.ErrMFARequired) {
+	if _, _, e = f.security.MCPAccount(ctx, tokens.AccessToken, mcpResource); !errors.Is(
+		e,
+		auth.ErrMFARequired,
+	) {
 		t.Fatal("MCP ignored owner's MFA policy", e)
 	}
 	d = startDevice(t, f)
-	if e = f.security.ApproveDevice(ctx, f.token, d.UserCode, "test", true, a.ID); !errors.Is(e, auth.ErrMFARequired) {
+	if e = f.security.ApproveDevice(ctx, f.token, d.UserCode, "test", true, a.ID); !errors.Is(
+		e,
+		auth.ErrMFARequired,
+	) {
 		t.Fatal("approved with unmet owner MFA", e)
 	}
 	flow := f.begin(t, "mfa_setup")
@@ -351,7 +424,14 @@ func TestAgentConcurrentGrantLossAndApproval(t *testing.T) {
 	var wg sync.WaitGroup
 	errs := make(chan error, 2)
 	wg.Go(func() {
-		_, e := manager(root).UpdatePermissions(ctx, root.token, owner.ID, owner.PermissionsVersion, nil, false)
+		_, e := manager(root).UpdatePermissions(
+			ctx,
+			root.token,
+			owner.ID,
+			owner.PermissionsVersion,
+			nil,
+			false,
+		)
 		errs <- e
 	})
 	wg.Go(func() { errs <- f.security.ApproveDevice(ctx, f.token, d.UserCode, "test", true, a.ID) })
@@ -399,7 +479,11 @@ func TestAgentHTTPManagementAndAuthorization(t *testing.T) {
 		t.Fatal("invalid catalogue", w.Body.String())
 	}
 	d := startDevice(t, f)
-	w = request("POST", "/api/device/approve", `{"code":"`+d.UserCode+`","approve":true,"account_id":"`+agent.ID+`"}`)
+	w = request(
+		"POST",
+		"/api/device/approve",
+		`{"code":"`+d.UserCode+`","approve":true,"account_id":"`+agent.ID+`"}`,
+	)
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -411,7 +495,11 @@ func TestAgentHTTPManagementAndAuthorization(t *testing.T) {
 		t.Fatal("HTTP selection lost")
 	}
 	o := oauthFromAccount(t, f, mcpResource)
-	w = request("POST", "/api/oauth/approve", `{"request":"`+o.request+`","approve":true,"account_id":"`+agent.ID+`"}`)
+	w = request(
+		"POST",
+		"/api/oauth/approve",
+		`{"request":"`+o.request+`","approve":true,"account_id":"`+agent.ID+`"}`,
+	)
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}

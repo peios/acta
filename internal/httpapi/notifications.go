@@ -1,9 +1,11 @@
 package httpapi
 
 import (
-	"acta/internal/notifications"
-	"github.com/google/uuid"
 	"net/http"
+
+	"github.com/google/uuid"
+
+	"acta/internal/notifications"
 )
 
 func (h *Handler) notifications(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +38,13 @@ func (h *Handler) notificationsRead(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !valid {
-		writeError(w, 400, "invalid_notifications", "Choose up to 200 notification revisions to mark read.", nil)
+		writeError(
+			w,
+			400,
+			"invalid_notifications",
+			"Choose up to 200 notification revisions to mark read.",
+			nil,
+		)
 		return
 	}
 	if err := h.auth.ReadNotifications(r.Context(), owner, q.Items); err != nil {

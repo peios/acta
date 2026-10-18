@@ -1,11 +1,12 @@
 package integration
 
 import (
+	"net/http"
+	"testing"
+
 	"acta/internal/accounts"
 	"acta/internal/config"
 	"acta/internal/httpapi"
-	"net/http"
-	"testing"
 )
 
 func TestUpdateManagementRequiresHumanSuperuser(t *testing.T) {

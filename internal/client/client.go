@@ -62,7 +62,14 @@ func NormalizeURL(raw string) (string, error) {
 	return u.String(), nil
 }
 func New(server, token string) *Client {
-	return &Client{URL: server, Token: token, HTTP: &http.Client{Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	return &Client{
+		URL:   server,
+		Token: token,
+		HTTP: &http.Client{
+			Timeout:       20 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
+	}
 }
 func (c *Client) Call(ctx context.Context, method, path string, input, output any) error {
 	server, err := NormalizeURL(c.URL)
@@ -104,6 +111,7 @@ func (c *Client) Call(ctx context.Context, method, path string, input, output an
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		var result struct{ Error Error }
+		// Non-JSON error responses use the HTTP status fallback below.
 		_ = json.Unmarshal(raw, &result)
 		if result.Error.Message == "" {
 			result.Error.Message = fmt.Sprintf("Acta returned HTTP %d", resp.StatusCode)

@@ -11,10 +11,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pquerna/otp/totp"
+
 	"acta/internal/auth"
 	"acta/internal/config"
 	"acta/internal/httpapi"
-	"github.com/pquerna/otp/totp"
 )
 
 const testPassword = "silver meadow orbit lamp"
@@ -80,7 +81,14 @@ func (f securityFixture) enroll(t *testing.T) (string, []string) {
 func TestSecurityMFARecoveryAndCancellation(t *testing.T) {
 	f := securityDatabase(t)
 	ctx := t.Context()
-	old, err := f.security.PasswordLogin(ctx, "jack", testPassword, "another-browser", "test", "Other browser")
+	old, err := f.security.PasswordLogin(
+		ctx,
+		"jack",
+		testPassword,
+		"another-browser",
+		"test",
+		"Other browser",
+	)
 	must(t, err)
 	_, codes := f.enroll(t)
 	if _, err = f.service.Current(ctx, old.SessionToken); !errors.Is(err, auth.ErrUnauthenticated) {
@@ -91,7 +99,14 @@ func TestSecurityMFARecoveryAndCancellation(t *testing.T) {
 	if !view.MFA || view.RecoveryRemaining != 10 {
 		t.Fatal(view)
 	}
-	pending, err := f.security.PasswordLogin(ctx, "jack", testPassword, f.binding, "test", "Test browser")
+	pending, err := f.security.PasswordLogin(
+		ctx,
+		"jack",
+		testPassword,
+		f.binding,
+		"test",
+		"Test browser",
+	)
 	must(t, err)
 	if pending.Step != "code" || pending.SessionToken != "" {
 		t.Fatal("password bypassed MFA")
@@ -107,9 +122,23 @@ func TestSecurityMFARecoveryAndCancellation(t *testing.T) {
 		t.Fatal("MFA did not issue session")
 	}
 	f.token = complete.SessionToken
-	replay, err := f.security.PasswordLogin(ctx, "jack", testPassword, f.binding, "test", "Test browser")
+	replay, err := f.security.PasswordLogin(
+		ctx,
+		"jack",
+		testPassword,
+		f.binding,
+		"test",
+		"Test browser",
+	)
 	must(t, err)
-	_, err = f.security.Advance(ctx, auth.FlowInput{ID: replay.ID, Action: "code", Code: codes[0], Recovery: true}, "", f.binding, "test", "Test browser")
+	_, err = f.security.Advance(
+		ctx,
+		auth.FlowInput{ID: replay.ID, Action: "code", Code: codes[0], Recovery: true},
+		"",
+		f.binding,
+		"test",
+		"Test browser",
+	)
 	if err == nil {
 		t.Fatal("recovery-code replay accepted")
 	}
@@ -131,17 +160,45 @@ func TestSecurityMFARecoveryAndCancellation(t *testing.T) {
 	if view.RecoveryRemaining != 10 || len(newCodes) != 10 {
 		t.Fatal("replacement failed")
 	}
-	stale, err := f.security.Advance(ctx, auth.FlowInput{ID: replay.ID, Action: "code", Code: codes[1], Recovery: true}, "", f.binding, "test", "Test browser")
+	stale, err := f.security.Advance(
+		ctx,
+		auth.FlowInput{ID: replay.ID, Action: "code", Code: codes[1], Recovery: true},
+		"",
+		f.binding,
+		"test",
+		"Test browser",
+	)
 	if !errors.Is(err, auth.ErrFlow) || stale.SessionToken != "" {
 		t.Fatal("old login survived recovery reset", err)
 	}
-	pending, err = f.security.PasswordLogin(ctx, "jack", testPassword, f.binding, "test", "Test browser")
+	pending, err = f.security.PasswordLogin(
+		ctx,
+		"jack",
+		testPassword,
+		f.binding,
+		"test",
+		"Test browser",
+	)
 	must(t, err)
-	_, err = f.security.Advance(ctx, auth.FlowInput{ID: pending.ID, Action: "code", Code: codes[1], Recovery: true}, "", f.binding, "test", "Test browser")
+	_, err = f.security.Advance(
+		ctx,
+		auth.FlowInput{ID: pending.ID, Action: "code", Code: codes[1], Recovery: true},
+		"",
+		f.binding,
+		"test",
+		"Test browser",
+	)
 	if err == nil {
 		t.Fatal("old recovery set survived replacement")
 	}
-	completed, err := f.security.Advance(ctx, auth.FlowInput{ID: pending.ID, Action: "code", Code: newCodes[0], Recovery: true}, "", f.binding, "test", "Test browser")
+	completed, err := f.security.Advance(
+		ctx,
+		auth.FlowInput{ID: pending.ID, Action: "code", Code: newCodes[0], Recovery: true},
+		"",
+		f.binding,
+		"test",
+		"Test browser",
+	)
 	must(t, err)
 	f.token = completed.SessionToken
 	disable := f.begin(t, "mfa_disable")
@@ -157,7 +214,14 @@ func TestRecoveryCodeConcurrentConsumption(t *testing.T) {
 	_, codes := f.enroll(t)
 	flows := []auth.FlowResult{}
 	for range 2 {
-		flow, err := f.security.PasswordLogin(t.Context(), "jack", testPassword, f.binding, "test", "Test browser")
+		flow, err := f.security.PasswordLogin(
+			t.Context(),
+			"jack",
+			testPassword,
+			f.binding,
+			"test",
+			"Test browser",
+		)
 		must(t, err)
 		flows = append(flows, flow)
 	}
@@ -167,7 +231,14 @@ func TestRecoveryCodeConcurrentConsumption(t *testing.T) {
 	for _, flow := range flows {
 		wg.Go(func() {
 			<-start
-			_, err := f.security.Advance(t.Context(), auth.FlowInput{ID: flow.ID, Action: "code", Code: codes[0], Recovery: true}, "", f.binding, "test", "Test browser")
+			_, err := f.security.Advance(
+				t.Context(),
+				auth.FlowInput{ID: flow.ID, Action: "code", Code: codes[0], Recovery: true},
+				"",
+				f.binding,
+				"test",
+				"Test browser",
+			)
 			if err == nil {
 				wins.Add(1)
 			}
@@ -183,10 +254,25 @@ func TestPasswordChangeInvalidatesPendingLoginAndSessions(t *testing.T) {
 	f := securityDatabase(t)
 	_, codes := f.enroll(t)
 	ctx := t.Context()
-	pending, err := f.security.PasswordLogin(ctx, "jack", testPassword, f.binding, "test", "Test browser")
+	pending, err := f.security.PasswordLogin(
+		ctx,
+		"jack",
+		testPassword,
+		f.binding,
+		"test",
+		"Test browser",
+	)
 	must(t, err)
 	change := f.begin(t, "password")
-	change = f.step(t, change, auth.FlowInput{Action: "password", Password: testPassword, NewPassword: "another quiet mountain lantern"})
+	change = f.step(
+		t,
+		change,
+		auth.FlowInput{
+			Action:      "password",
+			Password:    testPassword,
+			NewPassword: "another quiet mountain lantern",
+		},
+	)
 	if change.Step != "code" {
 		t.Fatal("password change bypassed MFA")
 	}
@@ -194,7 +280,14 @@ func TestPasswordChangeInvalidatesPendingLoginAndSessions(t *testing.T) {
 	if change.Step != "done" {
 		t.Fatal(change)
 	}
-	_, err = f.security.Advance(ctx, auth.FlowInput{ID: pending.ID, Action: "code", Code: codes[1], Recovery: true}, "", f.binding, "test", "Test browser")
+	_, err = f.security.Advance(
+		ctx,
+		auth.FlowInput{ID: pending.ID, Action: "code", Code: codes[1], Recovery: true},
+		"",
+		f.binding,
+		"test",
+		"Test browser",
+	)
 	if !errors.Is(err, auth.ErrFlow) {
 		t.Fatal("old login survived password change", err)
 	}
@@ -212,18 +305,32 @@ func TestSecurityHTTPRequiresCompleteMFA(t *testing.T) {
 	must(t, err)
 	c := client{t, httpapi.New(f.service, f.security, nil, nil, cfg), map[string]*http.Cookie{}}
 	var flow auth.FlowResult
-	must(t, json.Unmarshal(c.request("POST", "login", `{"username":"jack","password":"silver meadow orbit lamp"}`, 200).Body.Bytes(), &flow))
+	must(
+		t,
+		json.Unmarshal(
+			c.request("POST", "login", `{"username":"jack","password":"silver meadow orbit lamp"}`, 200).Body.Bytes(),
+			&flow,
+		),
+	)
 	if c.cookies["acta_session"] != nil {
 		t.Fatal("partial login set session cookie")
 	}
 	c.request("GET", "account", "", 401)
 	c.request("GET", "security", "", 401)
-	c.request("POST", "security/advance", body(auth.FlowInput{ID: flow.ID, Action: "code", Code: codes[0], Recovery: true}), 200)
+	c.request(
+		"POST",
+		"security/advance",
+		body(auth.FlowInput{ID: flow.ID, Action: "code", Code: codes[0], Recovery: true}),
+		200,
+	)
 	c.request("GET", "security", "", 200)
 }
 func TestSecurityKeyMismatch(t *testing.T) {
 	f := securityDatabase(t)
-	_, err := auth.NewSecurity(context.Background(), f.service, f.store, "http://localhost:8081", []string{"http://localhost:8081"}, []byte(strings.Repeat("x", 32)))
+	_, err := auth.NewSecurity(context.Background(), f.service, f.store, "http://localhost:8081", []string{"http://localhost:8081"}, []byte(strings.Repeat(
+		"x",
+		32,
+	)))
 	if err == nil {
 		t.Fatal("wrong encryption key accepted")
 	}
@@ -238,7 +345,14 @@ func TestSecurityChangeRacesWithSessionIssuance(t *testing.T) {
 	disable := f.begin(t, "mfa_disable")
 	disable = f.step(t, disable, auth.FlowInput{Action: "password", Password: testPassword})
 	disable = f.step(t, disable, auth.FlowInput{Action: "code", Recovery: true, Code: codes[0]})
-	pending, err := f.security.PasswordLogin(ctx, "jack", testPassword, f.binding, "test", "Other browser")
+	pending, err := f.security.PasswordLogin(
+		ctx,
+		"jack",
+		testPassword,
+		f.binding,
+		"test",
+		"Other browser",
+	)
 	must(t, err)
 	start := make(chan struct{})
 	var wg sync.WaitGroup
@@ -246,11 +360,25 @@ func TestSecurityChangeRacesWithSessionIssuance(t *testing.T) {
 	var loginErr, changeErr error
 	wg.Go(func() {
 		<-start
-		login, loginErr = f.security.Advance(ctx, auth.FlowInput{ID: pending.ID, Action: "code", Recovery: true, Code: codes[1]}, "", f.binding, "test", "Other browser")
+		login, loginErr = f.security.Advance(
+			ctx,
+			auth.FlowInput{ID: pending.ID, Action: "code", Recovery: true, Code: codes[1]},
+			"",
+			f.binding,
+			"test",
+			"Other browser",
+		)
 	})
 	wg.Go(func() {
 		<-start
-		_, changeErr = f.security.Advance(ctx, auth.FlowInput{ID: disable.ID, Action: "confirm"}, f.token, f.binding, "test", "Test browser")
+		_, changeErr = f.security.Advance(
+			ctx,
+			auth.FlowInput{ID: disable.ID, Action: "confirm"},
+			f.token,
+			f.binding,
+			"test",
+			"Test browser",
+		)
 	})
 	close(start)
 	wg.Wait()
@@ -284,10 +412,24 @@ func TestAuthenticatorReplacementIsAtomicAndSessionBound(t *testing.T) {
 	flow = f.step(t, flow, auth.FlowInput{Action: "setup_verify", Code: code})
 	replacementCodes := flow.Codes
 	// A second session cannot redeem a flow authorized on the first.
-	pending, err := f.security.PasswordLogin(ctx, "jack", testPassword, f.binding, "test", "Other browser")
+	pending, err := f.security.PasswordLogin(
+		ctx,
+		"jack",
+		testPassword,
+		f.binding,
+		"test",
+		"Other browser",
+	)
 	must(t, err)
 	other := f.step(t, pending, auth.FlowInput{Action: "code", Recovery: true, Code: codes[1]})
-	_, err = f.security.Advance(ctx, auth.FlowInput{ID: flow.ID, Action: "acknowledge"}, other.SessionToken, f.binding, "test", "Other browser")
+	_, err = f.security.Advance(
+		ctx,
+		auth.FlowInput{ID: flow.ID, Action: "acknowledge"},
+		other.SessionToken,
+		f.binding,
+		"test",
+		"Other browser",
+	)
 	if !errors.Is(err, auth.ErrFlow) {
 		t.Fatal("flow crossed sessions", err)
 	}
@@ -300,9 +442,23 @@ func TestAuthenticatorReplacementIsAtomicAndSessionBound(t *testing.T) {
 	if _, err = f.service.Current(ctx, other.SessionToken); !errors.Is(err, auth.ErrUnauthenticated) {
 		t.Fatal("replacement retained old session", err)
 	}
-	pending, err = f.security.PasswordLogin(ctx, "jack", testPassword, f.binding, "test", "Other browser")
+	pending, err = f.security.PasswordLogin(
+		ctx,
+		"jack",
+		testPassword,
+		f.binding,
+		"test",
+		"Other browser",
+	)
 	must(t, err)
-	_, err = f.security.Advance(ctx, auth.FlowInput{ID: pending.ID, Action: "code", Recovery: true, Code: codes[2]}, "", f.binding, "test", "Other browser")
+	_, err = f.security.Advance(
+		ctx,
+		auth.FlowInput{ID: pending.ID, Action: "code", Recovery: true, Code: codes[2]},
+		"",
+		f.binding,
+		"test",
+		"Other browser",
+	)
 	if err == nil {
 		t.Fatal("old recovery set survived replacement")
 	}
@@ -322,7 +478,14 @@ func TestConcurrentSecurityChangesHaveOneWinner(t *testing.T) {
 	for _, flow := range []auth.FlowResult{first, second} {
 		wg.Go(func() {
 			<-start
-			_, err := f.security.Advance(ctx, auth.FlowInput{ID: flow.ID, Action: "acknowledge"}, f.token, f.binding, "test", "Test browser")
+			_, err := f.security.Advance(
+				ctx,
+				auth.FlowInput{ID: flow.ID, Action: "acknowledge"},
+				f.token,
+				f.binding,
+				"test",
+				"Test browser",
+			)
 			if err == nil {
 				winners.Add(1)
 			} else if !errors.Is(err, auth.ErrFlow) {
@@ -340,12 +503,27 @@ func TestConcurrentSecurityChangesHaveOneWinner(t *testing.T) {
 func TestPasswordChangeReusesFreshSecondFactor(t *testing.T) {
 	f := securityDatabase(t)
 	_, codes := f.enroll(t)
-	pending, err := f.security.PasswordLogin(t.Context(), "jack", testPassword, f.binding, "test", "Test browser")
+	pending, err := f.security.PasswordLogin(
+		t.Context(),
+		"jack",
+		testPassword,
+		f.binding,
+		"test",
+		"Test browser",
+	)
 	must(t, err)
 	login := f.step(t, pending, auth.FlowInput{Action: "code", Recovery: true, Code: codes[0]})
 	f.token = login.SessionToken
 	change := f.begin(t, "password")
-	change = f.step(t, change, auth.FlowInput{Action: "password", Password: testPassword, NewPassword: "another quiet mountain lantern"})
+	change = f.step(
+		t,
+		change,
+		auth.FlowInput{
+			Action:      "password",
+			Password:    testPassword,
+			NewPassword: "another quiet mountain lantern",
+		},
+	)
 	if change.Step != "done" {
 		t.Fatal("fresh second factor was discarded", change.Step)
 	}

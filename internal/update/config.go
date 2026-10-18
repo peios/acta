@@ -39,7 +39,16 @@ func LoadConfig(path string) (Config, error) {
 	if len(c.ComposeFiles) == 0 || c.TimeoutMinutes < 5 || c.TimeoutMinutes > 1440 {
 		return c, errors.New("configure compose files and a 5–1440 minute operation timeout")
 	}
-	for _, p := range append(c.ComposeFiles, c.StateDir, c.Socket, c.TokenFile, c.PublicKeyFile, c.EnvFile, c.BackupSocket, c.BackupTokenFile) {
+	for _, p := range append(
+		c.ComposeFiles,
+		c.StateDir,
+		c.Socket,
+		c.TokenFile,
+		c.PublicKeyFile,
+		c.EnvFile,
+		c.BackupSocket,
+		c.BackupTokenFile,
+	) {
 		if !filepath.IsAbs(p) {
 			return c, errors.New("updater paths must be absolute")
 		}

@@ -2,10 +2,12 @@
 package comments
 
 import (
-	"acta/internal/accounts"
-	"github.com/google/uuid"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/google/uuid"
+
+	"acta/internal/accounts"
 )
 
 type Create struct {
@@ -28,7 +30,10 @@ func Body(s string) (string, error) {
 }
 func ValidateCreate(in Create) error {
 	if _, e := uuid.Parse(in.RequestID); e != nil {
-		return &accounts.FieldError{Field: "request_id", Message: "Supply a UUID for this post; reuse it only when retrying the same post."}
+		return &accounts.FieldError{
+			Field:   "request_id",
+			Message: "Supply a UUID for this post; reuse it only when retrying the same post.",
+		}
 	}
 	if in.ReplyTo != "" {
 		if _, e := uuid.Parse(in.ReplyTo); e != nil {

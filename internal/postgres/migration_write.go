@@ -1,9 +1,10 @@
 package postgres
 
 import (
-	"acta/internal/migration"
 	"context"
 	"time"
+
+	"acta/internal/migration"
 )
 
 func (t workspaceTx) migrationWrite(ctx context.Context, op string, in migration.Request, now time.Time) (string, error) {

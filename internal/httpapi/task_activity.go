@@ -1,14 +1,20 @@
 package httpapi
 
 import (
-	"acta/internal/activity"
 	"net/http"
+
+	"acta/internal/activity"
 )
 
 func (h *Handler) taskActivityRoutes(m *http.ServeMux) {
 	h.commentRoutes(m)
 	m.HandleFunc("GET /api/tasks/{task}/activity", func(w http.ResponseWriter, r *http.Request) {
-		v, e := h.management.TaskActivity(r.Context(), token(r, h.sessionCookie), r.PathValue("task"), r.URL.Query().Get("cursor"))
+		v, e := h.management.TaskActivity(
+			r.Context(),
+			token(r, h.sessionCookie),
+			r.PathValue("task"),
+			r.URL.Query().Get("cursor"),
+		)
 		if e != nil {
 			failure(w, e)
 			return
@@ -22,7 +28,12 @@ func (h *Handler) taskActivityRoutes(m *http.ServeMux) {
 		if !decode(w, r, &in) {
 			return
 		}
-		if e := h.management.ReadTaskActivity(r.Context(), token(r, h.sessionCookie), r.PathValue("task"), in.Entries); e != nil {
+		if e := h.management.ReadTaskActivity(
+			r.Context(),
+			token(r, h.sessionCookie),
+			r.PathValue("task"),
+			in.Entries,
+		); e != nil {
 			failure(w, e)
 			return
 		}

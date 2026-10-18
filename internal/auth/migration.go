@@ -1,10 +1,11 @@
 package auth
 
 import (
-	"acta/internal/accounts"
-	"acta/internal/migration"
 	"context"
 	"time"
+
+	"acta/internal/accounts"
+	"acta/internal/migration"
 )
 
 const MCPMigration = "migration.assistant"
@@ -12,7 +13,10 @@ const MCPMigration = "migration.assistant"
 // Delegation remains bounded by the live human superuser who owns the connection.
 func CanDelegateMigration(a accounts.Account) bool {
 	if a.IsAgent() {
-		return a.Owner != nil && a.Owner.Available() && accounts.CheckPermission(*a.Owner, accounts.Superuser)
+		return a.Owner != nil && a.Owner.Available() && accounts.CheckPermission(
+			*a.Owner,
+			accounts.Superuser,
+		)
 	}
 	return a.Available() && accounts.CheckPermission(a, accounts.Superuser)
 }

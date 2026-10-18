@@ -1,12 +1,14 @@
 package postgres
 
 import (
-	"acta/internal/auth"
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"io/fs"
+
+	"github.com/jackc/pgx/v5"
+
+	"acta/internal/auth"
 )
 
 // VerifyRecovery is a read-only check by the exact recorded Acta executable.
@@ -31,7 +33,11 @@ func VerifyRecovery(ctx context.Context, url string, key []byte) error {
 		return err
 	}
 	if count != len(names) {
-		return fmt.Errorf("recovery schema has %d migrations; this executable requires %d", count, len(names))
+		return fmt.Errorf(
+			"recovery schema has %d migrations; this executable requires %d",
+			count,
+			len(names),
+		)
 	}
 	for _, name := range names {
 		raw, err := migrations.ReadFile(name)
@@ -53,7 +59,10 @@ func VerifyRecovery(ctx context.Context, url string, key []byte) error {
 	if fmt.Sprintf("%x", fingerprint) != fmt.Sprintf("%x", sha256.Sum256(key)) {
 		return fmt.Errorf("recovery security key does not match database")
 	}
-	rows, err := tx.Query(ctx, `SELECT id::text,security_data FROM accounts WHERE security_data IS NOT NULL`)
+	rows, err := tx.Query(
+		ctx,
+		`SELECT id::text,security_data FROM accounts WHERE security_data IS NOT NULL`,
+	)
 	if err != nil {
 		return err
 	}
@@ -75,7 +84,10 @@ func VerifyRecovery(ctx context.Context, url string, key []byte) error {
 		return err
 	}
 	var bad int
-	if err = tx.QueryRow(ctx, `SELECT count(*) FROM document_versions v LEFT JOIN document_files f USING(file_id) WHERE f.file_id IS NULL OR octet_length(f.content)<>v.size OR encode(sha256(f.content),'hex')<>v.sha256`).Scan(&bad); err != nil {
+	if err = tx.QueryRow(
+		ctx,
+		`SELECT count(*) FROM document_versions v LEFT JOIN document_files f USING(file_id) WHERE f.file_id IS NULL OR octet_length(f.content)<>v.size OR encode(sha256(f.content),'hex')<>v.sha256`,
+	).Scan(&bad); err != nil {
 		return err
 	}
 	if bad != 0 {

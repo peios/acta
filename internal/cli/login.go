@@ -8,9 +8,10 @@ import (
 	"os"
 	"time"
 
-	"acta/internal/client"
 	"charm.land/huh/v2"
 	"github.com/spf13/cobra"
+
+	"acta/internal/client"
 )
 
 func (a *App) loginCommand() *cobra.Command {
@@ -36,7 +37,14 @@ func (a *App) loginCommand() *cobra.Command {
 				return errors.New("Profile already has a login; use --replace or --new-profile <name>")
 			}
 			choice := "new"
-			if err = a.prompt(ctx, huh.NewSelect[string]().Title("This profile already has a login").Options(huh.NewOption("Create a new profile", "new"), huh.NewOption("Replace this profile's login", "replace"), huh.NewOption("Cancel", "cancel")).Value(&choice)); err != nil {
+			if err = a.prompt(
+				ctx,
+				huh.NewSelect[string]().Title("This profile already has a login").Options(
+					huh.NewOption("Create a new profile", "new"),
+					huh.NewOption("Replace this profile's login", "replace"),
+					huh.NewOption("Cancel", "cancel"),
+				).Value(&choice),
+			); err != nil {
 				return err
 			}
 			if choice == "cancel" {
@@ -44,7 +52,10 @@ func (a *App) loginCommand() *cobra.Command {
 			}
 			if choice == "new" {
 				name = ""
-				if err = a.prompt(ctx, huh.NewInput().Title("New profile name").Value(&name).Validate(validName)); err != nil {
+				if err = a.prompt(
+					ctx,
+					huh.NewInput().Title("New profile name").Value(&name).Validate(validName),
+				); err != nil {
 					return err
 				}
 				old = Profile{}
@@ -87,7 +98,10 @@ func (a *App) loginCommand() *cobra.Command {
 			if !a.interactive {
 				return errors.New("Server differs from the saved profile; use --change-server to confirm")
 			}
-			ok, e := a.confirm(ctx, fmt.Sprintf("Profile %q is configured for %s. Change it to %s?", name, old.URL, server))
+			ok, e := a.confirm(
+				ctx,
+				fmt.Sprintf("Profile %q is configured for %s. Change it to %s?", name, old.URL, server),
+			)
 			if e != nil {
 				return e
 			}
@@ -102,7 +116,12 @@ func (a *App) loginCommand() *cobra.Command {
 			return err
 		}
 		link := server + "/login/device?code=" + url.QueryEscape(d.UserCode)
-		a.notice(fmt.Sprintf("Open %s/login/device and enter %s\nOr visit %s\nWaiting for browser approval…", server, d.UserCode, link))
+		a.notice(fmt.Sprintf(
+			"Open %s/login/device and enter %s\nOr visit %s\nWaiting for browser approval…",
+			server,
+			d.UserCode,
+			link,
+		))
 		if !noBrowser {
 			openCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			e := openBrowser(openCtx, link)
@@ -177,10 +196,23 @@ func (a *App) loginCommand() *cobra.Command {
 				}
 			}
 		}
-		return a.emit(map[string]any{"profile": name, "server": server, "account": account, "credential_source": fresh.Storage}, fmt.Sprintf("Signed in as @%s on %s (profile %s).", account.Username, server, name))
+		return a.emit(
+			map[string]any{
+				"profile":           name,
+				"server":            server,
+				"account":           account,
+				"credential_source": fresh.Storage,
+			},
+			fmt.Sprintf("Signed in as @%s on %s (profile %s).", account.Username, server, name),
+		)
 	}}
 	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "Print the browser URL without opening it")
-	cmd.Flags().BoolVar(&file, "insecure-storage", false, "Store credentials in an owner-only plaintext file")
+	cmd.Flags().BoolVar(
+		&file,
+		"insecure-storage",
+		false,
+		"Store credentials in an owner-only plaintext file",
+	)
 	cmd.Flags().BoolVar(&replace, "replace", false, "Replace this profile's existing login")
 	cmd.Flags().BoolVar(&changeServer, "change-server", false, "Confirm changing the saved server URL")
 	cmd.Flags().StringVar(&newProfile, "new-profile", "", "Save login as a new profile")

@@ -1,9 +1,10 @@
 package auth
 
 import (
-	"acta/internal/notifications"
 	"context"
 	"errors"
+
+	"acta/internal/notifications"
 )
 
 func (s *Service) Notifications(ctx context.Context, owner string) (notifications.NotificationPage, error) {

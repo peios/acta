@@ -1,8 +1,9 @@
 package auth
 
 import (
-	"acta/internal/tasks"
 	"context"
+
+	"acta/internal/tasks"
 )
 
 // Personal views require workspace access, but never grant task-editing authority.

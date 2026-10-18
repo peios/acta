@@ -8,15 +8,10 @@
  * @param {string} destination
  */
 export function moveAssignments(people, mode, source, destination) {
-  const remaining = people.filter(
-    (p) =>
-      source === "unassigned" ||
-      (mode === "assignee" ? (p.owner_id || p.id) !== source : p.id !== source),
-  );
-  return [
-    ...new Set([
-      ...remaining.map((p) => p.id),
-      ...(destination ? [destination] : []),
-    ]),
-  ];
+    const remaining = people.filter(
+        (p) =>
+            source === "unassigned" ||
+            (mode === "assignee" ? (p.owner_id || p.id) !== source : p.id !== source),
+    );
+    return [...new Set([...remaining.map((p) => p.id), ...(destination ? [destination] : [])])];
 }

@@ -11,7 +11,14 @@ func (h *Handler) securitySessionGrants(w http.ResponseWriter, r *http.Request) 
 	if !decode(w, r, &in) {
 		return
 	}
-	if e := h.security.AmendMCPGrants(r.Context(), token(r, h.sessionCookie), in.AccountID, r.PathValue("id"), in.Previous, in.Grants); e != nil {
+	if e := h.security.AmendMCPGrants(
+		r.Context(),
+		token(r, h.sessionCookie),
+		in.AccountID,
+		r.PathValue("id"),
+		in.Previous,
+		in.Grants,
+	); e != nil {
 		failure(w, e)
 		return
 	}

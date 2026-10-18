@@ -1,9 +1,10 @@
 package auth
 
 import (
+	"context"
+
 	"acta/internal/accounts"
 	"acta/internal/activity"
-	"context"
 )
 
 func (m *Management) TaskActivity(ctx context.Context, token, ref, cursor string) (activity.Page, error) {
@@ -34,7 +35,10 @@ func (m *Management) TaskActivity(ctx context.Context, token, ref, cursor string
 }
 func (m *Management) ReadTaskActivity(ctx context.Context, token, ref string, seen []activity.Seen) error {
 	if len(seen) < 1 || len(seen) > activity.PageSize {
-		return &accounts.FieldError{Field: "entries", Message: "Acknowledge between 1 and 50 visible activity entries."}
+		return &accounts.FieldError{
+			Field:   "entries",
+			Message: "Acknowledge between 1 and 50 visible activity entries.",
+		}
 	}
 	return m.workspaceTx(ctx, token, true, func(tx WorkspaceTx) error {
 		task, e := tx.TaskGet(ctx, ref)

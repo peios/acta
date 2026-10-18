@@ -30,7 +30,16 @@ func (d Docker) Prune(ctx context.Context) error {
 			keep--
 			continue
 		}
-		raw, err := command(ctx, "volume", "ls", "-q", "--filter", "label=acta.update.installation="+d.Config.Installation, "--filter", "label=acta.update.job="+j.ID)
+		raw, err := command(
+			ctx,
+			"volume",
+			"ls",
+			"-q",
+			"--filter",
+			"label=acta.update.installation="+d.Config.Installation,
+			"--filter",
+			"label=acta.update.job="+j.ID,
+		)
 		if err != nil {
 			return err
 		}

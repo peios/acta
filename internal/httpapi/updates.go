@@ -11,7 +11,12 @@ import (
 )
 
 func (h *Handler) updateRoutes(m *http.ServeMux) {
-	for _, p := range []string{"GET /api/updates", "POST /api/updates/check", "POST /api/updates/install", "POST /api/updates/retry"} {
+	for _, p := range []string{
+		"GET /api/updates",
+		"POST /api/updates/check",
+		"POST /api/updates/install",
+		"POST /api/updates/retry",
+	} {
 		m.HandleFunc(p, h.updates)
 	}
 }
@@ -52,9 +57,24 @@ func (h *Handler) updates(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
 	defer cancel()
-	status, raw, err := (backup.Client{Socket: h.config.UpdateSocket, TokenFile: h.config.UpdateTokenFile, Timeout: 2 * time.Minute}).Do(ctx, r.Method, path, in)
+	status, raw, err := (backup.Client{
+		Socket:    h.config.UpdateSocket,
+		TokenFile: h.config.UpdateTokenFile,
+		Timeout:   2 * time.Minute,
+	}).Do(
+		ctx,
+		r.Method,
+		path,
+		in,
+	)
 	if err != nil {
-		writeError(w, status, "unavailable", "The deployment updater is unavailable. It may still be working; reconnect to check progress.", nil)
+		writeError(
+			w,
+			status,
+			"unavailable",
+			"The deployment updater is unavailable. It may still be working; reconnect to check progress.",
+			nil,
+		)
 		return
 	}
 	writeJSON(w, status, raw)

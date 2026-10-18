@@ -1,8 +1,9 @@
 package workspaces
 
 import (
-	"acta/internal/accounts"
 	"testing"
+
+	"acta/internal/accounts"
 )
 
 func TestScopedAccessAndInheritance(t *testing.T) {

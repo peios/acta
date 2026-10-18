@@ -3,10 +3,11 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/zalando/go-keyring"
 	"os"
 	"path/filepath"
+
+	"github.com/google/uuid"
+	"github.com/zalando/go-keyring"
 )
 
 // Credential references are random IDs, independent of editable profile names

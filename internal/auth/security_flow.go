@@ -5,13 +5,14 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"image/png"
+	"slices"
+	"time"
+
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
 	"github.com/pquerna/otp"
-	"image/png"
-	"slices"
-	"time"
 )
 
 func (s *Security) stored(f Flow) (StoredFlow, error) {
@@ -27,7 +28,12 @@ func (s *Security) decodeFlow(raw StoredFlow, token, binding string) (Flow, erro
 	if !s.now().Before(raw.ExpiresAt) {
 		return f, ErrFlow
 	}
-	err := unseal(s.cipher, "flow:"+base64.RawURLEncoding.EncodeToString(raw.Digest), raw.Encrypted, &f)
+	err := unseal(
+		s.cipher,
+		"flow:"+base64.RawURLEncoding.EncodeToString(raw.Digest),
+		raw.Encrypted,
+		&f,
+	)
 	if err != nil {
 		return f, err
 	}
@@ -40,10 +46,24 @@ func (s *Security) decodeFlow(raw StoredFlow, token, binding string) (Flow, erro
 func (s *Security) newFlow(purpose, binding string) (Flow, error) {
 	token, err := Token()
 	now := s.now()
-	return Flow{Token: token, Binding: base64.RawURLEncoding.EncodeToString(Digest(binding)), Purpose: purpose, CreatedAt: now, ExpiresAt: now.Add(FlowLifetime), Step: "verify"}, err
+	return Flow{
+		Token:     token,
+		Binding:   base64.RawURLEncoding.EncodeToString(Digest(binding)),
+		Purpose:   purpose,
+		CreatedAt: now,
+		ExpiresAt: now.Add(FlowLifetime),
+		Step:      "verify",
+	}, err
 }
 func (s *Security) result(f Flow) (FlowResult, error) {
-	r := FlowResult{ID: f.Token, Purpose: f.Purpose, Step: f.Step, Method: f.Proof.Method, AccountID: f.AccountID, Options: f.Options}
+	r := FlowResult{
+		ID:        f.Token,
+		Purpose:   f.Purpose,
+		Step:      f.Step,
+		Method:    f.Proof.Method,
+		AccountID: f.AccountID,
+		Options:   f.Options,
+	}
 	if f.Step == "totp_setup" {
 		r.Secret = f.Secret
 		k, err := otp.NewKeyFromURL(f.SecretURL)
@@ -123,7 +143,19 @@ func (s *Security) Begin(ctx context.Context, purpose, target string, enabled bo
 	if err := s.auth.throttle(ctx, "security-start:"+address, 40, 5*time.Minute); err != nil {
 		return FlowResult{}, err
 	}
-	if !slices.Contains([]string{"login", "passkey_add", "passkey_remove", "password", "mfa_setup", "mfa_disable", "mfa_policy", "recovery"}, purpose) {
+	if !slices.Contains(
+		[]string{
+			"login",
+			"passkey_add",
+			"passkey_remove",
+			"password",
+			"mfa_setup",
+			"mfa_disable",
+			"mfa_policy",
+			"recovery",
+		},
+		purpose,
+	) {
 		return FlowResult{}, ErrFlow
 	}
 	f, err := s.newFlow(purpose, binding)
@@ -198,7 +230,16 @@ func (s *Security) loginComplete(ctx context.Context, tx SecurityTx, r *Security
 		return FlowResult{}, err
 	}
 	now := s.now()
-	session := SecuritySession{ID: uuid.NewString(), Digest: Digest(token), AccountID: r.Account.ID, Description: description, CreatedAt: now, LastSeenAt: now, ExpiresAt: now.Add(SessionLifetime), Proof: f.Proof}
+	session := SecuritySession{
+		ID:          uuid.NewString(),
+		Digest:      Digest(token),
+		AccountID:   r.Account.ID,
+		Description: description,
+		CreatedAt:   now,
+		LastSeenAt:  now,
+		ExpiresAt:   now.Add(SessionLifetime),
+		Proof:       f.Proof,
+	}
 	if err = tx.PutSession(ctx, session); err != nil {
 		return FlowResult{}, err
 	}
@@ -211,7 +252,13 @@ func (s *Security) loginComplete(ctx context.Context, tx SecurityTx, r *Security
 	if err = tx.Event(ctx, "signed_in", now); err != nil {
 		return FlowResult{}, err
 	}
-	return FlowResult{Purpose: "login", Step: "done", Method: f.Proof.Method, AccountID: r.Account.ID, SessionToken: token}, nil
+	return FlowResult{
+		Purpose:      "login",
+		Step:         "done",
+		Method:       f.Proof.Method,
+		AccountID:    r.Account.ID,
+		SessionToken: token,
+	}, nil
 }
 func (s *Security) Cancel(ctx context.Context, token, binding string) error {
 	if !validToken(token) {

@@ -68,7 +68,13 @@ func (h *Handler) createWorkspace(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	v, e := h.management.CreateWorkspace(r.Context(), token(r, h.sessionCookie), in.Name, in.Slug, in.Description)
+	v, e := h.management.CreateWorkspace(
+		r.Context(),
+		token(r, h.sessionCookie),
+		in.Name,
+		in.Slug,
+		in.Description,
+	)
 	if e != nil {
 		failure(w, e)
 		return
@@ -93,7 +99,15 @@ func (h *Handler) workspaceProfile(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	v, e := h.management.EditWorkspace(r.Context(), token(r, h.sessionCookie), r.PathValue("workspace"), in.Version, in.Name, in.Slug, in.Description)
+	v, e := h.management.EditWorkspace(
+		r.Context(),
+		token(r, h.sessionCookie),
+		r.PathValue("workspace"),
+		in.Version,
+		in.Name,
+		in.Slug,
+		in.Description,
+	)
 	if e != nil {
 		failure(w, e)
 		return
@@ -101,7 +115,11 @@ func (h *Handler) workspaceProfile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, v)
 }
 func (h *Handler) workspaceVisit(w http.ResponseWriter, r *http.Request) {
-	if e := h.management.VisitWorkspace(r.Context(), token(r, h.sessionCookie), r.PathValue("workspace")); e != nil {
+	if e := h.management.VisitWorkspace(
+		r.Context(),
+		token(r, h.sessionCookie),
+		r.PathValue("workspace"),
+	); e != nil {
 		failure(w, e)
 		return
 	}
@@ -113,7 +131,14 @@ func (h *Handler) workspaceMembers(w http.ResponseWriter, r *http.Request) {
 		failure(w, e)
 		return
 	}
-	v, more, e := h.management.WorkspaceMembers(r.Context(), token(r, h.sessionCookie), r.PathValue("workspace"), q, o, r.URL.Query().Get("candidates") == "true")
+	v, more, e := h.management.WorkspaceMembers(
+		r.Context(),
+		token(r, h.sessionCookie),
+		r.PathValue("workspace"),
+		q,
+		o,
+		r.URL.Query().Get("candidates") == "true",
+	)
 	if e != nil {
 		failure(w, e)
 		return
@@ -126,7 +151,13 @@ func (h *Handler) workspaceGroups(w http.ResponseWriter, r *http.Request) {
 		failure(w, e)
 		return
 	}
-	v, more, e := h.management.WorkspaceGroups(r.Context(), token(r, h.sessionCookie), r.PathValue("workspace"), q, o)
+	v, more, e := h.management.WorkspaceGroups(
+		r.Context(),
+		token(r, h.sessionCookie),
+		r.PathValue("workspace"),
+		q,
+		o,
+	)
 	if e != nil {
 		failure(w, e)
 		return
@@ -141,7 +172,14 @@ func (h *Handler) workspaceMembership(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if e := h.management.WorkspaceMembership(r.Context(), token(r, h.sessionCookie), r.PathValue("workspace"), r.PathValue("account"), in.Version, in.Member); e != nil {
+	if e := h.management.WorkspaceMembership(
+		r.Context(),
+		token(r, h.sessionCookie),
+		r.PathValue("workspace"),
+		r.PathValue("account"),
+		in.Version,
+		in.Member,
+	); e != nil {
 		failure(w, e)
 		return
 	}
@@ -160,7 +198,15 @@ func (h *Handler) workspaceGrants(w http.ResponseWriter, r *http.Request) {
 	if group {
 		target = r.PathValue("group")
 	}
-	if e := h.management.WorkspaceGrants(r.Context(), token(r, h.sessionCookie), r.PathValue("workspace"), target, in.Version, group, in.Permissions); e != nil {
+	if e := h.management.WorkspaceGrants(
+		r.Context(),
+		token(r, h.sessionCookie),
+		r.PathValue("workspace"),
+		target,
+		in.Version,
+		group,
+		in.Permissions,
+	); e != nil {
 		failure(w, e)
 		return
 	}
@@ -183,7 +229,14 @@ func (h *Handler) agentWorkspaceAccess(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if e := h.management.SetAgentWorkspaces(r.Context(), token(r, h.sessionCookie), r.PathValue("id"), in.Version, in.All, in.Selected); e != nil {
+	if e := h.management.SetAgentWorkspaces(
+		r.Context(),
+		token(r, h.sessionCookie),
+		r.PathValue("id"),
+		in.Version,
+		in.All,
+		in.Selected,
+	); e != nil {
 		failure(w, e)
 		return
 	}
@@ -198,7 +251,15 @@ func (h *Handler) agentWorkspacePolicy(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if e := h.management.SetAgentWorkspacePolicy(r.Context(), token(r, h.sessionCookie), r.PathValue("id"), r.PathValue("workspace"), in.Version, in.Inherit, in.Permissions); e != nil {
+	if e := h.management.SetAgentWorkspacePolicy(
+		r.Context(),
+		token(r, h.sessionCookie),
+		r.PathValue("id"),
+		r.PathValue("workspace"),
+		in.Version,
+		in.Inherit,
+		in.Permissions,
+	); e != nil {
 		failure(w, e)
 		return
 	}

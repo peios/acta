@@ -13,8 +13,9 @@ import (
 	"time"
 	"unicode"
 
-	"acta/internal/accounts"
 	"github.com/google/uuid"
+
+	"acta/internal/accounts"
 )
 
 const MCPIdentityGrant = "identity.read"
@@ -38,7 +39,10 @@ type OAuthError struct{ Code, Description string }
 func (e *OAuthError) Error() string             { return e.Description }
 func oauthError(code, description string) error { return &OAuthError{code, description} }
 func invalidGrant() error {
-	return oauthError("invalid_grant", "This authorization is invalid, expired or revoked. Connect again.")
+	return oauthError(
+		"invalid_grant",
+		"This authorization is invalid, expired or revoked. Connect again.",
+	)
 }
 
 var verifierPattern = regexp.MustCompile(`^[A-Za-z0-9._~-]{43,128}$`)
@@ -174,7 +178,18 @@ func (s *Security) BeginOAuth(ctx context.Context, in url.Values, binding, addre
 	if err != nil {
 		return "", err
 	}
-	req := OAuthRequest{Digest: Digest(id), Binding: Digest(binding), ClientID: c.ID, ClientName: c.Name, RedirectURI: redirect, Resource: resource, State: in.Get("state"), Challenge: in.Get("code_challenge"), Status: "pending", ExpiresAt: s.now().Add(FlowLifetime)}
+	req := OAuthRequest{
+		Digest:      Digest(id),
+		Binding:     Digest(binding),
+		ClientID:    c.ID,
+		ClientName:  c.Name,
+		RedirectURI: redirect,
+		Resource:    resource,
+		State:       in.Get("state"),
+		Challenge:   in.Get("code_challenge"),
+		Status:      "pending",
+		ExpiresAt:   s.now().Add(FlowLifetime),
+	}
 	err = s.store.CreateOAuthRequest(ctx, req)
 	return id, err
 }
@@ -189,13 +204,25 @@ func (s *Security) OAuthConsent(ctx context.Context, id, binding string) (OAuthR
 	if err != nil {
 		return req, err
 	}
-	if req.Status != "pending" || !s.now().Before(req.ExpiresAt) || subtle.ConstantTimeCompare(req.Binding, Digest(binding)) != 1 {
+	if req.Status != "pending" || !s.now().Before(req.ExpiresAt) || subtle.ConstantTimeCompare(
+		req.Binding,
+		Digest(binding),
+	) != 1 {
 		return req, invalidGrant()
 	}
 	return req, nil
 }
 func (s *Security) ApproveOAuth(ctx context.Context, token, id, binding string, approve bool, issuer, subject string) (string, error) {
-	return s.ApproveOAuthTools(ctx, token, id, binding, approve, issuer, subject, []string{MCPIdentityGrant})
+	return s.ApproveOAuthTools(
+		ctx,
+		token,
+		id,
+		binding,
+		approve,
+		issuer,
+		subject,
+		[]string{MCPIdentityGrant},
+	)
 }
 func (s *Security) ApproveOAuthTools(ctx context.Context, token, id, binding string, approve bool, issuer, subject string, grants []string) (string, error) {
 	if !validMCPGrants(grants) {
@@ -214,10 +241,16 @@ func (s *Security) ApproveOAuthTools(ctx context.Context, token, id, binding str
 	}
 	redirect := ""
 	err = s.store.WithOAuthRequest(ctx, a.ID, req.Digest, func(r *SecurityRecord, tx SecurityTx, req *OAuthRequest) error {
-		if req.Status != "pending" || !s.now().Before(req.ExpiresAt) || subtle.ConstantTimeCompare(req.Binding, Digest(binding)) != 1 {
+		if req.Status != "pending" || !s.now().Before(req.ExpiresAt) || subtle.ConstantTimeCompare(
+			req.Binding,
+			Digest(binding),
+		) != 1 {
 			return invalidGrant()
 		}
-		if approve && slices.Contains(grants, MCPMigration) && (r.Account.IsAgent() || !accounts.CheckPermission(r.Account, accounts.Superuser)) {
+		if approve && slices.Contains(grants, MCPMigration) && (r.Account.IsAgent() || !accounts.CheckPermission(
+			r.Account,
+			accounts.Superuser,
+		)) {
 			return ErrForbidden
 		}
 		selected := subject
@@ -251,7 +284,19 @@ func (s *Security) ApproveOAuthTools(ctx context.Context, token, id, binding str
 			req.Status = "approved"
 			req.ExpiresAt = s.now().Add(OAuthCodeLifetime)
 			now := s.now()
-			session := SecuritySession{ID: req.SessionID, Digest: req.SessionDigest, AccountID: identity.ID, AuthorizedBy: a.ID, Kind: "mcp", Tools: grants, Description: "MCP · " + req.ClientName, CreatedAt: now, LastSeenAt: now, ExpiresAt: now.Add(SessionLifetime), Proof: parent.Proof}
+			session := SecuritySession{
+				ID:           req.SessionID,
+				Digest:       req.SessionDigest,
+				AccountID:    identity.ID,
+				AuthorizedBy: a.ID,
+				Kind:         "mcp",
+				Tools:        grants,
+				Description:  "MCP · " + req.ClientName,
+				CreatedAt:    now,
+				LastSeenAt:   now,
+				ExpiresAt:    now.Add(SessionLifetime),
+				Proof:        parent.Proof,
+			}
 			if err = targetTx.PutSession(ctx, session); err != nil {
 				return err
 			}
@@ -297,9 +342,26 @@ func (s *Security) issueOAuthTokens(ctx context.Context, tx SecurityTx, session 
 	if out.ExpiresIn < 1 {
 		return out, invalidGrant()
 	}
-	tokens := []OAuthToken{{Digest: Digest(out.AccessToken), SessionID: session.ID, ClientID: client, Resource: resource, Kind: "access", ExpiresAt: expiry}}
+	tokens := []OAuthToken{{
+		Digest:    Digest(out.AccessToken),
+		SessionID: session.ID,
+		ClientID:  client,
+		Resource:  resource,
+		Kind:      "access",
+		ExpiresAt: expiry,
+	}}
 	if refreshAllowed {
-		tokens = append(tokens, OAuthToken{Digest: Digest(out.RefreshToken), SessionID: session.ID, ClientID: client, Resource: resource, Kind: "refresh", ExpiresAt: session.ExpiresAt})
+		tokens = append(
+			tokens,
+			OAuthToken{
+				Digest:    Digest(out.RefreshToken),
+				SessionID: session.ID,
+				ClientID:  client,
+				Resource:  resource,
+				Kind:      "refresh",
+				ExpiresAt: session.ExpiresAt,
+			},
+		)
 	}
 	for _, t := range tokens {
 		if err = tx.PutOAuthToken(ctx, t); err != nil {
@@ -349,7 +411,10 @@ func (s *Security) ExchangeOAuth(ctx context.Context, in url.Values, resource, a
 		compromised := false
 		err = s.store.WithOAuthRequest(ctx, req.AccountID, req.Digest, func(r *SecurityRecord, tx SecurityTx, req *OAuthRequest) error {
 			challenge := base64.RawURLEncoding.EncodeToString(Digest(in.Get("code_verifier")))
-			if !s.now().Before(req.ExpiresAt) || req.ClientID != in.Get("client_id") || req.RedirectURI != in.Get("redirect_uri") || req.Resource != resource || subtle.ConstantTimeCompare([]byte(challenge), []byte(req.Challenge)) != 1 {
+			if !s.now().Before(req.ExpiresAt) || req.ClientID != in.Get("client_id") || req.RedirectURI != in.Get("redirect_uri") || req.Resource != resource || subtle.ConstantTimeCompare(
+				[]byte(challenge),
+				[]byte(req.Challenge),
+			) != 1 {
 				return invalidGrant()
 			}
 			if req.Status == "consumed" {
@@ -366,7 +431,14 @@ func (s *Security) ExchangeOAuth(ctx context.Context, in url.Values, resource, a
 			if e != nil {
 				return oauthSessionError(e)
 			}
-			out, e = s.issueOAuthTokens(ctx, tx, session, req.ClientID, req.Resource, slices.Contains(client.GrantTypes, "refresh_token"))
+			out, e = s.issueOAuthTokens(
+				ctx,
+				tx,
+				session,
+				req.ClientID,
+				req.Resource,
+				slices.Contains(client.GrantTypes, "refresh_token"),
+			)
 			if e != nil {
 				return e
 			}
@@ -495,7 +567,17 @@ func (s *Security) RevokeOAuth(ctx context.Context, raw, clientID, address strin
 	if t.ClientID != clientID {
 		return nil
 	}
-	err = s.store.WithSecurity(ctx, t.AccountID, func(_ *SecurityRecord, tx SecurityTx) error { return tx.RevokeSessions(ctx, []byte{}, t.SessionID) })
+	err = s.store.WithSecurity(
+		ctx,
+		t.AccountID,
+		func(_ *SecurityRecord, tx SecurityTx) error {
+			return tx.RevokeSessions(
+				ctx,
+				[]byte{},
+				t.SessionID,
+			)
+		},
+	)
 	if errors.Is(err, ErrUnauthenticated) {
 		return nil
 	}

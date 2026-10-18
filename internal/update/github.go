@@ -1,7 +1,6 @@
 package update
 
 import (
-	"acta/internal/backup"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +9,8 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+
+	"acta/internal/backup"
 )
 
 // Only the GitHub API receives the optional repository credential. Redirects to

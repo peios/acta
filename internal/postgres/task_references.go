@@ -1,15 +1,17 @@
 package postgres
 
 import (
-	"acta/internal/auth"
 	"context"
 	"errors"
+	"regexp"
+	"strings"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
-	"regexp"
-	"strings"
+
+	"acta/internal/auth"
 )
 
 var proseReference = regexp.MustCompile(`(^|[^A-Za-z0-9_./@-])(@[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)?|[A-Z]{2,10}-[1-9][0-9]*)(\b)`)
@@ -43,7 +45,11 @@ func (t workspaceTx) TaskDescription(ctx context.Context, w, markdown string) (s
 			href := ""
 			if strings.HasPrefix(label, "@") {
 				var id string
-				e := t.tx.QueryRow(ctx, `SELECT account_id::text FROM account_handles WHERE handle=$1`, strings.ToLower(label[1:])).Scan(&id)
+				e := t.tx.QueryRow(
+					ctx,
+					`SELECT account_id::text FROM account_handles WHERE handle=$1`,
+					strings.ToLower(label[1:]),
+				).Scan(&id)
 				if errors.Is(e, pgx.ErrNoRows) {
 					continue
 				}
@@ -79,7 +85,10 @@ func (t workspaceTx) TaskDescription(ctx context.Context, w, markdown string) (s
 				}
 				href = "/tasks/" + task.ID
 			}
-			edits = append(edits, edit{v.Segment.Start + m[4], v.Segment.Start + m[5], "[" + label + "](" + href + ")"})
+			edits = append(
+				edits,
+				edit{v.Segment.Start + m[4], v.Segment.Start + m[5], "[" + label + "](" + href + ")"},
+			)
 		}
 		return ast.WalkContinue, nil
 	})

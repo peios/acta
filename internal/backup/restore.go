@@ -17,9 +17,10 @@ import (
 	"strings"
 	"time"
 
-	"acta/internal/localstate"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"acta/internal/localstate"
 )
 
 type RestoreReport struct {
@@ -67,12 +68,22 @@ func (e PGBackRest) Restore(ctx context.Context, p Policy, label, identity, targ
 		return report, err
 	}
 	data := filepath.Join(target, "pgdata")
-	args := []string{"--set=" + label, "--pg1-path=" + data, "--tablespace-map-all=" + filepath.Join(target, "tablespaces"), "--archive-mode=off", "--target-action=promote"}
+	args := []string{
+		"--set=" + label,
+		"--pg1-path=" + data,
+		"--tablespace-map-all=" + filepath.Join(target, "tablespaces"),
+		"--archive-mode=off",
+		"--target-action=promote",
+	}
 	if targetTime == "" {
 		args = append(args, "--type=immediate")
 	} else {
 		at, _ := time.Parse(time.RFC3339Nano, targetTime)
-		args = append(args, "--type=time", "--target="+at.UTC().Format("2006-01-02 15:04:05.999999999-07:00"))
+		args = append(
+			args,
+			"--type=time",
+			"--target="+at.UTC().Format("2006-01-02 15:04:05.999999999-07:00"),
+		)
 	}
 	if _, err = e.run(ctx, p, "restore", args...); err != nil {
 		return report, err
@@ -94,8 +105,19 @@ func (e PGBackRest) Restore(ctx context.Context, p Policy, label, identity, targ
 	// No shared_preload_libraries, cron or logical replication workers run in
 	// the verification instance. WAL replay can still load required extensions;
 	// run recovery in the documented isolated network/container boundary too.
-	settings := fmt.Sprintf("data_directory = %s\nhba_file = %s\nlisten_addresses = ''\nunix_socket_directories = %s\nport = 5432\narchive_mode = off\narchive_command = ''\narchive_cleanup_command = ''\nrecovery_end_command = ''\nprimary_conninfo = ''\nprimary_slot_name = ''\nshared_preload_libraries = ''\nmax_logical_replication_workers = 0\n", pgQuote(data), pgQuote(hba), pgQuote(socket))
-	for _, name := range []string{"max_connections", "max_worker_processes", "max_wal_senders", "max_prepared_transactions", "max_locks_per_transaction"} {
+	settings := fmt.Sprintf(
+		"data_directory = %s\nhba_file = %s\nlisten_addresses = ''\nunix_socket_directories = %s\nport = 5432\narchive_mode = off\narchive_command = ''\narchive_cleanup_command = ''\nrecovery_end_command = ''\nprimary_conninfo = ''\nprimary_slot_name = ''\nshared_preload_libraries = ''\nmax_logical_replication_workers = 0\n",
+		pgQuote(data),
+		pgQuote(hba),
+		pgQuote(socket),
+	)
+	for _, name := range []string{
+		"max_connections",
+		"max_worker_processes",
+		"max_wal_senders",
+		"max_prepared_transactions",
+		"max_locks_per_transaction",
+	} {
 		value, ok := meta.Settings[name]
 		if !ok {
 			return report, errors.New("recovery record is missing required PostgreSQL replay settings")
@@ -123,10 +145,31 @@ func (e PGBackRest) Restore(ctx context.Context, p Policy, label, identity, targ
 			_, _ = command(cleanup, pgctl, []string{"-D", data, "-m", "immediate", "-w", "stop"}, nil)
 		}
 	}()
-	if _, err = command(ctx, pgctl, []string{"-D", data, "-l", filepath.Join(target, "postgres.log"), "-o", options, "-w", "-t", "120", "start"}, nil); err != nil {
+	if _, err = command(
+		ctx,
+		pgctl,
+		[]string{
+			"-D",
+			data,
+			"-l",
+			filepath.Join(target, "postgres.log"),
+			"-o",
+			options,
+			"-w",
+			"-t",
+			"120",
+			"start",
+		},
+		nil,
+	); err != nil {
 		return report, err
 	}
-	localURL := url.URL{Scheme: "postgres", User: url.User(meta.DatabaseUser), Path: "/" + meta.Database, RawQuery: url.Values{"host": {socket}, "port": {"5432"}, "sslmode": {"disable"}}.Encode()}
+	localURL := url.URL{
+		Scheme:   "postgres",
+		User:     url.User(meta.DatabaseUser),
+		Path:     "/" + meta.Database,
+		RawQuery: url.Values{"host": {socket}, "port": {"5432"}, "sslmode": {"disable"}}.Encode(),
+	}
 	cc, err := pgx.ParseConfig(localURL.String())
 	if err != nil {
 		return report, err
@@ -151,7 +194,21 @@ func (e PGBackRest) Restore(ctx context.Context, p Policy, label, identity, targ
 	if err = os.WriteFile(keyPath, []byte(meta.SecurityKey), 0600); err != nil {
 		return report, err
 	}
-	if _, err = commandEnv(ctx, executable, []string{"-verify-recovery"}, nil, []string{"ACTA_DATABASE_URL=" + cc.ConnString(), "ACTA_SECURITY_KEY_FILE=" + keyPath, "ACTA_PUBLIC_URL=" + meta.Release.PublicURL, "ACTA_DEV_ORIGIN=", "ACTA_RECOVERY_MODE=true", "ACTA_BACKUP_SOCKET=", "ACTA_BACKUP_TOKEN_FILE="}); err != nil {
+	if _, err = commandEnv(
+		ctx,
+		executable,
+		[]string{"-verify-recovery"},
+		nil,
+		[]string{
+			"ACTA_DATABASE_URL=" + cc.ConnString(),
+			"ACTA_SECURITY_KEY_FILE=" + keyPath,
+			"ACTA_PUBLIC_URL=" + meta.Release.PublicURL,
+			"ACTA_DEV_ORIGIN=",
+			"ACTA_RECOVERY_MODE=true",
+			"ACTA_BACKUP_SOCKET=",
+			"ACTA_BACKUP_TOKEN_FILE=",
+		},
+	); err != nil {
 		return report, errors.New("the recorded Acta release failed its read-only recovery check")
 	}
 	if _, err = command(ctx, pgctl, []string{"-D", data, "-m", "fast", "-w", "stop"}, nil); err != nil {
@@ -175,7 +232,13 @@ func verifyDatabase(ctx context.Context, c *pgx.Conn, meta recovery) (RestoreRep
 	r := RestoreReport{Rows: map[string]int64{}}
 	var system string
 	var version int
-	if err := c.QueryRow(ctx, `SELECT system_identifier::text,current_setting('server_version_num')::int FROM pg_control_system()`).Scan(&system, &version); err != nil {
+	if err := c.QueryRow(
+		ctx,
+		`SELECT system_identifier::text,current_setting('server_version_num')::int FROM pg_control_system()`,
+	).Scan(
+		&system,
+		&version,
+	); err != nil {
 		return r, err
 	}
 	if system != meta.SystemID || version/10000 != meta.PostgresVersion/10000 {
@@ -214,14 +277,24 @@ func verifyDatabase(ctx context.Context, c *pgx.Conn, meta recovery) (RestoreRep
 	if !reflect.DeepEqual(meta.Migrations, migrations) {
 		return r, errors.New("restored migration set differs from the backup release; use the matching recovery record for the selected time")
 	}
-	for _, table := range []string{"accounts", "tasks", "task_comments", "documents", "document_versions", "document_files"} {
+	for _, table := range []string{
+		"accounts",
+		"tasks",
+		"task_comments",
+		"documents",
+		"document_versions",
+		"document_files",
+	} {
 		var n int64
 		if err = c.QueryRow(ctx, "SELECT count(*) FROM "+pgx.Identifier{table}.Sanitize()).Scan(&n); err != nil {
 			return r, err
 		}
 		r.Rows[table] = n
 	}
-	rows, err = c.Query(ctx, `SELECT v.sha256,v.size,f.content FROM document_versions v LEFT JOIN document_files f USING(file_id)`)
+	rows, err = c.Query(
+		ctx,
+		`SELECT v.sha256,v.size,f.content FROM document_versions v LEFT JOIN document_files f USING(file_id)`,
+	)
 	if err != nil {
 		return r, err
 	}
@@ -254,7 +327,13 @@ func (e PGBackRest) Drill(ctx context.Context, p Policy, label string) error {
 	if err != nil {
 		return err
 	}
-	if _, err = e.run(ctx, p, "annotate", "--set="+label, "--annotation=acta-restored="+time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+	if _, err = e.run(
+		ctx,
+		p,
+		"annotate",
+		"--set="+label,
+		"--annotation=acta-restored="+time.Now().UTC().Format(time.RFC3339Nano),
+	); err != nil {
 		return err
 	}
 	// The target was created by this invocation and its server was stopped.

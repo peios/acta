@@ -1,15 +1,17 @@
 package postgres
 
 import (
-	"acta/internal/accounts"
-	"acta/internal/auth"
-	"acta/internal/tasks"
 	"context"
 	"errors"
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"time"
+
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/tasks"
 )
 
 // Progress counts active tasks targeted directly at the release; a task is
@@ -22,7 +24,19 @@ const releaseQuery = `SELECT r.id::text,r.workspace_id::text,r.name,r.codename,r
 
 func scanRelease(row pgx.Row) (tasks.Release, error) {
 	var r tasks.Release
-	e := row.Scan(&r.ID, &r.WorkspaceID, &r.Name, &r.Codename, &r.State, &r.Description, &r.Version, &r.CreatedAt, &r.UpdatedAt, &r.Total, &r.Finished)
+	e := row.Scan(
+		&r.ID,
+		&r.WorkspaceID,
+		&r.Name,
+		&r.Codename,
+		&r.State,
+		&r.Description,
+		&r.Version,
+		&r.CreatedAt,
+		&r.UpdatedAt,
+		&r.Total,
+		&r.Finished,
+	)
 	if errors.Is(e, pgx.ErrNoRows) {
 		e = auth.ErrNotFound
 	}
@@ -59,7 +73,18 @@ func (t workspaceTx) TaskRelease(ctx context.Context, w, id string) (tasks.Relea
 func (t workspaceTx) TaskReleaseCreate(ctx context.Context, w string, in tasks.ReleaseCreate) (tasks.Release, error) {
 	id := uuid.NewString()
 	now := time.Now().UTC()
-	_, e := t.tx.Exec(ctx, `INSERT INTO task_releases(id,workspace_id,name,codename,state,description,created_by,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$8)`, id, w, in.Name, in.Codename, in.State, in.Description, t.actor.ID, now)
+	_, e := t.tx.Exec(
+		ctx,
+		`INSERT INTO task_releases(id,workspace_id,name,codename,state,description,created_by,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$8)`,
+		id,
+		w,
+		in.Name,
+		in.Codename,
+		in.State,
+		in.Description,
+		t.actor.ID,
+		now,
+	)
 	if e != nil {
 		return tasks.Release{}, releaseDBError(e)
 	}
@@ -71,7 +96,17 @@ func (t workspaceTx) TaskReleaseCreate(ctx context.Context, w string, in tasks.R
 
 // TaskReleaseSave stores next if the release is still at version.
 func (t workspaceTx) TaskReleaseSave(ctx context.Context, next tasks.Release, version int64) (tasks.Release, error) {
-	r, e := t.tx.Exec(ctx, `UPDATE task_releases SET name=$3,codename=$4,state=$5,description=$6,version=version+1,updated_at=now() WHERE workspace_id=$1 AND id=$2 AND version=$7`, next.WorkspaceID, next.ID, next.Name, next.Codename, next.State, next.Description, version)
+	r, e := t.tx.Exec(
+		ctx,
+		`UPDATE task_releases SET name=$3,codename=$4,state=$5,description=$6,version=version+1,updated_at=now() WHERE workspace_id=$1 AND id=$2 AND version=$7`,
+		next.WorkspaceID,
+		next.ID,
+		next.Name,
+		next.Codename,
+		next.State,
+		next.Description,
+		version,
+	)
 	if e != nil {
 		return tasks.Release{}, releaseDBError(e)
 	}
@@ -86,7 +121,10 @@ func (t workspaceTx) TaskReleaseSave(ctx context.Context, next tasks.Release, ve
 func releaseDBError(e error) error {
 	var p *pgconn.PgError
 	if errors.As(e, &p) && p.Code == "23505" {
-		return &accounts.FieldError{Field: "name", Message: "Another release in this workspace already uses this name."}
+		return &accounts.FieldError{
+			Field:   "name",
+			Message: "Another release in this workspace already uses this name.",
+		}
 	}
 	return e
 }

@@ -1,13 +1,20 @@
 package tasks
 
 import (
-	"github.com/google/uuid"
 	"strings"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 func TestSearchCursorAndValidation(t *testing.T) {
-	for _, text := range []string{"", "x", strings.Repeat("a", 201), "a\x00b", string([]byte{255, 254})} {
+	for _, text := range []string{
+		"",
+		"x",
+		strings.Repeat("a", 201),
+		"a\x00b",
+		string([]byte{255, 254}),
+	} {
 		if _, _, e := NormalizeSearch(SearchQuery{Query: text}); e == nil {
 			t.Fatalf("accepted %q", text)
 		}

@@ -1,15 +1,17 @@
 package auth
 
 import (
+	"context"
+	"encoding/json"
+	"strings"
+
+	"github.com/google/uuid"
+
 	"acta/internal/accounts"
 	"acta/internal/activity"
 	"acta/internal/comments"
 	"acta/internal/tasks"
 	ws "acta/internal/workspaces"
-	"context"
-	"encoding/json"
-	"github.com/google/uuid"
-	"strings"
 )
 
 // TaskTx is implemented by the same consistent transaction as workspace access.
@@ -61,7 +63,14 @@ func (m *Management) taskScope(ctx context.Context, token, id string, write bool
 }
 func (m *Management) TaskConfig(ctx context.Context, token, id string) (tasks.Config, error) {
 	var c tasks.Config
-	e := m.taskScope(ctx, token, id, false, "", func(tx WorkspaceTx, id string) error { var e error; c, e = tx.TaskConfig(ctx, id); return e })
+	e := m.taskScope(
+		ctx,
+		token,
+		id,
+		false,
+		"",
+		func(tx WorkspaceTx, id string) error { var e error; c, e = tx.TaskConfig(ctx, id); return e },
+	)
 	return c, e
 }
 func (m *Management) TaskPrefix(ctx context.Context, token, id, prefix string, version int64) error {
@@ -69,7 +78,14 @@ func (m *Management) TaskPrefix(ctx context.Context, token, id, prefix string, v
 	if e != nil {
 		return e
 	}
-	return m.taskScope(ctx, token, id, true, ws.Edit, func(tx WorkspaceTx, id string) error { return tx.TaskPrefix(ctx, id, p, version) })
+	return m.taskScope(
+		ctx,
+		token,
+		id,
+		true,
+		ws.Edit,
+		func(tx WorkspaceTx, id string) error { return tx.TaskPrefix(ctx, id, p, version) },
+	)
 }
 func (m *Management) TaskStatuses(ctx context.Context, token, id string, c tasks.StatusChange) error {
 	if e := tasks.ValidateStatuses(c); e != nil {
@@ -80,7 +96,14 @@ func (m *Management) TaskStatuses(ctx context.Context, token, id string, c tasks
 			return &accounts.FieldError{Field: "statuses", Message: "Each status needs a UUID."}
 		}
 	}
-	return m.taskScope(ctx, token, id, true, ws.ManageStatuses, func(tx WorkspaceTx, id string) error { return tx.TaskStatuses(ctx, id, c) })
+	return m.taskScope(
+		ctx,
+		token,
+		id,
+		true,
+		ws.ManageStatuses,
+		func(tx WorkspaceTx, id string) error { return tx.TaskStatuses(ctx, id, c) },
+	)
 }
 func (m *Management) Task(ctx context.Context, token, ref string) (tasks.Task, error) {
 	var out tasks.Task
@@ -105,7 +128,14 @@ func (m *Management) Tasks(ctx context.Context, token, id string, f tasks.Filter
 	if e != nil {
 		return out, e
 	}
-	e = m.taskScope(ctx, token, id, false, "", func(tx WorkspaceTx, id string) error { var e error; out, e = tx.TaskList(ctx, id, f); return e })
+	e = m.taskScope(
+		ctx,
+		token,
+		id,
+		false,
+		"",
+		func(tx WorkspaceTx, id string) error { var e error; out, e = tx.TaskList(ctx, id, f); return e },
+	)
 	return out, e
 }
 func taskRelation(ctx context.Context, tx WorkspaceTx, w, ref string) (string, error) {
@@ -146,7 +176,10 @@ func validAssignees(ctx context.Context, tx WorkspaceTx, w string, ids, before [
 			return e
 		}
 		if !a.Available() || !access.Allowed {
-			return &accounts.FieldError{Field: "assignees", Message: "New assignees must have access to this workspace."}
+			return &accounts.FieldError{
+				Field:   "assignees",
+				Message: "New assignees must have access to this workspace.",
+			}
 		}
 	}
 	return nil
@@ -173,7 +206,11 @@ func (m *Management) CreateTask(ctx context.Context, token, w string, in tasks.C
 	if e = tasks.Description(in.Description); e != nil {
 		return out, e
 	}
-	for name, value := range map[string]*string{"priority": &in.Priority, "type": &in.Type, "size": &in.Size} {
+	for name, value := range map[string]*string{
+		"priority": &in.Priority,
+		"type":     &in.Type,
+		"size":     &in.Size,
+	} {
 		*value, e = tasks.PropertyValue(name, *value)
 		if e != nil {
 			return out, e
@@ -223,10 +260,16 @@ func (m *Management) PatchTask(ctx context.Context, token, ref string, in tasks.
 			return ErrForbidden
 		}
 		if in.Version < 1 {
-			return &accounts.FieldError{Field: "version", Message: "Supply a positive field version from task_get."}
+			return &accounts.FieldError{
+				Field:   "version",
+				Message: "Supply a positive field version from task_get.",
+			}
 		}
 		if len(in.Value) == 0 || strings.TrimSpace(string(in.Value)) == "null" {
-			return &accounts.FieldError{Field: "value", Message: "Supply an explicit value; use an empty string or empty array to clear a field."}
+			return &accounts.FieldError{
+				Field:   "value",
+				Message: "Supply an explicit value; use an empty string or empty array to clear a field.",
+			}
 		}
 		switch in.Field {
 		case "title", "description", "status_id", "board", "parent_id", "priority", "type", "size", "release_id":
@@ -288,7 +331,10 @@ func (m *Management) PatchTask(ctx context.Context, token, ref string, in tasks.
 				return e
 			}
 		default:
-			return &accounts.FieldError{Field: "field", Message: "Choose title, description, status_id, parent_id, assignees, board, priority, type, size or release_id."}
+			return &accounts.FieldError{
+				Field:   "field",
+				Message: "Choose title, description, status_id, parent_id, assignees, board, priority, type, size or release_id.",
+			}
 		}
 		out, e = tx.TaskPatch(ctx, t, in)
 		return e
@@ -308,7 +354,10 @@ func (m *Management) TaskPeople(ctx context.Context, token, w, q string) ([]task
 func (m *Management) TaskGroups(ctx context.Context, token, w, mode string) ([]tasks.Group, error) {
 	var out []tasks.Group
 	if mode != "assignee" && mode != "agents" && mode != "release" && !tasks.IsProperty(mode) {
-		return out, &accounts.FieldError{Field: "group", Message: "Choose assignee, agents, priority, type, size or release grouping."}
+		return out, &accounts.FieldError{
+			Field:   "group",
+			Message: "Choose assignee, agents, priority, type, size or release grouping.",
+		}
 	}
 	e := m.taskScope(ctx, token, w, false, "", func(tx WorkspaceTx, w string) error {
 		if mode == "release" {

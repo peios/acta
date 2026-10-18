@@ -1,9 +1,10 @@
 package cli
 
 import (
-	"acta/internal/activity"
 	"fmt"
 	"strings"
+
+	"acta/internal/activity"
 )
 
 func activityValue(v activity.Value) string {
@@ -46,7 +47,13 @@ func renderActivity(p activity.Page) string {
 		}
 		line := fmt.Sprintf("%s  @%s %s", e.UpdatedAt.Local().Format("2006-01-02 15:04:05"), name, action)
 		if e.Comment != nil {
-			line = fmt.Sprintf("%s  @%s · comment %s (version %d)", e.StartedAt.Local().Format("2006-01-02 15:04:05"), name, e.ID, e.Comment.Version)
+			line = fmt.Sprintf(
+				"%s  @%s · comment %s (version %d)",
+				e.StartedAt.Local().Format("2006-01-02 15:04:05"),
+				name,
+				e.ID,
+				e.Comment.Version,
+			)
 			if e.Comment.Deleted {
 				line += "\n  Comment deleted"
 			} else {

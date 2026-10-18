@@ -1,18 +1,10 @@
 package integration
 
 import (
-	"acta/internal/accounts"
-	"acta/internal/auth"
-	apiclient "acta/internal/client"
-	"acta/internal/config"
-	"acta/internal/documents"
-	"acta/internal/httpapi"
-	"acta/internal/tasks"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -22,6 +14,16 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	apiclient "acta/internal/client"
+	"acta/internal/config"
+	"acta/internal/documents"
+	"acta/internal/httpapi"
+	"acta/internal/tasks"
 )
 
 func TestDocumentsVersionsPermissionsAndPagination(t *testing.T) {
@@ -31,7 +33,12 @@ func TestDocumentsVersionsPermissionsAndPagination(t *testing.T) {
 	m := manager(f)
 	task, e := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Document owner"})
 	must(t, e)
-	in := documents.Save{Task: task.Reference, Title: "Design", Filename: "design.md", Content: []byte("# Version one")}
+	in := documents.Save{
+		Task:     task.Reference,
+		Title:    "Design",
+		Filename: "design.md",
+		Content:  []byte("# Version one"),
+	}
 	one, e := m.SaveDocument(ctx, f.token, in)
 	must(t, e)
 	counted, e := m.Task(ctx, f.token, task.ID)
@@ -87,11 +94,21 @@ func TestDocumentsVersionsPermissionsAndPagination(t *testing.T) {
 	if e = manager(rf).DeleteDocument(ctx, rf.token, one.ID, 2); !errors.Is(e, auth.ErrForbidden) {
 		t.Fatal(e)
 	}
-	if _, e = manager(rf).SaveDocument(ctx, rf.token, documents.Save{Task: task.ID, Filename: "no.txt", Content: []byte("no")}); !errors.Is(e, auth.ErrForbidden) {
+	if _, e = manager(rf).SaveDocument(
+		ctx,
+		rf.token,
+		documents.Save{Task: task.ID, Filename: "no.txt", Content: []byte("no")},
+	); !errors.Is(
+		e,
+		auth.ErrForbidden,
+	) {
 		t.Fatal(e)
 	}
 	_, outsider := permissionMember(t, root, "outsider")
-	if _, _, e = manager(outsider).DocumentFile(ctx, outsider.token, one.ID, 1); !errors.Is(e, auth.ErrNotFound) {
+	if _, _, e = manager(outsider).DocumentFile(ctx, outsider.token, one.ID, 1); !errors.Is(
+		e,
+		auth.ErrNotFound,
+	) {
 		t.Fatal("private document exposed", e)
 	}
 	if e = m.DeleteDocument(ctx, f.token, one.ID, 1); !errors.Is(e, documents.ErrConflict) {
@@ -114,7 +131,11 @@ func TestDocumentsVersionsPermissionsAndPagination(t *testing.T) {
 		t.Fatal(h)
 	}
 	for range 51 {
-		_, e = m.SaveDocument(ctx, f.token, documents.Save{Task: task.ID, Filename: "reference.txt", Content: []byte("ok")})
+		_, e = m.SaveDocument(
+			ctx,
+			f.token,
+			documents.Save{Task: task.ID, Filename: "reference.txt", Content: []byte("ok")},
+		)
 		must(t, e)
 	}
 	page, e := m.Documents(ctx, f.token, task.ID, "")
@@ -142,12 +163,22 @@ func TestDocumentsVersionsPermissionsAndPagination(t *testing.T) {
 		t.Fatal(e)
 	}
 	var n int
-	must(t, f.conn.QueryRow(ctx, `SELECT count(*) FROM document_files WHERE file_id=$1`, one.FileID).Scan(&n))
+	must(
+		t,
+		f.conn.QueryRow(ctx, `SELECT count(*) FROM document_files WHERE file_id=$1`, one.FileID).Scan(&n),
+	)
 	if n != 0 {
 		t.Fatal("file leaked on delete")
 	}
 	// Failed compare-and-swap must not create a phantom version or activity item.
-	must(t, f.conn.QueryRow(ctx, `SELECT count(*) FROM activity_entries WHERE subject_id=$1 AND change::text LIKE '%document.%'`, task.ID).Scan(&n))
+	must(
+		t,
+		f.conn.QueryRow(
+			ctx,
+			`SELECT count(*) FROM activity_entries WHERE subject_id=$1 AND change::text LIKE '%document.%'`,
+			task.ID,
+		).Scan(&n),
+	)
 	if n != 104 {
 		t.Fatal("document activity count", n)
 	}
@@ -163,7 +194,12 @@ func TestDocumentsHTTPCLIAndMCP(t *testing.T) {
 	must(t, e)
 	agent := agentAccount(t, f, "document-agent", nil)
 	var handler http.Handler
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { handler.ServeHTTP(w, r) }))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler.ServeHTTP(
+			w,
+			r,
+		)
+	}))
 	defer srv.Close()
 	cfg, e := config.Parse(srv.URL, "")
 	must(t, e)
@@ -174,7 +210,24 @@ func TestDocumentsHTTPCLIAndMCP(t *testing.T) {
 	input := filepath.Join(t.TempDir(), "binary.dat")
 	must(t, os.WriteFile(input, original, 0600))
 	var d documents.Document
-	must(t, json.Unmarshal(runTaskCLI(t, srv.URL, credential, "", "document", "upload", task.Reference, input, "--title", "Binary sample"), &d))
+	must(
+		t,
+		json.Unmarshal(
+			runTaskCLI(
+				t,
+				srv.URL,
+				credential,
+				"",
+				"document",
+				"upload",
+				task.Reference,
+				input,
+				"--title",
+				"Binary sample",
+			),
+			&d,
+		),
+	)
 	output := filepath.Join(t.TempDir(), "download.dat")
 	runTaskCLI(t, srv.URL, credential, "", "document", "download", d.ID, "--output", output)
 	actual, e := os.ReadFile(output)
@@ -183,9 +236,20 @@ func TestDocumentsHTTPCLIAndMCP(t *testing.T) {
 		t.Fatal("CLI binary round trip")
 	}
 	// Hostile content is never served inline, regardless of its filename.
-	hostile, e := c.UploadDocument(ctx, documents.Save{Task: task.ID, Filename: "image.png", Content: []byte("<html><script>alert(1)</script></html>")})
+	hostile, e := c.UploadDocument(
+		ctx,
+		documents.Save{
+			Task:     task.ID,
+			Filename: "image.png",
+			Content:  []byte("<html><script>alert(1)</script></html>"),
+		},
+	)
 	must(t, e)
-	req, e := http.NewRequest("GET", fmt.Sprintf("%s/api/documents/%s/versions/1/file", srv.URL, hostile.ID), nil)
+	req, e := http.NewRequest(
+		"GET",
+		fmt.Sprintf("%s/api/documents/%s/versions/1/file", srv.URL, hostile.ID),
+		nil,
+	)
 	must(t, e)
 	req.Header.Set("Authorization", "Bearer "+credential)
 	req.Header.Set("Range", "bytes=0-5")
@@ -194,7 +258,16 @@ func TestDocumentsHTTPCLIAndMCP(t *testing.T) {
 	data, e := io.ReadAll(response.Body)
 	response.Body.Close()
 	must(t, e)
-	if response.StatusCode != 206 || string(data) != "<html>" || !strings.HasPrefix(response.Header.Get("Content-Disposition"), "attachment") || !strings.Contains(response.Header.Get("Content-Security-Policy"), "sandbox") || !strings.HasPrefix(response.Header.Get("Content-Type"), "text/html") {
+	if response.StatusCode != 206 || string(data) != "<html>" || !strings.HasPrefix(
+		response.Header.Get("Content-Disposition"),
+		"attachment",
+	) || !strings.Contains(
+		response.Header.Get("Content-Security-Policy"),
+		"sandbox",
+	) || !strings.HasPrefix(
+		response.Header.Get("Content-Type"),
+		"text/html",
+	) {
 		t.Fatal(response.Status, response.Header, string(data))
 	}
 	req.Header.Del("Authorization")
@@ -205,7 +278,11 @@ func TestDocumentsHTTPCLIAndMCP(t *testing.T) {
 		t.Fatal("unauthorized download")
 	}
 	// A browser cannot use multipart to bypass the Origin check.
-	req, e = http.NewRequest("POST", srv.URL+"/api/tasks/"+task.ID+"/documents", strings.NewReader("bad"))
+	req, e = http.NewRequest(
+		"POST",
+		srv.URL+"/api/tasks/"+task.ID+"/documents",
+		strings.NewReader("bad"),
+	)
 	must(t, e)
 	req.Header.Set("Content-Type", "multipart/form-data; boundary=x")
 	req.AddCookie(&http.Cookie{Name: "acta_session", Value: f.token})
@@ -217,13 +294,29 @@ func TestDocumentsHTTPCLIAndMCP(t *testing.T) {
 	}
 	connect := func(grants []string) *mcp.ClientSession {
 		o := oauthFromAccount(t, f, srv.URL+"/mcp")
-		redirect, e := f.security.ApproveOAuthTools(ctx, f.token, o.request, f.binding, true, srv.URL, agent.ID, grants)
+		redirect, e := f.security.ApproveOAuthTools(
+			ctx,
+			f.token,
+			o.request,
+			f.binding,
+			true,
+			srv.URL,
+			agent.ID,
+			grants,
+		)
 		must(t, e)
 		u, e := url.Parse(redirect)
 		must(t, e)
 		o.code = u.Query().Get("code")
 		tokens := o.exchange(t)
-		session, e := mcp.NewClient(&mcp.Implementation{Name: "Document test", Version: "1"}, nil).Connect(ctx, &mcp.StreamableClientTransport{Endpoint: srv.URL + "/mcp", HTTPClient: &http.Client{Transport: bearerTransport{tokens.AccessToken}}}, nil)
+		session, e := mcp.NewClient(&mcp.Implementation{Name: "Document test", Version: "1"}, nil).Connect(
+			ctx,
+			&mcp.StreamableClientTransport{
+				Endpoint:   srv.URL + "/mcp",
+				HTTPClient: &http.Client{Transport: bearerTransport{tokens.AccessToken}},
+			},
+			nil,
+		)
 		must(t, e)
 		t.Cleanup(func() { session.Close() })
 		return session
@@ -243,7 +336,22 @@ func TestDocumentsHTTPCLIAndMCP(t *testing.T) {
 		return env.Data
 	}
 	text := strings.Repeat("x", 32767) + "€tail"
-	must(t, json.Unmarshal(call("document_save", map[string]any{"task": task.ID, "title": "Unicode", "filename": "unicode.txt", "revision": 0, "content": text}), &d))
+	must(
+		t,
+		json.Unmarshal(
+			call(
+				"document_save",
+				map[string]any{
+					"task":     task.ID,
+					"title":    "Unicode",
+					"filename": "unicode.txt",
+					"revision": 0,
+					"content":  text,
+				},
+			),
+			&d,
+		),
+	)
 	var chunk struct {
 		Content    string
 		NextOffset *int64 `json:"next_offset"`
@@ -254,7 +362,13 @@ func TestDocumentsHTTPCLIAndMCP(t *testing.T) {
 		t.Fatal(chunk)
 	}
 	first := chunk.Content
-	must(t, json.Unmarshal(call("document_read", map[string]any{"id": d.ID, "revision": 1, "offset": *chunk.NextOffset}), &chunk))
+	must(
+		t,
+		json.Unmarshal(
+			call("document_read", map[string]any{"id": d.ID, "revision": 1, "offset": *chunk.NextOffset}),
+			&chunk,
+		),
+	)
 	if first+chunk.Content != text || chunk.NextOffset != nil {
 		t.Fatal("chunk boundary lost")
 	}

@@ -21,11 +21,17 @@ type Group struct {
 func GroupProfile(name, description string) (string, string, error) {
 	label, err := DisplayName(name)
 	if err != nil || label == nil {
-		return "", "", &FieldError{Field: "name", Message: "Use a group name of 1–100 characters on one line."}
+		return "", "", &FieldError{
+			Field:   "name",
+			Message: "Use a group name of 1–100 characters on one line.",
+		}
 	}
 	description = strings.TrimSpace(description)
 	if !utf8.ValidString(description) || utf8.RuneCountInString(description) > 500 {
-		return "", "", &FieldError{Field: "description", Message: "Use a description of at most 500 characters."}
+		return "", "", &FieldError{
+			Field:   "description",
+			Message: "Use a description of at most 500 characters.",
+		}
 	}
 	return *label, description, nil
 }
@@ -38,7 +44,10 @@ var ErrPermissionDenied = errors.New("permission denied")
 func GrantChangesAllowed(actor Account, before, after []string) error {
 	seen := map[string]bool{}
 	for _, p := range after {
-		if seen[p] || !slices.ContainsFunc(PermissionCatalogue(), func(item Permission) bool { return item.ID == p }) {
+		if seen[p] || !slices.ContainsFunc(
+			PermissionCatalogue(),
+			func(item Permission) bool { return item.ID == p },
+		) {
 			return &FieldError{Field: "permissions", Message: "Choose valid, distinct permissions."}
 		}
 		seen[p] = true

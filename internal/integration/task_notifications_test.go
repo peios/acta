@@ -1,6 +1,19 @@
 package integration
 
 import (
+	"crypto/ecdh"
+	"crypto/rand"
+	"encoding/base64"
+	"errors"
+	"net/http"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	webpush "github.com/SherClockHolmes/webpush-go"
+	"github.com/google/uuid"
+
 	"acta/internal/activity"
 	"acta/internal/auth"
 	"acta/internal/comments"
@@ -9,17 +22,6 @@ import (
 	"acta/internal/notifications"
 	"acta/internal/push"
 	"acta/internal/tasks"
-	"crypto/ecdh"
-	"crypto/rand"
-	"encoding/base64"
-	"errors"
-	webpush "github.com/SherClockHolmes/webpush-go"
-	"github.com/google/uuid"
-	"net/http"
-	"strconv"
-	"strings"
-	"testing"
-	"time"
 )
 
 func taskNotices(t *testing.T, f securityFixture, owner string, want int) notifications.NotificationPage {
@@ -58,10 +60,25 @@ func TestTaskNotificationsFollowingAssignmentsAndAgents(t *testing.T) {
 	if p.Items[0].ID != n.ID || p.Items[0].Revision <= n.Revision {
 		t.Fatal("group not coalesced", p)
 	}
-	must(t, f.store.ReadNotifications(ctx, owner.ID, []notifications.NotificationRead{{ID: n.ID, Revision: n.Revision}}))
+	must(
+		t,
+		f.store.ReadNotifications(
+			ctx,
+			owner.ID,
+			[]notifications.NotificationRead{{ID: n.ID, Revision: n.Revision}},
+		),
+	)
 	taskNotices(t, f, owner.ID, 1)
 	entry := history(t, f, task.ID).Entries[0]
-	must(t, manager(f).ReadTaskActivity(ctx, f.token, task.ID, []activity.Seen{{ID: entry.ID, Through: entry.Last}}))
+	must(
+		t,
+		manager(f).ReadTaskActivity(
+			ctx,
+			f.token,
+			task.ID,
+			[]activity.Seen{{ID: entry.ID, Through: entry.Last}},
+		),
+	)
 	taskNotices(t, f, owner.ID, 0)
 	must(t, manager(f).SetTaskFollowing(ctx, f.token, task.ID, false))
 	task, e = patchTask(t, root, task, "priority", "high")
@@ -94,7 +111,12 @@ func TestTaskNotificationsFollowingAssignmentsAndAgents(t *testing.T) {
 		t.Fatal("agent identity lost", p)
 	}
 	// A task created by someone else follows new human and agent assignees once.
-	other, e := manager(root).CreateTask(ctx, root.token, w.ID, tasks.Create{Title: "Assigned", Assignees: []string{agent.ID, owner.ID}})
+	other, e := manager(root).CreateTask(
+		ctx,
+		root.token,
+		w.ID,
+		tasks.Create{Title: "Assigned", Assignees: []string{agent.ID, owner.ID}},
+	)
 	must(t, e)
 	follow, e = manager(f).TaskFollowing(ctx, f.token, other.ID)
 	must(t, e)
@@ -117,7 +139,10 @@ func TestTaskNotificationsMentionsRepliesAccessAndReplay(t *testing.T) {
 	outsider, foreign := permissionMember(t, root, "outsider")
 	task, e := manager(root).CreateTask(ctx, root.token, w.ID, tasks.Create{Title: "Discussion"})
 	must(t, e)
-	in := comments.Create{RequestID: uuid.NewString(), Body: "Hi @" + owner.Username + " and @" + owner.Username + ". `@outsider`"}
+	in := comments.Create{
+		RequestID: uuid.NewString(),
+		Body:      "Hi @" + owner.Username + " and @" + owner.Username + ". `@outsider`",
+	}
 	c, e := manager(root).CreateComment(ctx, root.token, task.ID, in)
 	must(t, e)
 	_, e = manager(root).CreateComment(ctx, root.token, task.ID, in)
@@ -127,12 +152,25 @@ func TestTaskNotificationsMentionsRepliesAccessAndReplay(t *testing.T) {
 		t.Fatal(p)
 	}
 	taskNotices(t, foreign, outsider.ID, 0)
-	c, e = manager(root).UpdateComment(ctx, root.token, task.ID, c.ID, comments.Update{Version: c.Comment.Version, Body: in.Body + " More prose."})
+	c, e = manager(root).UpdateComment(
+		ctx,
+		root.token,
+		task.ID,
+		c.ID,
+		comments.Update{Version: c.Comment.Version, Body: in.Body + " More prose."},
+	)
 	must(t, e)
 	if next := taskNotices(t, f, owner.ID, 1).Items[0]; next.Revision != p.Items[0].Revision {
 		t.Fatal("unchanged mention re-pinged")
 	}
-	must(t, f.store.ReadNotifications(ctx, owner.ID, []notifications.NotificationRead{{ID: p.Items[0].ID, Revision: p.Items[0].Revision}}))
+	must(
+		t,
+		f.store.ReadNotifications(
+			ctx,
+			owner.ID,
+			[]notifications.NotificationRead{{ID: p.Items[0].ID, Revision: p.Items[0].Revision}},
+		),
+	)
 	// Replies notify the comment author even when they are not following.
 	parent := postComment(t, f, task.ID, "Question", "")
 	postComment(t, root, task.ID, "Answer", parent.ID)
@@ -141,7 +179,14 @@ func TestTaskNotificationsMentionsRepliesAccessAndReplay(t *testing.T) {
 		t.Fatal(p)
 	}
 	// A foreign owner cannot acknowledge the notice, and revocation hides it.
-	must(t, f.store.ReadNotifications(ctx, outsider.ID, []notifications.NotificationRead{{ID: p.Items[0].ID, Revision: p.Items[0].Revision}}))
+	must(
+		t,
+		f.store.ReadNotifications(
+			ctx,
+			outsider.ID,
+			[]notifications.NotificationRead{{ID: p.Items[0].ID, Revision: p.Items[0].Revision}},
+		),
+	)
 	taskNotices(t, f, owner.ID, 1)
 	w = readWorkspace(t, root, w.ID)
 	must(t, manager(root).WorkspaceMembership(ctx, root.token, w.ID, owner.ID, w.Version, false))
@@ -161,7 +206,11 @@ func TestTaskNotificationsRollbackAndReadRace(t *testing.T) {
 	must(t, e)
 	sentinel := errors.New("abort")
 	e = root.store.WithWorkspaces(ctx, admin.ID, auth.Digest(root.token), time.Now(), true, func(tx auth.WorkspaceTx) error {
-		_, err := tx.TaskPatch(ctx, task, tasks.Patch{Field: "title", Version: task.Versions["title"], Value: []byte(`"Rolled back"`)})
+		_, err := tx.TaskPatch(
+			ctx,
+			task,
+			tasks.Patch{Field: "title", Version: task.Versions["title"], Value: []byte(`"Rolled back"`)},
+		)
 		if err != nil {
 			return err
 		}
@@ -177,7 +226,15 @@ func TestTaskNotificationsRollbackAndReadRace(t *testing.T) {
 	n := p.Items[0]
 	task, e = patchTask(t, root, task, "title", "Two")
 	must(t, e)
-	must(t, manager(f).ReadTaskActivity(ctx, f.token, task.ID, []activity.Seen{{ID: n.ActivityID, Through: strconv.FormatInt(n.Sequence, 10)}}))
+	must(
+		t,
+		manager(f).ReadTaskActivity(
+			ctx,
+			f.token,
+			task.ID,
+			[]activity.Seen{{ID: n.ActivityID, Through: strconv.FormatInt(n.Sequence, 10)}},
+		),
+	)
 	taskNotices(t, f, owner.ID, 1)
 }
 
@@ -189,21 +246,31 @@ func TestTaskNotificationsPushAndFollowingHTTP(t *testing.T) {
 	must(t, e)
 	cfg, e := config.Parse("http://localhost:8081", "")
 	must(t, e)
-	c := client{t, httpapi.New(f.service, f.security, nil, manager(f), cfg, "key"), map[string]*http.Cookie{"acta_session": {Name: "acta_session", Value: f.token}}}
+	c := client{
+		t,
+		httpapi.New(f.service, f.security, nil, manager(f), cfg, "key"),
+		map[string]*http.Cookie{"acta_session": {Name: "acta_session", Value: f.token}},
+	}
 	c.request("GET", "tasks/"+task.ID+"/following", "", 200)
 	c.request("POST", "tasks/"+task.ID+"/following", `{}`, 400)
 	c.request("POST", "tasks/"+task.ID+"/following", `{"following":false}`, 200)
 	c.request("POST", "tasks/"+task.ID+"/following", `{"following":true}`, 200)
 	receiver, e := ecdh.P256().GenerateKey(rand.Reader)
 	must(t, e)
-	sub := push.Subscription{Endpoint: "https://push.example/task", Keys: webpush.Keys{Auth: base64.RawURLEncoding.EncodeToString(make([]byte, 16)), P256dh: base64.RawURLEncoding.EncodeToString(receiver.PublicKey().Bytes())}}
+	sub := push.Subscription{Endpoint: "https://push.example/task", Keys: webpush.Keys{
+		Auth:   base64.RawURLEncoding.EncodeToString(make([]byte, 16)),
+		P256dh: base64.RawURLEncoding.EncodeToString(receiver.PublicKey().Bytes()),
+	}}
 	subscription, e := f.store.SavePushSubscription(ctx, owner.ID, auth.Digest(f.token), sub)
 	must(t, e)
 	postComment(t, root, task.ID, "Private comment", "")
 	p := taskNotices(t, f, owner.ID, 1)
 	n := p.Items[0]
 	var deliveries int
-	must(t, f.conn.QueryRow(ctx, `SELECT count(*) FROM push_deliveries WHERE notification_id=$1`, n.ID).Scan(&deliveries))
+	must(
+		t,
+		f.conn.QueryRow(ctx, `SELECT count(*) FROM push_deliveries WHERE notification_id=$1`, n.ID).Scan(&deliveries),
+	)
 	if deliveries != 1 {
 		t.Fatal(deliveries)
 	}

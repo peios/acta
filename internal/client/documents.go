@@ -1,7 +1,6 @@
 package client
 
 import (
-	"acta/internal/documents"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -12,6 +11,8 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+
+	"acta/internal/documents"
 )
 
 func (c *Client) documentRequest(ctx context.Context, method, path, contentType string, body io.Reader) (*http.Response, error) {
@@ -55,7 +56,11 @@ func (c *Client) UploadDocument(ctx context.Context, in documents.Save) (documen
 	}
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
-	for k, v := range map[string]string{"id": in.ID, "title": in.Title, "revision": strconv.FormatInt(in.Revision, 10)} {
+	for k, v := range map[string]string{
+		"id":       in.ID,
+		"title":    in.Title,
+		"revision": strconv.FormatInt(in.Revision, 10),
+	} {
 		if e := w.WriteField(k, v); e != nil {
 			return out, e
 		}
@@ -70,7 +75,13 @@ func (c *Client) UploadDocument(ctx context.Context, in documents.Save) (documen
 	if e = w.Close(); e != nil {
 		return out, e
 	}
-	resp, e := c.documentRequest(ctx, "POST", "tasks/"+url.PathEscape(in.Task)+"/documents", w.FormDataContentType(), &body)
+	resp, e := c.documentRequest(
+		ctx,
+		"POST",
+		"tasks/"+url.PathEscape(in.Task)+"/documents",
+		w.FormDataContentType(),
+		&body,
+	)
 	if e != nil {
 		return out, e
 	}
@@ -79,7 +90,13 @@ func (c *Client) UploadDocument(ctx context.Context, in documents.Save) (documen
 	return out, e
 }
 func (c *Client) DownloadDocument(ctx context.Context, id string, revision int64, dst io.Writer) error {
-	resp, e := c.documentRequest(ctx, "GET", "documents/"+url.PathEscape(id)+"/versions/"+strconv.FormatInt(revision, 10)+"/file", "", nil)
+	resp, e := c.documentRequest(
+		ctx,
+		"GET",
+		"documents/"+url.PathEscape(id)+"/versions/"+strconv.FormatInt(revision, 10)+"/file",
+		"",
+		nil,
+	)
 	if e != nil {
 		return e
 	}

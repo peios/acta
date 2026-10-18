@@ -1,35 +1,83 @@
 package postgres
 
 import (
-	"acta/internal/accounts"
-	"acta/internal/activity"
-	"acta/internal/auth"
-	"acta/internal/tasks"
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"acta/internal/accounts"
+	"acta/internal/activity"
+	"acta/internal/auth"
+	"acta/internal/tasks"
 )
 
 const taskColumns = `t.id::text,t.workspace_id::text,t.number,c.prefix||'-'||t.number,t.title,t.description,t.status_id::text,COALESCE(t.parent_id::text,''),t.title_version,t.description_version,t.status_version,t.parent_version,t.assignees_version,t.priority,t.type,t.size,t.priority_version,t.type_version,t.size_version,t.created_at,t.updated_at,t.archived_at,t.archive_version,(SELECT count(*) FROM tasks child WHERE child.parent_id=t.id AND (t.archived_at IS NOT NULL OR child.archived_at IS NULL)),(SELECT count(*) FROM documents doc WHERE doc.task_id=t.id),(SELECT board FROM task_statuses WHERE id=t.status_id),COALESCE(t.release_id::text,''),t.release_version,(SELECT jsonb_build_object('id',r.id,'name',r.name,'codename',r.codename,'state',r.state) FROM task_releases r WHERE r.id=t.release_id)`
 
 func scanTask(row pgx.Row, extra ...any) (tasks.Task, error) {
-	v := tasks.Task{Assignees: []tasks.Person{}, DescendantAssignees: []tasks.Person{}, Ancestors: []tasks.Source{}, Versions: map[string]int64{}}
+	v := tasks.Task{
+		Assignees:           []tasks.Person{},
+		DescendantAssignees: []tasks.Person{},
+		Ancestors:           []tasks.Source{},
+		Versions:            map[string]int64{},
+	}
 	var a, b, c, d, e, pv, tv, sv, av, rv int64
 	var release []byte
-	args := []any{&v.ID, &v.WorkspaceID, &v.Number, &v.Reference, &v.Title, &v.Description, &v.StatusID, &v.ParentID, &a, &b, &c, &d, &e, &v.Priority, &v.Type, &v.Size, &pv, &tv, &sv, &v.CreatedAt, &v.UpdatedAt, &v.ArchivedAt, &av, &v.Children, &v.DocumentCount, &v.Board, &v.ReleaseID, &rv, &release}
+	args := []any{
+		&v.ID,
+		&v.WorkspaceID,
+		&v.Number,
+		&v.Reference,
+		&v.Title,
+		&v.Description,
+		&v.StatusID,
+		&v.ParentID,
+		&a,
+		&b,
+		&c,
+		&d,
+		&e,
+		&v.Priority,
+		&v.Type,
+		&v.Size,
+		&pv,
+		&tv,
+		&sv,
+		&v.CreatedAt,
+		&v.UpdatedAt,
+		&v.ArchivedAt,
+		&av,
+		&v.Children,
+		&v.DocumentCount,
+		&v.Board,
+		&v.ReleaseID,
+		&rv,
+		&release,
+	}
 	err := row.Scan(append(args, extra...)...)
 	if err == nil && release != nil {
 		err = json.Unmarshal(release, &v.Release)
 	}
 	v.Archived = v.ArchivedAt != nil
-	v.Versions = map[string]int64{"archived": av, "title": a, "description": b, "status_id": c, "parent_id": d, "assignees": e, "priority": pv, "type": tv, "size": sv, "release_id": rv}
+	v.Versions = map[string]int64{
+		"archived":    av,
+		"title":       a,
+		"description": b,
+		"status_id":   c,
+		"parent_id":   d,
+		"assignees":   e,
+		"priority":    pv,
+		"type":        tv,
+		"size":        sv,
+		"release_id":  rv,
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = auth.ErrNotFound
 	}
@@ -46,9 +94,18 @@ func (t workspaceTx) TaskGet(ctx context.Context, ref string) (tasks.Task, error
 		if err != nil {
 			return v, auth.ErrNotFound
 		}
-		v, e = scanTask(t.tx.QueryRow(ctx, `SELECT `+taskColumns+` FROM tasks t JOIN task_settings c ON c.workspace_id=t.workspace_id JOIN task_prefixes p ON p.workspace_id=t.workspace_id WHERE p.prefix=$1 AND t.number=$2`, strings.ToUpper(match[1]), n))
+		v, e = scanTask(t.tx.QueryRow(
+			ctx,
+			`SELECT `+taskColumns+` FROM tasks t JOIN task_settings c ON c.workspace_id=t.workspace_id JOIN task_prefixes p ON p.workspace_id=t.workspace_id WHERE p.prefix=$1 AND t.number=$2`,
+			strings.ToUpper(match[1]),
+			n,
+		))
 	} else {
-		v, e = scanTask(t.tx.QueryRow(ctx, `SELECT `+taskColumns+` FROM tasks t JOIN task_settings c ON c.workspace_id=t.workspace_id WHERE t.id::text=$1`, ref))
+		v, e = scanTask(t.tx.QueryRow(
+			ctx,
+			`SELECT `+taskColumns+` FROM tasks t JOIN task_settings c ON c.workspace_id=t.workspace_id WHERE t.id::text=$1`,
+			ref,
+		))
 	}
 	if e != nil {
 		return v, e
@@ -120,7 +177,27 @@ AND ($9='' OR ($9='priority' AND t.priority=$10) OR ($9='type' AND t.type=$10) O
 	if t.actor.ParentID != nil {
 		owner = *t.actor.ParentID
 	}
-	if e = t.tx.QueryRow(ctx, `SELECT count(*)`+matching, w, parent, f.State, f.Query, int64(0), f.Statuses, f.Assignees, f.Unassigned, f.Group, f.GroupID, owner, f.Priorities, f.Types, f.Sizes, f.Board, f.Releases, f.AllDepths).Scan(&out.Total); e != nil {
+	if e = t.tx.QueryRow(
+		ctx,
+		`SELECT count(*)`+matching,
+		w,
+		parent,
+		f.State,
+		f.Query,
+		int64(0),
+		f.Statuses,
+		f.Assignees,
+		f.Unassigned,
+		f.Group,
+		f.GroupID,
+		owner,
+		f.Priorities,
+		f.Types,
+		f.Sizes,
+		f.Board,
+		f.Releases,
+		f.AllDepths,
+	).Scan(&out.Total); e != nil {
 		return out, e
 	}
 	rows, e := t.tx.Query(ctx, `SELECT `+strings.Replace(taskColumns, "t.description", "''", 1)+`,`+valueExpression+matching+`
@@ -153,7 +230,12 @@ ORDER BY `+expression+` `+direction+`,t.number `+direction+` LIMIT 51`, w, paren
 	}
 	if len(out.Tasks) > 0 {
 		out.Next = out.Tasks[len(out.Tasks)-1].Number
-		out.Cursor = tasks.Cursor{Sort: f.Sort, Direction: f.Direction, Value: keys[len(out.Tasks)-1], Number: out.Next}.Encode()
+		out.Cursor = tasks.Cursor{
+			Sort:      f.Sort,
+			Direction: f.Direction,
+			Value:     keys[len(out.Tasks)-1],
+			Number:    out.Next,
+		}.Encode()
 	}
 	return out, nil
 }
@@ -183,18 +265,41 @@ func (t workspaceTx) TaskCreate(ctx context.Context, w string, in tasks.Create) 
 		}
 		for _, s := range c.Statuses {
 			if s.ID == in.StatusID && s.Board != board {
-				return tasks.Task{}, &accounts.FieldError{Field: "status_id", Message: "Choose a status on the selected board."}
+				return tasks.Task{}, &accounts.FieldError{
+					Field:   "status_id",
+					Message: "Choose a status on the selected board.",
+				}
 			}
 		}
 	}
 	var n int64
-	e = t.tx.QueryRow(ctx, `UPDATE task_settings SET next_number=next_number+1,revision=revision+1 WHERE workspace_id=$1 RETURNING next_number-1`, w).Scan(&n)
+	e = t.tx.QueryRow(
+		ctx,
+		`UPDATE task_settings SET next_number=next_number+1,revision=revision+1 WHERE workspace_id=$1 RETURNING next_number-1`,
+		w,
+	).Scan(&n)
 	if e != nil {
 		return tasks.Task{}, e
 	}
 	id := uuid.NewString()
 	now := time.Now().UTC()
-	_, e = t.tx.Exec(ctx, `INSERT INTO tasks(id,workspace_id,number,title,description,status_id,parent_id,created_by,created_at,updated_at,priority,type,size,release_id) VALUES($1,$2,$3,$4,$5,$6,NULLIF($7,'')::uuid,$8,$9,$9,$10,$11,$12,NULLIF($13,'')::uuid)`, id, w, n, in.Title, in.Description, in.StatusID, in.ParentID, t.actor.ID, now, in.Priority, in.Type, in.Size, in.ReleaseID)
+	_, e = t.tx.Exec(
+		ctx,
+		`INSERT INTO tasks(id,workspace_id,number,title,description,status_id,parent_id,created_by,created_at,updated_at,priority,type,size,release_id) VALUES($1,$2,$3,$4,$5,$6,NULLIF($7,'')::uuid,$8,$9,$9,$10,$11,$12,NULLIF($13,'')::uuid)`,
+		id,
+		w,
+		n,
+		in.Title,
+		in.Description,
+		in.StatusID,
+		in.ParentID,
+		t.actor.ID,
+		now,
+		in.Priority,
+		in.Type,
+		in.Size,
+		in.ReleaseID,
+	)
 	if e != nil {
 		return tasks.Task{}, taskDBError(e)
 	}
@@ -205,7 +310,13 @@ func (t workspaceTx) TaskCreate(ctx context.Context, w string, in tasks.Create) 
 	if e != nil {
 		return out, e
 	}
-	e = t.recordActivity(ctx, w, "task", id, activity.Change{Kind: "task.created", After: activity.Value{Text: out.Title}})
+	e = t.recordActivity(
+		ctx,
+		w,
+		"task",
+		id,
+		activity.Change{Kind: "task.created", After: activity.Value{Text: out.Title}},
+	)
 	return out, e
 }
 func (t workspaceTx) setTaskAssignees(ctx context.Context, id string, people []string) error {
@@ -220,7 +331,17 @@ func (t workspaceTx) setTaskAssignees(ctx context.Context, id string, people []s
 	return nil
 }
 func (t workspaceTx) TaskPatch(ctx context.Context, v tasks.Task, in tasks.Patch) (tasks.Task, error) {
-	columns := map[string]string{"title": "title", "description": "description", "status_id": "status", "parent_id": "parent", "assignees": "assignees", "priority": "priority", "type": "type", "size": "size", "release_id": "release"}
+	columns := map[string]string{
+		"title":       "title",
+		"description": "description",
+		"status_id":   "status",
+		"parent_id":   "parent",
+		"assignees":   "assignees",
+		"priority":    "priority",
+		"type":        "type",
+		"size":        "size",
+		"release_id":  "release",
+	}
 	col, ok := columns[in.Field]
 	if !ok {
 		return v, auth.ErrForbidden
@@ -239,7 +360,16 @@ func (t workspaceTx) TaskPatch(ctx context.Context, v tasks.Task, in tasks.Patch
 		equal = slices.Equal(before, ids)
 	} else {
 		_ = json.Unmarshal(in.Value, &value)
-		equal = value == map[string]string{"priority": v.Priority, "type": v.Type, "size": v.Size, "title": v.Title, "description": v.Description, "status_id": v.StatusID, "parent_id": v.ParentID, "release_id": v.ReleaseID}[in.Field]
+		equal = value == map[string]string{
+			"priority":    v.Priority,
+			"type":        v.Type,
+			"size":        v.Size,
+			"title":       v.Title,
+			"description": v.Description,
+			"status_id":   v.StatusID,
+			"parent_id":   v.ParentID,
+			"release_id":  v.ReleaseID,
+		}[in.Field]
 	}
 	if equal {
 		return v, nil
@@ -249,7 +379,12 @@ func (t workspaceTx) TaskPatch(ctx context.Context, v tasks.Task, in tasks.Patch
 	}
 	if in.Field == "parent_id" && value != "" {
 		var cycle bool
-		e := t.tx.QueryRow(ctx, `WITH RECURSIVE tree AS (SELECT id FROM tasks WHERE id=$1 UNION ALL SELECT c.id FROM tasks c JOIN tree ON c.parent_id=tree.id) SELECT EXISTS(SELECT 1 FROM tree WHERE id::text=$2)`, v.ID, value).Scan(&cycle)
+		e := t.tx.QueryRow(
+			ctx,
+			`WITH RECURSIVE tree AS (SELECT id FROM tasks WHERE id=$1 UNION ALL SELECT c.id FROM tasks c JOIN tree ON c.parent_id=tree.id) SELECT EXISTS(SELECT 1 FROM tree WHERE id::text=$2)`,
+			v.ID,
+			value,
+		).Scan(&cycle)
 		if e != nil {
 			return v, e
 		}
@@ -270,7 +405,11 @@ func (t workspaceTx) TaskPatch(ctx context.Context, v tasks.Task, in tasks.Patch
 			return v, taskDBError(e)
 		}
 	}
-	if _, e := t.tx.Exec(ctx, `UPDATE tasks SET `+col+`_version=`+col+`_version+1,updated_at=now() WHERE id=$1`, v.ID); e != nil {
+	if _, e := t.tx.Exec(
+		ctx,
+		`UPDATE tasks SET `+col+`_version=`+col+`_version+1,updated_at=now() WHERE id=$1`,
+		v.ID,
+	); e != nil {
 		return v, e
 	}
 	if e := t.taskChanged(ctx, v.WorkspaceID); e != nil {

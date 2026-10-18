@@ -69,7 +69,19 @@ func LoadConfig(path string) (Config, error) {
 	if err := ReadJSON(path, &c); err != nil {
 		return c, err
 	}
-	for name, p := range map[string]string{"state_dir": c.StateDir, "release_dir": c.ReleaseDir, "socket": c.Socket, "token_file": c.TokenFile, "database_url_file": c.DatabaseURLFile, "pgbackrest": c.PGBackRest, "age": c.Age, "postgres_bin": c.PostgresBin, "security_key_file": c.SecurityKeyFile, "release_file": c.ReleaseFile, "restore_root": c.RestoreRoot} {
+	for name, p := range map[string]string{
+		"state_dir":         c.StateDir,
+		"release_dir":       c.ReleaseDir,
+		"socket":            c.Socket,
+		"token_file":        c.TokenFile,
+		"database_url_file": c.DatabaseURLFile,
+		"pgbackrest":        c.PGBackRest,
+		"age":               c.Age,
+		"postgres_bin":      c.PostgresBin,
+		"security_key_file": c.SecurityKeyFile,
+		"release_file":      c.ReleaseFile,
+		"restore_root":      c.RestoreRoot,
+	} {
 		if !filepath.IsAbs(p) {
 			return c, fmt.Errorf("%s must be an absolute path", name)
 		}

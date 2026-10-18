@@ -1,12 +1,13 @@
 package memories
 
 import (
-	"acta/internal/accounts"
 	"errors"
 	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"acta/internal/accounts"
 )
 
 var ErrConflict = errors.New("This memory changed since you read it. Reload its latest revision before saving or deleting.")
@@ -52,17 +53,26 @@ func Validate(s *Save) error {
 	switch s.Scope {
 	case "site", "user", "agent":
 		if s.Workspace != nil {
-			return &accounts.FieldError{Field: "workspace", Message: "Supply workspace only for workspace-scoped memories; otherwise omit it or use null."}
+			return &accounts.FieldError{
+				Field:   "workspace",
+				Message: "Supply workspace only for workspace-scoped memories; otherwise omit it or use null.",
+			}
 		}
 	case "workspace":
 		if s.Workspace == nil || strings.TrimSpace(*s.Workspace) == "" {
-			return &accounts.FieldError{Field: "workspace", Message: "Supply a workspace UUID or slug for workspace-scoped memories."}
+			return &accounts.FieldError{
+				Field:   "workspace",
+				Message: "Supply a workspace UUID or slug for workspace-scoped memories.",
+			}
 		}
 	default:
 		return &accounts.FieldError{Field: "scope", Message: "Choose site, workspace, user or agent."}
 	}
 	if s.AgentID != "" && s.Scope != "agent" {
-		return &accounts.FieldError{Field: "agent_id", Message: "Supply agent_id only for agent-scoped memories."}
+		return &accounts.FieldError{
+			Field:   "agent_id",
+			Message: "Supply agent_id only for agent-scoped memories.",
+		}
 	}
 
 	s.Key = strings.TrimSpace(s.Key)
@@ -72,14 +82,23 @@ func Validate(s *Save) error {
 		max          int
 	}{{"summary", s.Summary, 500}, {"content", s.Content, 64000}} {
 		if !utf8.ValidString(v.value) || strings.ContainsRune(v.value, 0) || strings.TrimSpace(v.value) == "" || len(v.value) > v.max {
-			return &accounts.FieldError{Field: v.field, Message: "Provide non-empty text within the size limit (500 bytes for summary, 64 KB for content)."}
+			return &accounts.FieldError{
+				Field:   v.field,
+				Message: "Provide non-empty text within the size limit (500 bytes for summary, 64 KB for content).",
+			}
 		}
 	}
 	if !keyPattern.MatchString(s.Key) {
-		return &accounts.FieldError{Field: "key", Message: "Use 1–100 lowercase letters, numbers or hyphens, starting with a letter or number."}
+		return &accounts.FieldError{
+			Field:   "key",
+			Message: "Use 1–100 lowercase letters, numbers or hyphens, starting with a letter or number.",
+		}
 	}
 	if (s.ID == "" && s.Revision != 0) || (s.ID != "" && s.Revision < 1) {
-		return &accounts.FieldError{Field: "revision", Message: "Use revision 0 to create; supply the revision read when updating."}
+		return &accounts.FieldError{
+			Field:   "revision",
+			Message: "Use revision 0 to create; supply the revision read when updating.",
+		}
 	}
 	return nil
 }

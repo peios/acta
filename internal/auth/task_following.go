@@ -1,9 +1,10 @@
 package auth
 
 import (
+	"context"
+
 	"acta/internal/tasks"
 	ws "acta/internal/workspaces"
-	"context"
 )
 
 func (m *Management) TaskFollowing(ctx context.Context, token, ref string) (bool, error) {

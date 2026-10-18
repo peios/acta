@@ -1,15 +1,17 @@
 package auth
 
 import (
-	"acta/internal/accounts"
 	"bytes"
 	"context"
 	"encoding/json"
+	"strings"
+	"time"
+
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
-	"strings"
-	"time"
+
+	"acta/internal/accounts"
 )
 
 func (s *Security) Advance(ctx context.Context, in FlowInput, session, binding, address, description string) (FlowResult, error) {
@@ -34,7 +36,10 @@ func (s *Security) Advance(ctx context.Context, in FlowInput, session, binding, 
 	if in.Action == "passkey_finish" {
 		assertion, err = protocol.ParseCredentialRequestResponseBytes(in.Credential)
 		if err != nil {
-			return FlowResult{}, &accounts.FieldError{Field: "credential", Message: "That passkey response could not be verified. Try again."}
+			return FlowResult{}, &accounts.FieldError{
+				Field:   "credential",
+				Message: "That passkey response could not be verified. Try again.",
+			}
 		}
 		if id == "" {
 			u, e := uuid.FromBytes(assertion.Response.UserHandle)
@@ -57,7 +62,11 @@ func (s *Security) Advance(ctx context.Context, in FlowInput, session, binding, 
 		if err = s.auth.throttle(ctx, "security-password:"+id, 10, 5*time.Minute); err != nil {
 			return FlowResult{}, err
 		}
-		err = s.store.WithSecurity(ctx, id, func(r *SecurityRecord, tx SecurityTx) error { checkedHash = r.PasswordHash; return nil })
+		err = s.store.WithSecurity(
+			ctx,
+			id,
+			func(r *SecurityRecord, tx SecurityTx) error { checkedHash = r.PasswordHash; return nil },
+		)
 		if err != nil {
 			return FlowResult{}, err
 		}
@@ -66,7 +75,10 @@ func (s *Security) Advance(ctx context.Context, in FlowInput, session, binding, 
 			return FlowResult{}, e
 		}
 		if !ok {
-			return FlowResult{}, &accounts.FieldError{Field: "password", Message: "Your current password is incorrect."}
+			return FlowResult{}, &accounts.FieldError{
+				Field:   "password",
+				Message: "Your current password is incorrect.",
+			}
 		}
 		if initial.Purpose == "password" {
 			newHash, e = s.auth.NewPasswordHash(in.NewPassword)
@@ -145,9 +157,15 @@ func (s *Security) Advance(ctx context.Context, in FlowInput, session, binding, 
 			if f.Purpose == "password" {
 				return ErrFlow
 			}
-			opts, ws, e := s.web.BeginLogin(webUser{r.Account, d.Passkeys}, webauthn.WithUserVerification(protocol.VerificationRequired))
+			opts, ws, e := s.web.BeginLogin(
+				webUser{r.Account, d.Passkeys},
+				webauthn.WithUserVerification(protocol.VerificationRequired),
+			)
 			if e != nil {
-				return &accounts.FieldError{Field: "credential", Message: "No available passkey. Verify with your password."}
+				return &accounts.FieldError{
+					Field:   "credential",
+					Message: "No available passkey. Verify with your password.",
+				}
 			}
 			f.WebSession = ws
 			f.Options, _ = json.Marshal(opts)
@@ -169,7 +187,10 @@ func (s *Security) Advance(ctx context.Context, in FlowInput, session, binding, 
 				credential, e = s.web.ValidateLogin(user, *f.WebSession, assertion)
 			}
 			if e != nil || credential.Authenticator.CloneWarning {
-				return &accounts.FieldError{Field: "credential", Message: "That passkey could not be verified. Start again."}
+				return &accounts.FieldError{
+					Field:   "credential",
+					Message: "That passkey could not be verified. Start again.",
+				}
 			}
 			found := false
 			for i := range d.Passkeys {
@@ -208,13 +229,22 @@ func (s *Security) Advance(ctx context.Context, in FlowInput, session, binding, 
 				}
 				name, e := accounts.DisplayName(in.Name)
 				if e != nil || name == nil {
-					return &accounts.FieldError{Field: "name", Message: "Give this passkey a name (up to 100 characters)."}
+					return &accounts.FieldError{
+						Field:   "name",
+						Message: "Give this passkey a name (up to 100 characters).",
+					}
 				}
 				if len(d.Passkeys) >= 20 {
-					return &accounts.FieldError{Field: "name", Message: "Remove an unused passkey before adding another (limit 20)."}
+					return &accounts.FieldError{
+						Field:   "name",
+						Message: "Remove an unused passkey before adding another (limit 20).",
+					}
 				}
 				f.Name = *name
-				opts, ws, e := s.web.BeginRegistration(webUser{r.Account, d.Passkeys}, webauthn.WithExclusions(webUser{r.Account, d.Passkeys}.WebAuthnCredentialsDescriptors()))
+				opts, ws, e := s.web.BeginRegistration(
+					webUser{r.Account, d.Passkeys},
+					webauthn.WithExclusions(webUser{r.Account, d.Passkeys}.WebAuthnCredentialsDescriptors()),
+				)
 				if e != nil {
 					return e
 				}
@@ -227,20 +257,32 @@ func (s *Security) Advance(ctx context.Context, in FlowInput, session, binding, 
 				}
 				parsed, e := protocol.ParseCredentialCreationResponseBytes(in.Credential)
 				if e != nil {
-					return &accounts.FieldError{Field: "credential", Message: "The browser response could not be read. Try again."}
+					return &accounts.FieldError{
+						Field:   "credential",
+						Message: "The browser response could not be read. Try again.",
+					}
 				}
 				credential, e := s.web.CreateCredential(webUser{r.Account, d.Passkeys}, *f.WebSession, parsed)
 				if e != nil {
-					return &accounts.FieldError{Field: "credential", Message: "The passkey could not be registered. Try again."}
+					return &accounts.FieldError{
+						Field:   "credential",
+						Message: "The passkey could not be registered. Try again.",
+					}
 				}
 				claimed, e := tx.ClaimPasskey(ctx, credential.ID)
 				if e != nil {
 					return e
 				}
 				if !claimed {
-					return &accounts.FieldError{Field: "credential", Message: "That passkey is already registered."}
+					return &accounts.FieldError{
+						Field:   "credential",
+						Message: "That passkey is already registered.",
+					}
 				}
-				d.Passkeys = append(d.Passkeys, Passkey{ID: uuid.NewString(), Name: f.Name, CreatedAt: s.now(), Credential: *credential})
+				d.Passkeys = append(
+					d.Passkeys,
+					Passkey{ID: uuid.NewString(), Name: f.Name, CreatedAt: s.now(), Credential: *credential},
+				)
 				f.Step = "commit"
 			case "setup_verify":
 				if f.Step != "totp_setup" {
@@ -248,7 +290,10 @@ func (s *Security) Advance(ctx context.Context, in FlowInput, session, binding, 
 				}
 				step, ok := validTOTPStep(f.Secret, strings.TrimSpace(in.Code), s.now(), 0)
 				if !ok {
-					return &accounts.FieldError{Field: "code", Message: "That code is incorrect or expired. Try a new code."}
+					return &accounts.FieldError{
+						Field:   "code",
+						Message: "That code is incorrect or expired. Try a new code.",
+					}
 				}
 				f.LastStep = step
 				f.Codes, f.Hashes, e = recoveryCodes()

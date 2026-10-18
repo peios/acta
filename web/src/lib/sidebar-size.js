@@ -9,7 +9,7 @@ const EXPAND_THRESHOLD = 190;
 
 /** @param {number} width */
 export function clampSidebarWidth(width) {
-  return Math.round(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, width)));
+    return Math.round(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, width)));
 }
 
 /**
@@ -22,34 +22,31 @@ export function clampSidebarWidth(width) {
  * @returns {SidebarSize}
  */
 export function resizeSidebar(current, candidate, rememberedWidth) {
-  if (
-    current.collapsed
-      ? candidate < EXPAND_THRESHOLD
-      : candidate < COLLAPSE_THRESHOLD
-  ) {
-    return { width: rememberedWidth, collapsed: true };
-  }
-  return { width: clampSidebarWidth(candidate), collapsed: false };
+    if (current.collapsed ? candidate < EXPAND_THRESHOLD : candidate < COLLAPSE_THRESHOLD) {
+        return { width: rememberedWidth, collapsed: true };
+    }
+    return { width: clampSidebarWidth(candidate), collapsed: false };
 }
 
 /** @param {string | null} raw @returns {SidebarSize} */
 export function restoreSidebarSize(raw) {
-  const fallback = { width: SIDEBAR_DEFAULT, collapsed: false };
-  if (!raw) return fallback;
-  try {
-    const saved = JSON.parse(raw);
-    if (
-      !saved ||
-      typeof saved.width !== "number" ||
-      !Number.isFinite(saved.width) ||
-      typeof saved.collapsed !== "boolean"
-    )
-      return fallback;
-    return {
-      width: clampSidebarWidth(saved.width),
-      collapsed: saved.collapsed,
-    };
-  } catch {
-    return fallback;
-  }
+    const fallback = { width: SIDEBAR_DEFAULT, collapsed: false };
+    if (!raw) return fallback;
+    try {
+        const saved = JSON.parse(raw);
+        if (
+            !saved ||
+            typeof saved.width !== "number" ||
+            !Number.isFinite(saved.width) ||
+            typeof saved.collapsed !== "boolean"
+        ) {
+            return fallback;
+        }
+        return {
+            width: clampSidebarWidth(saved.width),
+            collapsed: saved.collapsed,
+        };
+    } catch {
+        return fallback;
+    }
 }

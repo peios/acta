@@ -39,7 +39,14 @@ func (e *testEngine) Drill(context.Context, Policy, string) error { return nil }
 func (e *testEngine) Expire(context.Context, Policy) error        { e.expired = true; return nil }
 func testConfig(t *testing.T) Config {
 	t.Helper()
-	return Config{StateDir: t.TempDir(), Destinations: []Destination{{ID: "one", Name: "One"}, {ID: "two", Name: "Two"}}, MinRetainFull: 2, MaxRetainFull: 30, JobTimeoutMinutes: 1, RecoveryIdentityFile: "/operator/identity"}
+	return Config{
+		StateDir:             t.TempDir(),
+		Destinations:         []Destination{{ID: "one", Name: "One"}, {ID: "two", Name: "Two"}},
+		MinRetainFull:        2,
+		MaxRetainFull:        30,
+		JobTimeoutMinutes:    1,
+		RecoveryIdentityFile: "/operator/identity",
+	}
 }
 
 func TestPolicyAndSchedule(t *testing.T) {
@@ -174,12 +181,19 @@ func TestSealedMetadataNeverReachesStatus(t *testing.T) {
 }
 
 func TestRepositoryParsingRejectsUnencryptedAndMissing(t *testing.T) {
-	for _, raw := range []string{`[]`, `[{"name":"acta","status":{"code":0},"cipher":"none"}]`, `[{"name":"acta","status":{"code":99},"cipher":"aes-256-cbc"}]`} {
+	for _, raw := range []string{
+		`[]`,
+		`[{"name":"acta","status":{"code":0},"cipher":"none"}]`,
+		`[{"name":"acta","status":{"code":99},"cipher":"aes-256-cbc"}]`,
+	} {
 		if _, err := parseInfo([]byte(raw), "acta"); err == nil {
 			t.Fatal("invalid repository accepted", raw)
 		}
 	}
-	r, err := parseInfo([]byte(`[{"name":"acta","status":{"code":0},"cipher":"aes-256-cbc","backup":[{"label":"set","type":"full","timestamp":{"start":100,"stop":200},"annotation":{"acta-complete":"1","acta-release":"v1","acta-recovery":"sealed","acta-integrity":"2026-09-10T12:00:00Z"}}]}]`), "acta")
+	r, err := parseInfo(
+		[]byte(`[{"name":"acta","status":{"code":0},"cipher":"aes-256-cbc","backup":[{"label":"set","type":"full","timestamp":{"start":100,"stop":200},"annotation":{"acta-complete":"1","acta-release":"v1","acta-recovery":"sealed","acta-integrity":"2026-09-10T12:00:00Z"}}]}]`),
+		"acta",
+	)
 	if err != nil || len(r.Points) != 1 || !r.Points[0].Complete || r.Points[0].RestoredAt != nil {
 		t.Fatal("integrity mistaken for restore evidence", r, err)
 	}
@@ -221,7 +235,13 @@ func TestVerifyReportFailsClosed(t *testing.T) {
 	if err := verifyReport([]byte(valid), "acta", "set"); err != nil {
 		t.Fatal(err)
 	}
-	for _, bad := range []string{"", strings.ReplaceAll(valid, "status: ok", "status: error"), strings.ReplaceAll(valid, "checksum invalid: 0", "checksum invalid: 1"), strings.ReplaceAll(valid, "valid files: 10", "valid files: 9"), strings.ReplaceAll(valid, "backup: set", "backup: other")} {
+	for _, bad := range []string{
+		"",
+		strings.ReplaceAll(valid, "status: ok", "status: error"),
+		strings.ReplaceAll(valid, "checksum invalid: 0", "checksum invalid: 1"),
+		strings.ReplaceAll(valid, "valid files: 10", "valid files: 9"),
+		strings.ReplaceAll(valid, "backup: set", "backup: other"),
+	} {
 		if err := verifyReport([]byte(bad), "acta", "set"); err == nil {
 			t.Fatal("accepted incomplete/corrupt report")
 		}
@@ -239,7 +259,12 @@ func TestLargeCatalogDiscardsUnneededRecoveryPayloads(t *testing.T) {
 			if i > 0 {
 				fmt.Fprint(w, ",")
 			}
-			fmt.Fprintf(w, `{"label":"set-%d","type":"incr","annotation":{"acta-complete":"1","acta-release":"v1","acta-recovery":"%s"}}`, i, payload)
+			fmt.Fprintf(
+				w,
+				`{"label":"set-%d","type":"incr","annotation":{"acta-complete":"1","acta-release":"v1","acta-recovery":"%s"}}`,
+				i,
+				payload,
+			)
 		}
 		fmt.Fprint(w, `]}]`)
 		w.Close()
@@ -270,7 +295,10 @@ func TestCompactCatalogPreservesSchedulingEvidence(t *testing.T) {
 	now := time.Now()
 	r := Repository{PointCount: 1000}
 	for i := 0; i < 1000; i++ {
-		r.Points = append(r.Points, Point{Label: fmt.Sprint(i), Type: "incr", Complete: true, IntegrityAt: &now})
+		r.Points = append(
+			r.Points,
+			Point{Label: fmt.Sprint(i), Type: "incr", Complete: true, IntegrityAt: &now},
+		)
 	}
 	r.Points[900].Type = "full"
 	r.Points[950].RestoredAt = &now

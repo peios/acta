@@ -1,23 +1,37 @@
 package postgres
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
 	"acta/internal/accounts"
 	"acta/internal/activity"
 	"acta/internal/comments"
 	"acta/internal/tasks"
-	"context"
-	"encoding/json"
-	"errors"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 func (t workspaceTx) CommentCreate(ctx context.Context, task tasks.Task, in comments.Create, hash string) (activity.Entry, error) {
 	var id, oldTask, oldHash string
-	e := t.tx.QueryRow(ctx, `SELECT id::text,task_id::text,request_hash FROM task_comments WHERE author_id=$1 AND request_id=$2`, t.actor.ID, in.RequestID).Scan(&id, &oldTask, &oldHash)
+	e := t.tx.QueryRow(
+		ctx,
+		`SELECT id::text,task_id::text,request_hash FROM task_comments WHERE author_id=$1 AND request_id=$2`,
+		t.actor.ID,
+		in.RequestID,
+	).Scan(
+		&id,
+		&oldTask,
+		&oldHash,
+	)
 	if e == nil {
 		if oldTask != task.ID || oldHash != hash {
-			return activity.Entry{}, &accounts.FieldError{Field: "request_id", Message: "This request ID was already used for another post. Use a new UUID."}
+			return activity.Entry{}, &accounts.FieldError{
+				Field:   "request_id",
+				Message: "This request ID was already used for another post. Use a new UUID.",
+			}
 		}
 		return t.CommentGet(ctx, task.ID, id)
 	}
@@ -39,7 +53,17 @@ func (t workspaceTx) CommentCreate(ctx context.Context, task tasks.Task, in comm
 	if e = t.commentEvent(ctx, task, id, thread, "comment.created", true); e != nil {
 		return activity.Entry{}, e
 	}
-	_, e = t.tx.Exec(ctx, `INSERT INTO task_comments(id,task_id,author_id,body,reply_to,request_id,request_hash) VALUES($1,$2,$3,$4,NULLIF($5,'')::uuid,$6,$7)`, id, task.ID, t.actor.ID, in.Body, in.ReplyTo, in.RequestID, hash)
+	_, e = t.tx.Exec(
+		ctx,
+		`INSERT INTO task_comments(id,task_id,author_id,body,reply_to,request_id,request_hash) VALUES($1,$2,$3,$4,NULLIF($5,'')::uuid,$6,$7)`,
+		id,
+		task.ID,
+		t.actor.ID,
+		in.Body,
+		in.ReplyTo,
+		in.RequestID,
+		hash,
+	)
 	if e != nil {
 		return activity.Entry{}, e
 	}
@@ -61,7 +85,13 @@ func (t workspaceTx) CommentUpdate(ctx context.Context, task tasks.Task, old act
 		kind = "comment.deleted"
 		in.Body = ""
 	}
-	_, e := t.tx.Exec(ctx, `UPDATE task_comments SET body=$2,version=version+1,edited=edited OR NOT $3,deleted=$3 WHERE id=$1`, old.ID, in.Body, in.Delete)
+	_, e := t.tx.Exec(
+		ctx,
+		`UPDATE task_comments SET body=$2,version=version+1,edited=edited OR NOT $3,deleted=$3 WHERE id=$1`,
+		old.ID,
+		in.Body,
+		in.Delete,
+	)
 	if e != nil {
 		return activity.Entry{}, e
 	}
@@ -76,14 +106,32 @@ func (t workspaceTx) CommentUpdate(ctx context.Context, task tasks.Task, old act
 func (t workspaceTx) commentEvent(ctx context.Context, task tasks.Task, id, thread, kind string, create bool) error {
 	raw, _ := json.Marshal(activity.Change{Kind: kind})
 	var event int64
-	e := t.tx.QueryRow(ctx, `INSERT INTO activity_events(entry_id,workspace_id,subject_type,subject_id,actor_id,occurred_at,change) VALUES($1,$2,'task',$3,$4,clock_timestamp(),$5) RETURNING id`, id, task.WorkspaceID, task.ID, t.actor.ID, raw).Scan(&event)
+	e := t.tx.QueryRow(
+		ctx,
+		`INSERT INTO activity_events(entry_id,workspace_id,subject_type,subject_id,actor_id,occurred_at,change) VALUES($1,$2,'task',$3,$4,clock_timestamp(),$5) RETURNING id`,
+		id,
+		task.WorkspaceID,
+		task.ID,
+		t.actor.ID,
+		raw,
+	).Scan(&event)
 	if e != nil {
 		return e
 	}
 	if create {
-		_, e = t.tx.Exec(ctx, `INSERT INTO activity_entries(id,workspace_id,subject_type,subject_id,actor_id,first_event,last_event,started_at,updated_at,event_count,change,thread_id) SELECT entry_id,workspace_id,subject_type,subject_id,actor_id,id,id,occurred_at,occurred_at,1,change,NULLIF($2,'')::uuid FROM activity_events WHERE id=$1`, event, thread)
+		_, e = t.tx.Exec(
+			ctx,
+			`INSERT INTO activity_entries(id,workspace_id,subject_type,subject_id,actor_id,first_event,last_event,started_at,updated_at,event_count,change,thread_id) SELECT entry_id,workspace_id,subject_type,subject_id,actor_id,id,id,occurred_at,occurred_at,1,change,NULLIF($2,'')::uuid FROM activity_events WHERE id=$1`,
+			event,
+			thread,
+		)
 	} else {
-		_, e = t.tx.Exec(ctx, `UPDATE activity_entries SET last_event=$2,updated_at=(SELECT occurred_at FROM activity_events WHERE id=$2) WHERE id=$1`, id, event)
+		_, e = t.tx.Exec(
+			ctx,
+			`UPDATE activity_entries SET last_event=$2,updated_at=(SELECT occurred_at FROM activity_events WHERE id=$2) WHERE id=$1`,
+			id,
+			event,
+		)
 	}
 	if e != nil {
 		return e
@@ -108,5 +156,13 @@ func (t workspaceTx) commentNotification(ctx context.Context, task tasks.Task, i
 		}
 		return nil
 	}
-	return t.notifyTask(ctx, task, id, event, activity.Change{Kind: kind}, newMentions(before, body), author)
+	return t.notifyTask(
+		ctx,
+		task,
+		id,
+		event,
+		activity.Change{Kind: kind},
+		newMentions(before, body),
+		author,
+	)
 }

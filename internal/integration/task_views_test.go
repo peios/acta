@@ -1,11 +1,12 @@
 package integration
 
 import (
-	"acta/internal/auth"
-	"acta/internal/tasks"
 	"errors"
 	"sync"
 	"testing"
+
+	"acta/internal/auth"
+	"acta/internal/tasks"
 )
 
 func TestTaskViewsOwnershipAndVersions(t *testing.T) {
@@ -24,17 +25,38 @@ func TestTaskViewsOwnershipAndVersions(t *testing.T) {
 	if len(again) != 1 || again[0].ID != initial.ID {
 		t.Fatal(again)
 	}
-	custom, e := m.CreateTaskView(ctx, f.token, w.ID, "My work", tasks.ViewSettings{Filters: tasks.ViewFilters{}})
+	custom, e := m.CreateTaskView(
+		ctx,
+		f.token,
+		w.ID,
+		"My work",
+		tasks.ViewSettings{Filters: tasks.ViewFilters{}},
+	)
 	must(t, e)
 	c, e := m.TaskConfig(ctx, f.token, w.ID)
 	must(t, e)
-	filters := tasks.ViewFilters{Statuses: []string{c.Completed, c.Creation, c.Completed}, Unassigned: true}
-	branched, e := m.CreateTaskView(ctx, f.token, w.ID, "Current filters", tasks.ViewSettings{Filters: filters})
+	filters := tasks.ViewFilters{
+		Statuses:   []string{c.Completed, c.Creation, c.Completed},
+		Unassigned: true,
+	}
+	branched, e := m.CreateTaskView(
+		ctx,
+		f.token,
+		w.ID,
+		"Current filters",
+		tasks.ViewSettings{Filters: filters},
+	)
 	must(t, e)
 	if branched.Version != 1 || len(branched.Filters.Statuses) != 2 || !branched.Filters.Unassigned {
 		t.Fatal("new tab did not save normalized filters at creation", branched)
 	}
-	if _, e = m.CreateTaskView(ctx, f.token, w.ID, "Invalid", tasks.ViewSettings{Filters: tasks.ViewFilters{Statuses: []string{"invalid"}}}); e == nil {
+	if _, e = m.CreateTaskView(
+		ctx,
+		f.token,
+		w.ID,
+		"Invalid",
+		tasks.ViewSettings{Filters: tasks.ViewFilters{Statuses: []string{"invalid"}}},
+	); e == nil {
 		t.Fatal("invalid creation filters accepted")
 	}
 	persisted, e := m.TaskViews(ctx, f.token, w.ID)
@@ -45,27 +67,67 @@ func TestTaskViewsOwnershipAndVersions(t *testing.T) {
 	if len(persisted[1].Filters.Statuses) != 0 || persisted[1].Filters.Unassigned || persisted[1].Version != custom.Version {
 		t.Fatal("creating another view changed the original saved view", persisted[1])
 	}
-	saved, e := m.SaveTaskView(ctx, f.token, w.ID, custom.ID, custom.Version, tasks.ViewSettings{Filters: filters})
+	saved, e := m.SaveTaskView(
+		ctx,
+		f.token,
+		w.ID,
+		custom.ID,
+		custom.Version,
+		tasks.ViewSettings{Filters: filters},
+	)
 	must(t, e)
 	if saved.Version != 2 || len(saved.Filters.Statuses) != 2 || !saved.Filters.Unassigned {
 		t.Fatal(saved)
 	}
-	retry, e := m.SaveTaskView(ctx, f.token, w.ID, custom.ID, custom.Version, tasks.ViewSettings{Filters: filters})
+	retry, e := m.SaveTaskView(
+		ctx,
+		f.token,
+		w.ID,
+		custom.ID,
+		custom.Version,
+		tasks.ViewSettings{Filters: filters},
+	)
 	must(t, e)
 	if retry.Version != saved.Version {
 		t.Fatal("identical retry changed version")
 	}
-	_, e = m.SaveTaskView(ctx, f.token, w.ID, custom.ID, custom.Version, tasks.ViewSettings{Filters: tasks.ViewFilters{}})
+	_, e = m.SaveTaskView(
+		ctx,
+		f.token,
+		w.ID,
+		custom.ID,
+		custom.Version,
+		tasks.ViewSettings{Filters: tasks.ViewFilters{}},
+	)
 	if !errors.Is(e, auth.ErrPermissionsChanged) {
 		t.Fatal("stale save accepted", e)
 	}
-	if _, e = m.CreateTaskView(ctx, f.token, w.ID, "my WORK", tasks.ViewSettings{Filters: tasks.ViewFilters{}}); e == nil {
+	if _, e = m.CreateTaskView(
+		ctx,
+		f.token,
+		w.ID,
+		"my WORK",
+		tasks.ViewSettings{Filters: tasks.ViewFilters{}},
+	); e == nil {
 		t.Fatal("duplicate name accepted")
 	}
-	if _, e = m.CreateTaskView(ctx, f.token, w.ID, "  ", tasks.ViewSettings{Filters: tasks.ViewFilters{}}); e == nil {
+	if _, e = m.CreateTaskView(
+		ctx,
+		f.token,
+		w.ID,
+		"  ",
+		tasks.ViewSettings{Filters: tasks.ViewFilters{}},
+	); e == nil {
 		t.Fatal("empty name accepted")
 	}
-	if _, e = m.SaveTaskView(ctx, f.token, w.ID, custom.ID, saved.Version, tasks.ViewSettings{Filters: tasks.ViewFilters{Statuses: []string{"invalid"}}}); e == nil {
+	if _, e = m.SaveTaskView(
+		ctx,
+		f.token,
+		w.ID,
+		custom.ID,
+		saved.Version,
+		tasks.ViewSettings{Filters: tasks.ViewFilters{Statuses: []string{"invalid"}}},
+	); e == nil {
 		t.Fatal("invalid filter accepted")
 	}
 	// Plain members may save their own preferences, but cannot read or overwrite others'.
@@ -76,11 +138,25 @@ func TestTaskViewsOwnershipAndVersions(t *testing.T) {
 	if len(theirs) != 1 || theirs[0].ID == initial.ID {
 		t.Fatal("views shared across users", theirs)
 	}
-	_, e = manager(otherSession).SaveTaskView(ctx, otherSession.token, w.ID, custom.ID, saved.Version, tasks.ViewSettings{Filters: tasks.ViewFilters{}})
+	_, e = manager(otherSession).SaveTaskView(
+		ctx,
+		otherSession.token,
+		w.ID,
+		custom.ID,
+		saved.Version,
+		tasks.ViewSettings{Filters: tasks.ViewFilters{}},
+	)
 	if !errors.Is(e, auth.ErrNotFound) {
 		t.Fatal("cross-account save", e)
 	}
-	_, e = manager(root).SaveTaskView(ctx, root.token, w.ID, custom.ID, saved.Version, tasks.ViewSettings{Filters: tasks.ViewFilters{}})
+	_, e = manager(root).SaveTaskView(
+		ctx,
+		root.token,
+		w.ID,
+		custom.ID,
+		saved.Version,
+		tasks.ViewSettings{Filters: tasks.ViewFilters{}},
+	)
 	if !errors.Is(e, auth.ErrNotFound) {
 		t.Fatal("superuser overwrote personal view", e)
 	}
@@ -88,7 +164,14 @@ func TestTaskViewsOwnershipAndVersions(t *testing.T) {
 	if _, e = manager(outside).TaskViews(ctx, outside.token, w.ID); !errors.Is(e, auth.ErrNotFound) {
 		t.Fatal("private workspace views exposed", e)
 	}
-	own, e := manager(otherSession).SaveTaskView(ctx, otherSession.token, w.ID, theirs[0].ID, theirs[0].Version, tasks.ViewSettings{Filters: tasks.ViewFilters{Unassigned: true}})
+	own, e := manager(otherSession).SaveTaskView(
+		ctx,
+		otherSession.token,
+		w.ID,
+		theirs[0].ID,
+		theirs[0].Version,
+		tasks.ViewSettings{Filters: tasks.ViewFilters{Unassigned: true}},
+	)
 	must(t, e)
 	if !own.Filters.Unassigned {
 		t.Fatal(own)
@@ -97,7 +180,14 @@ func TestTaskViewsOwnershipAndVersions(t *testing.T) {
 	// Root can access both workspaces, but IDs are still constrained to the requested workspace.
 	rootViews, e := manager(root).TaskViews(ctx, root.token, w.ID)
 	must(t, e)
-	_, e = manager(root).SaveTaskView(ctx, root.token, w2.ID, rootViews[0].ID, rootViews[0].Version, tasks.ViewSettings{Filters: tasks.ViewFilters{Unassigned: true}})
+	_, e = manager(root).SaveTaskView(
+		ctx,
+		root.token,
+		w2.ID,
+		rootViews[0].ID,
+		rootViews[0].Version,
+		tasks.ViewSettings{Filters: tasks.ViewFilters{Unassigned: true}},
+	)
 	if !errors.Is(e, auth.ErrNotFound) {
 		t.Fatal("cross-workspace save", e)
 	}
@@ -141,7 +231,13 @@ func TestTaskViewRenameAndDelete(t *testing.T) {
 	ctx, m := t.Context(), manager(f)
 	initial, e := m.TaskViews(ctx, f.token, w.ID)
 	must(t, e)
-	custom, e := m.CreateTaskView(ctx, f.token, w.ID, "Original", tasks.ViewSettings{Filters: tasks.ViewFilters{Unassigned: true}})
+	custom, e := m.CreateTaskView(
+		ctx,
+		f.token,
+		w.ID,
+		"Original",
+		tasks.ViewSettings{Filters: tasks.ViewFilters{Unassigned: true}},
+	)
 	must(t, e)
 	renamed, e := m.RenameTaskView(ctx, f.token, w.ID, custom.ID, custom.Version, "  Renamed  ")
 	must(t, e)
@@ -153,10 +249,16 @@ func TestTaskViewRenameAndDelete(t *testing.T) {
 	if retry.Version != renamed.Version {
 		t.Fatal("rename retry changed version")
 	}
-	if _, e = m.RenameTaskView(ctx, f.token, w.ID, custom.ID, custom.Version, "Stale"); !errors.Is(e, auth.ErrPermissionsChanged) {
+	if _, e = m.RenameTaskView(ctx, f.token, w.ID, custom.ID, custom.Version, "Stale"); !errors.Is(
+		e,
+		auth.ErrPermissionsChanged,
+	) {
 		t.Fatal("stale rename accepted", e)
 	}
-	if e = m.DeleteTaskView(ctx, f.token, w.ID, custom.ID, custom.Version); !errors.Is(e, auth.ErrPermissionsChanged) {
+	if e = m.DeleteTaskView(ctx, f.token, w.ID, custom.ID, custom.Version); !errors.Is(
+		e,
+		auth.ErrPermissionsChanged,
+	) {
 		t.Fatal("stale deletion accepted", e)
 	}
 	for _, name := range []string{"ALL TASKS", " "} {
@@ -164,10 +266,23 @@ func TestTaskViewRenameAndDelete(t *testing.T) {
 			t.Fatal("invalid rename accepted", name)
 		}
 	}
-	if _, e = manager(root).RenameTaskView(ctx, root.token, w.ID, custom.ID, renamed.Version, "Intrusion"); !errors.Is(e, auth.ErrNotFound) {
+	if _, e = manager(root).RenameTaskView(
+		ctx,
+		root.token,
+		w.ID,
+		custom.ID,
+		renamed.Version,
+		"Intrusion",
+	); !errors.Is(
+		e,
+		auth.ErrNotFound,
+	) {
 		t.Fatal("superuser renamed another account's view", e)
 	}
-	if e = manager(root).DeleteTaskView(ctx, root.token, w.ID, custom.ID, renamed.Version); !errors.Is(e, auth.ErrNotFound) {
+	if e = manager(root).DeleteTaskView(ctx, root.token, w.ID, custom.ID, renamed.Version); !errors.Is(
+		e,
+		auth.ErrNotFound,
+	) {
 		t.Fatal("superuser deleted another account's view", e)
 	}
 	must(t, m.DeleteTaskView(ctx, f.token, w.ID, initial[0].ID, initial[0].Version))
@@ -180,13 +295,28 @@ func TestTaskViewRenameAndDelete(t *testing.T) {
 		t.Fatal("last view deleted")
 	}
 	// Two simultaneous deletes of different views must leave one surviving view.
-	second, e := m.CreateTaskView(ctx, f.token, w.ID, "Second", tasks.ViewSettings{Filters: tasks.ViewFilters{}})
+	second, e := m.CreateTaskView(
+		ctx,
+		f.token,
+		w.ID,
+		"Second",
+		tasks.ViewSettings{Filters: tasks.ViewFilters{}},
+	)
 	must(t, e)
 	var wg sync.WaitGroup
 	results := make(chan error, 2)
 	for _, view := range []tasks.View{renamed, second} {
 		wg.Add(1)
-		go func(v tasks.View) { defer wg.Done(); results <- m.DeleteTaskView(ctx, f.token, w.ID, v.ID, v.Version) }(view)
+		go func(v tasks.View) {
+			defer wg.Done()
+			results <- m.DeleteTaskView(
+				ctx,
+				f.token,
+				w.ID,
+				v.ID,
+				v.Version,
+			)
+		}(view)
 	}
 	wg.Wait()
 	close(results)

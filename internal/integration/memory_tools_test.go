@@ -1,18 +1,20 @@
 package integration
 
 import (
-	"acta/internal/accounts"
-	"acta/internal/auth"
-	"acta/internal/config"
-	"acta/internal/httpapi"
 	"encoding/json"
 	"fmt"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"acta/internal/accounts"
+	"acta/internal/auth"
+	"acta/internal/config"
+	"acta/internal/httpapi"
 )
 
 func TestMemoryMCPScopesAndGrants(t *testing.T) {
@@ -20,7 +22,12 @@ func TestMemoryMCPScopesAndGrants(t *testing.T) {
 	ctx := t.Context()
 	agent := agentAccount(t, f, "memory-mcp", nil)
 	var handler http.Handler
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { handler.ServeHTTP(w, r) }))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler.ServeHTTP(
+			w,
+			r,
+		)
+	}))
 	defer srv.Close()
 	cfg, e := config.Parse(srv.URL, "")
 	must(t, e)
@@ -28,13 +35,29 @@ func TestMemoryMCPScopesAndGrants(t *testing.T) {
 	connect := func(grants []string) *mcp.ClientSession {
 		t.Helper()
 		o := oauthFromAccount(t, f, srv.URL+"/mcp")
-		redirect, e := f.security.ApproveOAuthTools(ctx, f.token, o.request, f.binding, true, srv.URL, agent.ID, grants)
+		redirect, e := f.security.ApproveOAuthTools(
+			ctx,
+			f.token,
+			o.request,
+			f.binding,
+			true,
+			srv.URL,
+			agent.ID,
+			grants,
+		)
 		must(t, e)
 		u, e := url.Parse(redirect)
 		must(t, e)
 		o.code = u.Query().Get("code")
 		tokens := o.exchange(t)
-		session, e := mcp.NewClient(&mcp.Implementation{Name: "Memory test", Version: "1"}, nil).Connect(ctx, &mcp.StreamableClientTransport{Endpoint: srv.URL + "/mcp", HTTPClient: &http.Client{Transport: bearerTransport{tokens.AccessToken}}}, nil)
+		session, e := mcp.NewClient(&mcp.Implementation{Name: "Memory test", Version: "1"}, nil).Connect(
+			ctx,
+			&mcp.StreamableClientTransport{
+				Endpoint:   srv.URL + "/mcp",
+				HTTPClient: &http.Client{Transport: bearerTransport{tokens.AccessToken}},
+			},
+			nil,
+		)
 		must(t, e)
 		t.Cleanup(func() { session.Close() })
 		return session
@@ -52,11 +75,23 @@ func TestMemoryMCPScopesAndGrants(t *testing.T) {
 		t.Fatal(list)
 	}
 	for _, tool := range list.Tools {
-		if tool.Name == "memory_save" && (!strings.Contains(tool.Description, "learning something yourself") || !strings.Contains(tool.Description, "own.memories.write")) {
+		if tool.Name == "memory_save" && (!strings.Contains(
+			tool.Description,
+			"learning something yourself",
+		) || !strings.Contains(
+			tool.Description,
+			"own.memories.write",
+		)) {
 			t.Fatal("scope guidance absent")
 		}
 	}
-	args := map[string]any{"scope": "agent", "key": "workflow", "summary": "Workflow convention", "content": "# Test knowledge", "revision": 0}
+	args := map[string]any{
+		"scope":    "agent",
+		"key":      "workflow",
+		"summary":  "Workflow convention",
+		"content":  "# Test knowledge",
+		"revision": 0,
+	}
 	result, e := session.CallTool(ctx, &mcp.CallToolParams{Name: "memory_save", Arguments: args})
 	must(t, e)
 	if result.IsError {
@@ -74,7 +109,10 @@ func TestMemoryMCPScopesAndGrants(t *testing.T) {
 	if envelope.Data.ID == "" || envelope.Data.ScopeID != agent.ID {
 		t.Fatal(string(raw))
 	}
-	result, e = session.CallTool(ctx, &mcp.CallToolParams{Name: "memory_recall", Arguments: map[string]any{"workspace": nil}})
+	result, e = session.CallTool(
+		ctx,
+		&mcp.CallToolParams{Name: "memory_recall", Arguments: map[string]any{"workspace": nil}},
+	)
 	must(t, e)
 	if result.IsError {
 		t.Fatal(result)
@@ -110,7 +148,13 @@ func TestMemoryMCPScopesAndGrants(t *testing.T) {
 	result, e = session.CallTool(ctx, &mcp.CallToolParams{Name: "memory_save", Arguments: args})
 	must(t, e)
 	assertMemoryError(t, result, "forbidden")
-	result, e = session.CallTool(ctx, &mcp.CallToolParams{Name: "memory_delete", Arguments: map[string]any{"id": envelope.Data.ID, "revision": envelope.Data.Revision}})
+	result, e = session.CallTool(
+		ctx,
+		&mcp.CallToolParams{
+			Name:      "memory_delete",
+			Arguments: map[string]any{"id": envelope.Data.ID, "revision": envelope.Data.Revision},
+		},
+	)
 	must(t, e)
 	if result.IsError {
 		t.Fatal(result)
@@ -135,7 +179,13 @@ func TestMemoryMCPScopesAndGrants(t *testing.T) {
 	must(t, e)
 	recall := func(workspace *string, query, cursor string) *mcp.CallToolResult {
 		t.Helper()
-		r, e := read.CallTool(ctx, &mcp.CallToolParams{Name: "memory_recall", Arguments: map[string]any{"workspace": workspace, "query": query, "cursor": cursor}})
+		r, e := read.CallTool(
+			ctx,
+			&mcp.CallToolParams{
+				Name:      "memory_recall",
+				Arguments: map[string]any{"workspace": workspace, "query": query, "cursor": cursor},
+			},
+		)
 		must(t, e)
 		return r
 	}

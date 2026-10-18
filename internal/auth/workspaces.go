@@ -4,9 +4,10 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
+
 	"acta/internal/accounts"
 	ws "acta/internal/workspaces"
-	"github.com/google/uuid"
 )
 
 // Reads use a consistent snapshot; writes serialize with site access changes.
@@ -86,7 +87,12 @@ func workspaceVersion(w ws.Workspace, v int64) error {
 }
 func (m *Management) Workspace(ctx context.Context, token, ref string, bySlug bool) (ws.Workspace, error) {
 	var out ws.Workspace
-	e := m.workspaceTx(ctx, token, false, func(tx WorkspaceTx) error { var e error; out, _, e = workspaceAccess(ctx, tx, ref, bySlug); return e })
+	e := m.workspaceTx(
+		ctx,
+		token,
+		false,
+		func(tx WorkspaceTx) error { var e error; out, _, e = workspaceAccess(ctx, tx, ref, bySlug); return e },
+	)
 	return out, e
 }
 func (m *Management) CreateWorkspace(ctx context.Context, token, name, slug, description string) (ws.Workspace, error) {
@@ -94,7 +100,16 @@ func (m *Management) CreateWorkspace(ctx context.Context, token, name, slug, des
 	if e != nil {
 		return ws.Workspace{}, e
 	}
-	w := ws.Workspace{ID: uuid.NewString(), Name: name, Slug: slug, Description: description, Version: 1, CreatedAt: m.auth.now(), Permissions: ws.All(), PreviousSlugs: []string{}}
+	w := ws.Workspace{
+		ID:            uuid.NewString(),
+		Name:          name,
+		Slug:          slug,
+		Description:   description,
+		Version:       1,
+		CreatedAt:     m.auth.now(),
+		Permissions:   ws.All(),
+		PreviousSlugs: []string{},
+	}
 	e = m.workspaceTx(ctx, token, true, func(tx WorkspaceTx) error {
 		a := tx.Actor()
 		if !accounts.CheckPermission(a, accounts.CreateWorkspaces) {
@@ -162,7 +177,10 @@ func (m *Management) WorkspaceMembers(ctx context.Context, token, id, query stri
 		if e != nil {
 			return e
 		}
-		if !ws.Contains(a.Permissions, ws.Members) && (candidates || !ws.Contains(a.Permissions, ws.Permissions)) {
+		if !ws.Contains(a.Permissions, ws.Members) && (candidates || !ws.Contains(
+			a.Permissions,
+			ws.Permissions,
+		)) {
 			return ErrForbidden
 		}
 		values, next, e := tx.Members(ctx, w.ID, query, offset, candidates)
@@ -178,7 +196,20 @@ func (m *Management) WorkspaceMembers(ctx context.Context, token, id, query stri
 			if candidates {
 				access = ws.Access{Direct: []string{}, Groups: []ws.GroupGrant{}, Permissions: []string{}}
 			}
-			out = append(out, ws.Member{ID: v.ID, Username: v.Handle(), DisplayName: v.DisplayName, Status: v.Status(), Access: access, CanRemove: !candidates && ws.Contains(a.Permissions, ws.Members) && ws.Subset(access.Permissions, a.Permissions)})
+			out = append(
+				out,
+				ws.Member{
+					ID:          v.ID,
+					Username:    v.Handle(),
+					DisplayName: v.DisplayName,
+					Status:      v.Status(),
+					Access:      access,
+					CanRemove: !candidates && ws.Contains(a.Permissions, ws.Members) && ws.Subset(
+						access.Permissions,
+						a.Permissions,
+					),
+				},
+			)
 		}
 		return nil
 	})

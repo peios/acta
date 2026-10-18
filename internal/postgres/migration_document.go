@@ -1,12 +1,13 @@
 package postgres
 
 import (
-	"acta/internal/activity"
-	"acta/internal/documents"
-	"acta/internal/migration"
 	"context"
 	"encoding/base64"
 	"time"
+
+	"acta/internal/activity"
+	"acta/internal/documents"
+	"acta/internal/migration"
 )
 
 func (t workspaceTx) migrationDocument(ctx context.Context, op string, in migration.Request, now time.Time) (string, error) {
@@ -18,14 +19,24 @@ func (t workspaceTx) migrationDocument(ctx context.Context, op string, in migrat
 		if e != nil {
 			return "", e
 		}
-		s = documents.Save{ID: v.ID, Task: v.TaskID, Title: v.Title, Filename: v.Filename, Revision: v.Revision}
+		s = documents.Save{
+			ID:       v.ID,
+			Task:     v.TaskID,
+			Title:    v.Title,
+			Filename: v.Filename,
+			Revision: v.Revision,
+		}
 		if _, ok := f["content_base64"]; !ok {
 			if e = t.tx.QueryRow(ctx, `SELECT content FROM document_files WHERE file_id=$1`, v.FileID).Scan(&s.Content); e != nil {
 				return "", e
 			}
 		}
 	}
-	for k, p := range map[string]*string{"task_id": &s.Task, "title": &s.Title, "filename": &s.Filename} {
+	for k, p := range map[string]*string{
+		"task_id":  &s.Task,
+		"title":    &s.Title,
+		"filename": &s.Filename,
+	} {
 		if *p, e = f.text(k, *p); e != nil {
 			return "", e
 		}
@@ -40,7 +51,10 @@ func (t workspaceTx) migrationDocument(ctx context.Context, op string, in migrat
 			return "", migration.Invalid("content_base64", "Supply standard base64 file content.")
 		}
 	} else if op == "create" {
-		return "", migration.Invalid("content_base64", "Supply file content, including empty string for an empty file.")
+		return "", migration.Invalid(
+			"content_base64",
+			"Supply file content, including empty string for an empty file.",
+		)
 	}
 	if e = documents.Validate(&s); e != nil {
 		return "", e
@@ -65,6 +79,19 @@ func (t workspaceTx) migrationDocument(ctx context.Context, op string, in migrat
 	if op == "edit" {
 		kind = "document.updated"
 	}
-	_, e = t.migrationEvent(ctx, "", task.WorkspaceID, task.ID, "", t.actor.ID, activity.Change{Kind: kind, After: activity.Value{Text: d.Title, Items: []activity.Reference{{ID: d.ID, Label: d.Title}}}}, at, at)
+	_, e = t.migrationEvent(
+		ctx,
+		"",
+		task.WorkspaceID,
+		task.ID,
+		"",
+		t.actor.ID,
+		activity.Change{
+			Kind:  kind,
+			After: activity.Value{Text: d.Title, Items: []activity.Reference{{ID: d.ID, Label: d.Title}}},
+		},
+		at,
+		at,
+	)
 	return d.ID, e
 }

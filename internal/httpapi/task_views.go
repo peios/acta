@@ -1,13 +1,19 @@
 package httpapi
 
 import (
-	"acta/internal/tasks"
 	"net/http"
+
+	"acta/internal/tasks"
 )
 
 func (h *Handler) taskViewRoutes(m *http.ServeMux) {
 	m.HandleFunc("GET /api/workspaces/{workspace}/task-views", func(w http.ResponseWriter, r *http.Request) {
-		views, e := h.management.TaskViews(r.Context(), token(r, h.sessionCookie), r.PathValue("workspace"), r.URL.Query().Get("board"))
+		views, e := h.management.TaskViews(
+			r.Context(),
+			token(r, h.sessionCookie),
+			r.PathValue("workspace"),
+			r.URL.Query().Get("board"),
+		)
 		if e != nil {
 			failure(w, e)
 			return
@@ -22,7 +28,13 @@ func (h *Handler) taskViewRoutes(m *http.ServeMux) {
 		if !decode(w, r, &in) {
 			return
 		}
-		v, e := h.management.CreateTaskView(r.Context(), token(r, h.sessionCookie), r.PathValue("workspace"), in.Name, in.ViewSettings)
+		v, e := h.management.CreateTaskView(
+			r.Context(),
+			token(r, h.sessionCookie),
+			r.PathValue("workspace"),
+			in.Name,
+			in.ViewSettings,
+		)
 		if e != nil {
 			failure(w, e)
 			return
@@ -37,7 +49,14 @@ func (h *Handler) taskViewRoutes(m *http.ServeMux) {
 		if !decode(w, r, &in) {
 			return
 		}
-		v, e := h.management.SaveTaskView(r.Context(), token(r, h.sessionCookie), r.PathValue("workspace"), r.PathValue("view"), in.Version, in.ViewSettings)
+		v, e := h.management.SaveTaskView(
+			r.Context(),
+			token(r, h.sessionCookie),
+			r.PathValue("workspace"),
+			r.PathValue("view"),
+			in.Version,
+			in.ViewSettings,
+		)
 		if e != nil {
 			failure(w, e)
 			return
@@ -52,7 +71,14 @@ func (h *Handler) taskViewRoutes(m *http.ServeMux) {
 		if !decode(w, r, &in) {
 			return
 		}
-		v, e := h.management.RenameTaskView(r.Context(), token(r, h.sessionCookie), r.PathValue("workspace"), r.PathValue("view"), in.Version, in.Name)
+		v, e := h.management.RenameTaskView(
+			r.Context(),
+			token(r, h.sessionCookie),
+			r.PathValue("workspace"),
+			r.PathValue("view"),
+			in.Version,
+			in.Name,
+		)
 		if e != nil {
 			failure(w, e)
 			return
@@ -66,7 +92,13 @@ func (h *Handler) taskViewRoutes(m *http.ServeMux) {
 		if !decode(w, r, &in) {
 			return
 		}
-		e := h.management.DeleteTaskView(r.Context(), token(r, h.sessionCookie), r.PathValue("workspace"), r.PathValue("view"), in.Version)
+		e := h.management.DeleteTaskView(
+			r.Context(),
+			token(r, h.sessionCookie),
+			r.PathValue("workspace"),
+			r.PathValue("view"),
+			in.Version,
+		)
 		if e != nil {
 			failure(w, e)
 			return

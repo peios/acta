@@ -2,12 +2,13 @@
 package tasks
 
 import (
-	"acta/internal/accounts"
 	"encoding/json"
 	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"acta/internal/accounts"
 )
 
 type Board struct {

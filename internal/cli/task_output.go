@@ -49,9 +49,24 @@ func assignmentNames(people []tasks.Person) string {
 func renderTaskPage(p tasks.SummaryPage) string {
 	rows := [][]string{}
 	for _, t := range p.Tasks {
-		rows = append(rows, []string{t.Reference, t.Status.Name, t.Title, tasks.PropertyLabel("priority", t.Priority), tasks.PropertyLabel("type", t.Type), tasks.PropertyLabel("size", t.Size), releaseLabel(t.Release), assignmentNames(t.Assignees)})
+		rows = append(
+			rows,
+			[]string{
+				t.Reference,
+				t.Status.Name,
+				t.Title,
+				tasks.PropertyLabel("priority", t.Priority),
+				tasks.PropertyLabel("type", t.Type),
+				tasks.PropertyLabel("size", t.Size),
+				releaseLabel(t.Release),
+				assignmentNames(t.Assignees),
+			},
+		)
 	}
-	out := table([]string{"TASK", "STATUS", "TITLE", "PRIORITY", "TYPE", "SIZE", "RELEASE", "ASSIGNEES"}, rows)
+	out := table(
+		[]string{"TASK", "STATUS", "TITLE", "PRIORITY", "TYPE", "SIZE", "RELEASE", "ASSIGNEES"},
+		rows,
+	)
 	if p.Total == 0 {
 		out = "No matching tasks."
 	} else {
@@ -63,8 +78,21 @@ func renderTaskPage(p tasks.SummaryPage) string {
 	return out
 }
 func renderTask(t tasks.Task) string {
-	out := fmt.Sprintf("%s  %s\nID: %s\nWorkspace: %s\nStatus: %s\nParent: %s\nAssignees: %s", t.Reference, t.Title, t.ID, t.WorkspaceID, t.StatusID, t.ParentID, assignmentNames(t.Assignees))
-	for _, p := range []struct{ name, value string }{{"priority", t.Priority}, {"type", t.Type}, {"size", t.Size}} {
+	out := fmt.Sprintf(
+		"%s  %s\nID: %s\nWorkspace: %s\nStatus: %s\nParent: %s\nAssignees: %s",
+		t.Reference,
+		t.Title,
+		t.ID,
+		t.WorkspaceID,
+		t.StatusID,
+		t.ParentID,
+		assignmentNames(t.Assignees),
+	)
+	for _, p := range []struct{ name, value string }{
+		{"priority", t.Priority},
+		{"type", t.Type},
+		{"size", t.Size},
+	} {
 		out += "\n" + p.name + ": " + tasks.PropertyLabel(p.name, p.value)
 	}
 	out += "\nrelease: " + releaseLabel(t.Release)
@@ -73,7 +101,18 @@ func renderTask(t tasks.Task) string {
 	}
 	out += fmt.Sprintf("\nArchived: %t", t.Archived)
 	out += "\nField versions:"
-	for _, field := range []string{"title", "description", "status_id", "parent_id", "assignees", "priority", "type", "size", "release_id", "archived"} {
+	for _, field := range []string{
+		"title",
+		"description",
+		"status_id",
+		"parent_id",
+		"assignees",
+		"priority",
+		"type",
+		"size",
+		"release_id",
+		"archived",
+	} {
 		out += fmt.Sprintf("\n  %s: %d", field, t.Versions[field])
 	}
 	return terminalText(out, true)
@@ -92,7 +131,10 @@ func renderTaskDetail(d tasks.Detail) string {
 		out += "(empty)"
 	}
 	if len(d.DescendantAssignees) > 0 {
-		out += "\n\nAssigned through subtasks: " + terminalText(assignmentNames(d.DescendantAssignees), false)
+		out += "\n\nAssigned through subtasks: " + terminalText(
+			assignmentNames(d.DescendantAssignees),
+			false,
+		)
 	}
 	out += "\n\nSubtasks\n" + renderTaskPage(d.Subtasks)
 	if d.Subtasks.More {

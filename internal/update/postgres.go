@@ -39,7 +39,26 @@ func (d Docker) prepareRecovery(ctx context.Context, j Job, image string) error 
 		return err
 	}
 	name := d.Config.Project + "-copy-" + j.ID
-	if _, err = command(ctx, "run", "--name", name, "--label", "acta.update.job="+j.ID, "--label", "acta.update.installation="+d.Config.Installation, "--network", "none", "--read-only", "--mount", "type=volume,src="+volume+",dst=/data", "--entrypoint", "/bin/sh", image, "-ec", prepareRecovery); err != nil {
+	if _, err = command(
+		ctx,
+		"run",
+		"--name",
+		name,
+		"--label",
+		"acta.update.job="+j.ID,
+		"--label",
+		"acta.update.installation="+d.Config.Installation,
+		"--network",
+		"none",
+		"--read-only",
+		"--mount",
+		"type=volume,src="+volume+",dst=/data",
+		"--entrypoint",
+		"/bin/sh",
+		image,
+		"-ec",
+		prepareRecovery,
+	); err != nil {
 		return err
 	}
 	_, err = command(ctx, "rm", name)
@@ -48,7 +67,24 @@ func (d Docker) prepareRecovery(ctx context.Context, j Job, image string) error 
 
 func (d Docker) finishRecovery(ctx context.Context) error {
 	for {
-		raw, err := d.compose(ctx, "exec", "-T", "-u", "postgres", "db", "psql", "-U", "postgres", "-d", "acta", "-At", "-v", "ON_ERROR_STOP=1", "-c", "SELECT NOT pg_is_in_recovery()")
+		raw, err := d.compose(
+			ctx,
+			"exec",
+			"-T",
+			"-u",
+			"postgres",
+			"db",
+			"psql",
+			"-U",
+			"postgres",
+			"-d",
+			"acta",
+			"-At",
+			"-v",
+			"ON_ERROR_STOP=1",
+			"-c",
+			"SELECT NOT pg_is_in_recovery()",
+		)
 		if err != nil {
 			return err
 		}
@@ -65,6 +101,16 @@ func (d Docker) finishRecovery(ctx context.Context) error {
 		}
 	}
 	// Backups must not inherit our restricted, one-time restore command.
-	_, err := d.compose(ctx, "exec", "-T", "-u", "postgres", "db", "python3", "-c", `import os; from pathlib import Path; root=Path("/var/lib/postgresql/data"); (root/"acta-update-recovery.conf").unlink(missing_ok=True); fd=os.open(root,os.O_RDONLY|os.O_DIRECTORY); os.fsync(fd); os.close(fd)`)
+	_, err := d.compose(
+		ctx,
+		"exec",
+		"-T",
+		"-u",
+		"postgres",
+		"db",
+		"python3",
+		"-c",
+		`import os; from pathlib import Path; root=Path("/var/lib/postgresql/data"); (root/"acta-update-recovery.conf").unlink(missing_ok=True); fd=os.open(root,os.O_RDONLY|os.O_DIRECTORY); os.fsync(fd); os.close(fd)`,
+	)
 	return err
 }

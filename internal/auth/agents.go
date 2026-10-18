@@ -1,10 +1,12 @@
 package auth
 
 import (
-	"acta/internal/accounts"
 	"context"
-	"github.com/google/uuid"
 	"time"
+
+	"github.com/google/uuid"
+
+	"acta/internal/accounts"
 )
 
 type AgentStore interface {
@@ -38,7 +40,12 @@ func (m *Management) CreateAgent(ctx context.Context, token, username, display s
 	if e != nil {
 		return accounts.Account{}, e
 	}
-	a := accounts.Account{ID: uuid.NewString(), Username: name, DisplayName: label, ParentID: &owner.ID}
+	a := accounts.Account{
+		ID:          uuid.NewString(),
+		Username:    name,
+		DisplayName: label,
+		ParentID:    &owner.ID,
+	}
 	a, e = m.store.CreateAgent(ctx, owner.ID, Digest(token), a, m.auth.now())
 	return a, profileError(e)
 }
@@ -54,7 +61,12 @@ func (m *Management) agent(ctx context.Context, token, id string, fn func(*Secur
 }
 func (m *Management) Agent(ctx context.Context, token, id string) (accounts.Account, error) {
 	var a accounts.Account
-	e := m.agent(ctx, token, id, func(r *SecurityRecord, _ ManagedTx) error { a = r.Account; return nil })
+	e := m.agent(
+		ctx,
+		token,
+		id,
+		func(r *SecurityRecord, _ ManagedTx) error { a = r.Account; return nil },
+	)
 	return a, e
 }
 func (m *Management) UpdateAgent(ctx context.Context, token, id string, version int64, username, display string) (accounts.Account, error) {
@@ -117,7 +129,12 @@ func (m *Management) RevokeAgent(ctx context.Context, token, id, session string)
 			return ErrNotFound
 		}
 	}
-	return m.agent(ctx, token, id, func(_ *SecurityRecord, tx ManagedTx) error { return tx.RevokeSessions(ctx, []byte{}, session) })
+	return m.agent(
+		ctx,
+		token,
+		id,
+		func(_ *SecurityRecord, tx ManagedTx) error { return tx.RevokeSessions(ctx, []byte{}, session) },
+	)
 }
 
 // Both native authorization protocols select the identity through this single

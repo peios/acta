@@ -2,8 +2,9 @@ package cli
 
 import (
 	"errors"
-	"golang.org/x/sys/windows"
 	"os"
+
+	"golang.org/x/sys/windows"
 )
 
 func privateDescriptor() (*windows.SECURITY_DESCRIPTOR, error) {
@@ -22,7 +23,15 @@ func restrictFile(f *os.File) error {
 	if err != nil {
 		return err
 	}
-	return windows.SetNamedSecurityInfo(f.Name(), windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, acl, nil)
+	return windows.SetNamedSecurityInfo(
+		f.Name(),
+		windows.SE_FILE_OBJECT,
+		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
+		nil,
+		nil,
+		acl,
+		nil,
+	)
 }
 func checkPrivateFile(path string, info os.FileInfo) error {
 	if !info.Mode().IsRegular() {
@@ -32,7 +41,11 @@ func checkPrivateFile(path string, info os.FileInfo) error {
 	if err != nil {
 		return err
 	}
-	actual, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
+	actual, err := windows.GetNamedSecurityInfo(
+		path,
+		windows.SE_FILE_OBJECT,
+		windows.DACL_SECURITY_INFORMATION,
+	)
 	if err != nil {
 		return err
 	}

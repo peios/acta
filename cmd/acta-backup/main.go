@@ -33,7 +33,10 @@ func run() error {
 	target := f.String("target", "", "New isolated recovery directory; must not exist")
 	targetTime := f.String("time", "", "Optional RFC3339 point-in-time recovery target")
 	f.Usage = func() {
-		fmt.Fprintln(f.Output(), "Usage: acta-backup [flags] serve|status|backup|full|drill|list|restore|prepare-cutover")
+		fmt.Fprintln(
+			f.Output(),
+			"Usage: acta-backup [flags] serve|status|backup|full|drill|list|restore|prepare-cutover",
+		)
 		f.PrintDefaults()
 	}
 	if err := f.Parse(os.Args[1:]); err != nil {
@@ -85,7 +88,14 @@ func run() error {
 		}
 		ctx, cancel := context.WithTimeout(ctx, time.Duration(c.JobTimeoutMinutes)*time.Minute)
 		defer cancel()
-		r, err := (backup.PGBackRest{Config: c}).Restore(ctx, backup.Policy{Destination: *destination}, *label, *identity, *target, *targetTime)
+		r, err := (backup.PGBackRest{Config: c}).Restore(
+			ctx,
+			backup.Policy{Destination: *destination},
+			*label,
+			*identity,
+			*target,
+			*targetTime,
+		)
 		if err != nil {
 			return err
 		}

@@ -1,15 +1,17 @@
 package tasks
 
 import (
-	"acta/internal/accounts"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"github.com/google/uuid"
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/google/uuid"
+
+	"acta/internal/accounts"
 )
 
 const SearchPageSize = 25
@@ -65,7 +67,10 @@ func NormalizeSearch(q SearchQuery) (SearchQuery, SearchPosition, error) {
 	bad := func(field, message string) (SearchQuery, SearchPosition, error) {
 		return q, SearchPosition{}, &accounts.FieldError{Field: field, Message: message}
 	}
-	if !utf8.ValidString(q.Query) || utf8.RuneCountInString(q.Query) < 2 || utf8.RuneCountInString(q.Query) > 200 || strings.ContainsRune(q.Query, 0) {
+	if !utf8.ValidString(q.Query) || utf8.RuneCountInString(q.Query) < 2 || utf8.RuneCountInString(q.Query) > 200 || strings.ContainsRune(
+		q.Query,
+		0,
+	) {
 		return bad("query", "Use between 2 and 200 characters.")
 	}
 	var p SearchPosition

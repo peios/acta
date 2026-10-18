@@ -32,7 +32,11 @@ func main() {
 
 func run() error {
 	listen := flag.String("listen", ":8081", "HTTP listen address")
-	verifyRecovery := flag.Bool("verify-recovery", false, "Verify a restored database read-only, without starting the server or applying migrations")
+	verifyRecovery := flag.Bool(
+		"verify-recovery",
+		false,
+		"Verify a restored database read-only, without starting the server or applying migrations",
+	)
 	flag.Parse()
 	publicURL := os.Getenv("ACTA_PUBLIC_URL")
 	if publicURL == "" {
@@ -108,7 +112,12 @@ func run() error {
 		return err
 	}
 	if code != "" {
-		fmt.Fprintf(os.Stderr, "\nSet up Acta at %s/setup\nOne-time setup code (valid for one hour):\n%s\n\n", cfg.PublicURL, code)
+		fmt.Fprintf(
+			os.Stderr,
+			"\nSet up Acta at %s/setup\nOne-time setup code (valid for one hour):\n%s\n\n",
+			cfg.PublicURL,
+			code,
+		)
 	}
 
 	keyPath := os.Getenv("ACTA_SECURITY_KEY_FILE")
@@ -135,7 +144,16 @@ func run() error {
 	go func() {
 		defer close(pushDone)
 		if !cfg.RecoveryMode {
-			push.Run(ctx, store, push.Sender{Private: privatePush, Public: publicPush, Contact: cfg.PublicURL, Client: push.HTTPClient()})
+			push.Run(
+				ctx,
+				store,
+				push.Sender{
+					Private: privatePush,
+					Public:  publicPush,
+					Contact: cfg.PublicURL,
+					Client:  push.HTTPClient(),
+				},
+			)
 		}
 	}()
 	defer func() { stop(); <-pushDone }()
@@ -144,7 +162,14 @@ func run() error {
 		return err
 	}
 	mux := http.NewServeMux()
-	api := httpapi.New(service, security, accounts.NewProfileService(store), auth.NewManagement(service, security, store), cfg, publicPush)
+	api := httpapi.New(
+		service,
+		security,
+		accounts.NewProfileService(store),
+		auth.NewManagement(service, security, store),
+		cfg,
+		publicPush,
+	)
 	for _, path := range []string{"/api/", "/oauth/", "/.well-known/", "/mcp"} {
 		mux.Handle(path, api)
 	}

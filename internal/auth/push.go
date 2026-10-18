@@ -1,10 +1,11 @@
 package auth
 
 import (
-	"acta/internal/notifications"
-	"acta/internal/push"
 	"context"
 	"errors"
+
+	"acta/internal/notifications"
+	"acta/internal/push"
 )
 
 func (s *Service) pushStore() (push.Store, error) {

@@ -1,21 +1,26 @@
 package cli
 
 import (
-	"acta/internal/activity"
-	"acta/internal/client"
-	"acta/internal/comments"
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
+
+	"acta/internal/activity"
+	"acta/internal/client"
+	"acta/internal/comments"
 )
 
 func renderComment(e activity.Entry) string {
 	return renderActivity(activity.Page{Entries: []activity.Entry{e}})
 }
 func (a *App) commentCommand() *cobra.Command {
-	root := &cobra.Command{Use: "comment", Short: "Post, read, edit and delete task comments and replies"}
+	root := &cobra.Command{
+		Use:   "comment",
+		Short: "Post, read, edit and delete task comments and replies",
+	}
 	get := &cobra.Command{Use: "get <task> <comment-uuid>", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
 		return runTask(a, cmd, func(ctx context.Context, c *client.Client) (activity.Entry, error) {
 			return c.Comment(ctx, args[0], args[1])
@@ -55,14 +60,23 @@ func (a *App) commentCommand() *cobra.Command {
 					fmt.Fprintln(a.errOut, "Post request ID:", key)
 				}
 				return runTask(a, cmd, func(ctx context.Context, c *client.Client) (activity.Entry, error) {
-					return c.CreateComment(ctx, args[0], comments.Create{Body: body, ReplyTo: reply, RequestID: key})
+					return c.CreateComment(
+						ctx,
+						args[0],
+						comments.Create{Body: body, ReplyTo: reply, RequestID: key},
+					)
 				}, renderComment)
 			}
 			if version < 1 {
 				return errors.New("Supply --version from comment get")
 			}
 			return runTask(a, cmd, func(ctx context.Context, c *client.Client) (activity.Entry, error) {
-				return c.UpdateComment(ctx, args[0], args[1], comments.Update{Body: body, Version: version, Delete: mode == "delete"})
+				return c.UpdateComment(
+					ctx,
+					args[0],
+					args[1],
+					comments.Update{Body: body, Version: version, Delete: mode == "delete"},
+				)
 			}, renderComment)
 		}}
 		if mode != "add" {

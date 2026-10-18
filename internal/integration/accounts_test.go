@@ -16,13 +16,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
 	"acta/internal/accounts"
 	"acta/internal/auth"
 	"acta/internal/config"
 	"acta/internal/httpapi"
 	"acta/internal/postgres"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type fixture struct {
@@ -79,7 +80,11 @@ func must(t *testing.T, err error) {
 }
 func bootstrap(t *testing.T, f fixture, now time.Time) accounts.Account {
 	t.Helper()
-	a := accounts.Account{ID: uuid.NewString(), Username: "jack", DirectPermissions: []string{accounts.Superuser}}
+	a := accounts.Account{
+		ID:                uuid.NewString(),
+		Username:          "jack",
+		DirectPermissions: []string{accounts.Superuser},
+	}
 	grant := auth.Digest(uuid.NewString())
 	must(t, f.store.GrantSetup(t.Context(), grant, now.Add(time.Minute)))
 	hash, err := auth.HashPassword("silver meadow orbit lamp")
@@ -116,7 +121,13 @@ func TestSetupAtomicAndPermanent(t *testing.T) {
 			if i == 1 {
 				grant = grantB
 			}
-			err := store.CompleteSetup(ctx, grant, accounts.Account{ID: uuid.NewString(), Username: "admin"}, "irrelevant", now)
+			err := store.CompleteSetup(
+				ctx,
+				grant,
+				accounts.Account{ID: uuid.NewString(), Username: "admin"},
+				"irrelevant",
+				now,
+			)
 			if err == nil {
 				wins.Add(1)
 			} else if !errors.Is(err, auth.ErrSetupComplete) {
@@ -144,7 +155,10 @@ func TestSetupAtomicAndPermanent(t *testing.T) {
 	if !complete {
 		t.Fatal("setup reopened")
 	}
-	if err = f.store.GrantSetup(ctx, auth.Digest("new"), now.Add(time.Hour)); !errors.Is(err, auth.ErrSetupComplete) {
+	if err = f.store.GrantSetup(ctx, auth.Digest("new"), now.Add(time.Hour)); !errors.Is(
+		err,
+		auth.ErrSetupComplete,
+	) {
 		t.Fatal(err)
 	}
 	_, code, err := auth.New(ctx, second)
@@ -158,7 +172,13 @@ func TestExpiredGrant(t *testing.T) {
 	now := time.Now().UTC()
 	grant := auth.Digest("expired")
 	must(t, f.store.GrantSetup(t.Context(), grant, now))
-	err := f.store.CompleteSetup(t.Context(), grant, accounts.Account{ID: uuid.NewString(), Username: "admin"}, "hash", now)
+	err := f.store.CompleteSetup(
+		t.Context(),
+		grant,
+		accounts.Account{ID: uuid.NewString(), Username: "admin"},
+		"hash",
+		now,
+	)
 	if !errors.Is(err, auth.ErrSetupGrant) {
 		t.Fatal(err)
 	}
@@ -179,13 +199,31 @@ func TestSessions(t *testing.T) {
 		valid                  bool
 	}{
 		{"active", now.Add(-time.Hour), now.Add(-time.Hour), now.Add(time.Hour), true},
-		{"idle-boundary", now.Add(-8 * 24 * time.Hour), now.Add(-auth.SessionIdle), now.Add(time.Hour), false},
+		{
+			"idle-boundary",
+			now.Add(-8 * 24 * time.Hour),
+			now.Add(-auth.SessionIdle),
+			now.Add(time.Hour),
+			false,
+		},
 		{"absolute-boundary", now.Add(-auth.SessionLifetime), now.Add(-time.Minute), now, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			hash := auth.Digest(tc.name)
-			must(t, f.store.CreateSession(ctx, auth.Session{Digest: hash, AccountID: a.ID, CreatedAt: tc.created, LastSeenAt: tc.last, ExpiresAt: tc.expires}))
+			must(
+				t,
+				f.store.CreateSession(
+					ctx,
+					auth.Session{
+						Digest:     hash,
+						AccountID:  a.ID,
+						CreatedAt:  tc.created,
+						LastSeenAt: tc.last,
+						ExpiresAt:  tc.expires,
+					},
+				),
+			)
 			got, err := f.store.UseSession(ctx, hash, now, now.Add(-auth.SessionIdle))
 			if tc.valid {
 				must(t, err)
@@ -193,7 +231,17 @@ func TestSessions(t *testing.T) {
 					t.Fatal("wrong account")
 				}
 				var seen, expires time.Time
-				must(t, f.conn.QueryRow(ctx, `SELECT last_seen_at,expires_at FROM browser_sessions WHERE token_hash=$1`, hash).Scan(&seen, &expires))
+				must(
+					t,
+					f.conn.QueryRow(
+						ctx,
+						`SELECT last_seen_at,expires_at FROM browser_sessions WHERE token_hash=$1`,
+						hash,
+					).Scan(
+						&seen,
+						&expires,
+					),
+				)
 				if !seen.Equal(now) || !expires.Equal(tc.expires) {
 					t.Fatal("activity extended absolute deadline or did not refresh idle")
 				}
@@ -203,14 +251,32 @@ func TestSessions(t *testing.T) {
 		})
 	}
 	must(t, f.store.DeleteSession(ctx, auth.Digest("active")))
-	if _, err := f.store.UseSession(ctx, auth.Digest("active"), now, now.Add(-auth.SessionIdle)); !errors.Is(err, auth.ErrNotFound) {
+	if _, err := f.store.UseSession(ctx, auth.Digest("active"), now, now.Add(-auth.SessionIdle)); !errors.Is(
+		err,
+		auth.ErrNotFound,
+	) {
 		t.Fatal("revoked session accepted")
 	}
 	hash := auth.Digest("disabled")
-	must(t, f.store.CreateSession(ctx, auth.Session{Digest: hash, AccountID: a.ID, CreatedAt: now, LastSeenAt: now, ExpiresAt: now.Add(time.Hour)}))
+	must(
+		t,
+		f.store.CreateSession(
+			ctx,
+			auth.Session{
+				Digest:     hash,
+				AccountID:  a.ID,
+				CreatedAt:  now,
+				LastSeenAt: now,
+				ExpiresAt:  now.Add(time.Hour),
+			},
+		),
+	)
 	_, err := f.conn.Exec(ctx, `UPDATE accounts SET disabled_at=$1 WHERE id=$2`, now, a.ID)
 	must(t, err)
-	if _, err = f.store.UseSession(ctx, hash, now, now.Add(-auth.SessionIdle)); !errors.Is(err, auth.ErrNotFound) {
+	if _, err = f.store.UseSession(ctx, hash, now, now.Add(-auth.SessionIdle)); !errors.Is(
+		err,
+		auth.ErrNotFound,
+	) {
 		t.Fatal("disabled account authenticated")
 	}
 	if credential, err := f.store.CredentialByUsername(ctx, "jack"); err != nil || credential.Account.DisabledAt == nil {
@@ -218,7 +284,15 @@ func TestSessions(t *testing.T) {
 	}
 	must(t, f.store.Cleanup(ctx, now, now.Add(-auth.SessionIdle)))
 	var expired int
-	must(t, f.conn.QueryRow(ctx, `SELECT count(*) FROM browser_sessions WHERE expires_at<=$1 OR last_seen_at<=$2`, now, now.Add(-auth.SessionIdle)).Scan(&expired))
+	must(
+		t,
+		f.conn.QueryRow(
+			ctx,
+			`SELECT count(*) FROM browser_sessions WHERE expires_at<=$1 OR last_seen_at<=$2`,
+			now,
+			now.Add(-auth.SessionIdle),
+		).Scan(&expired),
+	)
 	if expired != 0 {
 		t.Fatal("expired sessions remain")
 	}
@@ -297,26 +371,66 @@ func TestHTTPAccountLifecycle(t *testing.T) {
 	must(t, err)
 	cfg, err := config.Parse("http://localhost:8081", "")
 	must(t, err)
-	c := client{t, httpapi.New(service, securityForTest(t, f, service, cfg), accounts.NewProfileService(f.store), nil, cfg), map[string]*http.Cookie{}}
+	c := client{
+		t,
+		httpapi.New(
+			service,
+			securityForTest(t, f, service, cfg),
+			accounts.NewProfileService(f.store),
+			nil,
+			cfg,
+		),
+		map[string]*http.Cookie{},
+	}
 	c.request("GET", "account", "", 401)
-	c.request("POST", "setup/complete", `{"username":"jack","password":"silver meadow orbit lamp"}`, 403)
+	c.request(
+		"POST",
+		"setup/complete",
+		`{"username":"jack","password":"silver meadow orbit lamp"}`,
+		403,
+	)
 	c.request("POST", "setup/unlock", `{"code":"wrong"}`, 422)
 	if len(code) != 8 {
 		t.Fatalf("operator code length: %d", len(code))
 	}
-	c.request("POST", "setup/unlock", body(map[string]string{"code": " " + strings.ToLower(code) + " "}), 200)
+	c.request(
+		"POST",
+		"setup/unlock",
+		body(map[string]string{"code": " " + strings.ToLower(code) + " "}),
+		200,
+	)
 	if len(c.cookies) != 1 || !c.cookies["acta_setup"].HttpOnly {
 		t.Fatal("missing protected setup grant")
 	}
-	c.request("POST", "setup/complete", `{"username":"jack/reviewer","password":"silver meadow orbit lamp"}`, 422)
+	c.request(
+		"POST",
+		"setup/complete",
+		`{"username":"jack/reviewer","password":"silver meadow orbit lamp"}`,
+		422,
+	)
 	c.request("POST", "setup/complete", `{"username":"jack","password":"short"}`, 422)
-	c.request("POST", "setup/complete", `{"username":"jack","password":"silver meadow orbit lamp","display_name":"two\nlines"}`, 422)
-	c.request("POST", "setup/complete", `{"username":"JACK","password":"silver meadow orbit lamp","display_name":"  Cafe\u0301 · Jack  "}`, 201)
+	c.request(
+		"POST",
+		"setup/complete",
+		`{"username":"jack","password":"silver meadow orbit lamp","display_name":"two\nlines"}`,
+		422,
+	)
+	c.request(
+		"POST",
+		"setup/complete",
+		`{"username":"JACK","password":"silver meadow orbit lamp","display_name":"  Cafe\u0301 · Jack  "}`,
+		201,
+	)
 	if len(c.cookies) != 0 {
 		t.Fatal("setup auto-signed in or retained grant")
 	}
 	c.request("GET", "account", "", 401)
-	c.request("POST", "setup/complete", `{"username":"second","password":"silver meadow orbit lamp"}`, 409)
+	c.request(
+		"POST",
+		"setup/complete",
+		`{"username":"second","password":"silver meadow orbit lamp"}`,
+		409,
+	)
 	wrong := c.request("POST", "login", `{"username":"jack","password":"incorrect"}`, 401).Body.String()
 	unknown := c.request("POST", "login", `{"username":"unknown","password":"incorrect"}`, 401).Body.String()
 	if wrong != unknown {
@@ -342,7 +456,13 @@ func TestHTTPAccountLifecycle(t *testing.T) {
 	if code != "" {
 		t.Fatal("setup code after restart")
 	}
-	c.handler = httpapi.New(restarted, securityForTest(t, f, restarted, cfg), accounts.NewProfileService(f.store), nil, cfg)
+	c.handler = httpapi.New(
+		restarted,
+		securityForTest(t, f, restarted, cfg),
+		accounts.NewProfileService(f.store),
+		nil,
+		cfg,
+	)
 	c.request("GET", "account", "", 200)
 	c.request("POST", "login", `{"username":"jack","password":"silver meadow orbit lamp"}`, 200)
 	if _, err = service.Current(t.Context(), cookie.Value); !errors.Is(err, auth.ErrUnauthenticated) {
@@ -362,7 +482,13 @@ func TestHTTPRejectsForgedAndMalformedRequests(t *testing.T) {
 	must(t, err)
 	cfg, err := config.Parse("https://acta.example.test", "")
 	must(t, err)
-	handler := httpapi.New(service, securityForTest(t, f, service, cfg), accounts.NewProfileService(f.store), nil, cfg)
+	handler := httpapi.New(
+		service,
+		securityForTest(t, f, service, cfg),
+		accounts.NewProfileService(f.store),
+		nil,
+		cfg,
+	)
 	for _, tc := range []struct {
 		name, origin, host, contentType, body string
 		status                                int
@@ -373,7 +499,10 @@ func TestHTTPRejectsForgedAndMalformedRequests(t *testing.T) {
 		{"form", "https://acta.example.test", "acta.example.test", "text/plain", "{}", 415},
 		{"unknown-field", "https://acta.example.test", "acta.example.test", "application/json", `{"surprise":true}`, 400},
 		{"trailing-json", "https://acta.example.test", "acta.example.test", "application/json", `{} {}`, 400},
-		{"oversized", "https://acta.example.test", "acta.example.test", "application/json", `{"username":"` + strings.Repeat("a", 70000) + `"}`, 400},
+		{"oversized", "https://acta.example.test", "acta.example.test", "application/json", `{"username":"` + strings.Repeat(
+			"a",
+			70000,
+		) + `"}`, 400},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := httptest.NewRequest("POST", "https://"+tc.host+"/api/login", strings.NewReader(tc.body))
@@ -389,7 +518,13 @@ func TestHTTPRejectsForgedAndMalformedRequests(t *testing.T) {
 	// HTTPS setup grants must use a host-bound Secure cookie.
 	service, code, err := auth.New(t.Context(), f.store)
 	must(t, err)
-	handler = httpapi.New(service, securityForTest(t, f, service, cfg), accounts.NewProfileService(f.store), nil, cfg)
+	handler = httpapi.New(
+		service,
+		securityForTest(t, f, service, cfg),
+		accounts.NewProfileService(f.store),
+		nil,
+		cfg,
+	)
 	r := httptest.NewRequest("POST", "https://acta.example.test/api/setup/unlock", strings.NewReader(body(map[string]string{"code": code})))
 	r.Header.Set("Origin", "https://acta.example.test")
 	r.Header.Set("Content-Type", "application/json")
@@ -420,7 +555,14 @@ func securityForTest(t *testing.T, f fixture, service *auth.Service, cfg config.
 	for origin := range cfg.Origins {
 		origins = append(origins, origin)
 	}
-	security, err := auth.NewSecurity(t.Context(), service, f.store, cfg.PublicURL, origins, []byte(strings.Repeat("k", 32)))
+	security, err := auth.NewSecurity(
+		t.Context(),
+		service,
+		f.store,
+		cfg.PublicURL,
+		origins,
+		[]byte(strings.Repeat("k", 32)),
+	)
 	must(t, err)
 	return security
 }

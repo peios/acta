@@ -17,7 +17,12 @@ func TestTaskInspectionPaginatesDirectChildren(t *testing.T) {
 	must(t, err)
 	var first tasks.Task
 	for i := 0; i < 51; i++ {
-		child, err := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: fmt.Sprintf("Child %02d", i), ParentID: parent.ID})
+		child, err := m.CreateTask(
+			ctx,
+			f.token,
+			w.ID,
+			tasks.Create{Title: fmt.Sprintf("Child %02d", i), ParentID: parent.ID},
+		)
 		must(t, err)
 		if i == 0 {
 			first = child

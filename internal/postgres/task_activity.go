@@ -1,16 +1,20 @@
 package postgres
 
 import (
+	"context"
+
 	"acta/internal/activity"
 	"acta/internal/tasks"
-	"context"
 )
 
 func taskActivityValue(t tasks.Task, field string, c tasks.Config) activity.Value {
 	v := activity.Value{}
 	switch field {
 	case "priority", "type", "size":
-		v.Text = tasks.PropertyLabel(field, map[string]string{"priority": t.Priority, "type": t.Type, "size": t.Size}[field])
+		v.Text = tasks.PropertyLabel(
+			field,
+			map[string]string{"priority": t.Priority, "type": t.Type, "size": t.Size}[field],
+		)
 	case "title":
 		v.Text = t.Title
 	case "status_id":
@@ -40,7 +44,19 @@ func (t workspaceTx) taskActivityChange(ctx context.Context, before, after tasks
 	if e != nil {
 		return e
 	}
-	return t.recordActivity(ctx, after.WorkspaceID, "task", after.ID, activity.Change{Kind: "task.changed", Field: field, Before: taskActivityValue(before, field, c), After: taskActivityValue(after, field, c)}, newMentions(before.Description, after.Description)...)
+	return t.recordActivity(
+		ctx,
+		after.WorkspaceID,
+		"task",
+		after.ID,
+		activity.Change{
+			Kind:   "task.changed",
+			Field:  field,
+			Before: taskActivityValue(before, field, c),
+			After:  taskActivityValue(after, field, c),
+		},
+		newMentions(before.Description, after.Description)...,
+	)
 }
 
 func statusActivityLabel(c tasks.Config, s tasks.Status) string {

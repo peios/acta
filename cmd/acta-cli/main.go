@@ -1,8 +1,6 @@
 package main
 
 import (
-	"acta/internal/cli"
-	"acta/internal/client"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +8,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"acta/internal/cli"
+	"acta/internal/client"
 )
 
 func main() {

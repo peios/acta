@@ -91,7 +91,13 @@ func TestRetireExecutionUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	for _, table := range []string{"provider_threads", "provider_thread_frames", "provider_thread_commands", "thread_conversation_items", "code_hosts"} {
+	for _, table := range []string{
+		"provider_threads",
+		"provider_thread_frames",
+		"provider_thread_commands",
+		"thread_conversation_items",
+		"code_hosts",
+	} {
 		var exists bool
 		if err := conn.QueryRow(ctx, `SELECT to_regclass($1) IS NOT NULL`, schema+"."+table).Scan(&exists); err != nil {
 			t.Fatal(err)
@@ -100,7 +106,13 @@ func TestRetireExecutionUpgrade(t *testing.T) {
 			t.Errorf("retired table remains: %s", table)
 		}
 	}
-	for table, want := range map[string]int{"accounts": 2, "tasks": 1, "notifications": 1, "push_deliveries": 1, "schema_migrations": len(names)} {
+	for table, want := range map[string]int{
+		"accounts":          2,
+		"tasks":             1,
+		"notifications":     1,
+		"push_deliveries":   1,
+		"schema_migrations": len(names),
+	} {
 		var count int
 		if err := conn.QueryRow(ctx, `SELECT count(*) FROM `+pgx.Identifier{table}.Sanitize()).Scan(&count); err != nil {
 			t.Fatal(err)

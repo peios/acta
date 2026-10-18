@@ -1,7 +1,6 @@
 package update
 
 import (
-	"acta/internal/backup"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
@@ -11,6 +10,8 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"acta/internal/backup"
 )
 
 func (s *Service) Serve(ctx context.Context) error {
@@ -78,12 +79,35 @@ func (s *Service) Serve(ctx context.Context) error {
 		jobs := []map[string]any{}
 		for _, j := range st.Jobs {
 			release, _ := Verify(j.Target, s.key, s.c.Repository)
-			jobs = append(jobs, map[string]any{"id": j.ID, "version": release.Version, "phase": j.Phase, "error": j.Error, "paused": j.Paused, "started_at": j.Started, "updated_at": j.Updated})
+			jobs = append(
+				jobs,
+				map[string]any{
+					"id":         j.ID,
+					"version":    release.Version,
+					"phase":      j.Phase,
+					"error":      j.Error,
+					"paused":     j.Paused,
+					"started_at": j.Started,
+					"updated_at": j.Updated,
+				},
+			)
 			if len(jobs) >= 20 {
 				break
 			}
 		}
-		respond(w, 200, map[string]any{"configured": true, "repository": s.c.Repository, "current": current, "available": available, "checked_at": st.Checked, "check_error": st.CheckError, "jobs": jobs})
+		respond(
+			w,
+			200,
+			map[string]any{
+				"configured":  true,
+				"repository":  s.c.Repository,
+				"current":     current,
+				"available":   available,
+				"checked_at":  st.Checked,
+				"check_error": st.CheckError,
+				"jobs":        jobs,
+			},
+		)
 	})
 	mux.HandleFunc("POST /v1/check", func(w http.ResponseWriter, r *http.Request) {
 		s.RequestCheck()

@@ -2,10 +2,11 @@
 package guide
 
 import (
-	"acta/internal/accounts"
 	"errors"
 	"strings"
 	"unicode/utf8"
+
+	"acta/internal/accounts"
 )
 
 const MaxCharacters = 8000
@@ -37,10 +38,16 @@ func Validate(in Save) error {
 		return &accounts.FieldError{Field: "scope", Message: "Choose site or user preferences."}
 	}
 	if in.Revision < 0 {
-		return &accounts.FieldError{Field: "revision", Message: "Use the revision of the preferences you read."}
+		return &accounts.FieldError{
+			Field:   "revision",
+			Message: "Use the revision of the preferences you read.",
+		}
 	}
 	if !utf8.ValidString(in.Content) || strings.ContainsRune(in.Content, 0) || utf8.RuneCountInString(in.Content) > MaxCharacters {
-		return &accounts.FieldError{Field: "content", Message: "Use valid Markdown of at most 8,000 characters."}
+		return &accounts.FieldError{
+			Field:   "content",
+			Message: "Use valid Markdown of at most 8,000 characters.",
+		}
 	}
 	return nil
 }

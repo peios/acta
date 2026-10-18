@@ -45,7 +45,10 @@ func oauthFailure(w http.ResponseWriter, err error) {
 	case errors.Is(err, auth.ErrRateLimited):
 		status, code, description = 429, "temporarily_unavailable", "Too many attempts. Try again in five minutes."
 		w.Header().Set("Retry-After", "300")
-	case errors.Is(err, auth.ErrUnauthenticated), errors.Is(err, auth.ErrAccountDisabled), errors.Is(err, auth.ErrMFARequired):
+	case errors.Is(err, auth.ErrUnauthenticated), errors.Is(err, auth.ErrAccountDisabled), errors.Is(
+		err,
+		auth.ErrMFARequired,
+	):
 	default:
 		slog.Error("OAuth request failed", "error", err)
 		status, code, description = 503, "temporarily_unavailable", "Acta could not complete this request. Try again."
@@ -58,7 +61,13 @@ func (h *Handler) oauthRegister(w http.ResponseWriter, r *http.Request) {
 	d := json.NewDecoder(r.Body)
 	// RFC 7591 requires ignoring unrecognized client metadata.
 	if d.Decode(&in) != nil || d.Decode(new(any)) != io.EOF {
-		oauthFailure(w, &auth.OAuthError{Code: "invalid_client_metadata", Description: "Send one client metadata object."})
+		oauthFailure(
+			w,
+			&auth.OAuthError{
+				Code:        "invalid_client_metadata",
+				Description: "Send one client metadata object.",
+			},
+		)
 		return
 	}
 	out, err := h.security.RegisterOAuthClient(r.Context(), in, h.address(r))
@@ -77,7 +86,10 @@ func (h *Handler) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 	in, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil {
-		oauthFailure(w, &auth.OAuthError{Code: "invalid_request", Description: "Invalid authorization parameters."})
+		oauthFailure(
+			w,
+			&auth.OAuthError{Code: "invalid_request", Description: "Invalid authorization parameters."},
+		)
 		return
 	}
 	id, err := h.security.BeginOAuth(r.Context(), in, binding, h.address(r), h.mcpResource())
@@ -96,11 +108,21 @@ func (h *Handler) oauthConsent(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
-	req, err := h.security.OAuthConsent(r.Context(), r.URL.Query().Get("request"), token(r, h.bindingCookie))
+	req, err := h.security.OAuthConsent(
+		r.Context(),
+		r.URL.Query().Get("request"),
+		token(r, h.bindingCookie),
+	)
 	if err != nil {
 		var oe *auth.OAuthError
 		if errors.As(err, &oe) {
-			writeError(w, 410, "authorization_expired", "This connection request is invalid or expired. Start again from your MCP client.", nil)
+			writeError(
+				w,
+				410,
+				"authorization_expired",
+				"This connection request is invalid or expired. Start again from your MCP client.",
+				nil,
+			)
 		} else {
 			failure(w, err)
 		}
@@ -122,11 +144,26 @@ func (h *Handler) oauthApprove(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	redirect, err := h.security.ApproveOAuthTools(r.Context(), token(r, h.sessionCookie), in.Request, token(r, h.bindingCookie), in.Approve, h.config.PublicURL, in.Subject, in.Tools)
+	redirect, err := h.security.ApproveOAuthTools(
+		r.Context(),
+		token(r, h.sessionCookie),
+		in.Request,
+		token(r, h.bindingCookie),
+		in.Approve,
+		h.config.PublicURL,
+		in.Subject,
+		in.Tools,
+	)
 	if err != nil {
 		var oe *auth.OAuthError
 		if errors.As(err, &oe) {
-			writeError(w, 410, "authorization_expired", "This connection request is invalid or expired. Start again from your MCP client.", nil)
+			writeError(
+				w,
+				410,
+				"authorization_expired",
+				"This connection request is invalid or expired. Start again from your MCP client.",
+				nil,
+			)
 		} else {
 			failure(w, err)
 		}
@@ -137,12 +174,21 @@ func (h *Handler) oauthApprove(w http.ResponseWriter, r *http.Request) {
 func oauthForm(w http.ResponseWriter, r *http.Request) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
 	if r.Header.Get("Authorization") != "" || r.ParseForm() != nil {
-		oauthFailure(w, &auth.OAuthError{Code: "invalid_request", Description: "Send form parameters for a public OAuth client."})
+		oauthFailure(
+			w,
+			&auth.OAuthError{
+				Code:        "invalid_request",
+				Description: "Send form parameters for a public OAuth client.",
+			},
+		)
 		return false
 	}
 	for _, v := range r.PostForm {
 		if len(v) != 1 {
-			oauthFailure(w, &auth.OAuthError{Code: "invalid_request", Description: "Duplicate form parameters."})
+			oauthFailure(
+				w,
+				&auth.OAuthError{Code: "invalid_request", Description: "Duplicate form parameters."},
+			)
 			return false
 		}
 	}
@@ -164,10 +210,18 @@ func (h *Handler) oauthRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.PostForm.Get("token") == "" || r.PostForm.Get("client_id") == "" {
-		oauthFailure(w, &auth.OAuthError{Code: "invalid_request", Description: "A token and client_id are required."})
+		oauthFailure(
+			w,
+			&auth.OAuthError{Code: "invalid_request", Description: "A token and client_id are required."},
+		)
 		return
 	}
-	if err := h.security.RevokeOAuth(r.Context(), r.PostForm.Get("token"), r.PostForm.Get("client_id"), h.address(r)); err != nil {
+	if err := h.security.RevokeOAuth(
+		r.Context(),
+		r.PostForm.Get("token"),
+		r.PostForm.Get("client_id"),
+		h.address(r),
+	); err != nil {
 		oauthFailure(w, err)
 		return
 	}

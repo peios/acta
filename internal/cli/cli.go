@@ -13,10 +13,11 @@ import (
 	"sort"
 	"strings"
 
-	"acta/internal/client"
 	"charm.land/huh/v2"
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
+
+	"acta/internal/client"
 )
 
 type App struct {
@@ -34,19 +35,55 @@ func NewCommand(in *os.File, out, errOut *os.File) (*cobra.Command, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &App{repo: Repository{dir}, vault: newVault(dir), input: in, out: out, errOut: errOut, interactive: term.IsTerminal(in.Fd()) && term.IsTerminal(errOut.Fd())}
+	a := &App{
+		repo:        Repository{dir},
+		vault:       newVault(dir),
+		input:       in,
+		out:         out,
+		errOut:      errOut,
+		interactive: term.IsTerminal(in.Fd()) && term.IsTerminal(errOut.Fd()),
+	}
 	return a.command(), nil
 }
 func (a *App) command() *cobra.Command {
-	root := &cobra.Command{Use: "acta", Short: "Acta for your terminal", SilenceUsage: true, SilenceErrors: true}
+	root := &cobra.Command{
+		Use:           "acta",
+		Short:         "Acta for your terminal",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
 	root.SetIn(a.input)
 	root.SetOut(a.out)
 	root.SetErr(a.errOut)
-	root.PersistentFlags().StringVarP(&a.profile, "profile", "p", "", "Use this profile instead of the active profile")
+	root.PersistentFlags().StringVarP(
+		&a.profile,
+		"profile",
+		"p",
+		"",
+		"Use this profile instead of the active profile",
+	)
 	root.PersistentFlags().BoolVar(&a.json, "json", false, "Write structured JSON output")
-	root.AddCommand(a.loginCommand(), a.profileCommand(), a.taskCommand(), a.releaseCommand(), a.documentCommand(), a.workspaceCommand())
-	status := &cobra.Command{Use: "status", Aliases: []string{"whoami"}, Short: "Show the selected server, account and credential source", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return a.status(cmd.Context()) }}
-	logout := &cobra.Command{Use: "logout", Short: "Revoke the selected session and remove its saved credential", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return a.logout(cmd.Context()) }}
+	root.AddCommand(
+		a.loginCommand(),
+		a.profileCommand(),
+		a.taskCommand(),
+		a.releaseCommand(),
+		a.documentCommand(),
+		a.workspaceCommand(),
+	)
+	status := &cobra.Command{
+		Use:     "status",
+		Aliases: []string{"whoami"},
+		Short:   "Show the selected server, account and credential source",
+		Args:    cobra.NoArgs,
+		RunE:    func(cmd *cobra.Command, _ []string) error { return a.status(cmd.Context()) },
+	}
+	logout := &cobra.Command{
+		Use:   "logout",
+		Short: "Revoke the selected session and remove its saved credential",
+		Args:  cobra.NoArgs,
+		RunE:  func(cmd *cobra.Command, _ []string) error { return a.logout(cmd.Context()) },
+	}
 	root.AddCommand(status, logout)
 	_ = root.RegisterFlagCompletionFunc("profile", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 		c, e := a.repo.Load()
@@ -139,11 +176,20 @@ func (a *App) status(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	text := fmt.Sprintf("Profile: %s\nServer: %s\nAccount: @%s\nCredential: %s", name, p.URL, account.Username, source)
+	text := fmt.Sprintf(
+		"Profile: %s\nServer: %s\nAccount: @%s\nCredential: %s",
+		name,
+		p.URL,
+		account.Username,
+		source,
+	)
 	if account.MFARequired {
 		text += "\nMFA setup is required in the browser before using Acta."
 	}
-	return a.emit(map[string]any{"profile": name, "server": p.URL, "credential_source": source, "account": account}, text)
+	return a.emit(
+		map[string]any{"profile": name, "server": p.URL, "credential_source": source, "account": account},
+		text,
+	)
 }
 func (a *App) logout(ctx context.Context) error {
 	name, p, err := a.selected()
@@ -163,7 +209,10 @@ func (a *App) logout(ctx context.Context) error {
 		}
 	}
 	if source == "ACTA_TOKEN" {
-		return a.emit(map[string]any{"revoked": true, "credential_source": source}, "Environment-provided session revoked. Unset ACTA_TOKEN to stop using it; saved profile credentials were retained.")
+		return a.emit(
+			map[string]any{"revoked": true, "credential_source": source},
+			"Environment-provided session revoked. Unset ACTA_TOKEN to stop using it; saved profile credentials were retained.",
+		)
 	}
 	err = a.repo.Update(func(c *Config) error {
 		if c.Profiles[name] != p {
@@ -194,7 +243,15 @@ func (a *App) profileCommand() *cobra.Command {
 		lines := []string{}
 		for _, n := range names(c) {
 			p := c.Profiles[n]
-			rows = append(rows, map[string]any{"name": n, "active": n == c.Active, "server": p.URL, "has_saved_credential": p.Credential != ""})
+			rows = append(
+				rows,
+				map[string]any{
+					"name":                 n,
+					"active":               n == c.Active,
+					"server":               p.URL,
+					"has_saved_credential": p.Credential != "",
+				},
+			)
 			mark := " "
 			if n == c.Active {
 				mark = "*"
@@ -238,7 +295,10 @@ func (a *App) profileCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return a.emit(map[string]string{"profile": args[0], "server": server}, "Created profile "+args[0]+". Sign in with acta -p "+args[0]+" login.")
+		return a.emit(
+			map[string]string{"profile": args[0], "server": server},
+			"Created profile "+args[0]+". Sign in with acta -p "+args[0]+" login.",
+		)
 	}}
 	add.Flags().StringVar(&server, "server", "", "Server URL (optional)")
 	cmd.AddCommand(add)

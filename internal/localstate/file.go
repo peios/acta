@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 )
 
+// Write atomically replaces path with private JSON and syncs the file and its directory.
 func Write(path string, value any) error {
 	raw, err := json.Marshal(value)
 	if err != nil {
@@ -20,6 +21,7 @@ func Write(path string, value any) error {
 	if err != nil {
 		return err
 	}
+	// After rename the temporary name is absent; cleanup failure must not hide a write error.
 	defer os.Remove(f.Name())
 	if err = f.Chmod(0600); err == nil {
 		_, err = f.Write(raw)
@@ -41,9 +43,12 @@ func Write(path string, value any) error {
 	if err != nil {
 		return err
 	}
+	// Sync reports durability failures; closing the read-only directory adds no data to flush.
 	defer d.Close()
 	return d.Sync()
 }
+
+// Read decodes the JSON file into value and returns filesystem or decoding errors.
 func Read(path string, value any) error {
 	raw, err := os.ReadFile(path)
 	if err != nil {

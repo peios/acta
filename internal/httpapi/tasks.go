@@ -1,10 +1,11 @@
 package httpapi
 
 import (
-	"acta/internal/tasks"
 	"net/http"
 	"strconv"
 	"time"
+
+	"acta/internal/tasks"
 )
 
 func (h *Handler) taskRoutes(m *http.ServeMux) {
@@ -23,7 +24,16 @@ func (h *Handler) taskRoutes(m *http.ServeMux) {
 	})
 	m.HandleFunc("GET /api/tasks/search", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
-		v, e := h.management.SearchTasks(r.Context(), token(r, h.sessionCookie), tasks.SearchQuery{IncludeArchived: q.Get("include_archived") == "true", Query: q.Get("q"), Workspace: q.Get("workspace"), Cursor: q.Get("cursor")})
+		v, e := h.management.SearchTasks(
+			r.Context(),
+			token(r, h.sessionCookie),
+			tasks.SearchQuery{
+				IncludeArchived: q.Get("include_archived") == "true",
+				Query:           q.Get("q"),
+				Workspace:       q.Get("workspace"),
+				Cursor:          q.Get("cursor"),
+			},
+		)
 		if e != nil {
 			failure(w, e)
 			return
@@ -50,7 +60,13 @@ func (h *Handler) taskRoutes(m *http.ServeMux) {
 		if !decode(w, r, &in) {
 			return
 		}
-		if e := h.management.TaskPrefix(r.Context(), token(r, h.sessionCookie), r.PathValue("workspace"), in.Prefix, in.Version); e != nil {
+		if e := h.management.TaskPrefix(
+			r.Context(),
+			token(r, h.sessionCookie),
+			r.PathValue("workspace"),
+			in.Prefix,
+			in.Version,
+		); e != nil {
 			failure(w, e)
 			return
 		}
@@ -61,7 +77,12 @@ func (h *Handler) taskRoutes(m *http.ServeMux) {
 		if !decode(w, r, &in) {
 			return
 		}
-		if e := h.management.TaskStatuses(r.Context(), token(r, h.sessionCookie), r.PathValue("workspace"), in); e != nil {
+		if e := h.management.TaskStatuses(
+			r.Context(),
+			token(r, h.sessionCookie),
+			r.PathValue("workspace"),
+			in,
+		); e != nil {
 			failure(w, e)
 			return
 		}
@@ -70,9 +91,34 @@ func (h *Handler) taskRoutes(m *http.ServeMux) {
 	m.HandleFunc("GET /api/workspaces/{workspace}/tasks", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		before, _ := strconv.ParseInt(q.Get("before"), 10, 64)
-		f := tasks.Filter{Board: q.Get("board"), Archived: q.Get("archived") == "true", Group: q.Get("group"), GroupID: q.Get("group_id"), Sort: q.Get("sort"), Direction: q.Get("direction"), Cursor: q.Get("cursor"), Parent: q.Get("parent"), State: q.Get("state"), Query: q.Get("q"), Before: before, Priorities: q["priority"], Types: q["type"], Sizes: q["size"], Releases: q["release"], Statuses: q["status"], Assignees: q["assignee"], Unassigned: q.Get("unassigned") == "true", AllDepths: q.Get("all_depths") == "true"}
+		f := tasks.Filter{
+			Board:      q.Get("board"),
+			Archived:   q.Get("archived") == "true",
+			Group:      q.Get("group"),
+			GroupID:    q.Get("group_id"),
+			Sort:       q.Get("sort"),
+			Direction:  q.Get("direction"),
+			Cursor:     q.Get("cursor"),
+			Parent:     q.Get("parent"),
+			State:      q.Get("state"),
+			Query:      q.Get("q"),
+			Before:     before,
+			Priorities: q["priority"],
+			Types:      q["type"],
+			Sizes:      q["size"],
+			Releases:   q["release"],
+			Statuses:   q["status"],
+			Assignees:  q["assignee"],
+			Unassigned: q.Get("unassigned") == "true",
+			AllDepths:  q.Get("all_depths") == "true",
+		}
 		if q.Get("summary") == "true" {
-			v, e := h.management.TaskSummaries(r.Context(), token(r, h.sessionCookie), r.PathValue("workspace"), f)
+			v, e := h.management.TaskSummaries(
+				r.Context(),
+				token(r, h.sessionCookie),
+				r.PathValue("workspace"),
+				f,
+			)
 			if e != nil {
 				failure(w, e)
 				return
@@ -92,7 +138,12 @@ func (h *Handler) taskRoutes(m *http.ServeMux) {
 		if !decode(w, r, &in) {
 			return
 		}
-		v, e := h.management.CreateTask(r.Context(), token(r, h.sessionCookie), r.PathValue("workspace"), in)
+		v, e := h.management.CreateTask(
+			r.Context(),
+			token(r, h.sessionCookie),
+			r.PathValue("workspace"),
+			in,
+		)
 		if e != nil {
 			failure(w, e)
 			return
@@ -101,7 +152,12 @@ func (h *Handler) taskRoutes(m *http.ServeMux) {
 	})
 	m.HandleFunc("GET /api/tasks/{task}", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("include") == "subtasks" {
-			v, e := h.management.InspectTask(r.Context(), token(r, h.sessionCookie), r.PathValue("task"), r.URL.Query().Get("subtask_cursor"))
+			v, e := h.management.InspectTask(
+				r.Context(),
+				token(r, h.sessionCookie),
+				r.PathValue("task"),
+				r.URL.Query().Get("subtask_cursor"),
+			)
 			if e != nil {
 				failure(w, e)
 				return
@@ -129,7 +185,12 @@ func (h *Handler) taskRoutes(m *http.ServeMux) {
 		writeJSON(w, 200, v)
 	})
 	m.HandleFunc("GET /api/workspaces/{workspace}/task-groups", func(w http.ResponseWriter, r *http.Request) {
-		v, e := h.management.TaskGroups(r.Context(), token(r, h.sessionCookie), r.PathValue("workspace"), r.URL.Query().Get("group"))
+		v, e := h.management.TaskGroups(
+			r.Context(),
+			token(r, h.sessionCookie),
+			r.PathValue("workspace"),
+			r.URL.Query().Get("group"),
+		)
 		if e != nil {
 			failure(w, e)
 			return
@@ -137,7 +198,12 @@ func (h *Handler) taskRoutes(m *http.ServeMux) {
 		writeJSON(w, 200, map[string]any{"groups": v})
 	})
 	m.HandleFunc("GET /api/workspaces/{workspace}/task-people", func(w http.ResponseWriter, r *http.Request) {
-		v, e := h.management.TaskPeople(r.Context(), token(r, h.sessionCookie), r.PathValue("workspace"), r.URL.Query().Get("q"))
+		v, e := h.management.TaskPeople(
+			r.Context(),
+			token(r, h.sessionCookie),
+			r.PathValue("workspace"),
+			r.URL.Query().Get("q"),
+		)
 		if e != nil {
 			failure(w, e)
 			return

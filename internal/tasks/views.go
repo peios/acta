@@ -1,10 +1,11 @@
 package tasks
 
 import (
-	"github.com/google/uuid"
 	"slices"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/google/uuid"
 )
 
 type ViewFilters struct {

@@ -6,15 +6,22 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"acta/internal/client"
 	"acta/internal/tasks"
-	"github.com/spf13/cobra"
 )
 
 func (a *App) releaseCommand() *cobra.Command {
 	root := &cobra.Command{Use: "release", Short: "List, inspect, create and edit workspace releases"}
 	var workspace string
-	root.PersistentFlags().StringVarP(&workspace, "workspace", "w", "", "Workspace UUID or slug (see acta workspace list)")
+	root.PersistentFlags().StringVarP(
+		&workspace,
+		"workspace",
+		"w",
+		"",
+		"Workspace UUID or slug (see acta workspace list)",
+	)
 	requireWorkspace := func() error {
 		if strings.TrimSpace(workspace) == "" {
 			return errors.New("Supply --workspace <UUID-or-slug>; use acta workspace list")
@@ -59,7 +66,12 @@ func (a *App) releaseCommand() *cobra.Command {
 	create.Flags().StringVar(&createIn.Codename, "codename", "", "Optional codename")
 	create.Flags().StringVar(&createIn.State, "state", "planned", "planned, open, frozen or released")
 	create.Flags().StringVar(&createIn.Description, "notes", "", "Markdown release notes")
-	create.Flags().StringVar(&notesFile, "notes-file", "", "Read Markdown notes from a file, or - for stdin")
+	create.Flags().StringVar(
+		&notesFile,
+		"notes-file",
+		"",
+		"Read Markdown notes from a file, or - for stdin",
+	)
 	create.MarkFlagsMutuallyExclusive("notes", "notes-file")
 	var name, codename, state, notes string
 	var version int64
@@ -71,7 +83,12 @@ func (a *App) releaseCommand() *cobra.Command {
 			return errors.New("Supply --version from release get")
 		}
 		in := tasks.ReleaseUpdate{Version: version}
-		for flag, target := range map[string]**string{"name": &in.Name, "codename": &in.Codename, "state": &in.State, "notes": &in.Description} {
+		for flag, target := range map[string]**string{
+			"name":     &in.Name,
+			"codename": &in.Codename,
+			"state":    &in.State,
+			"notes":    &in.Description,
+		} {
 			if cmd.Flags().Changed(flag) {
 				v, _ := cmd.Flags().GetString(flag)
 				*target = &v
@@ -93,9 +110,19 @@ func (a *App) releaseCommand() *cobra.Command {
 	}}
 	edit.Flags().StringVar(&name, "name", "", "New name")
 	edit.Flags().StringVar(&codename, "codename", "", "New codename; empty clears it")
-	edit.Flags().StringVar(&state, "state", "", "planned, open, frozen or released; any transition is allowed")
+	edit.Flags().StringVar(
+		&state,
+		"state",
+		"",
+		"planned, open, frozen or released; any transition is allowed",
+	)
 	edit.Flags().StringVar(&notes, "notes", "", "Replacement Markdown notes")
-	edit.Flags().StringVar(&notesFile, "notes-file", "", "Read replacement notes from a file, or - for stdin")
+	edit.Flags().StringVar(
+		&notesFile,
+		"notes-file",
+		"",
+		"Read replacement notes from a file, or - for stdin",
+	)
 	edit.MarkFlagsMutuallyExclusive("notes", "notes-file")
 	edit.Flags().Int64Var(&version, "version", 0, "Expected release version")
 	root.AddCommand(list, get, create, edit)
@@ -119,12 +146,29 @@ func renderReleases(rs []tasks.Release) string {
 	}
 	rows := [][]string{}
 	for _, r := range rs {
-		rows = append(rows, []string{releaseName(r), r.State, fmt.Sprintf("%d/%d", r.Finished, r.Total), r.ID, fmt.Sprint(r.Version)})
+		rows = append(
+			rows,
+			[]string{
+				releaseName(r),
+				r.State,
+				fmt.Sprintf("%d/%d", r.Finished, r.Total),
+				r.ID,
+				fmt.Sprint(r.Version),
+			},
+		)
 	}
 	return table([]string{"RELEASE", "STATE", "FINISHED", "ID", "VERSION"}, rows)
 }
 func renderRelease(r tasks.Release) string {
-	out := fmt.Sprintf("%s\nID: %s\nState: %s\nFinished: %d of %d tasks\nVersion: %d\n\nNotes\n", releaseName(r), r.ID, r.State, r.Finished, r.Total, r.Version)
+	out := fmt.Sprintf(
+		"%s\nID: %s\nState: %s\nFinished: %d of %d tasks\nVersion: %d\n\nNotes\n",
+		releaseName(r),
+		r.ID,
+		r.State,
+		r.Finished,
+		r.Total,
+		r.Version,
+	)
 	if r.Description == "" {
 		return terminalText(out+"(empty)", true)
 	}

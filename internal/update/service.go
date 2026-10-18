@@ -11,9 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"acta/internal/localstate"
 	"github.com/gofrs/flock"
 	"github.com/google/uuid"
+
+	"acta/internal/localstate"
 )
 
 var ErrBusy = errors.New("an update is already in progress")
@@ -75,7 +76,14 @@ func Open(c Config, e Engine) (*Service, error) {
 	if !ok {
 		return nil, ErrBusy
 	}
-	s := &Service{c: c, key: key, engine: e, lock: l, wake: make(chan struct{}, 1), check: make(chan struct{}, 1)}
+	s := &Service{
+		c:      c,
+		key:    key,
+		engine: e,
+		lock:   l,
+		wake:   make(chan struct{}, 1),
+		check:  make(chan struct{}, 1),
+	}
 	if err = localstate.Read(filepath.Join(c.StateDir, "state.json"), &s.state); err != nil {
 		l.Unlock()
 		return nil, fmt.Errorf("load updater journal (bootstrap first): %w", err)
@@ -134,7 +142,15 @@ func (s *Service) Install(id, actor string) (Job, error) {
 	if err = Compatible(current, next); err != nil {
 		return Job{}, err
 	}
-	j := Job{ID: uuid.NewString(), Actor: actor, Phase: "preparing", Previous: s.state.Current, Target: *s.state.Available, Started: time.Now().UTC(), Updated: time.Now().UTC()}
+	j := Job{
+		ID:       uuid.NewString(),
+		Actor:    actor,
+		Phase:    "preparing",
+		Previous: s.state.Current,
+		Target:   *s.state.Available,
+		Started:  time.Now().UTC(),
+		Updated:  time.Now().UTC(),
+	}
 	old := s.state.Jobs
 	s.state.Jobs = append([]Job{j}, old...)
 	if err = s.save(); err != nil {
@@ -235,7 +251,10 @@ func (s *Service) advance(parent context.Context) error {
 		}
 	}
 	if initial.Phase == "applying" || initial.Phase == "validating" {
-		if err := s.transition("restoring", errors.New("update interrupted before cutover; recovering previous release")); err != nil {
+		if err := s.transition(
+			"restoring",
+			errors.New("update interrupted before cutover; recovering previous release"),
+		); err != nil {
 			return err
 		}
 	}

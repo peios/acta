@@ -1,16 +1,18 @@
 package cli
 
 import (
-	"acta/internal/client"
-	"acta/internal/documents"
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/spf13/cobra"
 	"io"
 	"net/url"
 	"os"
 	"path/filepath"
+
+	"github.com/spf13/cobra"
+
+	"acta/internal/client"
+	"acta/internal/documents"
 )
 
 func renderDocumentJSON[T any](v T) string {
@@ -23,7 +25,13 @@ func (a *App) documentCommand() *cobra.Command {
 	list := &cobra.Command{Use: "list <task>", Args: cobra.ExactArgs(1), Short: "List task documents", RunE: func(cmd *cobra.Command, args []string) error {
 		return runTask(a, cmd, func(ctx context.Context, c *client.Client) (documents.Page, error) {
 			var out documents.Page
-			e := c.Call(ctx, "GET", "tasks/"+url.PathEscape(args[0])+"/documents?cursor="+url.QueryEscape(cursor), nil, &out)
+			e := c.Call(
+				ctx,
+				"GET",
+				"tasks/"+url.PathEscape(args[0])+"/documents?cursor="+url.QueryEscape(cursor),
+				nil,
+				&out,
+			)
 			return out, e
 		}, renderDocumentJSON[documents.Page])
 	}}

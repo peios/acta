@@ -22,7 +22,12 @@ type Config struct {
 }
 
 func Parse(publicURL, developmentOrigin string) (Config, error) {
-	c := Config{PublicURL: publicURL, DevelopmentOrigin: developmentOrigin, Origins: map[string]bool{}, Hosts: map[string]bool{}}
+	c := Config{
+		PublicURL:         publicURL,
+		DevelopmentOrigin: developmentOrigin,
+		Origins:           map[string]bool{},
+		Hosts:             map[string]bool{},
+	}
 	for i, raw := range []string{publicURL, developmentOrigin} {
 		if i == 1 && raw == "" {
 			continue

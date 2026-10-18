@@ -38,14 +38,23 @@ func NormalizeViewDisplay(d ViewDisplay) (ViewDisplay, error) {
 	if d.Density == "" {
 		d.Density = "comfortable"
 	}
-	if !slices.Contains([]string{"number", "title", "status", "created", "updated", "priority", "type", "size"}, d.Sort) {
+	if !slices.Contains(
+		[]string{"number", "title", "status", "created", "updated", "priority", "type", "size"},
+		d.Sort,
+	) {
 		return d, field("sort", "Choose a supported sort field.")
 	}
 	if d.Direction != "asc" && d.Direction != "desc" {
 		return d, field("direction", "Choose ascending or descending order.")
 	}
-	if !slices.Contains([]string{"none", "status", "assignee", "agents", "priority", "type", "size", "release"}, d.Group) {
-		return d, field("group", "Choose no grouping, status, assignee, agents, priority, type, size or release.")
+	if !slices.Contains(
+		[]string{"none", "status", "assignee", "agents", "priority", "type", "size", "release"},
+		d.Group,
+	) {
+		return d, field(
+			"group",
+			"Choose no grouping, status, assignee, agents, priority, type, size or release.",
+		)
 	}
 	if d.Density != "comfortable" && d.Density != "compact" {
 		return d, field("density", "Choose comfortable or compact density.")

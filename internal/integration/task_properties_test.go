@@ -1,11 +1,12 @@
 package integration
 
 import (
-	"acta/internal/accounts"
-	"acta/internal/tasks"
 	"errors"
 	"slices"
 	"testing"
+
+	"acta/internal/accounts"
+	"acta/internal/tasks"
 )
 
 func TestTaskProperties(t *testing.T) {
@@ -17,7 +18,12 @@ func TestTaskProperties(t *testing.T) {
 	if parent.Priority != "none" || parent.Type != "none" || parent.Size != "none" {
 		t.Fatal(parent)
 	}
-	child, e := m.CreateTask(ctx, f.token, w.ID, tasks.Create{Title: "Child", ParentID: parent.ID, Priority: "high", Type: "bug", Size: "xl"})
+	child, e := m.CreateTask(
+		ctx,
+		f.token,
+		w.ID,
+		tasks.Create{Title: "Child", ParentID: parent.ID, Priority: "high", Type: "bug", Size: "xl"},
+	)
 	must(t, e)
 	old := parent
 	parent, e = patchTask(t, f, parent, "priority", "high")
@@ -37,7 +43,12 @@ func TestTaskProperties(t *testing.T) {
 	if parent.Priority != "high" || parent.Size != "none" {
 		t.Fatal("independent fields or size rollup", parent)
 	}
-	for _, filter := range []tasks.Filter{{Priorities: []string{"high"}, Types: []string{"bug"}}, {Group: "priority", GroupID: "high"}, {Group: "type", GroupID: "bug"}, {Group: "size", GroupID: "none"}} {
+	for _, filter := range []tasks.Filter{
+		{Priorities: []string{"high"}, Types: []string{"bug"}},
+		{Group: "priority", GroupID: "high"},
+		{Group: "type", GroupID: "bug"},
+		{Group: "size", GroupID: "none"},
+	} {
 		filter.State = "all"
 		p, e := m.Tasks(ctx, f.token, w.ID, filter)
 		must(t, e)
@@ -45,12 +56,22 @@ func TestTaskProperties(t *testing.T) {
 			t.Fatal("root filtering", filter, p)
 		}
 	}
-	p, e := m.Tasks(ctx, f.token, w.ID, tasks.Filter{State: "all", Priorities: []string{"high"}, Sizes: []string{"xl"}})
+	p, e := m.Tasks(
+		ctx,
+		f.token,
+		w.ID,
+		tasks.Filter{State: "all", Priorities: []string{"high"}, Sizes: []string{"xl"}},
+	)
 	must(t, e)
 	if p.Total != 0 {
 		t.Fatal("child promoted", p)
 	}
-	p, e = m.Tasks(ctx, f.token, w.ID, tasks.Filter{State: "all", Parent: parent.ID, Sizes: []string{"xl"}})
+	p, e = m.Tasks(
+		ctx,
+		f.token,
+		w.ID,
+		tasks.Filter{State: "all", Parent: parent.ID, Sizes: []string{"xl"}},
+	)
 	must(t, e)
 	if p.Total != 1 || p.Tasks[0].ID != child.ID {
 		t.Fatal(p)
@@ -87,7 +108,24 @@ func TestTaskProperties(t *testing.T) {
 	if parent.Priority != "none" {
 		t.Fatal("clear", parent)
 	}
-	view, e := m.CreateTaskView(ctx, f.token, w.ID, "Metadata", tasks.ViewSettings{Filters: tasks.ViewFilters{Priorities: []string{"high", "none", "high"}, Types: []string{"bug"}, Sizes: []string{"s", "m"}}, Display: tasks.ViewDisplay{Group: "priority", Sort: "size", Columns: []string{"priority", "type", "size"}}})
+	view, e := m.CreateTaskView(
+		ctx,
+		f.token,
+		w.ID,
+		"Metadata",
+		tasks.ViewSettings{
+			Filters: tasks.ViewFilters{
+				Priorities: []string{"high", "none", "high"},
+				Types:      []string{"bug"},
+				Sizes:      []string{"s", "m"},
+			},
+			Display: tasks.ViewDisplay{
+				Group:   "priority",
+				Sort:    "size",
+				Columns: []string{"priority", "type", "size"},
+			},
+		},
+	)
 	must(t, e)
 	views, e := m.TaskViews(ctx, f.token, w.ID)
 	must(t, e)

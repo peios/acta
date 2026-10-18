@@ -30,7 +30,12 @@ func TestPGBackRestRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := PGBackRest{Config: c}
-	p := Policy{Destination: c.Destinations[0].ID, Mode: "continuous", ArchiveAgeMinutes: 5, RetainFull: 2}
+	p := Policy{
+		Destination:       c.Destinations[0].ID,
+		Mode:              "continuous",
+		ArchiveAgeMinutes: 5,
+		RetainFull:        2,
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
 	seed, err := e.connect(ctx)
@@ -44,8 +49,17 @@ func TestPGBackRestRecovery(t *testing.T) {
 	aead, _ := cipher.NewGCM(block)
 	nonce := make([]byte, aead.NonceSize())
 	rand.Read(nonce)
-	encrypted := aead.Seal(nonce, nonce, []byte(`{}`), []byte("account:10000000-0000-0000-0000-000000000001"))
-	if _, err = seed.Exec(ctx, `UPDATE accounts SET security_data=$1 WHERE username='backup-review'`, encrypted); err != nil {
+	encrypted := aead.Seal(
+		nonce,
+		nonce,
+		[]byte(`{}`),
+		[]byte("account:10000000-0000-0000-0000-000000000001"),
+	)
+	if _, err = seed.Exec(
+		ctx,
+		`UPDATE accounts SET security_data=$1 WHERE username='backup-review'`,
+		encrypted,
+	); err != nil {
 		t.Fatal(err)
 	}
 	_, err = seed.Exec(ctx, `DELETE FROM recovery_probe WHERE id>1;
@@ -79,13 +93,23 @@ func TestPGBackRestRecovery(t *testing.T) {
 	target := filepath.Join(c.RestoreRoot, "ok-"+uuid.NewString())
 	// Source PostgreSQL and source-only metadata are deliberately unavailable.
 	sourceCTL := filepath.Join(c.PostgresBin, "pg_ctl")
-	if _, err = command(ctx, sourceCTL, []string{"-D", "/review/source", "-m", "fast", "-w", "stop"}, nil); err != nil {
+	if _, err = command(
+		ctx,
+		sourceCTL,
+		[]string{"-D", "/review/source", "-m", "fast", "-w", "stop"},
+		nil,
+	); err != nil {
 		t.Fatal(err)
 	}
 	sourceStarted := false
 	defer func() {
 		if !sourceStarted {
-			command(context.Background(), sourceCTL, []string{"-D", "/review/source", "-l", "/review/source.log", "-w", "start"}, nil)
+			command(
+				context.Background(),
+				sourceCTL,
+				[]string{"-D", "/review/source", "-l", "/review/source.log", "-w", "start"},
+				nil,
+			)
 		}
 	}()
 	offline := e
@@ -99,7 +123,12 @@ func TestPGBackRestRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = command(ctx, sourceCTL, []string{"-D", "/review/source", "-l", "/review/source.log", "-w", "start"}, nil); err != nil {
+	if _, err = command(
+		ctx,
+		sourceCTL,
+		[]string{"-D", "/review/source", "-l", "/review/source.log", "-w", "start"},
+		nil,
+	); err != nil {
 		t.Fatal(err)
 	}
 	sourceStarted = true
@@ -131,12 +160,33 @@ func TestPGBackRestRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	pitr := filepath.Join(c.RestoreRoot, "time-"+uuid.NewString())
-	if _, err = e.Restore(ctx, p, point.Label, c.RecoveryIdentityFile, pitr, at.Format(time.RFC3339Nano)); err != nil {
+	if _, err = e.Restore(
+		ctx,
+		p,
+		point.Label,
+		c.RecoveryIdentityFile,
+		pitr,
+		at.Format(time.RFC3339Nano),
+	); err != nil {
 		t.Fatal(err)
 	}
 	data := filepath.Join(pitr, "pgdata")
 	pgctl := filepath.Join(c.PostgresBin, "pg_ctl")
-	if _, err = command(ctx, pgctl, []string{"-D", data, "-l", filepath.Join(pitr, "probe.log"), "-o", "-c config_file=" + filepath.Join(pitr, "postgresql.conf"), "-w", "start"}, nil); err != nil {
+	if _, err = command(
+		ctx,
+		pgctl,
+		[]string{
+			"-D",
+			data,
+			"-l",
+			filepath.Join(pitr, "probe.log"),
+			"-o",
+			"-c config_file=" + filepath.Join(pitr, "postgresql.conf"),
+			"-w",
+			"start",
+		},
+		nil,
+	); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
@@ -179,7 +229,21 @@ func TestPGBackRestRecovery(t *testing.T) {
 	}
 	// Check all cascading credentials and deliveries, and preserve user work.
 	td := filepath.Join(target, "pgdata")
-	if _, err = command(ctx, pgctl, []string{"-D", td, "-l", filepath.Join(target, "assert.log"), "-o", isolatedOptions(target), "-w", "start"}, nil); err != nil {
+	if _, err = command(
+		ctx,
+		pgctl,
+		[]string{
+			"-D",
+			td,
+			"-l",
+			filepath.Join(target, "assert.log"),
+			"-o",
+			isolatedOptions(target),
+			"-w",
+			"start",
+		},
+		nil,
+	); err != nil {
 		t.Fatal(err)
 	}
 	pc.Host = filepath.Join(target, "socket")
@@ -188,7 +252,13 @@ func TestPGBackRestRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stale, taskCount int
-	err = restored.QueryRow(ctx, `SELECT (SELECT count(*) FROM browser_sessions)+(SELECT count(*) FROM oauth_tokens)+(SELECT count(*) FROM push_subscriptions)+(SELECT count(*) FROM push_deliveries)+(SELECT count(*) FROM notifications WHERE read_at IS NULL OR resolved_at IS NULL),(SELECT count(*) FROM tasks)`).Scan(&stale, &taskCount)
+	err = restored.QueryRow(
+		ctx,
+		`SELECT (SELECT count(*) FROM browser_sessions)+(SELECT count(*) FROM oauth_tokens)+(SELECT count(*) FROM push_subscriptions)+(SELECT count(*) FROM push_deliveries)+(SELECT count(*) FROM notifications WHERE read_at IS NULL OR resolved_at IS NULL),(SELECT count(*) FROM tasks)`,
+	).Scan(
+		&stale,
+		&taskCount,
+	)
 	restored.Close(ctx)
 	command(ctx, pgctl, []string{"-D", td, "-m", "fast", "-w", "stop"}, nil)
 	if err != nil || stale != 0 || taskCount != 1 {
