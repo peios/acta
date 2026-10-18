@@ -69,8 +69,8 @@ func (f *fakeEngine) Restore(_ context.Context, j Job) error {
 	f.restored = j.RestoreData
 	return f.step("restore")
 }
-func (f *fakeEngine) Publish(_ context.Context, _ Job, rollback bool) error {
-	if rollback {
+func (f *fakeEngine) Publish(_ context.Context, _ Job, mode PublishMode) error {
+	if mode == PublishPrevious {
 		return f.step("publish-old")
 	}
 	return f.step("publish-new")

@@ -14,6 +14,9 @@ import (
 	"acta/internal/backup"
 )
 
+// Serve owns the local operator socket until it returns. Cancel ctx to stop it;
+// the caller must also cancel ctx if Serve returns early, then stop Run before
+// closing the service. Filesystem and listener failures are returned to the owner.
 func (s *Service) Serve(ctx context.Context) error {
 	raw, err := backup.Secret(s.c.TokenFile)
 	if err != nil {

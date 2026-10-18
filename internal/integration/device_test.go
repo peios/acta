@@ -210,7 +210,7 @@ func TestDeviceHTTPAndClient(t *testing.T) {
 	if recorder.Code != 200 {
 		t.Fatal(recorder.Code, recorder.Body.String())
 	}
-	d.Interval = 1
+	d.IntervalSeconds = 1
 	secret, e := c.Wait(t.Context(), d)
 	must(t, e)
 	c.Token = secret

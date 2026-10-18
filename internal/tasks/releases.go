@@ -16,9 +16,9 @@ const NoRelease = "none"
 
 var ErrReleaseConflict = errors.New("This release changed since you read it. Reload its current version before saving.")
 
-// ReleaseStates are ordered by lifecycle. Any transition is allowed, including
-// backwards, so a mistaken transition can be undone.
-var ReleaseStates = []string{"planned", "open", "frozen", "released"}
+// releaseStates is read-only after initialization and private to validation.
+// Any transition is allowed, including backwards, to undo mistaken transitions.
+var releaseStates = []string{"planned", "open", "frozen", "released"}
 
 // ReleaseRef is the compact form carried on tasks, so readers see a release's
 // state without a second request.
@@ -83,7 +83,7 @@ func ReleaseState(v string) (string, error) {
 	if v == "" {
 		v = "planned"
 	}
-	if !slices.Contains(ReleaseStates, v) {
+	if !slices.Contains(releaseStates, v) {
 		return "", field("state", "Choose planned, open, frozen or released.")
 	}
 	return v, nil

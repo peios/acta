@@ -145,10 +145,10 @@ func (c *Client) Logout(ctx context.Context) error {
 }
 
 type Device struct {
-	DeviceCode string `json:"device_code"`
-	UserCode   string `json:"user_code"`
-	ExpiresIn  int    `json:"expires_in"`
-	Interval   int    `json:"interval"`
+	DeviceCode       string `json:"device_code"`
+	UserCode         string `json:"user_code"`
+	ExpiresInSeconds int    `json:"expires_in"`
+	IntervalSeconds  int    `json:"interval"`
 }
 
 func (c *Client) Start(ctx context.Context, machine string) (Device, error) {
@@ -157,12 +157,12 @@ func (c *Client) Start(ctx context.Context, machine string) (Device, error) {
 	return d, err
 }
 func (c *Client) Wait(ctx context.Context, d Device) (string, error) {
-	if d.Interval < 1 || d.ExpiresIn < 1 || d.ExpiresIn > 3600 {
+	if d.IntervalSeconds < 1 || d.ExpiresInSeconds < 1 || d.ExpiresInSeconds > 3600 {
 		return "", errors.New("Invalid device login response")
 	}
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(d.ExpiresIn)*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(d.ExpiresInSeconds)*time.Second)
 	defer cancel()
-	delay := time.Duration(d.Interval) * time.Second
+	delay := time.Duration(d.IntervalSeconds) * time.Second
 	for {
 		timer := time.NewTimer(delay)
 		select {

@@ -72,8 +72,8 @@ func (t workspaceTx) migrationAuthor(ctx context.Context, f migrationFields, key
 	return id, e
 }
 func checkMigrationFields(op string, in migration.Request) error {
-	allowed, ok := migration.Fields[in.Kind]
-	if !ok {
+	allowed := migration.FieldsFor(in.Kind)
+	if allowed == nil {
 		return migration.Invalid("kind", "Unknown migration record kind.")
 	}
 	for k := range in.Fields {

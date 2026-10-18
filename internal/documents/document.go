@@ -58,6 +58,10 @@ type Save struct {
 	SHA256    string
 }
 
+// Validate normalizes s in place, assigning an ID for a new document and deriving
+// the title, media type and content hash. It returns a field error for invalid
+// metadata or content. Earlier normalizations remain applied on failure; callers
+// must not persist s unless validation succeeds. Content itself is never modified.
 func Validate(s *Save) error {
 	if s.ID == "" && s.Revision != 0 {
 		return Invalid("id", "Supply the document UUID when uploading a new version.")

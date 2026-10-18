@@ -39,6 +39,22 @@ type State struct {
 	CheckError string     `json:"check_error,omitempty"`
 	Jobs       []Job      `json:"jobs"`
 }
+
+// PublishMode selects which verified release becomes publicly writable.
+type PublishMode int
+
+const (
+	PublishTarget PublishMode = iota
+	PublishPrevious
+)
+
+// Engine performs installation changes for a journalled job. Methods must honor
+// cancellation and reconcile owned resources when an interrupted phase is retried.
+// Prepare establishes recoverability; Quiesce closes public access; Snapshot
+// preserves the stopped database. Apply and Validate run with public access closed.
+// Restore returns to Previous, restoring data only when Job.RestoreData is set.
+// Publish reopens the selected release and must be safe to retry without restoring
+// data: clients may have written as soon as an earlier Publish attempt opened it.
 type Engine interface {
 	Prepare(context.Context, Job) error
 	Quiesce(context.Context, Job) error
@@ -46,8 +62,12 @@ type Engine interface {
 	Apply(context.Context, Job) error
 	Validate(context.Context, Job) error
 	Restore(context.Context, Job) error
-	Publish(context.Context, Job, bool) error
+	Publish(context.Context, Job, PublishMode) error
 }
+
+// Service owns the installation journal and its exclusive filesystem lock.
+// Its public operations synchronize access to state. Run must have one owner;
+// cancel and wait for Run and Serve before calling Close.
 type Service struct {
 	c        Config
 	key      []byte
@@ -60,6 +80,10 @@ type Service struct {
 	checking bool
 }
 
+// Open locks and verifies an existing journal; it does not start workers.
+// The caller owns the returned service and must Close it after workers stop.
+// ErrBusy means another service holds the lock. Other errors reject the journal
+// or installation configuration without starting installation changes.
 func Open(c Config, e Engine) (*Service, error) {
 	key, err := c.Key()
 	if err != nil {
@@ -108,12 +132,16 @@ func Open(c Config, e Engine) (*Service, error) {
 	}
 	return s, nil
 }
+
+// Close releases the journal lock after all service workers have stopped.
 func (s *Service) Close() error { return s.lock.Unlock() }
 func (s *Service) save() error {
 	return localstate.Write(filepath.Join(s.c.StateDir, "state.json"), s.state)
 }
 func terminal(p string) bool  { return p == "succeeded" || p == "rolled_back" || p == "failed" }
 func (s *Service) busy() bool { return len(s.state.Jobs) > 0 && !terminal(s.state.Jobs[0].Phase) }
+
+// View returns an independent snapshot that callers may modify without locking.
 func (s *Service) View() State {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -286,13 +314,13 @@ func (s *Service) advance(parent context.Context) error {
 			err = s.engine.Validate(ctx, j)
 			next = "committing"
 		case "committing":
-			err = s.engine.Publish(ctx, j, false)
+			err = s.engine.Publish(ctx, j, PublishTarget)
 			next = "succeeded"
 		case "restoring":
 			err = s.engine.Restore(ctx, j)
 			next = "rollback_committing"
 		case "rollback_committing":
-			err = s.engine.Publish(ctx, j, true)
+			err = s.engine.Publish(ctx, j, PublishPrevious)
 			next = "rolled_back"
 		default:
 			err = errors.New("unrecognised update phase")

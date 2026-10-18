@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "migration",
@@ -9,4 +9,10 @@ go_library(
     importpath = "acta/internal/migration",
     visibility = ["//:__subpackages__"],
     deps = ["//internal/accounts"],
+)
+
+go_test(
+    name = "migration_test",
+    srcs = ["schema_test.go"],
+    embed = [":migration"],
 )

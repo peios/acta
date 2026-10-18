@@ -55,7 +55,7 @@ func (h *Handler) migrationTools(s *mcp.Server, grants []string) {
 		"migration_schema",
 		"Read the accepted fields, attribution rules and workflow before using Migration Assistant. This connection has explicit superuser-delegated content authority.",
 	), func(ctx context.Context, in struct{}) (map[string]any, error) {
-		return map[string]any{"fields": migration.Fields, "instructions": migration.Instructions}, nil
+		return map[string]any{"fields": migration.Fields(), "instructions": migration.Instructions}, nil
 	})
 	addTaskTool(s, read(
 		"migration_find",

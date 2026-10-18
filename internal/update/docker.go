@@ -56,16 +56,16 @@ func (d Docker) compose(ctx context.Context, args ...string) ([]byte, error) {
 	return command(ctx, append(d.base(), args...)...)
 }
 func (d Docker) releases(j Job) (Release, Release, error) {
-	k, e := d.Config.Key()
-	if e != nil {
-		return Release{}, Release{}, e
+	key, err := d.Config.Key()
+	if err != nil {
+		return Release{}, Release{}, err
 	}
-	a, e := Verify(j.Previous, k, d.Config.Repository)
-	if e != nil {
-		return a, Release{}, e
+	previous, err := Verify(j.Previous, key, d.Config.Repository)
+	if err != nil {
+		return previous, Release{}, err
 	}
-	b, e := Verify(j.Target, k, d.Config.Repository)
-	return a, b, e
+	target, err := Verify(j.Target, key, d.Config.Repository)
+	return previous, target, err
 }
 func (d Docker) override(r Release, candidate bool) error {
 	services := map[string]any{}
@@ -89,11 +89,11 @@ func (d Docker) override(r Release, candidate bool) error {
 	)
 }
 func (d Docker) Prepare(ctx context.Context, j Job) error {
-	a, b, err := d.releases(j)
+	previous, target, err := d.releases(j)
 	if err != nil {
 		return err
 	}
-	if err = Compatible(a, b); err != nil {
+	if err = Compatible(previous, target); err != nil {
 		return err
 	}
 	// The installation must actually be running the journalled source images.
@@ -106,12 +106,12 @@ func (d Docker) Prepare(ctx context.Context, j Job) error {
 		if err != nil {
 			return err
 		}
-		if stringTrim(raw) != a.Images[service] {
+		if stringTrim(raw) != previous.Images[service] {
 			return fmt.Errorf("%s image has drifted from the recorded release", service)
 		}
 	}
 	for _, service := range []string{"app", "db", "backup", "caddy", "updater"} {
-		if _, err = command(ctx, "pull", b.Images[service]); err != nil {
+		if _, err = command(ctx, "pull", target.Images[service]); err != nil {
 			return err
 		}
 	}
@@ -477,16 +477,21 @@ func (d Docker) Restore(ctx context.Context, j Job) error {
 	}
 	return err
 }
-func (d Docker) Publish(ctx context.Context, j Job, rollback bool) error {
-	a, b, err := d.releases(j)
+func (d Docker) Publish(ctx context.Context, j Job, mode PublishMode) error {
+	previous, target, err := d.releases(j)
 	if err != nil {
 		return err
 	}
-	r := b
-	if rollback {
-		r = a
+	var release Release
+	switch mode {
+	case PublishTarget:
+		release = target
+	case PublishPrevious:
+		release = previous
+	default:
+		return errors.New("unknown publish mode")
 	}
-	if err = d.override(r, false); err != nil {
+	if err = d.override(release, false); err != nil {
 		return err
 	}
 	// This phase is a forward-only boundary: it must never restore data again.
