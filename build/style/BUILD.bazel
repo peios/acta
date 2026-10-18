@@ -1,4 +1,31 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+
 exports_files([
+    "eslint-peios.mjs",
     "entrypoint_test.py",
     "check.sh",
 ])
+
+sh_binary(
+    name = "check",
+    srcs = ["check.sh"],
+    args = [
+        "$(rootpath :check.py)",
+        "--ruff",
+        "$(rootpath @acta_style_tools//:ruff)",
+        "--shfmt",
+        "$(rootpath @acta_style_tools//:shfmt)",
+        "--shellcheck",
+        "$(rootpath @acta_style_tools//:shellcheck)",
+        "--buildifier",
+        "$(rootpath @acta_style_tools//:buildifier)",
+    ],
+    data = [
+        "check.py",
+        "@acta_style_tools//:buildifier",
+        "@acta_style_tools//:ruff",
+        "@acta_style_tools//:shellcheck",
+        "@acta_style_tools//:shfmt",
+    ],
+    visibility = ["//visibility:public"],
+)

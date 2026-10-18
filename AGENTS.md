@@ -30,6 +30,16 @@ and agent experience equal importance.
   domain and transport logic, and define the transactional guarantees a future
   storage implementation must preserve.
 
+## Coding style
+
+- Follow Panorama PSC common and language coding rules. See
+  `learn/site/acta.product/7--development.topic/200--checking.md` for commands
+  and exclusions. Keep formatter success separate from design review.
+- Run `./bazel run //:format-check`, `./bazel run //:style-check`, and the
+  relevant Bazel tests. Frontend tests include formatting and ESLint checks.
+- Preserve Svelte reactivity and import initialization order during cleanup.
+  Do not reformat checksum-protected SQL migration history.
+
 ## Project records
 
 - Keep maintained product documentation in `learn/site/acta.product`, following

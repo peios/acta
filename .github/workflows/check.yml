@@ -32,9 +32,10 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Check Go formatting and generated build definitions
+      - name: Check source style and generated build definitions
         run: |
           ./bazel run //:format-check
+          ./bazel run //:style-check
           ./bazel run //:gazelle -- -mode=diff
       - name: Build all executables
         run: ./bazel build //:binaries

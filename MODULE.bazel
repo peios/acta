@@ -25,3 +25,7 @@ npm_dependencies(
 )
 
 use_repo(go_deps, "com_github_sherclockholmes_webpush_go")
+
+style_tools = use_repo_rule("//build/style:tools.bzl", "style_tools")
+
+style_tools(name = "acta_style_tools")

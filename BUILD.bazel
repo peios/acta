@@ -104,6 +104,11 @@ sh_binary(
     ],
 )
 
+alias(
+    name = "style-check",
+    actual = "//build/style:check",
+)
+
 sh_test(
     name = "entrypoint_test",
     srcs = ["//build/style:check.sh"],

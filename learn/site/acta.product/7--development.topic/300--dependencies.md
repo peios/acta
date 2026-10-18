@@ -29,7 +29,8 @@ the locked dependencies again when either changes. Repository fetching uses
 an unprovided lifecycle step.
 
 Toolchain pins live in `MODULE.bazel`, `build/repositories.bzl`,
-`.bazelversion`, and `build/bazel.sha256`. Update the appropriate version and
+`build/style/tools.bzl`, `.bazelversion`, and `build/bazel.sha256`. Update
+the appropriate version and
 checksum together.
 
 ## Export a versioned build

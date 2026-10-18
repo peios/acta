@@ -9,13 +9,13 @@ import tempfile
 from pathlib import Path
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--node", type=Path, required=True)
     parser.add_argument("--npm", type=Path, required=True)
     parser.add_argument(
-        "--mode", choices=["build", "check", "format", "test"], required=True
+        "--mode", choices=["build", "check", "format", "test", "lint"], required=True
     )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--version", default="0.0.0")
@@ -25,9 +25,7 @@ def main():
     dependencies = node.parents[2] / "node_modules"
     output = args.output.absolute() if args.output else None
     sources = json.loads(args.manifest.read_text())
-    with tempfile.TemporaryDirectory(
-        prefix="acta-web-", dir=os.environ.get("TEST_TMPDIR")
-    ) as temp:
+    with tempfile.TemporaryDirectory(prefix="acta-web-", dir=os.environ.get("TEST_TMPDIR")) as temp:
         root = Path(temp)
         for relative, source in sources.items():
             target = root / relative
@@ -56,10 +54,9 @@ def main():
             "check": "check",
             "format": "format:check",
             "test": "test",
+            "lint": "lint",
         }[args.mode]
-        subprocess.run(
-            [str(node), str(npm), "run", script], cwd=web, env=env, check=True
-        )
+        subprocess.run([str(node), str(npm), "run", script], cwd=web, env=env, check=True)
         if output is not None:
             shutil.copytree(web / "build", output, dirs_exist_ok=True)
 

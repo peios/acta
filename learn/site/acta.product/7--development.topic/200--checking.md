@@ -20,6 +20,7 @@ From the repository root, run the checks needed for the change:
 ./bazel run //:export
 ./bazel test //...
 ./bazel run //:format-check
+./bazel run //:style-check
 ./bazel run //:gazelle -- -mode=diff
 ```
 
@@ -29,10 +30,36 @@ another destination. The frontend target writes assets under
 `bazel-bin/web/build`.
 
 The test suite includes Go unit tests, standard Go vet checks, frontend
-formatting, Svelte/TypeScript checks, and Node interaction tests.
+formatting, ESLint, Svelte/TypeScript checks, Node interaction tests, and the
+application entrypoint regression test.
 Database-backed cases skip without their database configuration. Browser
 workflows remain explicit checks; a passing default suite does not establish
 browser coverage.
+
+## Follow Peios coding style
+
+Acta follows
+[Peios coding style](https://learn.peios.org/psc/scope-and-precedence/).
+Go uses `gofmt`. The frontend uses four spaces, a 100-column formatting
+target, double quotes, and semicolons. Svelte-aware lint checks preserve the
+semantics of reactive props and derived values. Braces follow the common Peios
+rule; short single-line clauses can omit them.
+
+`//:style-check` checks maintained Python, shell, and Starlark sources with
+pinned Ruff, shfmt, ShellCheck, and buildifier. Pass `-- --fix` to apply their
+formatters; lint findings still require review. `//:format-check` checks Go.
+Frontend formatting and lint run as part of `./bazel test //...`. With the
+locked frontend dependencies installed, `npm run format` in `web/` applies
+frontend formatting and `npm run lint` checks the result.
+
+These checks do not enforce hard function-length or complexity limits. Review
+names, units, error handling, ownership, import initialization order, and
+functions beyond the Peios soft thresholds separately. Preserve published
+field names and protocol contracts during style changes.
+
+Generated outputs, dependencies, and `docs/archive` are outside the style
+rewrite scope. Do not reformat applied SQL migrations: Acta verifies their
+checksums on startup.
 
 ## Test database behavior
 

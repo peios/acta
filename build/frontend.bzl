@@ -1,7 +1,10 @@
 """Run Vite and frontend checks with declared sources and locked dependencies."""
 
 def _inputs(ctx):
-    return depset(ctx.files.srcs + [ctx.file._runner, ctx.file._node, ctx.file._npm], transitive = [ctx.attr._dependencies[DefaultInfo].files])
+    return depset(
+        ctx.files.srcs + [ctx.file._runner, ctx.file._node, ctx.file._npm],
+        transitive = [ctx.attr._dependencies[DefaultInfo].files],
+    )
 
 def _arguments(ctx, manifest):
     return [
@@ -71,6 +74,6 @@ _ATTRS = {
 frontend = rule(implementation = _frontend_impl, attrs = _ATTRS)
 frontend_test = rule(
     implementation = _frontend_test_impl,
-    attrs = dict(_ATTRS, mode = attr.string(mandatory = True, values = ["check", "format", "test"])),
+    attrs = dict(_ATTRS, mode = attr.string(mandatory = True, values = ["check", "format", "test", "lint"])),
     test = True,
 )
