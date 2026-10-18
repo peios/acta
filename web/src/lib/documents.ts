@@ -17,18 +17,18 @@ export type TaskDocument = DocumentVersion & {
 };
 export type DocumentPage = { documents: TaskDocument[]; cursor?: string };
 export type DocumentHistory = { versions: DocumentVersion[]; before?: number };
-export const documentLimit = 20 * 1024 * 1024;
-export function documentSize(size: number) {
-    if (size < 1024) return `${size} B`;
-    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+export const DOCUMENT_LIMIT_BYTES = 20 * 1024 * 1024;
+export function documentSize(sizeBytes: number) {
+    if (sizeBytes < 1024) return `${sizeBytes} B`;
+    if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`;
+    return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
 }
-export function documentPreview(type: string, size: number) {
+export function documentPreview(type: string, sizeBytes: number) {
     const mime = type.split(";")[0];
     if (["image/png", "image/jpeg", "image/gif", "image/webp"].includes(mime)) return "image";
     if (mime === "application/pdf") return "pdf";
-    if (size <= 1024 * 1024 && mime === "text/markdown") return "markdown";
-    if (size <= 1024 * 1024 && mime === "text/plain") return "text";
+    if (sizeBytes <= 1024 * 1024 && mime === "text/markdown") return "markdown";
+    if (sizeBytes <= 1024 * 1024 && mime === "text/plain") return "text";
     return "download";
 }
 export function documentURL(version: DocumentVersion) {

@@ -3,7 +3,7 @@
     import { taskChanged } from "$lib/tasks";
     import { api, errorMessage } from "$lib/api";
     import {
-        documentLimit,
+        DOCUMENT_LIMIT_BYTES,
         documentPreview,
         documentSize,
         documentURL,
@@ -161,11 +161,11 @@
         file = picked;
         formError = "";
         if (!title && picked) title = picked.name;
-        if (picked && picked.size > documentLimit) formError = "Choose a file up to 20 MiB.";
+        if (picked && picked.size > DOCUMENT_LIMIT_BYTES) formError = "Choose a file up to 20 MiB.";
     }
     async function save(event: SubmitEvent) {
         event.preventDefault();
-        if (!file || file.size > documentLimit || busy) return;
+        if (!file || file.size > DOCUMENT_LIMIT_BYTES || busy) return;
         busy = true;
         formError = "";
         const data = new FormData();
@@ -340,7 +340,7 @@
                 class="secondary"
                 disabled={busy}
                 onclick={() => uploadDialog.close()}>Cancel</button
-            ><button type="submit" disabled={busy || !file || file.size > documentLimit}
+            ><button type="submit" disabled={busy || !file || file.size > DOCUMENT_LIMIT_BYTES}
                 >{busy ? "Uploading…" : replacing ? "Save new version" : "Upload"}</button
             >
         </div>

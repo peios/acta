@@ -1,4 +1,8 @@
 <script lang="ts">
+    import { onMount, untrack } from "svelte";
+    import { goto } from "$app/navigation";
+    import { page } from "$app/state";
+
     import {
         defaultViewDisplay,
         emptyViewFilters,
@@ -16,9 +20,7 @@
     import { provideTaskRefresh } from "$lib/task-refresh-context";
     import { LatestRequest } from "$lib/requests.js";
     import { mergeTask } from "$lib/task-revisions.js";
-    import { onMount, untrack } from "svelte";
-    import { goto } from "$app/navigation";
-    import { page } from "$app/state";
+
     import { api, APIError, errorMessage } from "$lib/api";
     import { useWorkspace, canWorkspace, workspacePath } from "$lib/workspaces";
     import { boardConfig, boardStatuses, type Task, type TaskConfig } from "$lib/tasks";

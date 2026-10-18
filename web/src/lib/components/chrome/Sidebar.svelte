@@ -1,4 +1,7 @@
 <script lang="ts">
+    import { tick } from "svelte";
+    import { page } from "$app/state";
+
     import NotificationBell from "./NotificationBell.svelte";
     import { api, errorMessage } from "$lib/api";
     import { taskChanged } from "$lib/tasks";
@@ -40,8 +43,7 @@
             movingTask = false;
         }
     }
-    import { tick } from "svelte";
-    import { page } from "$app/state";
+
     import { canOpenUsers, canOpenSite, checkPermission } from "$lib/permissions";
     import type { Account } from "$lib/api";
     import ThemeToggle from "../ThemeToggle.svelte";

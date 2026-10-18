@@ -1,9 +1,11 @@
 <script lang="ts">
+    import { untrack } from "svelte";
+    import { page } from "$app/state";
+
     import { useAccount } from "$lib/account-context";
     const account = useAccount();
     import AgentWorkspaceSettings from "$lib/components/workspaces/AgentWorkspaceSettings.svelte";
-    import { untrack } from "svelte";
-    import { page } from "$app/state";
+
     import { api, errorMessage, type Account } from "$lib/api";
     import type { ManagedAccount } from "$lib/management";
     import type { SecurityState } from "$lib/security";

@@ -1,10 +1,12 @@
 <script lang="ts">
+    import "$lib/horizontal-scroll.css";
+    import { onMount } from "svelte";
+
     import type { TouchDragPoint } from "$lib/touch-drag";
     import { isTaskProperty } from "$lib/task-properties";
     import { noRelease } from "$lib/releases";
     import { dragScroll } from "$lib/drag-scroll";
-    import "$lib/horizontal-scroll.css";
-    import { onMount } from "svelte";
+
     import { api, errorMessage } from "$lib/api";
     import {
         boardStatuses,

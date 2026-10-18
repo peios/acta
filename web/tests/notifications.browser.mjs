@@ -1,10 +1,11 @@
-import { build } from "vite";
-import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import assert from "node:assert/strict";
+import { build } from "vite";
+import { svelte } from "@sveltejs/vite-plugin-svelte";
+
 const { chromium } = await import(process.env.ACTA_PLAYWRIGHT_MODULE || "playwright");
 const root = fileURLToPath(new URL("../", import.meta.url));
 const out = mkdtempSync(join(tmpdir(), "acta-notifications-"));

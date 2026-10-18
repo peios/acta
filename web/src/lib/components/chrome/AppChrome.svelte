@@ -1,11 +1,13 @@
 <script lang="ts">
+    import { tick, type Snippet } from "svelte";
+    import { goto, afterNavigate } from "$app/navigation";
+    import { page } from "$app/state";
+
     import { mobileViewport } from "$lib/mobile-viewport";
     import { swipeNavigation } from "$lib/swipe-navigation";
     import { dismissDialogBackdrop } from "$lib/dialog-backdrop";
     import { ScopeHistory } from "$lib/scope-history.js";
-    import { tick, type Snippet } from "svelte";
-    import { goto, afterNavigate } from "$app/navigation";
-    import { page } from "$app/state";
+
     import type { Account } from "$lib/api";
     import { provideNotifications } from "$lib/notifications.svelte";
     import TaskSearch from "../tasks/TaskSearch.svelte";

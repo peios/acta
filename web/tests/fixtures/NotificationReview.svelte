@@ -1,10 +1,12 @@
 <script lang="ts">
+    import { onMount } from "svelte";
+
     import TaskFollow from "$lib/components/tasks/TaskFollow.svelte";
     import NotificationBell from "$lib/components/chrome/NotificationBell.svelte";
     import { provideNotifications } from "$lib/notifications.svelte";
     import type { Account } from "$lib/api";
     const view = provideNotifications(() => ({ id: "review" }) as Account);
-    import { onMount } from "svelte";
+
     onMount(() => {
         (window as Window & { review?: typeof view }).review = view;
     });

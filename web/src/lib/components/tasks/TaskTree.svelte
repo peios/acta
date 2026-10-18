@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { untrack, onDestroy } from "svelte";
+
     import { isTaskProperty, propertyLabel } from "$lib/task-properties";
     import { releaseStateLabel } from "$lib/releases";
     import { dragScroll } from "$lib/drag-scroll";
@@ -11,7 +13,7 @@
         type ViewDisplay,
         type ViewFilters,
     } from "$lib/task-views.js";
-    import { untrack, onDestroy } from "svelte";
+
     import { LatestRequest } from "$lib/requests.js";
     import { readTaskWindow } from "$lib/task-pages.js";
     import { useTaskRefresh } from "$lib/task-refresh-context";

@@ -1,8 +1,10 @@
 <script lang="ts">
+    import { onMount } from "svelte";
+
     import TaskSearch from "$lib/components/tasks/TaskSearch.svelte";
     import CommentThread from "$lib/components/tasks/CommentThread.svelte";
     import type { ActivityEntry } from "$lib/activity";
-    import { onMount } from "svelte";
+
     let search: TaskSearch;
     let selected = $state("");
     let discussion: CommentThread;

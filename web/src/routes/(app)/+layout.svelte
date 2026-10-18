@@ -1,8 +1,10 @@
 <script lang="ts">
-    import { clearBrowserPush } from "$lib/browser-push.svelte";
-    import { LatestRequest } from "$lib/requests.js";
     import { onMount } from "svelte";
     import { goto } from "$app/navigation";
+
+    import { clearBrowserPush } from "$lib/browser-push.svelte";
+    import { LatestRequest } from "$lib/requests.js";
+
     import { api, APIError, errorMessage, type Account, type SetupState } from "$lib/api";
     import AppChrome from "$lib/components/chrome/AppChrome.svelte";
     import PasskeyInvitation from "$lib/components/security/PasskeyInvitation.svelte";

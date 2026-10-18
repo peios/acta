@@ -1,11 +1,13 @@
-import { checkAccessibility } from "./mobile-accessibility.mjs";
-import { build } from "vite";
-import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import assert from "node:assert/strict";
+import { build } from "vite";
+import { svelte } from "@sveltejs/vite-plugin-svelte";
+
+import { checkAccessibility } from "./mobile-accessibility.mjs";
+
 const { chromium, firefox, webkit } = await import(
     process.env.ACTA_PLAYWRIGHT_MODULE || "playwright"
 );

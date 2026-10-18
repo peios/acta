@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { tick, untrack } from "svelte";
+
     import "$lib/horizontal-scroll.css";
     import {
         readTableLayout,
@@ -8,7 +10,7 @@
         type TableLayout,
     } from "$lib/task-table-layout.js";
     import { useAccount } from "$lib/account-context";
-    import { tick, untrack } from "svelte";
+
     import { dragScroll } from "$lib/drag-scroll";
     import { api, APIError, errorMessage } from "$lib/api";
     import {

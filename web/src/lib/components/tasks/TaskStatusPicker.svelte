@@ -1,6 +1,8 @@
 <script lang="ts">
-    import { anchoredPopover } from "$lib/anchored-popover";
     import { tick } from "svelte";
+
+    import { anchoredPopover } from "$lib/anchored-popover";
+
     import { completedStatus, entryStatus, type TaskConfig } from "$lib/tasks";
 
     let {

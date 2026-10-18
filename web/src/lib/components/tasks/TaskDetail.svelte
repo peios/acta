@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { tick, onMount } from "svelte";
+
     import { taskProperties, propertyOptions } from "$lib/task-properties";
     import {
         loadReleases,
@@ -8,7 +10,7 @@
         type Release,
     } from "$lib/releases";
     import OptionPicker from "../OptionPicker.svelte";
-    import { tick, onMount } from "svelte";
+
     import TaskActivity from "./TaskActivity.svelte";
     import TaskDocuments from "./TaskDocuments.svelte";
     const detailTabs = ["activity", "subtasks", "documents"];

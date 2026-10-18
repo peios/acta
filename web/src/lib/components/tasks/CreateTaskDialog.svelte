@@ -1,6 +1,8 @@
 <script lang="ts">
-    import { useAccount } from "$lib/account-context";
     import { flushSync } from "svelte";
+
+    import { useAccount } from "$lib/account-context";
+
     import { errorMessage } from "$lib/api";
     import { useWorkspace } from "$lib/workspaces";
     import { createTask, taskChanged, type Task, type TaskConfig } from "$lib/tasks";

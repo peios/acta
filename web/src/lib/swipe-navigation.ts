@@ -1,3 +1,11 @@
+const DRAWER_MAX_WIDTH_PX = 720;
+const HISTORY_EDGE_WIDTH_PX = 28;
+const VERTICAL_SCROLL_THRESHOLD_PX = 10;
+const SWIPE_START_DISTANCE_PX = 12;
+const SWIPE_COMMIT_DISTANCE_PX = 64;
+// Require horizontal intent before taking ownership from native scrolling.
+const HORIZONTAL_INTENT_RATIO = 1.5;
+
 // Reserve the left edge against native history navigation, including overlays.
 // Only unobstructed content opens the drawer; leftward drawer gestures close it.
 export function swipeNavigation(node: HTMLElement, drawer: () => HTMLDialogElement | undefined) {
@@ -13,7 +21,13 @@ export function swipeNavigation(node: HTMLElement, drawer: () => HTMLDialogEleme
         | undefined;
     function start(event: TouchEvent) {
         gesture = undefined;
-        if (event.defaultPrevented || window.innerWidth > 720 || event.touches.length !== 1) return;
+        if (
+            event.defaultPrevented ||
+            window.innerWidth > DRAWER_MAX_WIDTH_PX ||
+            event.touches.length !== 1
+        ) {
+            return;
+        }
         const panel = drawer();
         const target = event.target instanceof Element ? event.target : null;
         if (!panel || !target || target.closest("input, textarea, select, [contenteditable]")) {
@@ -24,7 +38,7 @@ export function swipeNavigation(node: HTMLElement, drawer: () => HTMLDialogEleme
         // when an overlay prevents drawer gestures. Controls remain tappable and
         // scrolling outside the narrow edge stays native.
         if (
-            t.clientX <= 28 &&
+            t.clientX <= HISTORY_EDGE_WIDTH_PX &&
             event.cancelable &&
             !target.closest("a, button, [role='button'], label")
         ) {
@@ -36,7 +50,7 @@ export function swipeNavigation(node: HTMLElement, drawer: () => HTMLDialogEleme
         ) {
             return;
         }
-        if (!panel.open && t.clientX > 28) return;
+        if (!panel.open && t.clientX > HISTORY_EDGE_WIDTH_PX) return;
         if (panel.open && !panel.contains(target)) return;
         gesture = {
             id: t.identifier,
@@ -63,12 +77,15 @@ export function swipeNavigation(node: HTMLElement, drawer: () => HTMLDialogEleme
         const dx = t.clientX - gesture.x,
             dy = t.clientY - gesture.y;
         if (!gesture.claimed) {
-            if (Math.abs(dy) > 10 && Math.abs(dy) >= Math.abs(dx)) {
+            if (Math.abs(dy) > VERTICAL_SCROLL_THRESHOLD_PX && Math.abs(dy) >= Math.abs(dx)) {
                 gesture = undefined;
                 return;
             }
-            if (Math.abs(dx) < 12) return;
-            if ((gesture.closing ? dx >= 0 : dx <= 0) || Math.abs(dx) < Math.abs(dy) * 1.5) {
+            if (Math.abs(dx) < SWIPE_START_DISTANCE_PX) return;
+            if (
+                (gesture.closing ? dx >= 0 : dx <= 0) ||
+                Math.abs(dx) < Math.abs(dy) * HORIZONTAL_INTENT_RATIO
+            ) {
                 gesture = undefined;
                 return;
             }
@@ -84,7 +101,14 @@ export function swipeNavigation(node: HTMLElement, drawer: () => HTMLDialogEleme
     function end(event: TouchEvent) {
         const g = gesture;
         gesture = undefined;
-        if (!g || event.type === "touchcancel" || !g.claimed || Math.abs(g.dx) < 64) return;
+        if (
+            !g ||
+            event.type === "touchcancel" ||
+            !g.claimed ||
+            Math.abs(g.dx) < SWIPE_COMMIT_DISTANCE_PX
+        ) {
+            return;
+        }
         if (event.cancelable) event.preventDefault();
         if (g.closing) drawer()?.close();
         else drawer()?.showModal();

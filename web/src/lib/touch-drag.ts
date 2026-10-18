@@ -1,3 +1,9 @@
+// Keep taps and scrolling native until a deliberate hold, then suppress the
+// synthetic click following the completed drag. Distances use CSS pixels.
+const DRAG_HOLD_MS = 350;
+const CLICK_SUPPRESSION_MS = 500;
+const HOLD_MOVEMENT_TOLERANCE_PX = 8;
+
 export type TouchDragPoint = { x: number; y: number };
 export type TouchDragOptions = {
     enabled: () => boolean;
@@ -12,7 +18,7 @@ export function touchDrag(node: HTMLElement, options: TouchDragOptions) {
     let origin: TouchDragPoint;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let active = false;
-    let suppressClickUntil = 0;
+    let suppressClickUntilMs = 0;
     function finish(cancelled: boolean) {
         clearTimeout(timer);
         timer = undefined;
@@ -20,7 +26,7 @@ export function touchDrag(node: HTMLElement, options: TouchDragOptions) {
         if (!active) return;
         active = false;
         delete node.dataset.touchDragging;
-        suppressClickUntil = Date.now() + 500;
+        suppressClickUntilMs = Date.now() + CLICK_SUPPRESSION_MS;
         options.finish(cancelled);
     }
     function begin() {
@@ -41,7 +47,7 @@ export function touchDrag(node: HTMLElement, options: TouchDragOptions) {
         const touch = event.changedTouches[0];
         touchID = touch.identifier;
         origin = { x: touch.clientX, y: touch.clientY };
-        timer = setTimeout(begin, 350);
+        timer = setTimeout(begin, DRAG_HOLD_MS);
     }
     function move(event: TouchEvent) {
         if (touchID === undefined) return;
@@ -50,7 +56,9 @@ export function touchDrag(node: HTMLElement, options: TouchDragOptions) {
         if (!touch) return;
         const point = { x: touch.clientX, y: touch.clientY };
         if (!active) {
-            if (Math.hypot(point.x - origin.x, point.y - origin.y) > 8) finish(true);
+            if (Math.hypot(point.x - origin.x, point.y - origin.y) > HOLD_MOVEMENT_TOLERANCE_PX) {
+                finish(true);
+            }
             return;
         }
         // If the browser has already taken this gesture, never accidentally drop.
@@ -64,7 +72,7 @@ export function touchDrag(node: HTMLElement, options: TouchDragOptions) {
         finish(event.type === "touchcancel");
     }
     function click(event: MouseEvent) {
-        if (event.detail && Date.now() < suppressClickUntil) {
+        if (event.detail && Date.now() < suppressClickUntilMs) {
             event.preventDefault();
             event.stopImmediatePropagation();
         }

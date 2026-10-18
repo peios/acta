@@ -1,11 +1,14 @@
 <script lang="ts">
     import { onMount, tick } from "svelte";
+    import { goto } from "$app/navigation";
+    import { page } from "$app/state";
+
     import { focusIndicators } from "$lib/focus-indicators";
     onMount(focusIndicators);
-    import { goto } from "$app/navigation";
+
     import "$lib/styles.css";
     import ThemeToggle from "$lib/components/ThemeToggle.svelte";
-    import { page } from "$app/state";
+
     import { rememberAuthReturn } from "$lib/auth-return";
     let { children } = $props();
     let blocked = $state(false);
