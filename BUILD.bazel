@@ -1,5 +1,6 @@
 load("@gazelle//:def.bzl", "gazelle")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 # gazelle:prefix acta
 # gazelle:exclude bin
@@ -100,5 +101,18 @@ sh_binary(
         "//cmd/acta-backup",
         "//cmd/acta-cli",
         "//cmd/acta-update",
+    ],
+)
+
+sh_test(
+    name = "entrypoint_test",
+    srcs = ["//build/style:check.sh"],
+    args = [
+        "$(rootpath //build/style:entrypoint_test.py)",
+        "$(rootpath deploy/production/app-entrypoint.sh)",
+    ],
+    data = [
+        "deploy/production/app-entrypoint.sh",
+        "//build/style:entrypoint_test.py",
     ],
 )

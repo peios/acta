@@ -1,0 +1,4 @@
+exports_files([
+    "entrypoint_test.py",
+    "check.sh",
+])

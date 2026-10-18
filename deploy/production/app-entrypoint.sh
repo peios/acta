@@ -14,7 +14,8 @@ if [ -f /run/secrets/update-token ]; then
     export ACTA_UPDATE_TOKEN_FILE=/run/acta/update-token
 fi
 chown -R 10001:10001 /run/acta
-export ACTA_DATABASE_URL="$(cat /run/acta/database-url)"
+ACTA_DATABASE_URL="$(cat /run/acta/database-url)"
+export ACTA_DATABASE_URL
 export ACTA_SECURITY_KEY_FILE=/run/acta/security-key
 export ACTA_BACKUP_TOKEN_FILE=/run/acta/backup-token
 exec gosu 10001:10001 "$@"

@@ -44,7 +44,9 @@ docker compose --env-file /srv/acta-config/.env \
 The configuration directory is mode 0700 and files are 0600. Preserve it
 securely and separately from the host, particularly `security-key`. Docker
 bind-backed secrets retain their host ownership, so entrypoints make private
-runtime copies before dropping privileges. The application runs as UID/GID
+runtime copies before dropping privileges. If the application entrypoint
+cannot read its private database URL, it exits before launching the server.
+The application runs as UID/GID
 10001 with no effective capabilities and a read-only root filesystem. It
 connects as a dedicated database owner without superuser, role-creation or
 database-creation powers. Initial database credentials are applied only to an
