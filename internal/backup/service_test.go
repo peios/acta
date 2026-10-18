@@ -199,6 +199,70 @@ func TestRepositoryParsingRejectsUnencryptedAndMissing(t *testing.T) {
 	}
 }
 
+func TestRepositoryParsingRejectsMalformedCatalogs(t *testing.T) {
+	validStanza := `{"name":"acta","status":{"code":0},"cipher":"aes-256-cbc","backup":[]}`
+	for name, raw := range map[string]string{
+		"not an array":         `{}`,
+		"invalid stanza":       `[null]`,
+		"wrong field type":     `[{"name":3}]`,
+		"wrong backup type":    `[{"backup":{}}]`,
+		"malformed backup":     `[{"backup":[{"label":3}]}]`,
+		"truncated backup":     `[{"backup":[`,
+		"truncated stanza":     `[{"name":"acta"`,
+		"truncated catalogue":  `[` + validStanza,
+		"trailing JSON":        `[` + validStanza + `] {}`,
+		"trailing garbage":     `[` + validStanza + `] broken`,
+		"invalid later stanza": `[` + validStanza + `,{"backup":{}}]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parseInfoReader(strings.NewReader(raw), "acta", ""); err == nil {
+				t.Fatal("accepted malformed repository catalog", raw)
+			}
+		})
+	}
+}
+
+func TestRepositoryParsingPreservesBackupEvidence(t *testing.T) {
+	raw := `[
+		{"name":"other","status":{"code":99},"cipher":"none"},
+		{"name":"acta","status":{"code":0},"cipher":"aes-256-cbc",
+		 "future":{"nested":[1,{"value":true}]},
+		 "db":[
+			{"id":2,"repo-key":2,"version":"18","system-id":222},
+			{"id":1,"repo-key":1,"version":"17","system-id":111},
+			{"id":1,"repo-key":2,"version":"16","system-id":99}
+		 ],
+		 "backup":[
+			{"label":"older","type":"full","timestamp":{"start":100,"stop":200},
+			 "database":{"id":1,"repo-key":1},
+			 "annotation":{"acta-complete":"1","acta-release":"v1","acta-recovery":"old-key",
+			 "acta-integrity":"2026-09-10T12:00:00Z","acta-restored":"2026-09-10T13:00:00Z"}},
+			{"label":"failed","error":true,"timestamp":{"start":300,"stop":400},
+			 "database":{"id":2,"repo-key":2},
+			 "annotation":{"acta-complete":"1","acta-release":"v2","acta-recovery":"selected-key",
+			 "acta-recovery-fingerprint":"fingerprint","acta-job":"job",
+			 "acta-integrity":"2026-09-10T12:00:00Z","acta-restored":"2026-09-10T13:00:00Z"}}
+		 ]}
+	]`
+	repo, err := parseInfoReader(strings.NewReader(raw), "acta", "failed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo.SystemID != "222" || repo.PointCount != 2 || len(repo.Points) != 2 {
+		t.Fatal("lost database identity or backup points", repo)
+	}
+	failed, older := repo.Points[0], repo.Points[1]
+	if failed.Label != "failed" || failed.DatabaseVersion != "18" || failed.Complete || failed.IntegrityAt != nil || failed.RestoredAt != nil {
+		t.Fatal("failed backup retained success evidence", failed)
+	}
+	if failed.SealedRecovery != "selected-key" || failed.RecoveryFingerprint != "fingerprint" || failed.JobID != "job" {
+		t.Fatal("lost selected restore metadata", failed)
+	}
+	if older.Label != "older" || older.DatabaseVersion != "17" || !older.Complete || older.IntegrityAt == nil || older.RestoredAt == nil || older.SealedRecovery != "" {
+		t.Fatal("lost valid evidence or retained an unselected key", older)
+	}
+}
+
 func TestStateWriteFailureDoesNotAcknowledgeMutation(t *testing.T) {
 	c := testConfig(t)
 	s, err := Open(c, &testEngine{})

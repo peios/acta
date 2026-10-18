@@ -215,54 +215,8 @@ func parseInfoReader(reader io.Reader, stanza, selected string) (Repository, err
 	}
 	var all []infoStanza
 	for d.More() {
-		token, err = d.Token()
-		if err != nil || token != json.Delim('{') {
-			return out, errors.New("invalid stanza")
-		}
-		var s infoStanza
-		for d.More() {
-			name, err := d.Token()
-			if err != nil {
-				return out, err
-			}
-			switch name {
-			case "name":
-				err = d.Decode(&s.Name)
-			case "status":
-				err = d.Decode(&s.Status)
-			case "cipher":
-				err = d.Decode(&s.Cipher)
-			case "db":
-				err = d.Decode(&s.DB)
-			case "backup":
-				token, err = d.Token()
-				if err != nil {
-					return out, err
-				}
-				if token != json.Delim('[') {
-					return out, errors.New("invalid backup array")
-				}
-				for d.More() {
-					var b infoBackup
-					if err = d.Decode(&b); err != nil {
-						return out, err
-					}
-					b.HasRecovery = b.Annotation["acta-recovery"] != ""
-					if b.Label != selected {
-						delete(b.Annotation, "acta-recovery")
-					}
-					s.Backup = append(s.Backup, b)
-				}
-				_, err = d.Token()
-			default:
-				var ignored json.RawMessage
-				err = d.Decode(&ignored)
-			}
-			if err != nil {
-				return out, err
-			}
-		}
-		if _, err = d.Token(); err != nil {
+		s, err := decodeInfoStanza(d, selected)
+		if err != nil {
 			return out, err
 		}
 		all = append(all, s)
@@ -277,59 +231,132 @@ func parseInfoReader(reader io.Reader, stanza, selected string) (Repository, err
 		if s.Name != stanza {
 			continue
 		}
-		// 2 means a valid stanza with no backups yet. All other nonzero codes
-		// are repository faults; never report stale/partial data as healthy.
-		if s.Status.Code != 0 && s.Status.Code != 2 {
-			return out, errors.New("pgBackRest repository is not healthy")
-		}
-		if s.Cipher == "" || s.Cipher == "none" {
-			return out, errors.New("repository encryption must be enabled by the deployment operator")
-		}
-		latestDB := 0
-		for _, db := range s.DB {
-			if db.ID > latestDB {
-				latestDB = db.ID
-				out.SystemID = strconv.FormatUint(db.SystemID, 10)
-			}
-		}
-		for _, b := range s.Backup {
-			p := Point{
-				Label:          b.Label,
-				Type:           b.Type,
-				StartedAt:      time.Unix(b.Timestamp.Start, 0).UTC(),
-				FinishedAt:     time.Unix(b.Timestamp.Stop, 0).UTC(),
-				Release:        b.Annotation["acta-release"],
-				JobID:          b.Annotation["acta-job"],
-				SealedRecovery: b.Annotation["acta-recovery"],
-			}
-			p.RecoveryFingerprint = b.Annotation["acta-recovery-fingerprint"]
-			p.Complete = b.HasRecovery && p.Release != "" && b.Annotation["acta-complete"] == "1"
-			if t, err := time.Parse(time.RFC3339Nano, b.Annotation["acta-integrity"]); err == nil {
-				p.IntegrityAt = &t
-			}
-			if t, err := time.Parse(time.RFC3339Nano, b.Annotation["acta-restored"]); err == nil {
-				p.RestoredAt = &t
-			}
-			if b.Error {
-				p.Complete = false
-				p.IntegrityAt = nil
-				p.RestoredAt = nil
-			}
-			for _, db := range s.DB {
-				if db.ID == b.Database.ID && db.RepoKey == b.Database.RepoKey {
-					p.DatabaseVersion = db.Version
-				}
-			}
-			out.Points = append(out.Points, p)
-		}
-		out.PointCount = len(out.Points)
-		sort.Slice(
-			out.Points,
-			func(i, j int) bool { return out.Points[i].FinishedAt.After(out.Points[j].FinishedAt) },
-		)
-		return out, nil
+		err = populateRepository(&out, s)
+		return out, err
 	}
 	return out, errors.New("configured stanza is missing")
+}
+
+func decodeInfoStanza(d *json.Decoder, selected string) (infoStanza, error) {
+	token, err := d.Token()
+	if err != nil || token != json.Delim('{') {
+		return infoStanza{}, errors.New("invalid stanza")
+	}
+	var s infoStanza
+	for d.More() {
+		name, err := d.Token()
+		if err != nil {
+			return infoStanza{}, err
+		}
+		switch name {
+		case "name":
+			err = d.Decode(&s.Name)
+		case "status":
+			err = d.Decode(&s.Status)
+		case "cipher":
+			err = d.Decode(&s.Cipher)
+		case "db":
+			err = d.Decode(&s.DB)
+		case "backup":
+			var backups []infoBackup
+			backups, err = decodeInfoBackups(d, selected)
+			s.Backup = append(s.Backup, backups...)
+		default:
+			var ignored json.RawMessage
+			err = d.Decode(&ignored)
+		}
+		if err != nil {
+			return infoStanza{}, err
+		}
+	}
+	if _, err = d.Token(); err != nil {
+		return infoStanza{}, err
+	}
+	return s, nil
+}
+
+// Drop other backups' sealed recovery records while decoding, before retaining
+// the catalogue. Completeness still records whether a recovery record existed.
+func decodeInfoBackups(d *json.Decoder, selected string) ([]infoBackup, error) {
+	token, err := d.Token()
+	if err != nil {
+		return nil, err
+	}
+	if token != json.Delim('[') {
+		return nil, errors.New("invalid backup array")
+	}
+	var backups []infoBackup
+	for d.More() {
+		var b infoBackup
+		if err = d.Decode(&b); err != nil {
+			return nil, err
+		}
+		b.HasRecovery = b.Annotation["acta-recovery"] != ""
+		if b.Label != selected {
+			delete(b.Annotation, "acta-recovery")
+		}
+		backups = append(backups, b)
+	}
+	_, err = d.Token()
+	return backups, err
+}
+
+func populateRepository(out *Repository, s infoStanza) error {
+	// 2 means a valid stanza with no backups yet. All other nonzero codes
+	// are repository faults; never report stale/partial data as healthy.
+	if s.Status.Code != 0 && s.Status.Code != 2 {
+		return errors.New("pgBackRest repository is not healthy")
+	}
+	if s.Cipher == "" || s.Cipher == "none" {
+		return errors.New("repository encryption must be enabled by the deployment operator")
+	}
+	latestDB := 0
+	for _, db := range s.DB {
+		if db.ID > latestDB {
+			latestDB = db.ID
+			out.SystemID = strconv.FormatUint(db.SystemID, 10)
+		}
+	}
+	for _, b := range s.Backup {
+		out.Points = append(out.Points, repositoryPoint(s, b))
+	}
+	out.PointCount = len(out.Points)
+	sort.Slice(
+		out.Points,
+		func(i, j int) bool { return out.Points[i].FinishedAt.After(out.Points[j].FinishedAt) },
+	)
+	return nil
+}
+
+func repositoryPoint(s infoStanza, b infoBackup) Point {
+	p := Point{
+		Label:          b.Label,
+		Type:           b.Type,
+		StartedAt:      time.Unix(b.Timestamp.Start, 0).UTC(),
+		FinishedAt:     time.Unix(b.Timestamp.Stop, 0).UTC(),
+		Release:        b.Annotation["acta-release"],
+		JobID:          b.Annotation["acta-job"],
+		SealedRecovery: b.Annotation["acta-recovery"],
+	}
+	p.RecoveryFingerprint = b.Annotation["acta-recovery-fingerprint"]
+	p.Complete = b.HasRecovery && p.Release != "" && b.Annotation["acta-complete"] == "1"
+	if t, err := time.Parse(time.RFC3339Nano, b.Annotation["acta-integrity"]); err == nil {
+		p.IntegrityAt = &t
+	}
+	if t, err := time.Parse(time.RFC3339Nano, b.Annotation["acta-restored"]); err == nil {
+		p.RestoredAt = &t
+	}
+	if b.Error {
+		p.Complete = false
+		p.IntegrityAt = nil
+		p.RestoredAt = nil
+	}
+	for _, db := range s.DB {
+		if db.ID == b.Database.ID && db.RepoKey == b.Database.RepoKey {
+			p.DatabaseVersion = db.Version
+		}
+	}
+	return p
 }
 
 func (e PGBackRest) repository(ctx context.Context, p Policy) (Repository, error) {
