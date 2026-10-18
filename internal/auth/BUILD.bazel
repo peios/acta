@@ -23,6 +23,7 @@ go_library(
         "security_advance.go",
         "security_crypto.go",
         "security_flow.go",
+        "security_passkeys.go",
         "security_sessions.go",
         "security_store.go",
         "service.go",

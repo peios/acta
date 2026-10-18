@@ -3,12 +3,10 @@ package auth
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"strings"
 	"time"
 
 	"github.com/go-webauthn/webauthn/protocol"
-	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
 
 	"acta/internal/accounts"
@@ -151,63 +149,13 @@ func (s *Security) Advance(ctx context.Context, in FlowInput, session, binding, 
 			}
 			verified = true
 		case "passkey_begin":
-			if f.Step != "verify" && f.Step != "passkey_verify" {
-				return ErrFlow
+			if e := s.beginPasskeyVerification(r, d, &f); e != nil {
+				return e
 			}
-			if f.Purpose == "password" {
-				return ErrFlow
-			}
-			opts, ws, e := s.web.BeginLogin(
-				webUser{r.Account, d.Passkeys},
-				webauthn.WithUserVerification(protocol.VerificationRequired),
-			)
-			if e != nil {
-				return &accounts.FieldError{
-					Field:   "credential",
-					Message: "No available passkey. Verify with your password.",
-				}
-			}
-			f.WebSession = ws
-			f.Options, _ = json.Marshal(opts)
-			f.Step = "passkey_verify"
 		case "passkey_finish":
-			if f.Step != "passkey_verify" || f.WebSession == nil {
-				return ErrFlow
+			if e := s.finishPasskeyVerification(r, &d, &f, assertion); e != nil {
+				return e
 			}
-			user := webUser{r.Account, d.Passkeys}
-			var credential *webauthn.Credential
-			if len(f.WebSession.UserID) == 0 {
-				credential, e = s.web.ValidateDiscoverableLogin(func(rawID, handle []byte) (webauthn.User, error) {
-					if !bytes.Equal(handle, user.WebAuthnID()) {
-						return nil, ErrCredentials
-					}
-					return user, nil
-				}, *f.WebSession, assertion)
-			} else {
-				credential, e = s.web.ValidateLogin(user, *f.WebSession, assertion)
-			}
-			if e != nil || credential.Authenticator.CloneWarning {
-				return &accounts.FieldError{
-					Field:   "credential",
-					Message: "That passkey could not be verified. Start again.",
-				}
-			}
-			found := false
-			for i := range d.Passkeys {
-				if bytes.Equal(d.Passkeys[i].Credential.ID, credential.ID) {
-					now := s.now()
-					d.Passkeys[i].Credential = *credential
-					d.Passkeys[i].LastUsedAt = &now
-					f.Proof = Proof{Method: "passkey", CredentialID: d.Passkeys[i].ID, At: now, Version: r.Version}
-					found = true
-					break
-				}
-			}
-			if !found {
-				return ErrCredentials
-			}
-			f.WebSession = nil
-			f.Options = nil
 			verified = true
 		case "code":
 			if f.Step != "code" || f.Proof.Method == "" || !s.now().Before(f.Proof.At.Add(FreshLifetime)) {
@@ -219,100 +167,8 @@ func (s *Security) Advance(ctx context.Context, in FlowInput, session, binding, 
 			f.Proof.MFA = true
 			verified = true
 		default:
-			if !proofValid(d, f.Proof, r.Version, s.now()) {
-				return ErrFlow
-			}
-			switch in.Action {
-			case "registration_begin":
-				if f.Step != "passkey_name" && f.Step != "passkey_create" {
-					return ErrFlow
-				}
-				name, e := accounts.DisplayName(in.Name)
-				if e != nil || name == nil {
-					return &accounts.FieldError{
-						Field:   "name",
-						Message: "Give this passkey a name (up to 100 characters).",
-					}
-				}
-				if len(d.Passkeys) >= 20 {
-					return &accounts.FieldError{
-						Field:   "name",
-						Message: "Remove an unused passkey before adding another (limit 20).",
-					}
-				}
-				f.Name = *name
-				opts, ws, e := s.web.BeginRegistration(
-					webUser{r.Account, d.Passkeys},
-					webauthn.WithExclusions(webUser{r.Account, d.Passkeys}.WebAuthnCredentialsDescriptors()),
-				)
-				if e != nil {
-					return e
-				}
-				f.WebSession = ws
-				f.Options, _ = json.Marshal(opts)
-				f.Step = "passkey_create"
-			case "registration_finish":
-				if f.Step != "passkey_create" || f.WebSession == nil {
-					return ErrFlow
-				}
-				parsed, e := protocol.ParseCredentialCreationResponseBytes(in.Credential)
-				if e != nil {
-					return &accounts.FieldError{
-						Field:   "credential",
-						Message: "The browser response could not be read. Try again.",
-					}
-				}
-				credential, e := s.web.CreateCredential(webUser{r.Account, d.Passkeys}, *f.WebSession, parsed)
-				if e != nil {
-					return &accounts.FieldError{
-						Field:   "credential",
-						Message: "The passkey could not be registered. Try again.",
-					}
-				}
-				claimed, e := tx.ClaimPasskey(ctx, credential.ID)
-				if e != nil {
-					return e
-				}
-				if !claimed {
-					return &accounts.FieldError{
-						Field:   "credential",
-						Message: "That passkey is already registered.",
-					}
-				}
-				d.Passkeys = append(
-					d.Passkeys,
-					Passkey{ID: uuid.NewString(), Name: f.Name, CreatedAt: s.now(), Credential: *credential},
-				)
-				f.Step = "commit"
-			case "setup_verify":
-				if f.Step != "totp_setup" {
-					return ErrFlow
-				}
-				step, ok := validTOTPStep(f.Secret, strings.TrimSpace(in.Code), s.now(), 0)
-				if !ok {
-					return &accounts.FieldError{
-						Field:   "code",
-						Message: "That code is incorrect or expired. Try a new code.",
-					}
-				}
-				f.LastStep = step
-				f.Codes, f.Hashes, e = recoveryCodes()
-				if e != nil {
-					return e
-				}
-				f.Step = "recovery_codes"
-			case "acknowledge":
-				if f.Step != "recovery_codes" {
-					return ErrFlow
-				}
-				f.Step = "commit"
-			case "confirm":
-				if f.Step != "confirm" {
-					return ErrFlow
-				}
-				f.Step = "commit"
-			default:
-				return ErrFlow
+			if e := s.advanceVerifiedAction(ctx, tx, r, &d, &f, in); e != nil {
+				return e
 			}
 		}
 		if verified {
@@ -346,4 +202,49 @@ func (s *Security) Advance(ctx context.Context, in FlowInput, session, binding, 
 		return e
 	})
 	return result, err
+}
+
+// advanceVerifiedAction runs inside the caller's security transaction. Every
+// settings action requires a fresh proof, including registration continuations.
+func (s *Security) advanceVerifiedAction(ctx context.Context, tx SecurityTx, r *SecurityRecord, d *SecurityData, f *Flow, in FlowInput) error {
+	if !proofValid(*d, f.Proof, r.Version, s.now()) {
+		return ErrFlow
+	}
+	switch in.Action {
+	case "registration_begin":
+		return s.beginPasskeyRegistration(r, *d, f, in.Name)
+	case "registration_finish":
+		return s.finishPasskeyRegistration(ctx, tx, r, d, f, in.Credential)
+	case "setup_verify":
+		if f.Step != "totp_setup" {
+			return ErrFlow
+		}
+		step, ok := validTOTPStep(f.Secret, strings.TrimSpace(in.Code), s.now(), 0)
+		if !ok {
+			return &accounts.FieldError{
+				Field:   "code",
+				Message: "That code is incorrect or expired. Try a new code.",
+			}
+		}
+		f.LastStep = step
+		var e error
+		f.Codes, f.Hashes, e = recoveryCodes()
+		if e != nil {
+			return e
+		}
+		f.Step = "recovery_codes"
+	case "acknowledge":
+		if f.Step != "recovery_codes" {
+			return ErrFlow
+		}
+		f.Step = "commit"
+	case "confirm":
+		if f.Step != "confirm" {
+			return ErrFlow
+		}
+		f.Step = "commit"
+	default:
+		return ErrFlow
+	}
+	return nil
 }
