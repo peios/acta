@@ -43,8 +43,8 @@ and agent experience equal importance.
 ## Project records
 
 - Keep maintained product documentation in `docs/learn/site/acta.product`, following
-  Panorama's [Core Style](../panorama/docs/psc.product/1--technical-writing-and-documentation.shelf/2--style.topic/100--core-style.md)
-  and [Learn](../panorama/docs/psc.product/1--technical-writing-and-documentation.shelf/2--style.topic/300--learn.md) rules. Run `trail lint docs/learn/site` and
+  PSC's [Core Style](../learn/psc.product/1--technical-writing-and-documentation.shelf/2--style.topic/100--core-style.md)
+  and [Learn](../learn/psc.product/1--technical-writing-and-documentation.shelf/2--style.topic/300--learn.md) rules. Run `trail lint docs/learn/site` and
   `trail build docs/learn/site --strict` with a Trail build supporting attachments.
 - When changing agent-facing features, update
   `docs/learn/site/acta.product/3--connections.topic/400--agent-guide.md` and affected
