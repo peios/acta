@@ -1,4 +1,5 @@
 title = "Acta"
 monogram = "Ac"
+icon = "acta.svg"
 color = "#3B82F6"
 description = "Plan work, collaborate with people and agents, and operate a self-hosted project service."
