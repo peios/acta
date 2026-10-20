@@ -149,7 +149,7 @@ requests from those peers use `X-Forwarded-For`: walk right to left through
 trusted hops, stopping at the first untrusted address. Invalid, absent, or
 oversized chains fall back to the direct peer. Other forwarding headers do not
 select client identity, public URLs, cookie security or allowed origins. See
-[deployment](~acta/operations/deployment).
+[deployment](~acta/deployment/deployment).
 
 Expired grants, security flows, rate-limit buckets, and sessions are removed
 at startup and every 15 minutes. Expiry is enforced on each operation

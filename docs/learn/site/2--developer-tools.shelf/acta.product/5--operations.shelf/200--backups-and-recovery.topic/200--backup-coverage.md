@@ -22,4 +22,4 @@ release archive, separately replicated off the source machine. This executable
 embeds the web bundle. Files stored outside Acta are not covered.
 
 For the integrated Docker package, see [production
-deployment](~acta/operations/recovery-service).
+deployment](~acta/backups-and-recovery/recovery-service).

@@ -16,9 +16,9 @@ traffic cutover remain operator actions.
 
 Use these pages for the relevant stage:
 
-- [Backup Coverage](~acta/operations/backup-coverage)
-- [Provisioning Backups](~acta/operations/backup-setup)
-- [Backup Policy and Health](~acta/operations/backup-policy)
-- [Restoring an Installation](~acta/operations/restoring)
-- [Cutting Over to Restored Data](~acta/operations/recovery-cutover)
-- [Checking Backup Recovery](~acta/operations/recovery-checks)
+- [Backup Coverage](~acta/backups-and-recovery/backup-coverage)
+- [Provisioning Backups](~acta/backups-and-recovery/backup-setup)
+- [Backup Policy and Health](~acta/backups-and-recovery/backup-policy)
+- [Restoring an Installation](~acta/backups-and-recovery/restoring)
+- [Cutting Over to Restored Data](~acta/backups-and-recovery/recovery-cutover)
+- [Checking Backup Recovery](~acta/backups-and-recovery/recovery-checks)

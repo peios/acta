@@ -28,6 +28,6 @@ no forward compatibility promise. The software determines behavior when an
 earlier manual differs from it.
 
 The [Learn guides](~acta/getting-started/overview) explain user workflows.
-[Operational procedures](~acta/operations/deployment) cover installation and
+[Operational procedures](~acta/deployment/deployment) cover installation and
 recovery. The command-line executables' help and the MCP tool schemas provide
 the available command and argument surfaces.

@@ -48,7 +48,7 @@ commit, recovery finishes the chosen release instead of overwriting accepted
 work with an earlier snapshot. A failed rollback retains maintenance mode and
 its error.
 
-The [recovery procedures](~acta/operations/backups) describe operator
+The [recovery procedures](~acta/backups-and-recovery/backups) describe operator
 preparation, verification, and cutover. Recovery targets, journals, keys, and
 operator logs contain sensitive material and are not public diagnostic
 artifacts.

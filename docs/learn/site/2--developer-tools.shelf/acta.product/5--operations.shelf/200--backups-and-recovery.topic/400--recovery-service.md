@@ -19,7 +19,7 @@ databases. The backup container has only the internal database network and no
 Internet route. A direct S3/SFTP repository needs an explicitly restricted
 egress setup before using it here.
 
-Follow [the recovery runbook](~acta/operations/backups) for keys, retention,
+Follow [the recovery runbook](~acta/backups-and-recovery/backups) for keys, retention,
 verification and cutover semantics. Before enabling the profile:
 
 1. Create `/srv/acta-config/backup` mode 0700. Copy

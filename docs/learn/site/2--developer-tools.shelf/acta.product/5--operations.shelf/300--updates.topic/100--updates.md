@@ -15,10 +15,10 @@ assuming the installation failed.
 
 Use these pages for the relevant stage:
 
-- [Release Trust](~acta/operations/release-trust)
-- [Provisioning the Updater](~acta/operations/updater-setup)
-- [Update Execution and Recovery](~acta/operations/update-recovery)
-- [Checking Update Recovery](~acta/operations/update-checks)
+- [Release Trust](~acta/updates/release-trust)
+- [Provisioning the Updater](~acta/updates/updater-setup)
+- [Update Execution and Recovery](~acta/updates/update-recovery)
+- [Checking Update Recovery](~acta/updates/update-checks)
 
 ## Database retirement migration
 

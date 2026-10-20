@@ -51,5 +51,5 @@ Acta serves its compiled web application from a Go server backed by
 PostgreSQL. External tools use authenticated CLI or MCP connections.
 
 Start with [Running Acta Locally](~acta/development/running-locally) to
-develop Acta, or [Deploying Acta](~acta/operations/deployment) to operate an
+develop Acta, or [Deploying Acta](~acta/deployment/deployment) to operate an
 installation.

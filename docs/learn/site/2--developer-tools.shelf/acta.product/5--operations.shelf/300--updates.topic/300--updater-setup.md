@@ -11,8 +11,8 @@ configured. It needs a successful fresh backup and restore drill before
 installing a release.
 
 Provision the production deployment and the backup service first, as described
-in [deployment](~acta/operations/deployment) and
-[backups](~acta/operations/backups). An update requires a successful fresh
+in [deployment](~acta/deployment/deployment) and
+[backups](~acta/backups-and-recovery/backups). An update requires a successful fresh
 full backup and restore drill; it never silently proceeds with unconfigured
 recovery. Backup schedules can remain disabled if operated manually.
 

@@ -12,7 +12,7 @@ cookie security.
 
 This package supplies HTTPS termination, persistence, private networking,
 service limits, and restart/log policies. The optional
-[updater](~acta/operations/updates) handles signed release installation and
+[updater](~acta/updates/updates) handles signed release installation and
 recovery; data migration remains an operator-controlled cutover.
 
 Compose assigns Caddy `172.30.50.2` on the private `172.30.50.0/29` edge
