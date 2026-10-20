@@ -39,7 +39,7 @@ browser coverage.
 ## Follow Peios coding style
 
 Acta follows
-[Peios coding style](https://learn.peios.org/psc/scope-and-precedence/).
+[Peios coding style](https://learn.peios.org/psc/common-coding-rules/scope-and-precedence/).
 Go uses `gofmt`. The frontend uses four spaces, a 100-column formatting
 target, double quotes, and semicolons. Svelte-aware lint checks preserve the
 semantics of reactive props and derived values. Braces follow the common Peios

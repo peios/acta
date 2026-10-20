@@ -25,8 +25,8 @@ for the test and export targets.
 
 ## Deployment and documentation
 
-Follow [Deploying Acta](docs/learn/site/2--developer-tools.shelf/acta.product/5--operations.topic/100--deployment.md)
-and [Backup and Recovery](docs/learn/site/2--developer-tools.shelf/acta.product/5--operations.topic/400--backups.md)
+Follow [Deploying Acta](docs/learn/site/2--developer-tools.shelf/acta.product/5--operations.shelf/100--deployment.topic/100--deployment.md)
+and [Backup and Recovery](docs/learn/site/2--developer-tools.shelf/acta.product/5--operations.shelf/200--backups-and-recovery.topic/100--backups.md)
 for an operated installation.
 
 `docs/learn/site` is a standalone Trail tree, ready to merge into Peios Learn:
