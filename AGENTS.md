@@ -43,8 +43,8 @@ and agent experience equal importance.
 ## Project records
 
 - Keep maintained product documentation in `docs/learn/site/2--developer-tools.shelf/acta.product`, following
-  PSC's [Core Style](../learn/3--standards-and-conventions.shelf/psc.product/1--technical-writing-and-documentation.shelf/2--style.topic/100--core-style.md)
-  and [Learn](../learn/3--standards-and-conventions.shelf/psc.product/1--technical-writing-and-documentation.shelf/2--style.topic/300--learn.md) rules. Run `trail lint docs/learn/site` and
+  PSC's [Core Style](../learn/4--standards-and-conventions.shelf/psc.product/1--technical-writing-and-documentation.shelf/2--style.topic/100--core-style.md)
+  and [Learn](../learn/4--standards-and-conventions.shelf/psc.product/1--technical-writing-and-documentation.shelf/2--style.topic/300--learn.md) rules. Run `trail lint docs/learn/site` and
   `trail build docs/learn/site --strict` with a Trail build supporting attachments.
 - When changing agent-facing features, update
   `docs/learn/site/2--developer-tools.shelf/acta.product/3--connections.topic/400--agent-guide.md` and affected
