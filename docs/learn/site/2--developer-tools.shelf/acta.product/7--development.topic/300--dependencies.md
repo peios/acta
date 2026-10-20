@@ -47,7 +47,8 @@ exports. A versioned build does not sign, publish, or deploy a release.
 
 ## Maintain documentation
 
-Edit the Trail product in `docs/learn/site/acta.product`. Keep user concepts
+Edit the Trail product in
+`docs/learn/site/2--developer-tools.shelf/acta.product`. Keep user concepts
 and procedures in topics and implementation details in the technical manual.
 The agent guide is embedded from its canonical Learn file. Changes to those
 files also change the application inputs.

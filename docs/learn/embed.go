@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-//go:embed site/acta.product/3--connections.topic/400--agent-guide.md
+//go:embed site/2--developer-tools.shelf/acta.product/3--connections.topic/400--agent-guide.md
 var agentGuidePage string
 
 // AgentGuide is the published guide body with its title, without Trail metadata.
