@@ -1,8 +1,0 @@
-load("@rules_go//go:def.bzl", "go_library")
-
-go_library(
-    name = "localstate",
-    srcs = ["file.go"],
-    importpath = "acta/internal/localstate",
-    visibility = ["//:__subpackages__"],
-)
