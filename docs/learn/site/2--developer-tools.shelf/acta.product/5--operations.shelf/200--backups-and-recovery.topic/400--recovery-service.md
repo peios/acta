@@ -43,7 +43,8 @@ verification and cutover semantics. Before enabling the profile:
   full backup afterward.
 5. Start the worker first to prepare its config, then enable DB archiving
   using the additional Compose file. The worker starts with automatic
-  schedules disabled:
+  schedules disabled. Its image copies `acta-backup` from `bin/`, which
+  `tools/export` writes:
 
 ```sh
 docker compose --env-file /srv/acta-config/.env -f compose.production.yaml \

@@ -1,0 +1,152 @@
+# Acta's programs: the server, with its frontend embedded, the command-line
+# client, and the backup and update tools. Each Go package is compiled on
+# its own (see the go library's `workspace`), pure Go, as Bazel's release
+# configuration built them, and the frontend is built by Vite from the
+# packages `web/package-lock.json` pins (see the node library).
+import fs
+import toolchain
+import Toolchain from toolchain
+import "github.com/gcslib/go"
+import "github.com/gcslib/node"
+import NodeToolchain from "github.com/gcslib/node"
+
+# A Node.js program that writes its argument into `package.json` as its
+# version: the file is replaced, since the project's copy of it is
+# read-only.
+let VERSIONED = "const fs = require('fs'); const p = JSON.parse(fs.readFileSync('package.json')); p.version = process.argv[1]; fs.rmSync('package.json'); fs.writeFileSync('package.json', JSON.stringify(p, null, 4) + '\\n');"
+
+# The packages the frontend's lock installs, as `node_modules`.
+def frontend_modules() -> Dir {
+    = node.node_modules(file("web/package-lock.json"), file("web/npm.pins"))
+}
+
+# What the frontend reads from beside `web/`: the task properties it shares
+# with the server.
+def frontend_given() -> List<{at: String, place: Dir | File}> {
+    = [{at = "internal/tasks/properties.json"; place = file("internal/tasks/properties.json")}]
+}
+
+# The frontend, built by Vite: the static site the server embeds. Its
+# `package.json` names the release's version first, which the sidebar
+# shows.
+def build frontend() {
+    = node.run(
+        dir("web"),
+        frontend_modules(),
+        ["node_modules/vite/bin/vite.js", "build"],
+        at = "web",
+        given = frontend_given(),
+        before = [["-e", VERSIONED, version()]],
+    )
+}
+
+# The Go module, planned from its own files, `go.mod`, `go.sum` and its
+# packages' directories, with the frontend built into `web/build`, where the
+# server's `//go:embed all:build` reads it.
+def module() -> go.GoWorkspace {
+    let sources: List<{at: String, place: Dir | File | Future<Dir | File>}> = [
+        {at = "go.mod"; place = file("go.mod")},
+        {at = "go.sum"; place = file("go.sum")},
+        {at = "cmd"; place = dir("cmd")},
+        {at = "internal"; place = dir("internal")},
+        {at = "docs/learn"; place = dir("docs/learn")},
+        {at = "web/embed.go"; place = file("web/embed.go")},
+        {at = "web/embed_test.go"; place = file("web/embed_test.go")},
+        {at = "web/build"; place = build frontend()},
+    ]
+    = go.workspace(composed(sources), file("go.sum"), file("go.pins"))
+}
+
+# The release's version, `build/release-version` if the release workflow
+# wrote one, else `0.0.0`, which `acta/internal/version.Current` is set to.
+def version() -> String {
+    let at = "{dir(".").path}/build/release-version"
+    = if fs.exists(at) { trim(file("build/release-version").read()) } else { "0.0.0" }
+}
+
+# The flags every program is linked with: the version it reports.
+fn ldflags() -> List<String> {
+    = ["-X", "acta/internal/version.Current={version()}"]
+}
+
+# The server, with the frontend embedded.
+def build acta_server() {
+    = go.bin(module(), "./cmd/acta", name = "acta-server", ldflags = ldflags())
+}
+
+# The command-line client.
+def build acta() {
+    = go.bin(module(), "./cmd/acta-cli", name = "acta", ldflags = ldflags())
+}
+
+# The backup tool.
+def build acta_backup() {
+    = go.bin(module(), "./cmd/acta-backup", name = "acta-backup", ldflags = ldflags())
+}
+
+# The update tool.
+def build acta_update() {
+    = go.bin(module(), "./cmd/acta-update", name = "acta-update", ldflags = ldflags())
+}
+
+# The four programs, by their installed names, as the container images and
+# local tools take them.
+def build programs() {
+    = composed([
+        {at = "acta-server"; place = build acta_server()},
+        {at = "acta"; place = build acta()},
+        {at = "acta-backup"; place = build acta_backup()},
+        {at = "acta-update"; place = build acta_update()},
+    ])
+}
+
+# The Go packages with tests, by their directories.
+def test_packages() -> List<String> {
+    = [
+        "docs/learn",
+        "internal/accounts",
+        "internal/activity",
+        "internal/auth",
+        "internal/backup",
+        "internal/cli",
+        "internal/client",
+        "internal/config",
+        "internal/documents",
+        "internal/guide",
+        "internal/httpapi",
+        "internal/integration",
+        "internal/memories",
+        "internal/migration",
+        "internal/postgres",
+        "internal/push",
+        "internal/tasks",
+        "internal/update",
+        "internal/workspaces",
+        "web",
+    ]
+}
+
+# The pinned Node.js distribution, which `tools/dev` runs Vite's
+# development server with.
+def build node_dist(node_tool: NodeToolchain = toolchain.get(Toolchain::Node)) {
+    = node_tool.root
+}
+
+# Writes `go.pins` again from `go.sum`, with the network: run it after a
+# change to `go.sum`, and review the change to `go.pins` as `go.sum`'s.
+def script pin_modules() {
+    let count = go.pin_modules(file("go.sum"), "{dir(".").path}/go.pins")
+}
+
+# Writes `web/npm.pins` again from `web/package-lock.json`, with the
+# network: run it after a change to the lock, and review the change to the
+# pins as the lock's.
+def script pin_packages() {
+    let count = node.pin_packages(file("web/package-lock.json"), "{dir(".").path}/web/npm.pins")
+}
+
+# `entries`, each placed at its path, as one directory.
+#[hermetic]
+fn composed(entries: List<{at: String, place: Dir | File}>) -> Dir {
+    = fs.compose(for each in entries { = {at = each.at; place = each.place} })
+}

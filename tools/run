@@ -1,0 +1,9 @@
+#!/bin/sh
+# Builds the server with pekit and runs it against the development database,
+# with the Vite development server's origin allowed.
+set -eu
+cd "$(dirname "$0")/.."
+tools/export
+export ACTA_DATABASE_URL="${ACTA_DATABASE_URL:-postgres://acta:acta-development-only@127.0.0.1:5433/acta?sslmode=disable}"
+export ACTA_DEV_ORIGIN="${ACTA_DEV_ORIGIN:-http://localhost:5173}"
+exec bin/acta-server -listen :8081 "$@"

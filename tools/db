@@ -1,0 +1,5 @@
+#!/bin/sh
+# Starts the development PostgreSQL database and waits until it is ready.
+set -eu
+cd "$(dirname "$0")/.."
+exec docker compose up -d --wait db

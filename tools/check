@@ -1,0 +1,9 @@
+#!/bin/sh
+# The contributor check: the style of maintained scripts and configuration,
+# then pekit's tests: each Go package's tests, go vet, the race detector,
+# gofmt, the frontend's types, formatting, unit tests and lint, and the
+# application container's entrypoint.
+set -eu
+cd "$(dirname "$0")/.."
+pekit run style
+pekit test

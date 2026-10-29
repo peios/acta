@@ -18,7 +18,7 @@ verification-report parser deliberately rejects unexpected formats.
 
 ## Provision the worker
 
-1. Run `./bazel run //:export`. Install `acta-backup` independently
+1. Run `tools/export`. Install `acta-backup` independently
   of the web executable. Provision pgBackRest and age on the database/recovery
   host.
 2. Adapt `deploy/backup/backup.example.json`, `pgbackrest.example.conf`, and

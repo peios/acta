@@ -1,0 +1,16 @@
+#!/bin/sh
+# Runs Vite's development server with hot reload, with the pinned Node.js
+# pekit fetches, from web/: hot reload writes to the checkout, so it runs
+# outside pekit's sandboxes.
+set -eu
+cd "$(dirname "$0")/.."
+node=$(pekit build node_dist | awk '$0 == "built /node_dist" || index($0, "built /node_dist:") == 1 { found = 1; next } found { sub(/^  /, ""); print; exit }')
+[ -n "$node" ] || {
+    echo "pekit printed no output for node_dist" >&2
+    exit 1
+}
+PATH="$(realpath "$node")/bin:$PATH"
+export PATH
+cd web
+npm ci --no-audit --no-fund --ignore-scripts
+exec npm run dev

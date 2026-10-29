@@ -14,14 +14,14 @@ and an [implementation manual](docs/learn/site/2--developer-tools.shelf/acta.pro
 On an x86_64 Linux host with the [build prerequisites](docs/learn/site/2--developer-tools.shelf/acta.product/7--development.topic/100--running-locally.md), run:
 
 ```sh
-./bazel run //:db
-./bazel run //:run
+tools/db
+tools/run
 ```
 
 Open [the development server](http://localhost:8081). For an empty installation,
 use the setup code printed in the protected server terminal. See
 [builds and checks](docs/learn/site/2--developer-tools.shelf/acta.product/7--development.topic/200--checking.md)
-for the test and export targets.
+for the build, test, and export commands.
 
 ## Deployment and documentation
 

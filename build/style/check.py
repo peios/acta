@@ -1,14 +1,14 @@
-"""Check maintained scripts, Starlark and configuration against the PSC profiles."""
+"""Check maintained scripts and configuration against the PSC profiles."""
 
 import argparse
-import os
 import subprocess
 from pathlib import Path
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    for tool in ("ruff", "shfmt", "shellcheck", "buildifier", "node", "prettier"):
+    parser.add_argument("--root", required=True, type=Path)
+    for tool in ("ruff", "shfmt", "shellcheck", "node", "prettier"):
         parser.add_argument(f"--{tool}", required=True, type=Path)
     parser.add_argument(
         "--fix", action="store_true", help="Apply formatting; still report lint errors"
@@ -16,9 +16,9 @@ def main() -> None:
     args = parser.parse_args()
     tools = {
         name: str(getattr(args, name).resolve())
-        for name in ("ruff", "shfmt", "shellcheck", "buildifier", "node", "prettier")
+        for name in ("ruff", "shfmt", "shellcheck", "node", "prettier")
     }
-    root = Path(os.environ["BUILD_WORKSPACE_DIRECTORY"])
+    root = args.root.resolve()
     # Include new maintained files during development without walking dependencies
     # or build outputs. SQL migration history is not a rewrite target.
     files = (
@@ -30,8 +30,7 @@ def main() -> None:
     )
     files = sorted({name for name in files if name and (root / name).is_file()})
     python = [name for name in files if name.endswith(".py")]
-    shell = [name for name in files if name.endswith(".sh") or name == "bazel"]
-    starlark = [name for name in files if name.endswith((".bzl", ".bazel"))]
+    shell = [name for name in files if name.endswith(".sh")]
     # npm owns its lockfile's representation; maintained configuration is ours.
     configuration = [
         name
@@ -44,13 +43,6 @@ def main() -> None:
         [tools["ruff"], "format", "--no-cache", *([] if args.fix else ["--check"]), *python],
         [tools["shfmt"], "-w" if args.fix else "-d", "-i", "4", *shell],
         [tools["shellcheck"], *shell],
-        [
-            tools["buildifier"],
-            "-mode=fix" if args.fix else "-mode=check",
-            "-lint=warn",
-            "-warnings=load,unused-variable,function-docstring",
-            *starlark,
-        ],
     ]
     if configuration:
         commands.append(

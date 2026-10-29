@@ -35,8 +35,9 @@ and agent experience equal importance.
 - Follow Panorama PSC common and language coding rules. See
   `docs/learn/site/2--developer-tools.shelf/acta.product/7--development.topic/200--checking.md` for commands
   and exclusions. Keep formatter success separate from design review.
-- Run `./bazel run //:format-check`, `./bazel run //:style-check`, and the
-  relevant Bazel tests. Frontend tests include formatting and ESLint checks.
+- Run `pekit run style` and the relevant `pekit test` tests, or `tools/check`
+  for both. The `gofmt` test checks Go formatting; frontend tests include
+  formatting and ESLint checks.
 - Preserve Svelte reactivity and import initialization order during cleanup.
   Do not reformat checksum-protected SQL migration history.
 

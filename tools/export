@@ -1,0 +1,16 @@
+#!/bin/sh
+# Builds Acta's four programs with pekit and copies them, by their installed
+# names, to ACTA_OUTPUT_DIR, by default bin/: what local tools and the
+# container images take.
+set -eu
+cd "$(dirname "$0")/.."
+output=${ACTA_OUTPUT_DIR:-bin}
+built=$(pekit build --strict programs | awk '$0 == "built /programs" || index($0, "built /programs:") == 1 { found = 1; next } found { sub(/^  /, ""); print; exit }')
+[ -n "$built" ] && [ -d "$built" ] || {
+    echo "pekit printed no output for programs" >&2
+    exit 1
+}
+mkdir -p "$output"
+for name in acta-server acta acta-backup acta-update; do
+    install -m 755 "$built/$name" "$output/$name"
+done

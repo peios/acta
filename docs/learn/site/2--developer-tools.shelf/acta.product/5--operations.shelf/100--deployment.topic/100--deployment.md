@@ -32,7 +32,14 @@ Create private configuration outside the checkout. The helper refuses an
 existing directory and never rotates an installation's keys or database
 passwords:
 
+The images copy Acta's programs from `bin/`. Build them first with
+`tools/export`, which needs pekit and the other
+[build prerequisites](~acta/development/running-locally).
+A container build cannot run pekit's build sandboxes.
+
 ```sh
+tools/export
+
 python3 scripts/configure-deployment.py \
   --domain tasks.example.com --email operator@example.com \
   --directory /srv/acta-config

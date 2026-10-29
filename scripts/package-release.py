@@ -39,8 +39,6 @@ for service, target in [
             "linux/amd64",
             "--target",
             target,
-            "--build-arg",
-            f"ACTA_VERSION={a.version}",
             "--label",
             f"org.opencontainers.image.source=https://github.com/{a.repository}",
             "--label",

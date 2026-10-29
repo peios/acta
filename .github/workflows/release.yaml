@@ -14,6 +14,9 @@ on:
 permissions:
     contents: write
     packages: write
+env:
+    # The pekit Acta is built with: a commit of github.com/peios/pekit.
+    PEKIT_REV: c8fd9a56486fe0968d5a17acb6a24bc8c17972d2
 concurrency:
     group: acta-release
     cancel-in-progress: false
@@ -43,13 +46,16 @@ jobs:
                   if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null; then
                     echo 'Release tag already exists'; exit 1
                   fi
+            - name: Install pekit and the sandbox it runs steps in
+              run: tools/ci-install-pekit
             - name: Build and check release source
               env:
                   VERSION: ${{ inputs.version }}
               run: |
-                  ./bazel run //:style-check
-                  docker build --target build --build-arg "ACTA_VERSION=$VERSION" -t acta-release-tools .
-                  docker run --rm acta-release-tools sh -c './bazel test //... && ./bazel run //:format-check && ./bazel run //:gazelle -- -mode=diff'
+                  printf '%s\n' "${VERSION#v}" > build/release-version
+                  pekit run style
+                  pekit test --strict
+                  tools/export
             - name: Log in to the container registry
               env:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -60,9 +66,7 @@ jobs:
                   ACTA_RELEASE_ENABLED: ${{ vars.ACTA_RELEASE_ENABLED }}
               run: |
                   python3 scripts/package-release.py --repository "$GITHUB_REPOSITORY" --version "$VERSION" --sequence "$GITHUB_RUN_NUMBER" --notes /tmp/release-notes --output /tmp/manifest.json
-                  id=$(docker create acta-release-tools)
-                  docker cp "$id:/out/acta-update" /tmp/acta-update
-                  docker rm "$id"
+                  cp bin/acta-update /tmp/acta-update
             - name: Sign the manifest
               env:
                   SIGNING_SEED: ${{ secrets.ACTA_RELEASE_SIGNING_SEED }}

@@ -2,31 +2,33 @@
 title: "Running Acta Locally"
 type: how-to
 description: >-
-  Build Acta with the pinned Bazel toolchains and run a development server
+  Build Acta with pekit's pinned toolchains and run a development server
   on port 8081.
 ---
 
 The development setup runs a Go server with embedded web assets and a separate
-PostgreSQL database. Bazel supplies the Go and frontend toolchains.
+PostgreSQL database. [pekit](https://learn.peios.org/pekit/) supplies the Go
+and frontend toolchains.
 
 ## Before you start
 
 Use an x86_64 Linux build host with these prerequisites:
 
-- Bash, Python 3, curl, and Git
-- A C/C++ compiler for race tests
+- pekit, with bubblewrap 0.11 or later
+- Python 3, curl, OpenSSL, and Git
+- A C compiler for the race-detector integration tests
 - Docker and Docker Compose for the supplied development database
 - Network access for the first dependency fetch
 
-The wrapper pins Bazel 8.4.2. The build pins Go 1.26.8 and Node 22.22.1 with
-npm 10.9.4. Host Go, Node, and npm installations are not required. The build
-depends on host Linux utilities and does not claim a fully hermetic host
-environment.
+The build pins Go 1.26.8 and Node 22.22.1 with npm 10.9.4, and `pekit.lock`
+pins the gcslib libraries that provide them. Host Go, Node, and npm
+installations are not required. Each build step runs in a sandbox that holds
+only its declared inputs.
 
 ## Start the application
 
-1. From the repository root, run `./bazel run //:db`.
-2. Run `./bazel run //:run`.
+1. From the repository root, run `tools/db`.
+2. Run `tools/run`.
 3. Open [the local Acta server](http://localhost:8081).
 4. For an empty installation, use the setup code printed in the server
   terminal to create its first administrator. Keep that terminal private.
@@ -38,20 +40,20 @@ named volume. Its credentials are development-only. The server runs on port
 embedded migrations. Stopping it with <kbd>Ctrl</kbd>+<kbd>C</kbd> leaves
 PostgreSQL running.
 
-The run target supplies the development database URL and permits the local
-Vite origin. Override `ACTA_DATABASE_URL` or `ACTA_DEV_ORIGIN` when using
-another setup. The server executable itself requires a database URL and has no
-default password.
+`tools/run` builds the programs into `bin/`. It supplies the development
+database URL and permits the local Vite origin. Override `ACTA_DATABASE_URL`
+or `ACTA_DEV_ORIGIN` when using another setup. The server executable itself
+requires a database URL and has no default password.
 
 ## Use frontend hot reload
 
-Keep the Go server running, then run `./bazel run //:dev` in another terminal.
+Keep the Go server running, then run `tools/dev` in another terminal.
 Open [the Vite development server](http://localhost:5173) using that hostname.
 Vite proxies API and WebSocket requests to Go. Restart Go after backend
 changes.
 
-This target installs locked dependencies in `web/node_modules` using the
-pinned toolchain. Ordinary builds and tests use scratch directories and keep
+This command installs locked dependencies in `web/node_modules` using the
+pinned Node.js. Ordinary builds and tests run in pekit's sandboxes and keep
 generated frontend output out of the checkout.
 
 ## Preserve development data

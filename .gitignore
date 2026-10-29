@@ -9,7 +9,14 @@
 __pycache__/
 *.pyc
 
-/bazel-*
-
 /docs/learn/site/dist/
 /docs/learn/site/.trail-cache/
+
+# pekit build output.
+/pekit-out/
+
+# Libraries pekit fetches for the pins in `pekit.lock`.
+/.gcsl/
+
+# The version a release build reports, which the release workflow writes.
+/build/release-version

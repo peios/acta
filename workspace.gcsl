@@ -1,0 +1,21 @@
+# The Acta workspace: pekit builds its Go programs with the go library's
+# pinned Go and its frontend with the node library's pinned Node.js, on the
+# gcc library's glibc sysroot, and runs its Python checks with the python
+# library's pinned Python and its shell checks with the buildenv library's
+# busybox.
+import Toolchain::* from "github.com/gcslib/buildenv"
+import Toolchain::* from "github.com/gcslib/gcc"
+import Toolchain::* from "github.com/gcslib/go"
+import Toolchain::* from "github.com/gcslib/node"
+import Toolchain::* from "github.com/gcslib/python"
+import Toolchain from toolchain
+
+pekitconf = {
+    toolchains = [
+        Toolchain::C gcc_x86_64,
+        Toolchain::Go go_1_26,
+        Toolchain::Node node_22,
+        Toolchain::Python python_3_14,
+        Toolchain::BuildEnv busybox_x86_64,
+    ]
+}

@@ -1,0 +1,62 @@
+# Acta's commands that run on the host, outside a build's sandbox: the
+# PostgreSQL integration tests, which need a database, and the style check,
+# which reads the repository's own files list from git.
+import "github.com/gcslib/node"
+import NodeToolchain from "github.com/gcslib/node"
+import toolchain
+import unpack from archive
+import Toolchain from toolchain
+
+# `go test -race` of every package, run on the host with the pinned Go, the
+# module as pekit plans it, the frontend embedded, and its modules from the
+# pinned proxy, against the expendable PostgreSQL database
+# `ACTA_TEST_DATABASE_URL` names, as Bazel's integration configuration ran
+# it: the tests that skip without one run too. The race detector's runtime
+# links with the host's C compiler.
+def script integration() {
+    let ws = module()
+    let ran = exec([
+        "sh",
+        "-c",
+        "test -n \"${{ACTA_TEST_DATABASE_URL:-}}\" || {{ echo 'Set ACTA_TEST_DATABASE_URL to an expendable PostgreSQL database' >&2; exit 2; }}; \
+         work=$(mktemp -d) && \
+         export GOROOT=\"$3\" PATH=\"$3/bin:$PATH\" GOPATH=\"$work/gopath\" GOMODCACHE=\"$work/gopath/pkg/mod\" GOCACHE=\"$work/cache\" \
+             GOPROXY=\"file://$2\" GOSUMDB=off GOFLAGS=-mod=readonly GOTOOLCHAIN=local GOWORK=off GOENV=off GOTELEMETRY=off CGO_ENABLED=1 && \
+         cd \"$1\" && go test -race -count=1 ./...; status=$?; go clean -modcache; rm -r \"$work\"; exit $status",
+        "sh",
+        ws.tree.path,
+        ws.proxy.path,
+        ws.go.root.path,
+    ])
+}
+
+# The style check of the repository's maintained scripts and configuration,
+# `build/style/check.py`, with the pinned Ruff, shfmt and ShellCheck, and the
+# frontend's Prettier.
+def script style(node_tool: NodeToolchain = toolchain.get(Toolchain::Node)) {
+    let shfmt = fetch(
+        "https://github.com/mvdan/sh/releases/download/v3.14.1/shfmt_v3.14.1_linux_amd64",
+        sha256 = "76e77641faa025814b77f153b29796b8e6fa2fca03e0c76a691608b86c7ea7bf",
+    )
+    let shellcheck = unpack(fetch(
+        "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.gz",
+        sha256 = "b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6",
+    ))
+    let ruff = unpack(fetch(
+        "https://files.pythonhosted.org/packages/2c/3c/4a01195d93420cad1175bedad13a515dc8a56f95a6e39789b92e582682f5/ruff-0.17.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+        sha256 = "bc73e7c133e82d55b5f15897b2a442d72c0cb4a0c886c46801ce3c247150b60c",
+    ))
+    let ran = exec([
+        "sh",
+        "-c",
+        "tools=$(mktemp -d) && trap 'rm -r \"$tools\"' EXIT && cp \"$2\" \"$tools/shfmt\" && chmod 755 \"$tools/shfmt\" && \
+         python3 \"$1/build/style/check.py\" --root \"$1\" --shfmt \"$tools/shfmt\" --shellcheck \"$3\" --ruff \"$4\" --node \"$5\" --prettier \"$6\"",
+        "sh",
+        dir(".").path,
+        shfmt.path,
+        shellcheck.file("shellcheck-v0.11.0/shellcheck").path,
+        ruff.file("ruff-0.17.0.data/scripts/ruff").path,
+        node_tool.root.file("bin/node").path,
+        frontend_modules().file("prettier/bin/prettier.cjs").path,
+    ])
+}

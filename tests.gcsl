@@ -1,0 +1,141 @@
+# Acta's tests, as Bazel ran them: each Go package's tests, `go vet` of the
+# module, the frontend's type checks, formatting, unit tests and lint, and
+# the application container's entrypoint.
+#
+# The PostgreSQL integration tests skip without `ACTA_TEST_DATABASE_URL`:
+# they are a separate configuration, `pekit run integration` (see
+# `integration.gcsl`). A test's own code runs in a hermetic step of its own,
+# so what it plans, builds or fetches is in its parameters' defaults.
+import fs
+import toolchain
+import Toolchain from toolchain
+import BuildEnv from "github.com/gcslib/buildenv"
+import "github.com/gcslib/go"
+import "github.com/gcslib/node"
+import "github.com/gcslib/python"
+
+# Each Go package's tests, with a home.
+def test go_packages(tests: List<List<go.GoTest>> = for each in test_packages() { = go.tests(module(), "./{each}") }) {
+    let each = for some in tests {
+        = for test in some { = go.run_test(test, env = [{key = "HOME"; value = "/work/tmp"}]) }
+    }
+}
+
+# `go vet` of every package, as Bazel's `nogo` ran it.
+def test vet(vetted: {} = go.vet(module())) {}
+
+# Every package's tests with the race detector, as Bazel's integration
+# configuration ran them, but without a database: the PostgreSQL tests skip.
+def test race(raced: {} = go.race(module())) {}
+
+# The Go sources' formatting: `gofmt -l` lists none.
+def test gofmt(
+    sources: List<{at: String, place: Dir | File}> = [
+        {at = "/work/src/cmd"; place = dir("cmd")},
+        {at = "/work/src/internal"; place = dir("internal")},
+        {at = "/work/src/docs/learn"; place = dir("docs/learn")},
+        {at = "/work/src/web/embed.go"; place = file("web/embed.go")},
+        {at = "/work/src/web/embed_test.go"; place = file("web/embed_test.go")},
+    ],
+    tool: go.GoToolchain = toolchain.get(Toolchain::Go),
+) {
+    let placed: List<{at: String, place: Dir | File | FileSet}> = [
+        {at = "/"; place = tool.runtime},
+        {at = "/opt/go"; place = tool.root},
+        ...(for each in sources { = {at = each.at; place = each.place} }),
+    ]
+    let box = fs.compose(placed).sandbox(cwd = "/work/src")
+    let ran = box.exec(
+        "/bin/sh",
+        "-c",
+        "unformatted=$(/opt/go/bin/gofmt -l .) && if [ -n \"$unformatted\" ]; then printf 'Go files need formatting:\\n%s\\n' \"$unformatted\" >&2; exit 1; fi",
+    )
+}
+
+# What the frontend's checks read from beside `web/`: the task properties,
+# and the shared lint and format configuration.
+def frontend_checked() -> List<{at: String, place: Dir | File}> {
+    = [
+        ...frontend_given(),
+        {at = "build/style"; place = dir("build/style")},
+        {at = ".prettierrc.json"; place = file(".prettierrc.json")},
+    ]
+}
+
+# The frontend's types, as `npm run check` checks them.
+def test frontend_types(
+    ran: {} = node.check(
+        dir("web"),
+        frontend_modules(),
+        ["node_modules/svelte-check/bin/svelte-check", "--tsconfig", "./tsconfig.json"],
+        at = "web",
+        given = frontend_checked(),
+        before = [["node_modules/@sveltejs/kit/svelte-kit.js", "sync"]],
+    ),
+) {}
+
+# The frontend's formatting, as `npm run format:check` checks it.
+def test frontend_format(
+    ran: {} = node.check(
+        dir("web"),
+        frontend_modules(),
+        [
+            "node_modules/prettier/bin/prettier.cjs",
+            "--config",
+            ".prettierrc.mjs",
+            "--check",
+            "src",
+            "tests",
+            "*.js",
+            "*.ts",
+            "*.json",
+            "*.mjs",
+            ".prettierrc.mjs",
+            "../build/style/*.mjs",
+        ],
+        at = "web",
+        given = frontend_checked(),
+    ),
+) {}
+
+# The frontend's unit tests, as `npm test` runs them.
+def test frontend_units(
+    ran: {} = node.check(dir("web"), frontend_modules(), ["--test", "tests/*.test.mjs"], at = "web", given = frontend_checked()),
+) {}
+
+# The frontend's lint, as `npm run lint` checks it.
+def test frontend_lint(
+    ran: {} = node.check(
+        dir("web"),
+        frontend_modules(),
+        ["node_modules/eslint/bin/eslint.js", "src", "tests", "*.js", "*.ts", "*.mjs", ".prettierrc.mjs"],
+        at = "web",
+        given = frontend_checked(),
+    ),
+) {}
+
+# The application container's entrypoint: a failed read of the database's
+# address stops it before it starts the server, as
+# `build/style/entrypoint_test.py` checks with stand-in commands and
+# busybox's `sh`.
+def test entrypoint(
+    sources: List<{at: String, place: Dir | File}> = [
+        {at = "/work/entrypoint_test.py"; place = file("build/style/entrypoint_test.py")},
+        {at = "/work/app-entrypoint.sh"; place = file("deploy/production/app-entrypoint.sh")},
+    ],
+    py: python.PythonToolchain = toolchain.get(Toolchain::Python),
+    env: BuildEnv = toolchain.get(Toolchain::BuildEnv),
+) {
+    let home = working_dir().path
+    let made = fs.mkdir("{home}/tmp")
+    let placed: List<{at: String, place: Dir | File | FileSet}> = [
+        {at = "/"; place = py.runtime},
+        {at = "/bin"; place = env.root.dir("bin")},
+        {at = "/usr/bin"; place = env.root.dir("bin")},
+        {at = "/tmp"; place = dir("{home}/tmp")},
+        {at = "/opt/python"; place = py.root},
+        ...(for each in sources { = {at = each.at; place = each.place} }),
+    ]
+    let box = fs.compose(placed).sandbox(cwd = "/work", env = {PYTHONDONTWRITEBYTECODE = "1"; TMPDIR = "/tmp"})
+    let ran = box.exec("/opt/python/bin/python3", "-I", "/work/entrypoint_test.py", "/work/app-entrypoint.sh")
+}
